@@ -2290,7 +2290,7 @@ export const TerrainViewCanvas = forwardRef<TerrainViewCanvasHandle, { surroundC
       }
       if (isExport) {
         const activeRoadChainsS = smoothedRoadDataV2Ref.current ? smoothedRoadDataV2Ref.current.chains : smoothedRoadDataRef.current.chains
-        _drawSettlements(ctx, { settlements: settlementsRef.current, tierStyles: settlementTierStylesRef.current, labelSpecs: resolvedLabelSpecsRef.current, roadChains: activeRoadChainsS, railChains: smoothedRailDataRef.current.chains, project, hexCenterOf: (q, r) => { const h = hexesRef.current.find(h => h.q === q && h.r === r); return h ? project(h.center[0], h.center[1]) : null }, hexRadiusPx: hexRadiusRef.current })
+        _drawSettlements(ctx, { settlements: settlementsRef.current, tierStyles: settlementTierStylesRef.current, labelSpecs: resolvedLabelSpecsRef.current, roadChains: activeRoadChainsS, railChains: smoothedRailDataRef.current.chains, project, hexCenterOf: (q, r) => { const h = hexesRef.current.find(h => h.q === q && h.r === r); return h ? project(h.center[0], h.center[1]) : null }, hexRadiusPx: hexRadiusRef.current, labelOffsets: labelOffsetsRef.current })
       }
     }
 
@@ -2432,6 +2432,31 @@ export const TerrainViewCanvas = forwardRef<TerrainViewCanvasHandle, { surroundC
         ctx, px, py, pw, ph, mgPx, zoom,
         pageGrid: pageGridRef.current,
       })
+
+      // Label-drag handles — drawn on top of everything while the tool is active
+      if (activeToolRef.current.type === 'label-drag') {
+        ctx.save()
+        const cache = labelBBoxCacheRef.current
+        for (const [id, bbox] of Object.entries(cache)) {
+          const isHovered = id === hoveredLabelIdRef.current
+          const isDragging = id === labelDragStateRef.current?.id
+          ctx.save()
+          ctx.translate(bbox.cx, bbox.cy)
+          ctx.rotate(bbox.angle)
+          ctx.strokeStyle = isDragging ? '#e06030' : isHovered ? '#4a90d9' : 'rgba(80,120,200,0.6)'
+          ctx.lineWidth = (isDragging || isHovered ? 1.5 : 1) / zoom
+          ctx.setLineDash(isDragging ? [] : [3 / zoom, 2 / zoom])
+          ctx.strokeRect(-bbox.hw, -bbox.hh, bbox.hw * 2, bbox.hh * 2)
+          ctx.setLineDash([])
+          // Center crosshair dot
+          ctx.fillStyle = isDragging ? '#e06030' : isHovered ? '#4a90d9' : 'rgba(80,120,200,0.7)'
+          ctx.beginPath()
+          ctx.arc(0, 0, 2.5 / zoom, 0, Math.PI * 2)
+          ctx.fill()
+          ctx.restore()
+        }
+        ctx.restore()
+      }
     }
 
     ctx.restore() // pan/zoom
@@ -2702,14 +2727,21 @@ export const TerrainViewCanvas = forwardRef<TerrainViewCanvasHandle, { surroundC
 
   // Mark other layer caches dirty when their relevant data changes
   useEffect(() => { hexBorderDirtyRef.current = true }, [hexBorderMode, hexEdgeMode, hexBorderOpacity, hexBorderColor, hexBorderDifference, generatedHexes, excludedHexKeys, disabledHexKeys, autoDisabledOceanHexKeys])
-  useEffect(() => { riversDirtyRef.current = true }, [riverEdges, canalEdges, riverWidthScale, canalWidthScale, riverCurveSteps, riverWobble, riverDetail, riverWiggleFreq, riverWiggleAmp, riverSmoothing, riverPathSmoothing, showRiverLabels, riverLabelColor, riverSegmentProps, canalSegmentProps, riverSelectMode, canalSelectMode, selectedSegmentKeys, selectedCanalSegmentKeys, riverStyle, canalStyle, riverHopProps, selectedHopKey])
+  useEffect(() => { riversDirtyRef.current = true }, [riverEdges, canalEdges, riverWidthScale, canalWidthScale, riverCurveSteps, riverWobble, riverDetail, riverWiggleFreq, riverWiggleAmp, riverSmoothing, riverPathSmoothing, showRiverLabels, riverLabelColor, riverSegmentProps, canalSegmentProps, riverSelectMode, canalSelectMode, selectedSegmentKeys, selectedCanalSegmentKeys, riverStyle, canalStyle, riverHopProps, selectedHopKey, labelOffsets])
   useEffect(() => { buildingsDirtyRef.current = true }, [urbanHexes, urbanStyle, settlements, settlementTierStyles, roadBaseData])
   useEffect(() => { bridgesDirtyRef.current = true }, [bridgesEnabled, smoothedRoadData, smoothedRoadDataV2, smoothedRailData, riverEdges, canalEdges, generatedHexes])
   useEffect(() => { roadsDirtyRef.current = true }, [smoothedRoadData, smoothedRailData, roadTierStyles, railStyle, roadSegmentProps, roadHopProps, selectedRoadSegmentKeys, selectedRoadHopKey, roadSelectMode, railControlOverrides, railWiggleAmp, railWiggleFreq, railSmoothing, railSegmentProps, railHopProps, selectedRailSegmentKeys, selectedRailHopKey, railSelectMode, showRawOsmRoads, mapStyle])
-  useEffect(() => { settlementsDirtyRef.current = true }, [settlements, settlementTierStyles, labelPresetId, labelOverrides, smoothedRoadData, smoothedRailData])
+  useEffect(() => { settlementsDirtyRef.current = true }, [settlements, settlementTierStyles, labelPresetId, labelOverrides, smoothedRoadData, smoothedRailData, labelOffsets])
+  // When entering label-drag mode, rebuild label layers so the bbox cache is populated for hit-testing
+  useEffect(() => {
+    if (activeTool.type === 'label-drag') {
+      riversDirtyRef.current = true
+      settlementsDirtyRef.current = true
+    }
+  }, [activeTool.type])
 
   // Redraw when data changes
-  useEffect(() => { draw() }, [generatedHexes, hexBorderMode, hexEdgeMode, hexBorderOpacity, hexBorderColor, hexBorderDifference, hexNumbersEnabled, hexNumberEdge, hexNumberColor, hexNumberFontScale, hexNumberStartCorner, hexNumberMap, smoothedRoadData, smoothedRailData, showRawOsmRoads, roadNodeEditMode, riverNodeEditMode, riverChainOverrides, riverEdges, canalEdges, riverEditMode, canalEditMode, riverWidthScale, canalWidthScale, riverCurveSteps, riverWobble, riverDetail, riverWiggleFreq, riverWiggleAmp, riverSmoothing, riverPathSmoothing, showRiverLabels, riverLabelColor, riverSegmentProps, canalSegmentProps, riverSelectMode, canalSelectMode, selectedSegmentKeys, selectedCanalSegmentKeys, riverStyle, canalStyle, riverHopProps, selectedHopKey, defaultTerrainBlobs, defaultLakeBlobs, terrainColors, terrainTextureScales, terrainTextureBlendModes, terrainTextureOpacities, terrainTextureTintColors, terrainTextureTintOpacities, terrainTextureFillOnly, terrainTextureFile, terrainTextureEnabled, terrainBlobOverrides, terrainTypeBlobStyles, lakeOverrides, terrainRenderMode, settlements, settlementTierStyles, urbanHexes, urbanStyle, roadTierStyles, railStyle, highlights, highlightedHexes, highlightLines, highlightEdgePaths, iconOverlays, placedIcons, labelOverlays, placedLabels, realisticCoastline, coastlineDebugRaw, smoothedCoastlineBoundary, rawCoastlineBoundary, beachStrip, beachColor, beachWidth, coastlineDPEpsilon, coastlineChaikinPasses, edgeBlobPainted, edgeBlobOverrides, edgeBlobSmooth, edgeBlobOffset, edgeBlobBump, edgeBlobSweepFreq, edgeBlobLobeFreq, edgeBlobLobeAmp, edgeBlobLobeThreshold, edgeBlobLobeDirection, edgeBlobWidth, roadSegmentProps, roadHopProps, selectedRoadSegmentKeys, selectedRoadHopKey, roadSelectMode, railNodeEditMode, railControlOverrides, railSelectMode, railWiggleAmp, railWiggleFreq, railSmoothing, railSegmentProps, railHopProps, selectedRailSegmentKeys, selectedRailHopKey, mapBgColor, mapBorderEnabled, mapBorderColor, mapBorderWidth, clipToHexGrid, excludedHexKeys, disabledHexKeys, autoDisabledOceanHexKeys, megaHexEnabled, megaHexRadius, megaHexColor, megaHexOpacity, megaHexLineWidth, megaHexOriginQ, megaHexOriginR, areasMode, areas, areaHexes, areasStyle, bridgesEnabled, bridgeStyle, bridgeTiers, bridgeOverrides, showElevationDebug, mapStyle, draw])
+  useEffect(() => { draw() }, [generatedHexes, hexBorderMode, hexEdgeMode, hexBorderOpacity, hexBorderColor, hexBorderDifference, hexNumbersEnabled, hexNumberEdge, hexNumberColor, hexNumberFontScale, hexNumberStartCorner, hexNumberMap, smoothedRoadData, smoothedRailData, showRawOsmRoads, roadNodeEditMode, riverNodeEditMode, riverChainOverrides, riverEdges, canalEdges, riverEditMode, canalEditMode, riverWidthScale, canalWidthScale, riverCurveSteps, riverWobble, riverDetail, riverWiggleFreq, riverWiggleAmp, riverSmoothing, riverPathSmoothing, showRiverLabels, riverLabelColor, riverSegmentProps, canalSegmentProps, riverSelectMode, canalSelectMode, selectedSegmentKeys, selectedCanalSegmentKeys, riverStyle, canalStyle, riverHopProps, selectedHopKey, defaultTerrainBlobs, defaultLakeBlobs, terrainColors, terrainTextureScales, terrainTextureBlendModes, terrainTextureOpacities, terrainTextureTintColors, terrainTextureTintOpacities, terrainTextureFillOnly, terrainTextureFile, terrainTextureEnabled, terrainBlobOverrides, terrainTypeBlobStyles, lakeOverrides, terrainRenderMode, settlements, settlementTierStyles, urbanHexes, urbanStyle, roadTierStyles, railStyle, highlights, highlightedHexes, highlightLines, highlightEdgePaths, iconOverlays, placedIcons, labelOverlays, placedLabels, realisticCoastline, coastlineDebugRaw, smoothedCoastlineBoundary, rawCoastlineBoundary, beachStrip, beachColor, beachWidth, coastlineDPEpsilon, coastlineChaikinPasses, edgeBlobPainted, edgeBlobOverrides, edgeBlobSmooth, edgeBlobOffset, edgeBlobBump, edgeBlobSweepFreq, edgeBlobLobeFreq, edgeBlobLobeAmp, edgeBlobLobeThreshold, edgeBlobLobeDirection, edgeBlobWidth, roadSegmentProps, roadHopProps, selectedRoadSegmentKeys, selectedRoadHopKey, roadSelectMode, railNodeEditMode, railControlOverrides, railSelectMode, railWiggleAmp, railWiggleFreq, railSmoothing, railSegmentProps, railHopProps, selectedRailSegmentKeys, selectedRailHopKey, mapBgColor, mapBorderEnabled, mapBorderColor, mapBorderWidth, clipToHexGrid, excludedHexKeys, disabledHexKeys, autoDisabledOceanHexKeys, megaHexEnabled, megaHexRadius, megaHexColor, megaHexOpacity, megaHexLineWidth, megaHexOriginQ, megaHexOriginR, areasMode, areas, areaHexes, areasStyle, bridgesEnabled, bridgeStyle, bridgeTiers, bridgeOverrides, showElevationDebug, mapStyle, labelOffsets, activeTool, draw])
 
   useEffect(() => { drawOsmHighlight() }, [osmHighlightTier, osmSpotlightMode, osmSpotlightTiers, osmRailHighlight, hoveredOsmRiverIdx, drawOsmHighlight])
 
@@ -2951,6 +2983,8 @@ export const TerrainViewCanvas = forwardRef<TerrainViewCanvasHandle, { surroundC
   // Global Escape key: deactivate the current tool
   const setActiveToolRef = useRef(setActiveTool)
   setActiveToolRef.current = setActiveTool
+  const setLabelOffsetRef = useRef(setLabelOffset)
+  setLabelOffsetRef.current = setLabelOffset
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.key !== 'Escape') return
@@ -4783,6 +4817,35 @@ export const TerrainViewCanvas = forwardRef<TerrainViewCanvasHandle, { surroundC
   }, [isEdgePaintActive])
 
   const onMouseMove = useCallback((e: React.MouseEvent<HTMLCanvasElement>) => {
+    // Label drag — live preview and hover highlight
+    if (activeToolRef.current.type === 'label-drag') {
+      const logical = clientToLogicalRef.current(e.clientX, e.clientY)
+      if (logical) {
+        const { lx, ly } = logical
+        if (labelDragStateRef.current) {
+          const { id, startLx, startLy, startDx, startDy } = labelDragStateRef.current
+          liveLabelOffsetRef.current = { id, dx: startDx + (lx - startLx), dy: startDy + (ly - startLy) }
+          draw()
+        } else {
+          // Hover detection
+          const cache = labelBBoxCacheRef.current
+          let hit: string | null = null
+          for (const [id, bbox] of Object.entries(cache)) {
+            const cos = Math.cos(-bbox.angle), sin = Math.sin(-bbox.angle)
+            const rx = (lx - bbox.cx) * cos - (ly - bbox.cy) * sin
+            const ry = (lx - bbox.cx) * sin + (ly - bbox.cy) * cos
+            if (Math.abs(rx) <= bbox.hw + 4 && Math.abs(ry) <= bbox.hh + 4) { hit = id; break }
+          }
+          if (hit !== hoveredLabelIdRef.current) {
+            hoveredLabelIdRef.current = hit
+            draw()
+          }
+          const canvas = canvasRef.current
+          if (canvas) canvas.style.cursor = hit ? 'grab' : 'default'
+        }
+      }
+      return
+    }
     // Align-image drag
     if (alignImageDragRef.current) {
       const drag = alignImageDragRef.current
@@ -5322,6 +5385,40 @@ export const TerrainViewCanvas = forwardRef<TerrainViewCanvasHandle, { surroundC
     if (e.button !== 0) return
     if (editingLabelRef.current) return
     draggedRef.current = false
+
+    // Label-drag tool — start dragging the label under the cursor
+    if (activeToolRef.current.type === 'label-drag') {
+      const logical = clientToLogicalRef.current(e.clientX, e.clientY)
+      if (logical) {
+        const { lx, ly } = logical
+        const cache = labelBBoxCacheRef.current
+        for (const [id, bbox] of Object.entries(cache)) {
+          const cos = Math.cos(-bbox.angle), sin = Math.sin(-bbox.angle)
+          const rx = (lx - bbox.cx) * cos - (ly - bbox.cy) * sin
+          const ry = (lx - bbox.cx) * sin + (ly - bbox.cy) * cos
+          if (Math.abs(rx) <= bbox.hw + 4 && Math.abs(ry) <= bbox.hh + 4) {
+            const existing = labelOffsetsRef.current[id] ?? { dx: 0, dy: 0 }
+            labelDragStateRef.current = { id, startLx: lx, startLy: ly, startDx: existing.dx, startDy: existing.dy }
+            const canvas = canvasRef.current
+            if (canvas) canvas.style.cursor = 'grabbing'
+            const onUp = () => {
+              if (liveLabelOffsetRef.current) {
+                const { id: lid, dx, dy } = liveLabelOffsetRef.current
+                setLabelOffsetRef.current(lid, dx, dy)
+              }
+              labelDragStateRef.current = null
+              liveLabelOffsetRef.current = null
+              if (canvasRef.current) canvasRef.current.style.cursor = 'grab'
+              draw()
+              window.removeEventListener('mouseup', onUp)
+            }
+            window.addEventListener('mouseup', onUp)
+            break
+          }
+        }
+      }
+      return
+    }
 
     // Align-image drag — move historical map overlay
     if (activeToolRef.current.type === 'align-image') {

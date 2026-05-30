@@ -1,6 +1,6 @@
 /** River and canal layer rendering. Pure canvas operations — no React or store imports. */
 
-import type { RiverStyleConfig } from '../store/mapStore'
+import type { RiverStyleConfig, LabelBBox } from '../store/mapStore'
 import { riverSmooth, applyWobble, drawVariableWidthStroke } from './riverChains'
 import type { LabelSpec } from './labelPresets'
 import { specToFont } from './labelPresets'
@@ -41,6 +41,9 @@ export type DrawRiversParams = {
   showRiverLabels?: boolean
   riverLabelData?: RiverLabelEntry[]
   waterLabelSpec?: LabelSpec
+  labelOffsets?: Record<string, { dx: number; dy: number }>
+  liveLabelOffset?: { id: string; dx: number; dy: number }
+  labelBBoxOut?: Record<string, LabelBBox>
 }
 
 function makeSegHalfWidths(segProps: SegProps, baseHW: number) {
@@ -200,6 +203,9 @@ function drawRiverLabels(
   labelData: RiverLabelEntry[],
   spec: LabelSpec,
   project: (lon: number, lat: number) => [number, number],
+  labelOffsets?: Record<string, { dx: number; dy: number }>,
+  liveLabelOffset?: { id: string; dx: number; dy: number },
+  labelBBoxOut?: Record<string, LabelBBox>,
 ) {
   const basePx = 9
   rCtx.save()
@@ -230,13 +236,11 @@ function drawRiverLabels(
     // Anchor at arc midpoint
     let target = totalLen * 0.5
     let ax = pts[0][0], ay = pts[0][1]
-    let angleIdx = 0
     for (let i = 0; i < segLens.length; i++) {
       if (target <= segLens[i]) {
         const t = target / segLens[i]
         ax = pts[i][0] + (pts[i + 1][0] - pts[i][0]) * t
         ay = pts[i][1] + (pts[i + 1][1] - pts[i][1]) * t
-        angleIdx = i
         break
       }
       target -= segLens[i]
@@ -248,10 +252,10 @@ function drawRiverLabels(
     for (let i = 0; i < segLens.length; i++) {
       const s = acc, e = acc + segLens[i]
       if (e > lo && s < hi) {
-        const dx = pts[i + 1][0] - pts[i][0]
-        const dy = pts[i + 1][1] - pts[i][1]
+        const odx = pts[i + 1][0] - pts[i][0]
+        const ody = pts[i + 1][1] - pts[i][1]
         const w = Math.min(e, hi) - Math.max(s, lo)
-        sumX += dx * w; sumY += dy * w
+        sumX += odx * w; sumY += ody * w
       }
       acc = e
     }
@@ -262,8 +266,18 @@ function drawRiverLabels(
     const label = spec.uppercase ? name.toUpperCase() : name
     seen.add(name)
 
+    // Apply manual offset (live drag takes precedence over persisted offset)
+    const oid = `river:${name}`
+    const off = liveLabelOffset?.id === oid ? liveLabelOffset : labelOffsets?.[oid]
+    const fx = ax + (off?.dx ?? 0)
+    const fy = ay + (off?.dy ?? 0)
+
+    if (labelBBoxOut) {
+      labelBBoxOut[oid] = { cx: fx, cy: fy, hw: tw / 2 + 3, hh: basePx / 2 + 3, angle }
+    }
+
     rCtx.save()
-    rCtx.translate(ax, ay)
+    rCtx.translate(fx, fy)
     rCtx.rotate(angle)
     rCtx.strokeStyle = 'rgba(255,255,255,0.7)'
     rCtx.lineWidth = 2.5
@@ -287,6 +301,7 @@ export function drawRivers(rCtx: Ctx, params: DrawRiversParams) {
     riverHopProps, selectedHopKey,
     project,
     showRiverLabels, riverLabelData, waterLabelSpec,
+    labelOffsets, liveLabelOffset, labelBBoxOut,
   } = params
 
   drawRiverLayer(rCtx, canalChainData, canalSegProps, canalStyle, selectedCanalKeys,
@@ -296,6 +311,6 @@ export function drawRivers(rCtx: Ctx, params: DrawRiversParams) {
     selectedHopKey, riverBaseHW, true, lakeProjCenters, R, smoothPasses, wobbleBroad, wobbleDetail, riverHopProps, project)
 
   if (showRiverLabels && riverLabelData && riverLabelData.length > 0 && waterLabelSpec) {
-    drawRiverLabels(rCtx, riverLabelData, waterLabelSpec, project)
+    drawRiverLabels(rCtx, riverLabelData, waterLabelSpec, project, labelOffsets, liveLabelOffset, labelBBoxOut)
   }
 }

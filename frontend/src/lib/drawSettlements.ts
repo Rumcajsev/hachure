@@ -1,6 +1,6 @@
 /** Settlement icons and label placement rendering. Pure canvas — no React or store imports. */
 
-import type { Settlement, SettlementTierStyle } from '../store/mapStore'
+import type { Settlement, SettlementTierStyle, LabelBBox } from '../store/mapStore'
 import type { LabelSpec } from './labelPresets'
 import { specToFont } from './labelPresets'
 
@@ -21,6 +21,9 @@ export type DrawSettlementsParams = {
   project: (lon: number, lat: number) => [number, number]
   hexCenterOf: (q: number, r: number) => [number, number] | null
   hexRadiusPx: number
+  labelOffsets?: Record<string, { dx: number; dy: number }>
+  liveLabelOffset?: { id: string; dx: number; dy: number }
+  labelBBoxOut?: Record<string, LabelBBox>
 }
 
 function closestPointOnSegment(
@@ -36,6 +39,7 @@ function closestPointOnSegment(
 
 export function drawSettlements(sCtx: Ctx, {
   settlements, tierStyles, labelSpecs, roadChains, railChains, project, hexCenterOf, hexRadiusPx,
+  labelOffsets, liveLabelOffset, labelBBoxOut,
 }: DrawSettlementsParams) {
   const placed = settlements.filter(s => s.included && s.hex_q !== null)
 
@@ -153,7 +157,24 @@ export function drawSettlements(sCtx: Ctx, {
       if (score < bestScore) { bestScore = score; best = c }
     }
 
+    // Apply manual offset (live drag takes precedence over persisted offset)
+    const oid = `settlement:${s.name}`
+    const off = liveLabelOffset?.id === oid ? liveLabelOffset : labelOffsets?.[oid]
+    const odx = off?.dx ?? 0
+    const ody = off?.dy ?? 0
+
     placedBoxes.push([best.bx, best.by, tw, th])
+
+    if (labelBBoxOut) {
+      labelBBoxOut[oid] = {
+        cx: best.bx + tw / 2 + odx,
+        cy: best.by + th / 2 + ody,
+        hw: tw / 2 + 3,
+        hh: th / 2 + 3,
+        angle: 0,
+      }
+    }
+
     sCtx.fillStyle = resolved.color
     sCtx.font = font
     sCtx.textAlign = best.align
@@ -162,7 +183,7 @@ export function drawSettlements(sCtx: Ctx, {
       sCtx.save()
       ;(sCtx as CanvasRenderingContext2D & { letterSpacing?: string }).letterSpacing = `${resolved.letterSpacing}em`
     }
-    sCtx.fillText(label, best.x, best.y)
+    sCtx.fillText(label, best.x + odx, best.y + ody)
     if (resolved.letterSpacing > 0) sCtx.restore()
   }
 }
