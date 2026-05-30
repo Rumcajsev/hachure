@@ -12,6 +12,8 @@ import {
   BrushRow, MiniSlider, BigColorSwatch, SegmentedControl, ToggleRow, tintBg,
   StripShell, FlyoutShell, V2Divider, TriggerRow, TGap,
 } from './sidebar'
+import { resolveLabels } from '../../lib/labelPresets'
+import { LabelSpecEditorRows } from './LabelSpecEditor'
 
 // ── Colour groups ─────────────────────────────────────────────────────────────
 
@@ -20,7 +22,7 @@ const RIVER_STROKE_GROUPS = [{ label: 'Dark', colors: [...PALETTE_RIVER_OUTLINE]
 const CANAL_FILL_GROUPS   = [{ label: 'Teal', colors: [...PALETTE_CANAL] }]
 const CANAL_STROKE_GROUPS = [{ label: 'Dark', colors: [...PALETTE_CANAL_OUTLINE] }]
 
-type FlyoutId = 'river' | 'canal' | 'lake' | 'osm' | 'auto-lakes' | 'segment' | null
+type FlyoutId = 'river' | 'canal' | 'lake' | 'osm' | 'auto-lakes' | 'segment' | 'river-labels' | null
 
 // ── SubLabel ──────────────────────────────────────────────────────────────────
 
@@ -459,6 +461,36 @@ function SegmentFlyout({ mode, onClose }: { mode: 'river' | 'canal'; onClose: ()
   )
 }
 
+// ── RiverLabelFlyout ──────────────────────────────────────────────────────────
+
+function RiverLabelFlyout({ onClose }: { onClose: () => void }) {
+  const {
+    showRiverLabels, setShowRiverLabels,
+    labelPresetId, labelOverrides, setLabelCategoryOverride, resetLabelCategoryOverride,
+  } = useMapStore()
+  const resolved = resolveLabels(labelPresetId, labelOverrides)
+  const override = labelOverrides['water']
+  const spec = resolved['water']
+  const hasOverride = !!override && Object.keys(override).length > 0
+
+  return (
+    <FlyoutShell title="River Labels" onClose={onClose}>
+      <div style={{ padding: '4px 0 4px' }}>
+        <ToggleRow label="Show river labels" checked={showRiverLabels} onChange={setShowRiverLabels} />
+      </div>
+      <div style={{ padding: '8px 14px 12px' }}>
+        <LabelSpecEditorRows
+          spec={spec}
+          previewText="River Danube"
+          onChange={p => setLabelCategoryOverride('water', p)}
+          onReset={() => resetLabelCategoryOverride('water')}
+          hasOverride={hasOverride}
+        />
+      </div>
+    </FlyoutShell>
+  )
+}
+
 // ── RiversSidebarV3 ───────────────────────────────────────────────────────────
 
 export function RiversSidebarV3() {
@@ -566,13 +598,18 @@ export function RiversSidebarV3() {
         <V2Divider label="Auto lakes" />
         <TriggerRow label="Auto lakes" active={flyout === 'auto-lakes'} onClick={() => toggle('auto-lakes')} />
 
+        <TGap />
+        <V2Divider label="Labels" />
+        <TriggerRow label="Label Style" active={flyout === 'river-labels'} onClick={() => toggle('river-labels')} />
+
       </StripShell>
 
       {flyout === 'river'      && <RiverStyleFlyout onClose={() => setFlyout(null)} />}
       {flyout === 'canal'      && <CanalStyleFlyout onClose={() => setFlyout(null)} />}
       {flyout === 'lake'       && <LakeShapeFlyout  onClose={() => setFlyout(null)} />}
       {flyout === 'osm'        && <OsmRiversFlyout  onClose={() => setFlyout(null)} />}
-      {flyout === 'auto-lakes' && <AutoLakesFlyout  onClose={() => setFlyout(null)} />}
+      {flyout === 'auto-lakes'   && <AutoLakesFlyout   onClose={() => setFlyout(null)} />}
+      {flyout === 'river-labels' && <RiverLabelFlyout  onClose={() => setFlyout(null)} />}
       {flyout === 'segment'    && (
         <SegmentFlyout
           mode={segmentMode}

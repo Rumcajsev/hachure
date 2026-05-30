@@ -5,8 +5,6 @@ import {
   MiniSlider, ToggleRow, SegmentedControl,
   StripShell, FlyoutShell, V2Divider, TriggerRow, TGap,
 } from './sidebar'
-import { LABEL_PRESETS, resolveLabels } from '../../lib/labelPresets'
-import type { LabelCategory, LabelSpec } from '../../lib/labelPresets'
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 
@@ -26,7 +24,7 @@ const POINTY_EDGE_LABELS = ['SE', 'S', 'SW', 'NW', 'N', 'NE', 'C'] as const
 
 const terrainLabel = (k: string) => k.replace(/_/g, ' ')
 
-type FlyoutId = 'hex-borders' | 'hex-numbers' | 'map-shape' | 'impassable' | 'map-frame' | 'mega-hex' | 'terrain-legend' | 'ui-scale' | 'labels' | null
+type FlyoutId = 'hex-borders' | 'hex-numbers' | 'map-shape' | 'impassable' | 'map-frame' | 'mega-hex' | 'terrain-legend' | 'ui-scale' | null
 
 // ── SubLabel ──────────────────────────────────────────────────────────────────
 
@@ -536,245 +534,6 @@ function UiScaleFlyout({ onClose }: { onClose: () => void }) {
 
 // ── DisplaySidebarV3 ──────────────────────────────────────────────────────────
 
-// ── LabelsFlyout ─────────────────────────────────────────────────────────────
-
-const CATEGORY_LABELS: Record<LabelCategory, string> = {
-  cityMajor: 'City (major)',
-  cityMinor: 'City (minor)',
-  town: 'Town',
-  village: 'Village',
-  water: 'Rivers / Water',
-  terrain: 'Terrain areas',
-  hexRef: 'Hex numbers',
-}
-
-const FONT_OPTIONS = [
-  // Serif
-  { label: 'IBM Plex Serif',        value: '"IBM Plex Serif", Georgia, serif' },
-  { label: 'Cormorant Garamond',    value: '"Cormorant Garamond", Georgia, serif' },
-  { label: 'Cinzel',                value: '"Cinzel", Georgia, serif' },
-  { label: 'Cinzel Decorative',     value: '"Cinzel Decorative", Georgia, serif' },
-  { label: 'Crimson Pro',           value: '"Crimson Pro", Georgia, serif' },
-  { label: 'EB Garamond',           value: '"EB Garamond", Georgia, serif' },
-  { label: 'GFS Didot',             value: '"GFS Didot", Georgia, serif' },
-  { label: 'DM Serif Display',      value: '"DM Serif Display", Georgia, serif' },
-  { label: 'Spectral',              value: '"Spectral", Georgia, serif' },
-  { label: 'Playfair Display',      value: '"Playfair Display", Georgia, serif' },
-  { label: 'Libre Baskerville',     value: '"Libre Baskerville", Georgia, serif' },
-  { label: 'Arvo',                  value: '"Arvo", Georgia, serif' },
-  { label: 'IM Fell English',       value: '"IM Fell English", serif' },
-  { label: 'Almendra',              value: '"Almendra", Georgia, serif' },
-  { label: 'Georgia (system)',      value: 'Georgia, serif' },
-  // Sans-serif
-  { label: 'IBM Plex Sans Cond.',   value: '"IBM Plex Sans Condensed", sans-serif' },
-  { label: 'Oswald',                value: '"Oswald", sans-serif' },
-  { label: 'Teko',                  value: '"Teko", sans-serif' },
-  { label: 'Fjalla One',            value: '"Fjalla One", sans-serif' },
-  { label: 'PT Sans Narrow',        value: '"PT Sans Narrow", sans-serif' },
-  { label: 'Roboto Condensed',      value: '"Roboto Condensed", sans-serif' },
-  { label: 'Raleway',               value: '"Raleway", sans-serif' },
-  { label: 'Cabin Condensed',       value: '"Cabin Condensed", sans-serif' },
-  // Monospace
-  { label: 'Source Code Pro',       value: '"Source Code Pro", monospace' },
-]
-
-function CategoryOverrideRow({
-  cat,
-  base,
-  override,
-  onPatch,
-  onReset,
-}: {
-  cat: LabelCategory
-  base: LabelSpec
-  override?: Partial<LabelSpec>
-  onPatch: (p: Partial<LabelSpec>) => void
-  onReset: () => void
-}) {
-  const t = useTheme()
-  const [open, setOpen] = useState(false)
-  const hasOverride = override && Object.keys(override).length > 0
-  const resolved: LabelSpec = { ...base, ...(override ?? {}) }
-
-  return (
-    <div style={{ borderBottom: `1px solid ${t.line2}` }}>
-      <div
-        onClick={() => setOpen(v => !v)}
-        style={{
-          display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-          padding: '6px 14px', cursor: 'pointer',
-        }}
-      >
-        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-          {hasOverride && (
-            <div style={{ width: 5, height: 5, borderRadius: '50%', background: '#7de0a0', flexShrink: 0 }} />
-          )}
-          <span style={{ fontFamily: t.mono, fontSize: 10, color: t.ink }}>
-            {CATEGORY_LABELS[cat]}
-          </span>
-        </div>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-          <span style={{
-            fontFamily: resolved.family.split(',')[0].replace(/"/g, ''),
-            fontSize: 11,
-            fontStyle: resolved.italic ? 'italic' : 'normal',
-            fontWeight: resolved.weight,
-            color: resolved.color,
-          }}>
-            Aa
-          </span>
-          <span style={{ fontFamily: t.mono, fontSize: 9, color: t.inkFaint }}>{open ? '▲' : '▼'}</span>
-        </div>
-      </div>
-
-      {open && (
-        <div style={{ padding: '4px 14px 10px', display: 'flex', flexDirection: 'column', gap: 8 }}>
-          {/* Font family */}
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-            <span style={{ fontFamily: t.mono, fontSize: 9, color: t.inkFaint, width: 52, flexShrink: 0, textTransform: 'uppercase', letterSpacing: 0.5 }}>Font</span>
-            <select
-              value={resolved.family}
-              onChange={e => onPatch({ family: e.target.value })}
-              style={{
-                flex: 1, fontFamily: t.mono, fontSize: 9.5, background: t.paper2,
-                color: t.ink, border: `1px solid ${t.line}`, padding: '3px 4px',
-              }}
-            >
-              {FONT_OPTIONS.map(o => (
-                <option key={o.value} value={o.value}>{o.label}</option>
-              ))}
-            </select>
-          </div>
-
-          {/* Color */}
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-            <span style={{ fontFamily: t.mono, fontSize: 9, color: t.inkFaint, width: 52, flexShrink: 0, textTransform: 'uppercase', letterSpacing: 0.5 }}>Color</span>
-            <input type="color" value={resolved.color} onChange={e => onPatch({ color: e.target.value })}
-              style={{ width: 26, height: 22, border: 'none', background: 'none', cursor: 'pointer', padding: 0 }} />
-            <span style={{ fontFamily: t.mono, fontSize: 9.5, color: t.inkMute }}>{resolved.color}</span>
-          </div>
-
-          {/* Size scale */}
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-            <span style={{ fontFamily: t.mono, fontSize: 9, color: t.inkFaint, width: 52, flexShrink: 0, textTransform: 'uppercase', letterSpacing: 0.5 }}>Size</span>
-            <input type="range" min={0.4} max={2.0} step={0.05} value={resolved.sizeScale}
-              onChange={e => onPatch({ sizeScale: parseFloat(e.target.value) })}
-              style={{ flex: 1 }} />
-            <span style={{ fontFamily: t.mono, fontSize: 9.5, color: t.inkMute, width: 28 }}>{resolved.sizeScale.toFixed(2)}×</span>
-          </div>
-
-          {/* Toggles */}
-          <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
-            {(['italic', 'uppercase'] as const).map(key => (
-              <button key={key} onClick={() => onPatch({ [key]: !resolved[key] })} style={{
-                padding: '2px 8px', fontFamily: t.mono, fontSize: 9, letterSpacing: 0.3,
-                background: resolved[key] ? t.ink : 'transparent',
-                color: resolved[key] ? t.surface : t.inkMute,
-                border: `1px solid ${resolved[key] ? t.ink : t.line}`,
-                cursor: 'pointer',
-              }}>
-                {key === 'italic' ? 'Italic' : 'UPPERCASE'}
-              </button>
-            ))}
-          </div>
-
-          {/* Letter spacing */}
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-            <span style={{ fontFamily: t.mono, fontSize: 9, color: t.inkFaint, width: 52, flexShrink: 0, textTransform: 'uppercase', letterSpacing: 0.5 }}>Spacing</span>
-            <input type="range" min={0} max={0.5} step={0.01} value={resolved.letterSpacing}
-              onChange={e => onPatch({ letterSpacing: parseFloat(e.target.value) })}
-              style={{ flex: 1 }} />
-            <span style={{ fontFamily: t.mono, fontSize: 9.5, color: t.inkMute, width: 34 }}>{resolved.letterSpacing.toFixed(2)}em</span>
-          </div>
-
-          {hasOverride && (
-            <button onClick={onReset} style={{
-              alignSelf: 'flex-end', padding: '2px 10px', fontFamily: t.mono, fontSize: 9,
-              background: 'transparent', color: t.inkMute, border: `1px solid ${t.line}`, cursor: 'pointer',
-            }}>
-              ↺ Reset to preset
-            </button>
-          )}
-        </div>
-      )}
-    </div>
-  )
-}
-
-function LabelsFlyout({ onClose }: { onClose: () => void }) {
-  const t = useTheme()
-  const {
-    labelPresetId, setLabelPresetId,
-    labelOverrides, setLabelCategoryOverride, resetLabelCategoryOverride, resetAllLabelOverrides,
-    showRiverLabels, setShowRiverLabels,
-  } = useMapStore()
-
-  const resolved = resolveLabels(labelPresetId, labelOverrides)
-  const hasAnyOverride = Object.keys(labelOverrides).length > 0
-  const CATS = Object.keys(CATEGORY_LABELS) as LabelCategory[]
-
-  return (
-    <FlyoutShell title="Labels" onClose={onClose}>
-      {/* Preset chips */}
-      <div style={{ padding: '8px 14px 4px' }}>
-        <div style={{ fontFamily: t.mono, fontSize: 9, letterSpacing: 0.8, color: t.inkFaint, textTransform: 'uppercase', marginBottom: 6 }}>
-          Preset
-        </div>
-        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>
-          {LABEL_PRESETS.map(p => {
-            const active = labelPresetId === p.id
-            return (
-              <button
-                key={p.id}
-                onClick={() => setLabelPresetId(p.id)}
-                style={{
-                  padding: '4px 10px', fontFamily: t.mono, fontSize: 9.5, letterSpacing: 0.2,
-                  background: active ? t.ink : 'transparent',
-                  color: active ? t.surface : t.inkMute,
-                  border: `1px solid ${active ? t.ink : t.line}`,
-                  cursor: 'pointer',
-                }}
-              >
-                {p.name}
-              </button>
-            )
-          })}
-        </div>
-        {hasAnyOverride && (
-          <button onClick={resetAllLabelOverrides} style={{
-            marginTop: 6, padding: '2px 10px', fontFamily: t.mono, fontSize: 9,
-            background: 'transparent', color: t.inkMute, border: `1px solid ${t.line}`, cursor: 'pointer',
-          }}>
-            ↺ Clear all overrides
-          </button>
-        )}
-      </div>
-
-      {/* River label toggle */}
-      <div style={{ padding: '4px 14px 6px', borderTop: `1px solid ${t.line2}` }}>
-        <ToggleRow label="River labels" value={showRiverLabels} onChange={setShowRiverLabels} />
-      </div>
-
-      {/* Per-category overrides */}
-      <div style={{ borderTop: `1px solid ${t.line}` }}>
-        <div style={{ padding: '6px 14px 2px', fontFamily: t.mono, fontSize: 9, letterSpacing: 0.8, color: t.inkFaint, textTransform: 'uppercase' }}>
-          Per-category overrides
-        </div>
-        {CATS.map(cat => (
-          <CategoryOverrideRow
-            key={cat}
-            cat={cat}
-            base={resolved[cat]}
-            override={labelOverrides[cat]}
-            onPatch={p => setLabelCategoryOverride(cat, p)}
-            onReset={() => resetLabelCategoryOverride(cat)}
-          />
-        ))}
-      </div>
-    </FlyoutShell>
-  )
-}
-
 export function DisplaySidebarV3() {
   const [flyout, setFlyout] = useState<FlyoutId>(null)
   const toggle = (id: NonNullable<FlyoutId>) => setFlyout(prev => prev === id ? null : id)
@@ -798,10 +557,6 @@ export function DisplaySidebarV3() {
         <TriggerRow label="Mega Hex"      active={flyout === 'mega-hex'}       onClick={() => toggle('mega-hex')} />
 
         <TGap />
-        <V2Divider label="Labels" />
-        <TriggerRow label="Label Style"   active={flyout === 'labels'}          onClick={() => toggle('labels')} />
-
-        <TGap />
         <V2Divider label="Info" />
         <TriggerRow label="Terrain Legend" active={flyout === 'terrain-legend'} onClick={() => toggle('terrain-legend')} />
 
@@ -817,7 +572,6 @@ export function DisplaySidebarV3() {
       {flyout === 'impassable'     && <ImpassableFlyout    onClose={() => setFlyout(null)} />}
       {flyout === 'map-frame'      && <MapFrameFlyout      onClose={() => setFlyout(null)} />}
       {flyout === 'mega-hex'       && <MegaHexFlyout       onClose={() => setFlyout(null)} />}
-      {flyout === 'labels'         && <LabelsFlyout         onClose={() => setFlyout(null)} />}
       {flyout === 'terrain-legend' && <TerrainLegendFlyout onClose={() => setFlyout(null)} />}
       {flyout === 'ui-scale'       && <UiScaleFlyout       onClose={() => setFlyout(null)} />}
 

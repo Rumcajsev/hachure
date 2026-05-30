@@ -1,6 +1,8 @@
 import { useMapStore } from '../store/mapStore'
 import type { MapArea } from '../store/mapStore'
 import { sidebarStyle, sectionStyle, labelStyle, modeBtn } from './sidebarStyles'
+import { resolveLabels } from '../lib/labelPresets'
+import { FONT_OPTIONS } from './v2/LabelSpecEditor'
 
 // ── Area row ──────────────────────────────────────────────────────────────────
 
@@ -69,7 +71,12 @@ export function AreasSidebar() {
     updateArea, deleteArea,
     eraseAllHexesForArea,
     activeTool, setActiveTool,
+    labelPresetId, labelOverrides, setLabelCategoryOverride, resetLabelCategoryOverride,
   } = useMapStore()
+
+  const terrainSpec = resolveLabels(labelPresetId, labelOverrides)['terrain']
+  const terrainOverride = labelOverrides['terrain']
+  const hasTerrainOverride = !!terrainOverride && Object.keys(terrainOverride).length > 0
 
   const hexCountByArea: Record<string, number> = {}
   for (const aId of Object.values(areaHexes)) {
@@ -227,17 +234,6 @@ export function AreasSidebar() {
             onChange={(e) => setAreasStyle({ borderWidth: +e.target.value })}
           />
         </div>
-        <div style={{ marginBottom: 6 }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 2 }}>
-            <span>Label size</span>
-            <span style={{ color: '#8ab0e0' }}>{areasStyle.labelSize.toFixed(1)}×</span>
-          </div>
-          <input
-            type="range" min={0.5} max={2.5} step={0.1} value={areasStyle.labelSize}
-            style={{ width: '100%' }}
-            onChange={(e) => setAreasStyle({ labelSize: +e.target.value })}
-          />
-        </div>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
           <span>Border color</span>
           <input
@@ -246,6 +242,105 @@ export function AreasSidebar() {
             style={{ width: 28, height: 20, border: 'none', padding: 0, background: 'none', cursor: 'pointer' }}
             onChange={(e) => setAreasStyle({ borderColor: e.target.value })}
           />
+        </div>
+      </div>
+
+      {/* ── Labels ────────────────────────────────────────────────────── */}
+      <div style={sectionStyle}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+          <span style={labelStyle}>Labels</span>
+          {hasTerrainOverride && (
+            <button
+              onClick={() => resetLabelCategoryOverride('terrain')}
+              style={{ background: 'none', border: '1px solid #3a3a5a', color: '#6a6a8a', fontSize: 9, padding: '2px 6px', cursor: 'pointer', fontFamily: 'ui-monospace, monospace' }}
+            >
+              ↺ Reset
+            </button>
+          )}
+        </div>
+
+        {/* Font */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 6 }}>
+          <span style={{ fontSize: 10, color: '#6a6a8a', width: 44, flexShrink: 0 }}>Font</span>
+          <select
+            value={terrainSpec.family}
+            onChange={e => setLabelCategoryOverride('terrain', { family: e.target.value })}
+            style={{ flex: 1, fontSize: 9.5, background: '#1a1a2e', color: '#c0c0e0', border: '1px solid #2a2a4a', padding: '3px 4px', fontFamily: 'ui-monospace, monospace' }}
+          >
+            {FONT_OPTIONS.map(o => (
+              <option key={o.value} value={o.value}>{o.label}</option>
+            ))}
+          </select>
+        </div>
+
+        {/* Color */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 6 }}>
+          <span style={{ fontSize: 10, color: '#6a6a8a', width: 44, flexShrink: 0 }}>Color</span>
+          <input
+            type="color" value={terrainSpec.color}
+            onChange={e => setLabelCategoryOverride('terrain', { color: e.target.value })}
+            style={{ width: 26, height: 20, border: 'none', background: 'none', cursor: 'pointer', padding: 0 }}
+          />
+          <span style={{ fontSize: 9.5, color: '#6a6a8a', fontFamily: 'ui-monospace, monospace' }}>{terrainSpec.color}</span>
+        </div>
+
+        {/* Size */}
+        <div style={{ marginBottom: 6 }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 2 }}>
+            <span style={{ fontSize: 10, color: '#6a6a8a' }}>Size</span>
+            <span style={{ color: '#8ab0e0', fontSize: 10, fontFamily: 'ui-monospace, monospace' }}>{terrainSpec.sizeScale.toFixed(2)}×</span>
+          </div>
+          <input
+            type="range" min={0.4} max={2.0} step={0.05} value={terrainSpec.sizeScale}
+            style={{ width: '100%' }}
+            onChange={e => setLabelCategoryOverride('terrain', { sizeScale: parseFloat(e.target.value) })}
+          />
+        </div>
+
+        {/* Spacing */}
+        <div style={{ marginBottom: 6 }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 2 }}>
+            <span style={{ fontSize: 10, color: '#6a6a8a' }}>Spacing</span>
+            <span style={{ color: '#8ab0e0', fontSize: 10, fontFamily: 'ui-monospace, monospace' }}>{terrainSpec.letterSpacing.toFixed(2)}em</span>
+          </div>
+          <input
+            type="range" min={0} max={0.5} step={0.01} value={terrainSpec.letterSpacing}
+            style={{ width: '100%' }}
+            onChange={e => setLabelCategoryOverride('terrain', { letterSpacing: parseFloat(e.target.value) })}
+          />
+        </div>
+
+        {/* Toggles */}
+        <div style={{ display: 'flex', gap: 4 }}>
+          {(['italic', 'uppercase'] as const).map(key => (
+            <button
+              key={key}
+              onClick={() => setLabelCategoryOverride('terrain', { [key]: !terrainSpec[key] })}
+              style={{
+                padding: '2px 8px', fontSize: 9, fontFamily: 'ui-monospace, monospace',
+                background: terrainSpec[key] ? '#2a3a5a' : 'none',
+                color: terrainSpec[key] ? '#8ab0e0' : '#4a4a6a',
+                border: `1px solid ${terrainSpec[key] ? '#3a5a8a' : '#2a2a4a'}`,
+                cursor: 'pointer',
+              }}
+            >
+              {key === 'italic' ? 'Italic' : 'UPPER'}
+            </button>
+          ))}
+        </div>
+
+        {/* Preview */}
+        <div style={{
+          marginTop: 8, padding: '6px 8px', background: '#12122a', border: '1px solid #2a2a4a',
+          fontFamily: terrainSpec.family.split(',')[0].replace(/"/g, ''),
+          fontSize: Math.round(13 * terrainSpec.sizeScale),
+          fontStyle: terrainSpec.italic ? 'italic' : 'normal',
+          fontWeight: terrainSpec.weight,
+          color: terrainSpec.color,
+          letterSpacing: `${terrainSpec.letterSpacing}em`,
+          textTransform: terrainSpec.uppercase ? 'uppercase' : 'none',
+        }}>
+          Forest Area
         </div>
       </div>
 
