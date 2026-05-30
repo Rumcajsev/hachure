@@ -1,16 +1,34 @@
-export const TEXTURE_OPTIONS = [
-  { id: 'forest',      label: 'Forest' },
-  { id: 'lightforest', label: 'Light Forest' },
-  { id: 'marsh',       label: 'Marsh' },
-  { id: 'rough',       label: 'Rough' },
-  { id: 'fields',      label: 'Fields' },
-  { id: 'fields2',     label: 'Fields 2' },
-  { id: 'light2',      label: 'Light 2' },
-  { id: 'light3',      label: 'Light 3' },
-  { id: '2clear',      label: 'Clear' },
-] as const
+const textureGlob = import.meta.glob('/textures/*.png', { eager: true, query: '?url', import: 'default' }) as Record<string, string>
 
-export type TextureId = typeof TEXTURE_OPTIONS[number]['id']
+const KNOWN_LABELS: Record<string, string> = {
+  forest:      'Forest',
+  lightforest: 'Light Forest',
+  marsh:       'Marsh',
+  rough:       'Rough',
+  fields:      'Fields',
+  fields2:     'Fields 2',
+  light2:      'Light 2',
+  light3:      'Light 3',
+  '2clear':    'Clear',
+}
+
+function autoLabel(id: string): string {
+  return id.replace(/[-_]/g, ' ').replace(/\b\w/g, c => c.toUpperCase())
+}
+
+export const TEXTURE_OPTIONS = Object.keys(textureGlob)
+  .map(path => {
+    const id = path.split('/').pop()!.replace(/\.png$/, '')
+    return { id, label: KNOWN_LABELS[id] ?? autoLabel(id) }
+  })
+  .sort((a, b) => {
+    const aKnown = a.id in KNOWN_LABELS
+    const bKnown = b.id in KNOWN_LABELS
+    if (aKnown !== bKnown) return aKnown ? -1 : 1
+    return a.label.localeCompare(b.label)
+  })
+
+export type TextureId = string
 
 export const DEFAULT_TERRAIN_TEXTURES: Record<string, string> = {
   woods:       'forest',
