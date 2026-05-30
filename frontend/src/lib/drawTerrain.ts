@@ -600,7 +600,8 @@ export function drawTerrain(tCtx: Ctx, params: DrawTerrainParams): void {
         lobeDirection: override?.lobeDirection  ?? typeStyle?.lobeDirection  ?? terrainBlobParams.lobeDirection,
         width:         override?.width          ?? typeStyle?.width          ?? edgeBlobWidth,
       }
-      const hexTerrainSet = terrainToHexes.get(chain.terrain)
+      // 'clear' edges trim terrain blobs — no extension toward matching hexes needed.
+      const hexTerrainSet = chain.terrain === 'clear' ? undefined : terrainToHexes.get(chain.terrain)
       const polys = buildEdgeBlobPolys(chain, hexVertMap, chainParams, R, hexTerrainSet)
       if (polys.length === 0) continue
       if (!(terrainTextureFillOnly[chain.terrain] ?? false)) {

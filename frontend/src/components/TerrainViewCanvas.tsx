@@ -3155,7 +3155,9 @@ export const TerrainViewCanvas = forwardRef<TerrainViewCanvasHandle, { surroundC
           lastPaintedEdgeKeyRef.current = target.edgeKey
           strokeTrailRef.current.set(`edge:${target.edgeKey}`, target)
           const brush = terrainPaintBrushRef.current
-          if (brush === 'clear') {
+          // 'clear' paints a paper-colored ribbon to visually trim terrain blob edges.
+          // Painting clear over an already-clear edge erases it (toggle).
+          if (brush === 'clear' && edgeBlobPaintedRef.current[target.edgeKey] === 'clear') {
             eraseEdgeBlobRef.current(target.edgeKey)
           } else {
             paintEdgeBlobRef.current(target.edgeKey, brush)
