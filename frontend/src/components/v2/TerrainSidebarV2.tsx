@@ -165,21 +165,9 @@ function DefaultBlobSlidersInline() {
 }
 
 function EdgeBlobSlidersInline() {
-  const {
-    edgeBlobSmooth, setEdgeBlobSmooth, edgeBlobBump, setEdgeBlobBump,
-    edgeBlobSweepFreq, setEdgeBlobSweepFreq, edgeBlobLobeFreq, setEdgeBlobLobeFreq,
-    edgeBlobLobeAmp, setEdgeBlobLobeAmp, edgeBlobLobeThreshold, setEdgeBlobLobeThreshold,
-    edgeBlobLobeDirection, setEdgeBlobLobeDirection, edgeBlobWidth, setEdgeBlobWidth,
-  } = useMapStore()
+  const { edgeBlobWidth, setEdgeBlobWidth } = useMapStore()
   return (
-    <>
-      <MiniSlider label="Width" display={`${Math.round(edgeBlobWidth * 100)}%`} value={Math.round(edgeBlobWidth * 100)} min={5} max={80} step={1} onChange={v => setEdgeBlobWidth(v / 100)} />
-      <BlobSlidersContent
-        storeValues={{ smooth: edgeBlobSmooth, offset: 0, bump: edgeBlobBump, sweepFreq: edgeBlobSweepFreq, lobeFreq: edgeBlobLobeFreq, lobeAmp: edgeBlobLobeAmp, lobeThreshold: edgeBlobLobeThreshold, lobeDirection: edgeBlobLobeDirection }}
-        setters={{ smooth: setEdgeBlobSmooth, offset: () => {}, bump: setEdgeBlobBump, sweepFreq: setEdgeBlobSweepFreq, lobeFreq: setEdgeBlobLobeFreq, lobeAmp: setEdgeBlobLobeAmp, lobeThreshold: setEdgeBlobLobeThreshold, lobeDirection: setEdgeBlobLobeDirection }}
-        accentColor={TK.rust}
-      />
-    </>
+    <MiniSlider label="Width" display={`${Math.round(edgeBlobWidth * 100)}%`} value={Math.round(edgeBlobWidth * 100)} min={5} max={80} step={1} onChange={v => setEdgeBlobWidth(v / 100)} />
   )
 }
 
@@ -451,28 +439,12 @@ function CoastlineView({ onBack }: { onBack: () => void }) {
 // ── EdgeBlobView ──────────────────────────────────────────────────────────────
 
 function EdgeBlobView({ onBack }: { onBack: () => void }) {
-  const {
-    edgeBlobSmooth, setEdgeBlobSmooth,
-    edgeBlobBump, setEdgeBlobBump,
-    edgeBlobSweepFreq, setEdgeBlobSweepFreq,
-    edgeBlobLobeFreq, setEdgeBlobLobeFreq,
-    edgeBlobLobeAmp, setEdgeBlobLobeAmp,
-    edgeBlobLobeThreshold, setEdgeBlobLobeThreshold,
-    edgeBlobWidth, setEdgeBlobWidth,
-  } = useMapStore()
+  const { edgeBlobWidth, setEdgeBlobWidth } = useMapStore()
 
   return (
     <DetailViewShell header={<SidebarDetailHeader title="Edge blob shape" onBack={onBack} />}>
       <DetailSection label="Shape">
         <MiniSlider label="Width" display={`${Math.round(edgeBlobWidth * 100)}%`} value={Math.round(edgeBlobWidth * 100)} min={5} max={80} step={1} onChange={v => setEdgeBlobWidth(v / 100)} />
-        <MiniSlider label="Corner Rounding" display={edgeBlobSmooth} value={edgeBlobSmooth} min={0} max={5} step={1} onChange={setEdgeBlobSmooth} />
-        <MiniSlider label="Waviness" display={`${Math.round(edgeBlobBump * 100)}%`} value={Math.round(edgeBlobBump * 100)} min={0} max={60} step={1} onChange={v => setEdgeBlobBump(v / 100)} />
-        <MiniSlider label="Wave Scale" display={edgeBlobSweepFreq.toFixed(2)} value={Math.round(edgeBlobSweepFreq * 100)} min={40} max={100} step={1} onChange={v => setEdgeBlobSweepFreq(v / 100)} />
-      </DetailSection>
-      <DetailSection label="Fringe">
-        <MiniSlider label="Scale" display={edgeBlobLobeFreq.toFixed(1)} value={Math.round(edgeBlobLobeFreq * 10)} min={20} max={50} step={1} onChange={v => setEdgeBlobLobeFreq(v / 10)} />
-        <MiniSlider label="Strength" display={`${Math.round(edgeBlobLobeAmp * 100)}%`} value={Math.round(edgeBlobLobeAmp * 100)} min={0} max={100} step={1} onChange={v => setEdgeBlobLobeAmp(v / 100)} />
-        <MiniSlider label="Sparsity" display={`${Math.round(edgeBlobLobeThreshold * 100)}%`} value={Math.round(edgeBlobLobeThreshold * 100)} min={0} max={40} step={1} onChange={v => setEdgeBlobLobeThreshold(v / 100)} />
       </DetailSection>
     </DetailViewShell>
   )

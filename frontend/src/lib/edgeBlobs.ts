@@ -9,7 +9,6 @@ import { preSmoothVar } from './terrainBlobs'
 
 export type EdgeBlobParams = {
   smooth: number
-  offset: number
   bump: number
   sweepFreq: number
   lobeFreq: number
@@ -229,8 +228,8 @@ function buildRibbonBlob(
   leftHalfWidth?: number,
   rightHalfWidth?: number,
 ): [number, number][] {
-  const { smooth, offset, bump: bumpFraction, sweepFreq, lobeFreq, lobeAmp, lobeThreshold, lobeDirection, width } = params
-  const halfWidth = width * R * Math.max(0.1, 1 + offset)
+  const { smooth, bump: bumpFraction, sweepFreq, lobeFreq, lobeAmp, lobeThreshold, lobeDirection, width } = params
+  const halfWidth = width * R
 
   const lw = leftHalfWidth  ?? halfWidth
   const rw = rightHalfWidth ?? halfWidth
@@ -327,7 +326,7 @@ export function buildEdgeBlobPolys(
   hexTerrainSet?: Set<string>,
 ): [number, number][][] {
   const ordered = buildOrderedPaths(chain.edgeKeys, hexVertMap)
-  const halfWidth = params.width * R * Math.max(0.1, 1 + params.offset)
+  const halfWidth = params.width * R
   const bigWidth  = Math.max(halfWidth, HEX_CONNECT_EXTEND * R)
 
   // Build vertex → hex list once for endpoint extension lookups.

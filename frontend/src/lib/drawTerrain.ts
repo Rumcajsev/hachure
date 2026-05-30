@@ -56,7 +56,8 @@ export type DrawTerrainParams = {
   coastlineRawBoundaryRings: [number, number][][]
   // Edge blobs
   edgeBlobPainted: Record<string, string>
-  edgeBlobParams: EdgeBlobParams
+  edgeBlobWidth: number
+  terrainTypeBlobStyles: Record<string, BlobOverride>
   edgeBlobOverrides: Record<string, BlobOverride>
   hexVertMap: Map<string, [number, number][]>
   mapStyle: 'standard' | 'historical_simple'
@@ -565,7 +566,7 @@ export function drawTerrain(tCtx: Ctx, params: DrawTerrainParams): void {
   } // end blob mode
 
   // ── 5b. Edge blobs ───────────────────────────────────────────────────────────
-  const { edgeBlobPainted, edgeBlobParams, edgeBlobOverrides, hexVertMap } = params
+  const { edgeBlobPainted, edgeBlobWidth, terrainTypeBlobStyles, edgeBlobOverrides, hexVertMap } = params
   if (Object.keys(edgeBlobPainted).length > 0) {
     // Build terrain → hex-key set for the connection extension check.
     // Includes both primary terrain layers and backgroundTerrain so edge blobs
@@ -582,20 +583,22 @@ export function drawTerrain(tCtx: Ctx, params: DrawTerrainParams): void {
       }
     }
 
+    const { terrainBlobParams } = params
     const chains = findEdgeChains(edgeBlobPainted, hexVertMap)
     for (const chain of chains) {
-
+      // Shape params: global terrain blob defaults → per-terrain blob style override → per-chain override.
+      // Width: global edge default → per-terrain width field → per-chain override.
+      const typeStyle = terrainTypeBlobStyles[chain.terrain]
       const override = edgeBlobOverrides[chain.chainKey]
       const chainParams: EdgeBlobParams = {
-        smooth:        override?.smooth         ?? edgeBlobParams.smooth,
-        offset:        override?.offset         ?? edgeBlobParams.offset,
-        bump:          override?.bump           ?? edgeBlobParams.bump,
-        sweepFreq:     override?.sweepFreq      ?? edgeBlobParams.sweepFreq,
-        lobeFreq:      override?.lobeFreq       ?? edgeBlobParams.lobeFreq,
-        lobeAmp:       override?.lobeAmp        ?? edgeBlobParams.lobeAmp,
-        lobeThreshold: override?.lobeThreshold  ?? edgeBlobParams.lobeThreshold,
-        lobeDirection: override?.lobeDirection  ?? edgeBlobParams.lobeDirection,
-        width:         override?.width          ?? edgeBlobParams.width,
+        smooth:        override?.smooth         ?? typeStyle?.smooth         ?? terrainBlobParams.smooth,
+        bump:          override?.bump           ?? typeStyle?.bump           ?? terrainBlobParams.bump,
+        sweepFreq:     override?.sweepFreq      ?? typeStyle?.sweepFreq      ?? terrainBlobParams.sweepFreq,
+        lobeFreq:      override?.lobeFreq       ?? typeStyle?.lobeFreq       ?? terrainBlobParams.lobeFreq,
+        lobeAmp:       override?.lobeAmp        ?? typeStyle?.lobeAmp        ?? terrainBlobParams.lobeAmp,
+        lobeThreshold: override?.lobeThreshold  ?? typeStyle?.lobeThreshold  ?? terrainBlobParams.lobeThreshold,
+        lobeDirection: override?.lobeDirection  ?? typeStyle?.lobeDirection  ?? terrainBlobParams.lobeDirection,
+        width:         override?.width          ?? typeStyle?.width          ?? edgeBlobWidth,
       }
       const hexTerrainSet = terrainToHexes.get(chain.terrain)
       const polys = buildEdgeBlobPolys(chain, hexVertMap, chainParams, R, hexTerrainSet)
@@ -603,14 +606,14 @@ export function drawTerrain(tCtx: Ctx, params: DrawTerrainParams): void {
       if (!(terrainTextureFillOnly[chain.terrain] ?? false)) {
         const color = override?.color ?? terrainColors[chain.terrain] ?? '#cccccc'
         tCtx.fillStyle = color
-        tCtx.beginPath()
         for (const poly of polys) {
           if (poly.length < 3) continue
+          tCtx.beginPath()
           tCtx.moveTo(poly[0][0], poly[0][1])
           for (let i = 1; i < poly.length; i++) tCtx.lineTo(poly[i][0], poly[i][1])
           tCtx.closePath()
+          tCtx.fill()
         }
-        tCtx.fill('evenodd')
       }
       const texScale = override?.textureScale ?? (terrainTextureScales[chain.terrain] ?? 3)
       const edgeRawMode = terrainTextureBlendModes[chain.terrain] ?? 'multiply'

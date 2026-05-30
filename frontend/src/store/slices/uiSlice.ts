@@ -366,7 +366,7 @@ export const createUiSlice = (set: Set, get: () => MapStore): UiSlice => ({
   saveProject: () => {
     const s = get()
     const snapshot = {
-      version: 38,
+      version: 39,
       state: {
         step: s.step, paperSize: s.paperSize, orientation: s.orientation,
         pageGrid: s.pageGrid,
@@ -428,11 +428,7 @@ export const createUiSlice = (set: Set, get: () => MapStore): UiSlice => ({
         urbanBuildingCount: s.urbanBuildingCount, urbanBuildingSize: s.urbanBuildingSize,
         terrainEdgePaintEnabled: s.terrainEdgePaintEnabled,
         customTerrains: s.customTerrains,
-        edgeBlobPainted: s.edgeBlobPainted, edgeBlobSmooth: s.edgeBlobSmooth,
-        edgeBlobOffset: s.edgeBlobOffset, edgeBlobBump: s.edgeBlobBump,
-        edgeBlobSweepFreq: s.edgeBlobSweepFreq, edgeBlobLobeFreq: s.edgeBlobLobeFreq,
-        edgeBlobLobeAmp: s.edgeBlobLobeAmp, edgeBlobLobeThreshold: s.edgeBlobLobeThreshold,
-        edgeBlobLobeDirection: s.edgeBlobLobeDirection, edgeBlobWidth: s.edgeBlobWidth,
+        edgeBlobPainted: s.edgeBlobPainted, edgeBlobWidth: s.edgeBlobWidth,
         edgeBlobOverrides: s.edgeBlobOverrides,
         terrainBlobOverrides: s.terrainBlobOverrides, terrainTypeBlobStyles: s.terrainTypeBlobStyles,
         terrainBlobSmooth: s.terrainBlobSmooth, terrainBlobOffset: s.terrainBlobOffset,
@@ -659,15 +655,11 @@ export function migratePersisted(persisted: unknown, fromVersion: number): Recor
   if (fromVersion < 32) {
     if (!s.edgeBlobPainted) s.edgeBlobPainted = {}
     if (!s.edgeBlobOverrides) s.edgeBlobOverrides = {}
-    if (s.edgeBlobSmooth === undefined) s.edgeBlobSmooth = 0
-    if (s.edgeBlobOffset === undefined) s.edgeBlobOffset = -0.10
-    if (s.edgeBlobBump === undefined) s.edgeBlobBump = 0.47
-    if (s.edgeBlobSweepFreq === undefined) s.edgeBlobSweepFreq = 1.0
-    if (s.edgeBlobLobeFreq === undefined) s.edgeBlobLobeFreq = 4.1
-    if (s.edgeBlobLobeAmp === undefined) s.edgeBlobLobeAmp = 0.49
-    if (s.edgeBlobLobeThreshold === undefined) s.edgeBlobLobeThreshold = 0.08
-    if (s.edgeBlobLobeDirection === undefined) s.edgeBlobLobeDirection = -1
     if (s.edgeBlobWidth === undefined) s.edgeBlobWidth = 0.25
+    // Drop obsolete edge blob shape fields (now inherited from terrain blob params)
+    delete s.edgeBlobSmooth; delete s.edgeBlobOffset; delete s.edgeBlobBump
+    delete s.edgeBlobSweepFreq; delete s.edgeBlobLobeFreq; delete s.edgeBlobLobeAmp
+    delete s.edgeBlobLobeThreshold; delete s.edgeBlobLobeDirection
   }
   if (fromVersion < 33) {
     if (s.terrainEdgePaintEnabled === undefined) s.terrainEdgePaintEnabled = false

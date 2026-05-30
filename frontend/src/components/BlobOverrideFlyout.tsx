@@ -20,8 +20,6 @@ export function BlobOverrideFlyout({ type, canonicalKey, terrain, x, y, onClose 
     lakeBlobSweepFreq, lakeBlobLobeFreq, lakeBlobLobeAmp, lakeBlobLobeThreshold, lakeBlobLobeDirection,
     terrainBlobSmooth, terrainBlobOffset, terrainBlobBump,
     terrainBlobSweepFreq, terrainBlobLobeFreq, terrainBlobLobeAmp, terrainBlobLobeThreshold, terrainBlobLobeDirection,
-    edgeBlobSmooth, edgeBlobOffset, edgeBlobBump,
-    edgeBlobSweepFreq, edgeBlobLobeFreq, edgeBlobLobeAmp, edgeBlobLobeThreshold, edgeBlobLobeDirection,
     edgeBlobWidth,
   } = useMapStore()
 
@@ -50,14 +48,15 @@ export function BlobOverrideFlyout({ type, canonicalKey, terrain, x, y, onClose 
       ? (lakeOverrides[canonicalKey] ?? {})
       : (edgeBlobOverrides[canonicalKey] ?? {})
 
-  const globalSmooth        = type === 'terrain' ? terrainBlobSmooth        : type === 'lake' ? lakeBlobSmooth        : edgeBlobSmooth
-  const globalOffset        = type === 'terrain' ? terrainBlobOffset        : type === 'lake' ? lakeBlobOffset        : edgeBlobOffset
-  const globalBump          = type === 'terrain' ? terrainBlobBump          : type === 'lake' ? lakeBlobBump          : edgeBlobBump
-  const globalSweepFreq     = type === 'terrain' ? terrainBlobSweepFreq     : type === 'lake' ? lakeBlobSweepFreq     : edgeBlobSweepFreq
-  const globalLobeFreq      = type === 'terrain' ? terrainBlobLobeFreq      : type === 'lake' ? lakeBlobLobeFreq      : edgeBlobLobeFreq
-  const globalLobeAmp       = type === 'terrain' ? terrainBlobLobeAmp       : type === 'lake' ? lakeBlobLobeAmp       : edgeBlobLobeAmp
-  const globalLobeThreshold = type === 'terrain' ? terrainBlobLobeThreshold : type === 'lake' ? lakeBlobLobeThreshold : edgeBlobLobeThreshold
-  const globalLobeDirection = type === 'terrain' ? terrainBlobLobeDirection : type === 'lake' ? lakeBlobLobeDirection : edgeBlobLobeDirection
+  // Edge blobs inherit shape from terrain blob global params; only width is edge-specific.
+  const globalSmooth        = type === 'lake' ? lakeBlobSmooth        : terrainBlobSmooth
+  const globalOffset        = type === 'lake' ? lakeBlobOffset        : terrainBlobOffset
+  const globalBump          = type === 'lake' ? lakeBlobBump          : terrainBlobBump
+  const globalSweepFreq     = type === 'lake' ? lakeBlobSweepFreq     : terrainBlobSweepFreq
+  const globalLobeFreq      = type === 'lake' ? lakeBlobLobeFreq      : terrainBlobLobeFreq
+  const globalLobeAmp       = type === 'lake' ? lakeBlobLobeAmp       : terrainBlobLobeAmp
+  const globalLobeThreshold = type === 'lake' ? lakeBlobLobeThreshold : terrainBlobLobeThreshold
+  const globalLobeDirection = type === 'lake' ? lakeBlobLobeDirection : terrainBlobLobeDirection
   const globalWidth         = edgeBlobWidth
 
   const currentSmooth        = override.smooth        ?? globalSmooth

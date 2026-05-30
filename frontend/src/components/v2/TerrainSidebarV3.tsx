@@ -164,7 +164,7 @@ function ShapeSettingsFlyout({ onClose }: { onClose: () => void }) {
 
   return (
     <FlyoutShell
-      title="Shape Settings"
+      title="Default Shape"
       subtitle={isModified ? 'Modified from default' : 'Default for all terrain'}
       onClose={onClose}
     >
@@ -256,34 +256,33 @@ function ClassificationFlyout({ onClose }: { onClose: () => void }) {
 function PaintingOptionsFlyout({ onClose }: { onClose: () => void }) {
   const t = useTheme()
   const {
-    terrainEdgePaintEnabled, setTerrainEdgePaintEnabled,
     realisticCoastline, setRealisticCoastline,
     terrainLayersEnabled, setTerrainLayersEnabled,
-    terrainBackgroundPaintEnabled, setTerrainBackgroundPaintEnabled,
     beachStrip, setBeachStrip, beachColor, setBeachColor, beachWidth, setBeachWidth,
     coastlineDPEpsilon, setCoastlineDPEpsilon, coastlineChaikinPasses, setCoastlineChaikinPasses,
+    edgeBlobWidth, setEdgeBlobWidth,
   } = useMapStore()
 
   return (
     <FlyoutShell title="Painting Options" onClose={onClose}>
       <div style={{ padding: '4px 0' }}>
         <ToggleRow
-          label="Edge painting"
-          hint="Drag along a region edge to paint a blob along it."
-          checked={terrainEdgePaintEnabled}
-          onChange={setTerrainEdgePaintEnabled}
-        />
-        <ToggleRow
-          label="Background painting"
-          hint="Paint a background terrain on hexes — rendered below the primary terrain."
-          checked={terrainBackgroundPaintEnabled}
-          onChange={setTerrainBackgroundPaintEnabled}
-        />
-        <ToggleRow
           label="Terrain layers"
           hint="Render each terrain as its own texture layer."
           checked={terrainLayersEnabled}
           onChange={setTerrainLayersEnabled}
+        />
+      </div>
+      <div style={{ borderTop: `1px solid ${t.line2}`, paddingTop: 4 }}>
+        <div style={{ padding: '6px 12px 4px', fontFamily: t.mono, fontSize: 8.5, letterSpacing: 0.8, color: t.inkFaint, textTransform: 'uppercase' as const, fontWeight: 600 }}>
+          Edge painting
+        </div>
+        <MiniSlider
+          label="Default width"
+          display={`${Math.round(edgeBlobWidth * 100)}%`}
+          value={Math.round(edgeBlobWidth * 100)}
+          min={5} max={80} step={1}
+          onChange={v => setEdgeBlobWidth(v / 100)}
         />
       </div>
       <div style={{ borderTop: `1px solid ${t.line2}`, marginTop: 4, paddingTop: 4 }}>
@@ -549,6 +548,7 @@ function TerrainCogFlyout({ terrain, onClose }: { terrain: string; onClose: () =
     terrainTypeBlobStyles, setTerrainTypeBlobStyle,
     terrainBlobSmooth, terrainBlobOffset, terrainBlobBump, terrainBlobSweepFreq,
     terrainBlobLobeFreq, terrainBlobLobeAmp, terrainBlobLobeThreshold, terrainBlobLobeDirection,
+    edgeBlobWidth,
   } = useMapStore()
 
   const color = terrainColors[terrain] ?? TERRAIN_COLORS[terrain] ?? '#888888'
@@ -724,6 +724,20 @@ function TerrainCogFlyout({ terrain, onClose }: { terrain: string; onClose: () =
           <MiniSlider label="Sparsity" display={`${Math.round(local.lobeThreshold * 100)}%`} value={Math.round(local.lobeThreshold * 100)} min={0} max={40} step={1} onChange={v => setBlob('lobeThreshold', v / 100)} />
         </div>}
       </div>
+
+      {/* Edge width override */}
+      <div style={{ borderTop: `1px solid ${tk.line2}`, paddingTop: 4 }}>
+        <div style={{ padding: '6px 12px 4px', fontFamily: tk.mono, fontSize: 8.5, letterSpacing: 0.8, color: tk.inkFaint, textTransform: 'uppercase' as const, fontWeight: 600 }}>
+          Edge painting
+        </div>
+        <MiniSlider
+          label="Width"
+          display={typeStyle?.width != null ? `${Math.round(typeStyle.width * 100)}%` : 'default'}
+          value={Math.round((typeStyle?.width ?? edgeBlobWidth) * 100)}
+          min={5} max={80} step={1}
+          onChange={v => setTerrainTypeBlobStyle(terrain, { width: v / 100 })}
+        />
+      </div>
     </FlyoutShell>
   )
 }
@@ -815,6 +829,7 @@ export function TerrainSidebarV3() {
     elevationPaintMode, elevationPaintBrush,
     activeTool, setActiveTool,
     terrainColors, customTerrains,
+    terrainTypeBlobStyles,
     mapStyle,
     blobPatches,
     heightmapUrl,
@@ -884,12 +899,13 @@ export function TerrainSidebarV3() {
             shortcut={String(idx + 1)}
             showCog
             cogOpen={flyout === 't-terrain' && cogTerrain === t}
+            customShape={terrainTypeBlobStyles[t]?.enabled === true}
             onSelect={() => selectBrush(t)}
             onCog={() => openCog(t)}
           />
         ))}
         <TGap />
-        <TriggerRow label="Shape settings" active={flyout === 't-shape'} onClick={() => toggleFlyout('t-shape')} />
+        <TriggerRow label="Default shape" active={flyout === 't-shape'} onClick={() => toggleFlyout('t-shape')} />
         <TriggerRow label="Import / classify" active={flyout === 't-import'} onClick={() => toggleFlyout('t-import')} icon={IMPORT_ICON} />
         <TriggerRow label="Painting options" active={flyout === 't-opts'} onClick={() => toggleFlyout('t-opts')} />
 
@@ -903,6 +919,7 @@ export function TerrainSidebarV3() {
             shortcut={String(OSM_TERRAINS.length + idx + 1)}
             showCog
             cogOpen={flyout === 't-terrain' && cogTerrain === t}
+            customShape={terrainTypeBlobStyles[t]?.enabled === true}
             onSelect={() => selectBrush(t)}
             onCog={() => openCog(t)}
           />
@@ -915,6 +932,7 @@ export function TerrainSidebarV3() {
             active={terrainPaintMode && terrainPaintBrush === ct.id}
             showCog
             cogOpen={flyout === 't-terrain' && cogTerrain === ct.id}
+            customShape={terrainTypeBlobStyles[ct.id]?.enabled === true}
             onSelect={() => selectBrush(ct.id)}
             onCog={() => openCog(ct.id)}
           />
