@@ -606,8 +606,8 @@ function TexturePickerPopover({
               background: selected ? `${tk.accent ?? tk.ink}18` : 'transparent',
             }}
           >
-            <div style={{ width: 48, height: 48, borderRadius: 3, overflow: 'hidden', border: `1px solid ${tk.line}`, background: '#e8e0d0' }}>
-              <img src={TEXTURE_PATHS[id] ?? `/textures/${id}.png`} alt={label} style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block', mixBlendMode: 'multiply' }} />
+            <div style={{ width: 48, height: 48, borderRadius: 3, overflow: 'hidden', border: `1px solid ${tk.line}`, background: '#e8e0d0', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+              <img src={TEXTURE_PATHS[id] ?? `/textures/${id}.png`} alt={label} style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block', mixBlendMode: 'multiply', transform: 'scale(6)', transformOrigin: 'center' }} />
             </div>
             <span style={{ fontFamily: tk.mono, fontSize: 8, color: selected ? (tk.accent ?? tk.ink) : tk.ink2, textAlign: 'center', lineHeight: 1.2 }}>{label}</span>
           </div>
@@ -764,7 +764,7 @@ function TerrainCogFlyout({ terrain, onClose }: { terrain: string; onClose: () =
             label="Scale"
             display={`${textureScale.toFixed(1)}×`}
             value={Math.round(textureScale * 10)}
-            min={5} max={80} step={1}
+            min={5} max={100} step={1}
             onChange={v => setTerrainTextureScale(terrain, v / 10)}
           />
           <MiniSlider
