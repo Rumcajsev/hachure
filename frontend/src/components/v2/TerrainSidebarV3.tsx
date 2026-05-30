@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import React, { useEffect, useRef, useState } from 'react'
 import {
   useMapStore, TERRAIN_COLORS, TERRAIN_PRIORITY, MANUAL_ONLY_TERRAINS,
   DEFAULT_THRESHOLDS, DEFAULT_TERRAIN_BLOB,
@@ -535,8 +535,87 @@ type BlobLocal = {
   lobeFreq: number; lobeAmp: number; lobeThreshold: number; lobeDirection: number
 }
 
+function TexturePickerPopover({
+  options, selectedId, onSelect, anchorRef, onClose,
+}: {
+  options: typeof TEXTURE_OPTIONS
+  selectedId: string
+  onSelect: (id: string) => void
+  anchorRef: React.RefObject<HTMLDivElement | null>
+  onClose: () => void
+}) {
+  const tk = useTheme()
+  const popRef = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    const handler = (e: MouseEvent) => {
+      if (popRef.current && !popRef.current.contains(e.target as Node) &&
+          anchorRef.current && !anchorRef.current.contains(e.target as Node)) {
+        onClose()
+      }
+    }
+    document.addEventListener('mousedown', handler)
+    return () => document.removeEventListener('mousedown', handler)
+  }, [onClose, anchorRef])
+
+  const rect = anchorRef.current?.getBoundingClientRect()
+  if (!rect) return null
+
+  const popW = 204
+  let left = rect.left
+  if (left + popW > window.innerWidth - 8) left = window.innerWidth - popW - 8
+
+  const spaceBelow = window.innerHeight - rect.bottom
+  const above = spaceBelow < 180
+
+  return (
+    <div
+      ref={popRef}
+      style={{
+        position: 'fixed',
+        top: above ? rect.top - 4 : rect.bottom + 4,
+        transform: above ? 'translateY(-100%)' : undefined,
+        left,
+        width: popW,
+        background: tk.surface,
+        border: `1px solid ${tk.line}`,
+        borderRadius: 6,
+        boxShadow: '0 4px 16px rgba(0,0,0,0.18)',
+        padding: 8,
+        zIndex: 200,
+        display: 'grid',
+        gridTemplateColumns: 'repeat(3, 1fr)',
+        gap: 6,
+      }}
+    >
+      {options.map(({ id, label }) => {
+        const selected = selectedId === id
+        return (
+          <div
+            key={id}
+            onClick={() => { onSelect(id); onClose() }}
+            style={{
+              display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 3,
+              cursor: 'pointer', borderRadius: 4, padding: 3,
+              border: selected ? `2px solid ${tk.accent ?? tk.ink}` : `2px solid transparent`,
+              background: selected ? `${tk.accent ?? tk.ink}18` : 'transparent',
+            }}
+          >
+            <div style={{ width: 48, height: 48, borderRadius: 3, overflow: 'hidden', border: `1px solid ${tk.line}`, background: '#e8e0d0' }}>
+              <img src={`/textures/${id}.png`} alt={label} style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block', mixBlendMode: 'multiply' }} />
+            </div>
+            <span style={{ fontFamily: tk.mono, fontSize: 8, color: selected ? (tk.accent ?? tk.ink) : tk.ink2, textAlign: 'center', lineHeight: 1.2 }}>{label}</span>
+          </div>
+        )
+      })}
+    </div>
+  )
+}
+
 function TerrainCogFlyout({ terrain, onClose }: { terrain: string; onClose: () => void }) {
   const tk = useTheme()
+  const [texturePickerOpen, setTexturePickerOpen] = useState(false)
+  const texturePickerAnchorRef = useRef<HTMLDivElement>(null)
   const {
     terrainColors, setTerrainColor,
     terrainTextureScales, setTerrainTextureScale,
@@ -644,37 +723,38 @@ function TerrainCogFlyout({ terrain, onClose }: { terrain: string; onClose: () =
           }} />
         </div>
         {textureEnabled && <div>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 6, padding: '6px 14px 8px' }}>
-            {TEXTURE_OPTIONS.map(({ id, label }) => {
-              const selected = textureFileId === id
-              return (
-                <div
-                  key={id}
-                  onClick={() => setTerrainTextureFile(terrain, id)}
-                  style={{
-                    display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 3,
-                    cursor: 'pointer', borderRadius: 4,
-                    padding: 3,
-                    border: selected ? `2px solid ${tk.accent ?? tk.ink}` : `2px solid transparent`,
-                    background: selected ? `${tk.accent ?? tk.ink}18` : 'transparent',
-                  }}
-                >
-                  <div style={{
-                    width: 48, height: 48, borderRadius: 3, overflow: 'hidden',
-                    border: `1px solid ${tk.line}`,
-                    background: '#e8e0d0',
-                  }}>
-                    <img
-                      src={`/textures/${id}.png`}
-                      alt={label}
-                      style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block', mixBlendMode: 'multiply' }}
-                    />
-                  </div>
-                  <span style={{ fontFamily: tk.mono, fontSize: 8, color: selected ? (tk.accent ?? tk.ink) : tk.ink2, textAlign: 'center', lineHeight: 1.2 }}>{label}</span>
-                </div>
-              )
-            })}
+          <div
+            ref={texturePickerAnchorRef}
+            onClick={() => setTexturePickerOpen(v => !v)}
+            style={{
+              display: 'flex', alignItems: 'center', gap: 8, padding: '4px 14px',
+              cursor: 'pointer',
+            }}
+          >
+            <span style={{ fontFamily: tk.sans, fontSize: 11, color: tk.ink2, flexShrink: 0, width: 96 }}>File</span>
+            <div style={{
+              flex: 1, display: 'flex', alignItems: 'center', gap: 6,
+              background: tk.surface, border: `1px solid ${tk.line}`, borderRadius: 2,
+              padding: '2px 6px',
+            }}>
+              <div style={{ width: 16, height: 16, borderRadius: 2, overflow: 'hidden', background: '#e8e0d0', flexShrink: 0 }}>
+                <img src={`/textures/${textureFileId}.png`} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block', mixBlendMode: 'multiply' }} />
+              </div>
+              <span style={{ fontFamily: tk.mono, fontSize: 10, color: tk.ink, flex: 1 }}>
+                {TEXTURE_OPTIONS.find(o => o.id === textureFileId)?.label ?? textureFileId}
+              </span>
+              <span style={{ fontFamily: tk.mono, fontSize: 9, color: tk.inkFaint }}>▾</span>
+            </div>
           </div>
+          {texturePickerOpen && (
+            <TexturePickerPopover
+              options={TEXTURE_OPTIONS}
+              selectedId={textureFileId}
+              onSelect={id => setTerrainTextureFile(terrain, id)}
+              anchorRef={texturePickerAnchorRef}
+              onClose={() => setTexturePickerOpen(false)}
+            />
+          )}
           <MiniSlider
             label="Scale"
             display={`${textureScale.toFixed(1)}×`}
