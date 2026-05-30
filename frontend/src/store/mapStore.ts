@@ -42,13 +42,12 @@ export interface RoadV3TierGeom {
   pathStraightness: number
   segmentVariation: number
   variationCharacter: number
-  entryOvershoot: number
 }
 
 export const DEFAULT_ROAD_V3_TIER_GEOM: [RoadV3TierGeom, RoadV3TierGeom, RoadV3TierGeom] = [
-  { cornerRoundness: 0.8, pathStraightness: 0.8, segmentVariation: 0.00, variationCharacter: 0, entryOvershoot: 0.25 },
-  { cornerRoundness: 0.6, pathStraightness: 0.5, segmentVariation: 0.06, variationCharacter: 1, entryOvershoot: 0.20 },
-  { cornerRoundness: 0.3, pathStraightness: 0.2, segmentVariation: 0.12, variationCharacter: 2, entryOvershoot: 0.12 },
+  { cornerRoundness: 0.8, pathStraightness: 0.8, segmentVariation: 0.00, variationCharacter: 0 },
+  { cornerRoundness: 0.6, pathStraightness: 0.5, segmentVariation: 0.06, variationCharacter: 1 },
+  { cornerRoundness: 0.3, pathStraightness: 0.2, segmentVariation: 0.12, variationCharacter: 2 },
 ]
 
 export interface MapArea {
@@ -151,6 +150,7 @@ export type ActiveTool =
   | { type: 'areas-erase' }
   | { type: 'align-image' }
   | { type: 'blob-draw'; mode: 'add' | 'cut' }
+  | { type: 'label-drag' }
 
 export type MapMode = 'single' | 'diptych'
 export type DiptychJoin = 'long' | 'short'
@@ -905,7 +905,7 @@ export const useMapStore = create<MapStore>()(persist((set, get) => ({
     mapTitle: s.mapTitle,
     labelOffsets: s.labelOffsets,
   }),
-  version: 64,
+  version: 63,
   migrate: migratePersisted,
   merge: (persisted, current) => rehydrateState({ ...current, ...(persisted as Partial<MapStore>) }),
 }))

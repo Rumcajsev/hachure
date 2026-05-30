@@ -6,7 +6,7 @@ import { BlobOverrideFlyout } from './BlobOverrideFlyout'
 import { hexAdjacent, catmullRom, offsetPolyline, pointInPolygon, distToSeg, douglasPeucker, chaikin } from '../lib/geometry'
 import { mulberry32, makePermutation } from '../lib/noise'
 import { projectToCanvas, unprojectFromCanvas, computePaper } from '../lib/projection'
-import { coastalBlobTerrains, effectiveBlobTerrains, bleedPolygon, buildTerrainBlobsV2, computeConnectedComponents } from '../lib/terrainBlobs'
+import { coastalBlobTerrains, bleedPolygon, buildTerrainBlobsV2, computeConnectedComponents } from '../lib/terrainBlobs'
 import { findEdgeChains as findEdgeChainsSync } from '../lib/edgeBlobs'
 import { riverChainCache, buildRiverChains, buildRiverChainsV2 } from '../lib/riverChains'
 
@@ -147,7 +147,7 @@ export const TerrainViewCanvas = forwardRef<TerrainViewCanvasHandle, { surroundC
     terrainTextureFillOnly, terrainTextureFile, terrainTextureEnabled,
     terrainPaintMode, terrainPaintBrush, overrideHexTerrain, addHexTerrainLayer, removeHexTerrainLayer, resetHexOverride,
     elevationPaintMode, elevationPaintBrush, overrideHexElevation,
-    terrainLayersEnabled, terrainFamilies,
+    terrainLayersEnabled,
     roadEdges, railEdges, rawRoadWays, rawRailWays, roadTierStyles, railStyle,
     showRawOsmRoads, osmHighlightTier, osmSpotlightMode, osmSpotlightRadius, osmSpotlightTiers,
     osmRailHexPaths, osmRailHighlight,
@@ -246,7 +246,7 @@ export const TerrainViewCanvas = forwardRef<TerrainViewCanvasHandle, { surroundC
     mapImageDataUrl, mapImageTransform, mapImageOpacity, setMapImageTransform,
     dataSource,
     blobPatches, addBlobPatch, deleteBlobPatch,
-    labelOffsets, setLabelOffset, clearLabelOffset,
+    labelOffsets, setLabelOffset, clearAllLabelOffsets,
   } = useMapStore()
   // dev-only: expose store for dry-run console injection
   useEffect(() => { (window as any).__mapStore = useMapStore }, [])
@@ -284,19 +284,6 @@ export const TerrainViewCanvas = forwardRef<TerrainViewCanvasHandle, { surroundC
   const edgeBlobLobeDirectionRef = useRef(edgeBlobLobeDirection)
   const edgeBlobWidthRef = useRef(edgeBlobWidth)
   const terrainLayersEnabledRef = useRef(terrainLayersEnabled)
-  const terrainFamiliesRef = useRef(terrainFamilies)
-  const effectiveHexTerrainLayers = useCallback(
-    (h: GeneratedHex) => {
-      if (h.terrain === 'clear') return []
-      const primary = [h.terrain]
-      if (!terrainLayersEnabled) return primary
-      const companion = terrainFamilies[h.terrain]
-      if (!companion || !hexTerrainLayers(h).includes(companion)) return primary
-      return [h.terrain, companion]
-    },
-    [terrainLayersEnabled, terrainFamilies]
-  )
-  const effectiveHexTerrainLayersRef = useRef(effectiveHexTerrainLayers)
   const roadEdgesRef = useRef(roadEdges)
   const railEdgesRef = useRef(railEdges)
   const rawRoadWaysRef = useRef(rawRoadWays)
@@ -312,12 +299,14 @@ export const TerrainViewCanvas = forwardRef<TerrainViewCanvasHandle, { surroundC
   const appliedOsmRiverIndicesRef = useRef(appliedOsmRiverIndices)
   const hoveredOsmRiverIdxRef = useRef(hoveredOsmRiverIdx)
   const labelOffsetsRef = useRef(labelOffsets)
-  // Populated each draw pass; used for right-click hit-testing and floating-label moves
+  // Populated each draw pass when either layer rebuilds; used for hit-testing in label-drag mode
   const labelBBoxCacheRef = useRef<Record<string, import('../store/slices/labelOffsetsSlice').LabelBBox>>({})
-  // Live offset while a label is floating with the cursor (not yet committed to the store)
+  // Live offset applied during an in-progress drag (not yet committed to the store)
   const liveLabelOffsetRef = useRef<{ id: string; dx: number; dy: number } | null>(null)
-  // Floating label state: set when user picks up a label via right-click → Move
-  const floatingLabelRef = useRef<{ id: string; grabLx: number; grabLy: number; startDx: number; startDy: number } | null>(null)
+  // Drag state: which label is being dragged and where the drag started
+  const labelDragStateRef = useRef<{ id: string; startLx: number; startLy: number; startDx: number; startDy: number } | null>(null)
+  // ID of the label currently under the cursor in label-drag mode (for hover highlight)
+  const hoveredLabelIdRef = useRef<string | null>(null)
   const spotlightCursorRef = useRef<{ lx: number; ly: number } | null>(null)
   const spotlightRafRef = useRef<number | null>(null)
   const roadTierStylesRef = useRef(roadTierStyles)
@@ -585,8 +574,6 @@ export const TerrainViewCanvas = forwardRef<TerrainViewCanvasHandle, { surroundC
   overrideHexElevationRef.current = overrideHexElevation
   addHexTerrainLayerRef.current = addHexTerrainLayer
   terrainLayersEnabledRef.current = terrainLayersEnabled
-  terrainFamiliesRef.current = terrainFamilies
-  effectiveHexTerrainLayersRef.current = effectiveHexTerrainLayers
   roadEdgesRef.current = roadEdges
   railEdgesRef.current = railEdges
   rawRoadWaysRef.current = rawRoadWays
@@ -685,8 +672,6 @@ export const TerrainViewCanvas = forwardRef<TerrainViewCanvasHandle, { surroundC
   overrideHexTerrainRef.current = overrideHexTerrain
   addHexTerrainLayerRef.current = addHexTerrainLayer
   terrainLayersEnabledRef.current = terrainLayersEnabled
-  terrainFamiliesRef.current = terrainFamilies
-  effectiveHexTerrainLayersRef.current = effectiveHexTerrainLayers
   resetHexOverrideRef.current = resetHexOverride
   removeHexTerrainLayerRef.current = removeHexTerrainLayer
   elevationPaintModeRef.current = elevationPaintMode
@@ -915,12 +900,12 @@ export const TerrainViewCanvas = forwardRef<TerrainViewCanvasHandle, { surroundC
     const result = new Map<string, Map<string, string>>()
     const terrainTypes = new Set<string>()
     for (const h of generatedHexes) {
-      for (const t of effectiveHexTerrainLayers(h)) {
+      for (const t of hexTerrainLayers(h)) {
         if (t !== 'clear' && t !== 'lake') terrainTypes.add(t)
       }
     }
     for (const t of terrainTypes) {
-      const hexesForType = generatedHexes.filter(h => effectiveHexTerrainLayers(h).includes(t))
+      const hexesForType = generatedHexes.filter(h => hexTerrainLayers(h).includes(t))
       const hexKey = hexesForType.map(h => `${h.q},${h.r}`).join('|')
       const cached = perTerrainCompCache.current.get(t)
       if (cached?.hexKey === hexKey) {
@@ -938,7 +923,7 @@ export const TerrainViewCanvas = forwardRef<TerrainViewCanvasHandle, { surroundC
     }
     prevBlobCompByTerrainRef.current = result
     return result
-  }, [isTerrainPainting, generatedHexes, effectiveHexTerrainLayers])
+  }, [isTerrainPainting, generatedHexes])
   const blobComponentsByTerrainRef = useRef(blobComponentsByTerrain)
   blobComponentsByTerrainRef.current = blobComponentsByTerrain
 
@@ -1223,7 +1208,7 @@ export const TerrainViewCanvas = forwardRef<TerrainViewCanvasHandle, { surroundC
     for (const p of projectedHexes) {
       const h = p.hex as GeneratedHex
       if (realisticCoastline && isPureSea(h)) continue
-      for (const t of effectiveBlobTerrains(h, realisticCoastline, terrainFamilies, terrainLayersEnabled)) {
+      for (const t of coastalBlobTerrains(h, realisticCoastline)) {
         if (t !== 'clear' && t !== 'lake') terrainTypeSet.add(t)
       }
     }
@@ -1234,7 +1219,7 @@ export const TerrainViewCanvas = forwardRef<TerrainViewCanvasHandle, { surroundC
       const terrainProjected = projectedHexes.filter(p => {
         const h = p.hex as GeneratedHex
         if (realisticCoastline && isPureSea(h)) return false
-        const terrains = effectiveBlobTerrains(h, realisticCoastline, terrainFamilies, terrainLayersEnabled)
+        const terrains = coastalBlobTerrains(h, realisticCoastline)
         if (!terrains.includes(terrain)) return false
         if (overriddenKeys.size > 0) {
           const ck = componentMap.get(`${h.q},${h.r}`)
@@ -1271,7 +1256,7 @@ export const TerrainViewCanvas = forwardRef<TerrainViewCanvasHandle, { surroundC
     }
     prevTerrainBlobsRef.current = result
     return result
-  }, [isTerrainPainting, projectedHexes, blobComponentsByTerrain, terrainBlobOverrides, terrainTypeBlobStyles, terrainBlobSmooth, terrainBlobOffset, terrainBlobBump, terrainBlobSweepFreq, terrainBlobLobeFreq, terrainBlobLobeAmp, terrainBlobLobeThreshold, terrainBlobLobeDirection, terrainBlobClearingChance, terrainBlobSatelliteChance, terrainBlobPatchSize, hexRadius, realisticCoastline, terrainLayersEnabled, terrainFamilies])
+  }, [isTerrainPainting, projectedHexes, blobComponentsByTerrain, terrainBlobOverrides, terrainTypeBlobStyles, terrainBlobSmooth, terrainBlobOffset, terrainBlobBump, terrainBlobSweepFreq, terrainBlobLobeFreq, terrainBlobLobeAmp, terrainBlobLobeThreshold, terrainBlobLobeDirection, terrainBlobClearingChance, terrainBlobSatelliteChance, terrainBlobPatchSize, hexRadius, realisticCoastline])
   const defaultTerrainBlobsRef = useRef(defaultTerrainBlobs)
   defaultTerrainBlobsRef.current = defaultTerrainBlobs
 
@@ -1414,6 +1399,9 @@ export const TerrainViewCanvas = forwardRef<TerrainViewCanvasHandle, { surroundC
     if (!canvas || !meta || (!exportTarget && frameCssW === 0) || hexes.length === 0) return
     const ctx = canvas.getContext('2d')
     if (!ctx) return
+
+    // Reset bbox cache so it's freshly populated by this draw pass
+    if (!exportTarget) labelBBoxCacheRef.current = {}
 
     // When a label is being live-dragged, force the appropriate layer to rebuild
     // so the new position is rendered and the bbox is accurate for hit-testing
@@ -1563,7 +1551,7 @@ export const TerrainViewCanvas = forwardRef<TerrainViewCanvasHandle, { surroundC
         clearingChance: 0, satelliteChance: 0, patchSize: 1,
       },
       hexes: hexesRef.current,
-      hexTerrainLayers: effectiveHexTerrainLayersRef.current,
+      hexTerrainLayers,
       R,
       realisticCoastline: realisticCoastlineRef.current,
       coastlineDebugRaw: coastlineDebugRawRef.current,
@@ -1644,13 +1632,11 @@ export const TerrainViewCanvas = forwardRef<TerrainViewCanvasHandle, { surroundC
         const exportRealistic = realisticCoastlineRef.current
         const isPureSea = (h: GeneratedHex) =>
           h.terrain === 'sea' && (!h.coastline_clip || h.coastline_clip.length === 0)
-        const exportFamilies = terrainFamiliesRef.current
-        const exportFamiliesEnabled = terrainLayersEnabledRef.current
         const terrainTypeSet = new Set<string>()
         for (const p of projected) {
           const h = p.hex as GeneratedHex
           if (exportRealistic && isPureSea(h)) continue
-          for (const t of effectiveBlobTerrains(h, exportRealistic, exportFamilies, exportFamiliesEnabled)) {
+          for (const t of coastalBlobTerrains(h, exportRealistic)) {
             if (t !== 'clear' && t !== 'lake') terrainTypeSet.add(t)
           }
         }
@@ -1659,7 +1645,7 @@ export const TerrainViewCanvas = forwardRef<TerrainViewCanvasHandle, { surroundC
           const terrainProjected = projected.filter(p => {
             const h = p.hex as GeneratedHex
             if (exportRealistic && isPureSea(h)) return false
-            if (!effectiveBlobTerrains(h, exportRealistic, exportFamilies, exportFamiliesEnabled).includes(terrain)) return false
+            if (!coastalBlobTerrains(h, exportRealistic).includes(terrain)) return false
             if (overriddenKeys.size > 0) {
               const ck = componentMap.get(`${p.hex.q},${p.hex.r}`)
               if (ck && overriddenKeys.has(ck)) return false
@@ -1970,9 +1956,6 @@ export const TerrainViewCanvas = forwardRef<TerrainViewCanvasHandle, { surroundC
         const papW = Math.ceil(pw), papH = Math.ceil(ph)
         if (riversDirtyRef.current || !riversLayerRef.current ||
             riversLayerPapWRef.current !== papW || riversLayerPapHRef.current !== papH) {
-          for (const k of Object.keys(labelBBoxCacheRef.current)) {
-            if (k.startsWith('river:')) delete labelBBoxCacheRef.current[k]
-          }
           const offW = Math.ceil(pw * dpr * offZoom), offH = Math.ceil(ph * dpr * offZoom)
           const offscreen = new OffscreenCanvas(offW, offH)
           const oCtx = offscreen.getContext('2d')!
@@ -2286,9 +2269,6 @@ export const TerrainViewCanvas = forwardRef<TerrainViewCanvasHandle, { surroundC
         const papW = Math.ceil(pw), papH = Math.ceil(ph)
         if (settlementsDirtyRef.current || !settlementsLayerRef.current ||
             settlementsLayerPapWRef.current !== papW || settlementsLayerPapHRef.current !== papH) {
-          for (const k of Object.keys(labelBBoxCacheRef.current)) {
-            if (k.startsWith('settlement:')) delete labelBBoxCacheRef.current[k]
-          }
           const offW = Math.ceil(pw * dpr * offZoom), offH = Math.ceil(ph * dpr * offZoom)
           const offscreen = new OffscreenCanvas(offW, offH)
           const oCtx = offscreen.getContext('2d')!
@@ -2453,22 +2433,29 @@ export const TerrainViewCanvas = forwardRef<TerrainViewCanvasHandle, { surroundC
         pageGrid: pageGridRef.current,
       })
 
-      // Floating-label handle — highlight the label being moved
-      if (floatingLabelRef.current) {
-        const bbox = labelBBoxCacheRef.current[floatingLabelRef.current.id]
-        if (bbox) {
+      // Label-drag handles — drawn on top of everything while the tool is active
+      if (activeToolRef.current.type === 'label-drag') {
+        ctx.save()
+        const cache = labelBBoxCacheRef.current
+        for (const [id, bbox] of Object.entries(cache)) {
+          const isHovered = id === hoveredLabelIdRef.current
+          const isDragging = id === labelDragStateRef.current?.id
           ctx.save()
           ctx.translate(bbox.cx, bbox.cy)
           ctx.rotate(bbox.angle)
-          ctx.strokeStyle = '#e06030'
-          ctx.lineWidth = 1.5 / zoom
+          ctx.strokeStyle = isDragging ? '#e06030' : isHovered ? '#4a90d9' : 'rgba(80,120,200,0.6)'
+          ctx.lineWidth = (isDragging || isHovered ? 1.5 : 1) / zoom
+          ctx.setLineDash(isDragging ? [] : [3 / zoom, 2 / zoom])
           ctx.strokeRect(-bbox.hw, -bbox.hh, bbox.hw * 2, bbox.hh * 2)
-          ctx.fillStyle = '#e06030'
+          ctx.setLineDash([])
+          // Center crosshair dot
+          ctx.fillStyle = isDragging ? '#e06030' : isHovered ? '#4a90d9' : 'rgba(80,120,200,0.7)'
           ctx.beginPath()
           ctx.arc(0, 0, 2.5 / zoom, 0, Math.PI * 2)
           ctx.fill()
           ctx.restore()
         }
+        ctx.restore()
       }
     }
 
@@ -2746,8 +2733,15 @@ export const TerrainViewCanvas = forwardRef<TerrainViewCanvasHandle, { surroundC
   useEffect(() => { roadsDirtyRef.current = true }, [smoothedRoadData, smoothedRailData, roadTierStyles, railStyle, roadSegmentProps, roadHopProps, selectedRoadSegmentKeys, selectedRoadHopKey, roadSelectMode, railControlOverrides, railWiggleAmp, railWiggleFreq, railSmoothing, railSegmentProps, railHopProps, selectedRailSegmentKeys, selectedRailHopKey, railSelectMode, showRawOsmRoads, mapStyle])
   useEffect(() => { settlementsDirtyRef.current = true }, [settlements, settlementTierStyles, labelPresetId, labelOverrides, smoothedRoadData, smoothedRailData, labelOffsets])
   // When entering label-drag mode, rebuild label layers so the bbox cache is populated for hit-testing
+  useEffect(() => {
+    if (activeTool.type === 'label-drag') {
+      riversDirtyRef.current = true
+      settlementsDirtyRef.current = true
+    }
+  }, [activeTool.type])
+
   // Redraw when data changes
-  useEffect(() => { draw() }, [generatedHexes, hexBorderMode, hexEdgeMode, hexBorderOpacity, hexBorderColor, hexBorderDifference, hexNumbersEnabled, hexNumberEdge, hexNumberColor, hexNumberFontScale, hexNumberStartCorner, hexNumberMap, smoothedRoadData, smoothedRailData, showRawOsmRoads, roadNodeEditMode, riverNodeEditMode, riverChainOverrides, riverEdges, canalEdges, riverEditMode, canalEditMode, riverWidthScale, canalWidthScale, riverCurveSteps, riverWobble, riverDetail, riverWiggleFreq, riverWiggleAmp, riverSmoothing, riverPathSmoothing, showRiverLabels, riverLabelColor, riverSegmentProps, canalSegmentProps, riverSelectMode, canalSelectMode, selectedSegmentKeys, selectedCanalSegmentKeys, riverStyle, canalStyle, riverHopProps, selectedHopKey, defaultTerrainBlobs, defaultLakeBlobs, terrainColors, terrainTextureScales, terrainTextureBlendModes, terrainTextureOpacities, terrainTextureTintColors, terrainTextureTintOpacities, terrainTextureFillOnly, terrainTextureFile, terrainTextureEnabled, terrainBlobOverrides, terrainTypeBlobStyles, lakeOverrides, terrainRenderMode, settlements, settlementTierStyles, urbanHexes, urbanStyle, roadTierStyles, railStyle, highlights, highlightedHexes, highlightLines, highlightEdgePaths, iconOverlays, placedIcons, labelOverlays, placedLabels, realisticCoastline, coastlineDebugRaw, smoothedCoastlineBoundary, rawCoastlineBoundary, beachStrip, beachColor, beachWidth, coastlineDPEpsilon, coastlineChaikinPasses, edgeBlobPainted, edgeBlobOverrides, edgeBlobSmooth, edgeBlobOffset, edgeBlobBump, edgeBlobSweepFreq, edgeBlobLobeFreq, edgeBlobLobeAmp, edgeBlobLobeThreshold, edgeBlobLobeDirection, edgeBlobWidth, roadSegmentProps, roadHopProps, selectedRoadSegmentKeys, selectedRoadHopKey, roadSelectMode, railNodeEditMode, railControlOverrides, railSelectMode, railWiggleAmp, railWiggleFreq, railSmoothing, railSegmentProps, railHopProps, selectedRailSegmentKeys, selectedRailHopKey, mapBgColor, mapBorderEnabled, mapBorderColor, mapBorderWidth, clipToHexGrid, excludedHexKeys, disabledHexKeys, autoDisabledOceanHexKeys, megaHexEnabled, megaHexRadius, megaHexColor, megaHexOpacity, megaHexLineWidth, megaHexOriginQ, megaHexOriginR, areasMode, areas, areaHexes, areasStyle, bridgesEnabled, bridgeStyle, bridgeTiers, bridgeOverrides, showElevationDebug, mapStyle, labelOffsets, draw])
+  useEffect(() => { draw() }, [generatedHexes, hexBorderMode, hexEdgeMode, hexBorderOpacity, hexBorderColor, hexBorderDifference, hexNumbersEnabled, hexNumberEdge, hexNumberColor, hexNumberFontScale, hexNumberStartCorner, hexNumberMap, smoothedRoadData, smoothedRailData, showRawOsmRoads, roadNodeEditMode, riverNodeEditMode, riverChainOverrides, riverEdges, canalEdges, riverEditMode, canalEditMode, riverWidthScale, canalWidthScale, riverCurveSteps, riverWobble, riverDetail, riverWiggleFreq, riverWiggleAmp, riverSmoothing, riverPathSmoothing, showRiverLabels, riverLabelColor, riverSegmentProps, canalSegmentProps, riverSelectMode, canalSelectMode, selectedSegmentKeys, selectedCanalSegmentKeys, riverStyle, canalStyle, riverHopProps, selectedHopKey, defaultTerrainBlobs, defaultLakeBlobs, terrainColors, terrainTextureScales, terrainTextureBlendModes, terrainTextureOpacities, terrainTextureTintColors, terrainTextureTintOpacities, terrainTextureFillOnly, terrainTextureFile, terrainTextureEnabled, terrainBlobOverrides, terrainTypeBlobStyles, lakeOverrides, terrainRenderMode, settlements, settlementTierStyles, urbanHexes, urbanStyle, roadTierStyles, railStyle, highlights, highlightedHexes, highlightLines, highlightEdgePaths, iconOverlays, placedIcons, labelOverlays, placedLabels, realisticCoastline, coastlineDebugRaw, smoothedCoastlineBoundary, rawCoastlineBoundary, beachStrip, beachColor, beachWidth, coastlineDPEpsilon, coastlineChaikinPasses, edgeBlobPainted, edgeBlobOverrides, edgeBlobSmooth, edgeBlobOffset, edgeBlobBump, edgeBlobSweepFreq, edgeBlobLobeFreq, edgeBlobLobeAmp, edgeBlobLobeThreshold, edgeBlobLobeDirection, edgeBlobWidth, roadSegmentProps, roadHopProps, selectedRoadSegmentKeys, selectedRoadHopKey, roadSelectMode, railNodeEditMode, railControlOverrides, railSelectMode, railWiggleAmp, railWiggleFreq, railSmoothing, railSegmentProps, railHopProps, selectedRailSegmentKeys, selectedRailHopKey, mapBgColor, mapBorderEnabled, mapBorderColor, mapBorderWidth, clipToHexGrid, excludedHexKeys, disabledHexKeys, autoDisabledOceanHexKeys, megaHexEnabled, megaHexRadius, megaHexColor, megaHexOpacity, megaHexLineWidth, megaHexOriginQ, megaHexOriginR, areasMode, areas, areaHexes, areasStyle, bridgesEnabled, bridgeStyle, bridgeTiers, bridgeOverrides, showElevationDebug, mapStyle, labelOffsets, activeTool, draw])
 
   useEffect(() => { drawOsmHighlight() }, [osmHighlightTier, osmSpotlightMode, osmSpotlightTiers, osmRailHighlight, hoveredOsmRiverIdx, drawOsmHighlight])
 
@@ -2991,23 +2985,10 @@ export const TerrainViewCanvas = forwardRef<TerrainViewCanvasHandle, { surroundC
   setActiveToolRef.current = setActiveTool
   const setLabelOffsetRef = useRef(setLabelOffset)
   setLabelOffsetRef.current = setLabelOffset
-  const clearLabelOffsetRef = useRef(clearLabelOffset)
-  clearLabelOffsetRef.current = clearLabelOffset
-  const drawRef = useRef(draw)
-  drawRef.current = draw
-
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.key !== 'Escape') return
       if (shouldSuppressShortcut(e)) return
-      if (floatingLabelRef.current) {
-        floatingLabelRef.current = null
-        liveLabelOffsetRef.current = null
-        const canvas = canvasRef.current
-        if (canvas) canvas.style.cursor = ''
-        drawRef.current()
-        return
-      }
       setActiveToolRef.current({ type: 'none' })
     }
     window.addEventListener('keydown', onKey)
@@ -4223,43 +4204,6 @@ export const TerrainViewCanvas = forwardRef<TerrainViewCanvasHandle, { surroundC
       const hex = findHexAtClient(e.clientX, e.clientY)
       const items: CtxItem[] = []
 
-      // Label hit-testing — works regardless of which panel is active
-      const logicalForLabel = clientToLogicalRef.current(e.clientX, e.clientY)
-      if (logicalForLabel) {
-        const { lx: llx, ly: lly } = logicalForLabel
-        for (const [labelId, bbox] of Object.entries(labelBBoxCacheRef.current)) {
-          const cos = Math.cos(-bbox.angle), sin = Math.sin(-bbox.angle)
-          const rx = (llx - bbox.cx) * cos - (lly - bbox.cy) * sin
-          const ry = (llx - bbox.cx) * sin + (lly - bbox.cy) * cos
-          if (Math.abs(rx) <= bbox.hw + 4 && Math.abs(ry) <= bbox.hh + 4) {
-            items.push({
-              label: 'Move label',
-              action: () => {
-                const existing = labelOffsetsRef.current[labelId] ?? { dx: 0, dy: 0 }
-                floatingLabelRef.current = { id: labelId, grabLx: llx, grabLy: lly, startDx: existing.dx, startDy: existing.dy }
-                liveLabelOffsetRef.current = { id: labelId, dx: existing.dx, dy: existing.dy }
-                const canvas = canvasRef.current
-                if (canvas) canvas.style.cursor = 'crosshair'
-              },
-            })
-            if (labelOffsetsRef.current[labelId]) {
-              items.push({
-                label: 'Reset label position',
-                action: () => {
-                  clearLabelOffsetRef.current(labelId)
-                  if (labelId.startsWith('river:')) riversDirtyRef.current = true
-                  else settlementsDirtyRef.current = true
-                  drawRef.current()
-                },
-                danger: true,
-              })
-            }
-            break
-          }
-        }
-        if (items.length > 0) items.push({ label: '─', action: () => {} })
-      }
-
       if (hex && activePanelRef.current === 'roads') {
         const hexKey = `${hex.q},${hex.r}`
         const overrides = roadControlOverridesRef.current
@@ -4873,15 +4817,32 @@ export const TerrainViewCanvas = forwardRef<TerrainViewCanvasHandle, { surroundC
   }, [isEdgePaintActive])
 
   const onMouseMove = useCallback((e: React.MouseEvent<HTMLCanvasElement>) => {
-    // Floating label — label follows cursor until left-click places it
-    if (floatingLabelRef.current) {
+    // Label drag — live preview and hover highlight
+    if (activeToolRef.current.type === 'label-drag') {
       const logical = clientToLogicalRef.current(e.clientX, e.clientY)
       if (logical) {
-        const { id, grabLx, grabLy, startDx, startDy } = floatingLabelRef.current
-        liveLabelOffsetRef.current = { id, dx: startDx + (logical.lx - grabLx), dy: startDy + (logical.ly - grabLy) }
-        if (id.startsWith('river:')) riversDirtyRef.current = true
-        else settlementsDirtyRef.current = true
-        draw()
+        const { lx, ly } = logical
+        if (labelDragStateRef.current) {
+          const { id, startLx, startLy, startDx, startDy } = labelDragStateRef.current
+          liveLabelOffsetRef.current = { id, dx: startDx + (lx - startLx), dy: startDy + (ly - startLy) }
+          draw()
+        } else {
+          // Hover detection
+          const cache = labelBBoxCacheRef.current
+          let hit: string | null = null
+          for (const [id, bbox] of Object.entries(cache)) {
+            const cos = Math.cos(-bbox.angle), sin = Math.sin(-bbox.angle)
+            const rx = (lx - bbox.cx) * cos - (ly - bbox.cy) * sin
+            const ry = (lx - bbox.cx) * sin + (ly - bbox.cy) * cos
+            if (Math.abs(rx) <= bbox.hw + 4 && Math.abs(ry) <= bbox.hh + 4) { hit = id; break }
+          }
+          if (hit !== hoveredLabelIdRef.current) {
+            hoveredLabelIdRef.current = hit
+            draw()
+          }
+          const canvas = canvasRef.current
+          if (canvas) canvas.style.cursor = hit ? 'grab' : 'default'
+        }
       }
       return
     }
@@ -5015,8 +4976,6 @@ export const TerrainViewCanvas = forwardRef<TerrainViewCanvasHandle, { surroundC
       }
     }
   }, [isEdgePaintActive, paintEdge, draw, clientToLogical])
-
-  // Cursor hint: show context-menu cursor when hovering over a draggable label
 
   const onMouseLeave = useCallback(() => {
     if (osmSpotlightModeRef.current) {
@@ -5427,17 +5386,37 @@ export const TerrainViewCanvas = forwardRef<TerrainViewCanvasHandle, { surroundC
     if (editingLabelRef.current) return
     draggedRef.current = false
 
-    // Floating label — left-click places it
-    if (floatingLabelRef.current) {
-      if (liveLabelOffsetRef.current) {
-        const { id, dx, dy } = liveLabelOffsetRef.current
-        setLabelOffsetRef.current(id, dx, dy)
+    // Label-drag tool — start dragging the label under the cursor
+    if (activeToolRef.current.type === 'label-drag') {
+      const logical = clientToLogicalRef.current(e.clientX, e.clientY)
+      if (logical) {
+        const { lx, ly } = logical
+        const cache = labelBBoxCacheRef.current
+        for (const [id, bbox] of Object.entries(cache)) {
+          const cos = Math.cos(-bbox.angle), sin = Math.sin(-bbox.angle)
+          const rx = (lx - bbox.cx) * cos - (ly - bbox.cy) * sin
+          const ry = (lx - bbox.cx) * sin + (ly - bbox.cy) * cos
+          if (Math.abs(rx) <= bbox.hw + 4 && Math.abs(ry) <= bbox.hh + 4) {
+            const existing = labelOffsetsRef.current[id] ?? { dx: 0, dy: 0 }
+            labelDragStateRef.current = { id, startLx: lx, startLy: ly, startDx: existing.dx, startDy: existing.dy }
+            const canvas = canvasRef.current
+            if (canvas) canvas.style.cursor = 'grabbing'
+            const onUp = () => {
+              if (liveLabelOffsetRef.current) {
+                const { id: lid, dx, dy } = liveLabelOffsetRef.current
+                setLabelOffsetRef.current(lid, dx, dy)
+              }
+              labelDragStateRef.current = null
+              liveLabelOffsetRef.current = null
+              if (canvasRef.current) canvasRef.current.style.cursor = 'grab'
+              draw()
+              window.removeEventListener('mouseup', onUp)
+            }
+            window.addEventListener('mouseup', onUp)
+            break
+          }
+        }
       }
-      floatingLabelRef.current = null
-      liveLabelOffsetRef.current = null
-      const canvas = canvasRef.current
-      if (canvas) canvas.style.cursor = ''
-      draw()
       return
     }
 

@@ -865,22 +865,13 @@ export function migratePersisted(persisted: unknown, fromVersion: number): Recor
   if (fromVersion < 62) {
     if (s.labelOffsets === undefined) s.labelOffsets = {}
   }
-  if (fromVersion < 64) {
-    if (s.terrainFamilies === undefined) s.terrainFamilies = { woods: 'light_woods' }
-  }
   if (fromVersion < 63) {
     if (s.roadRenderVersion === undefined) s.roadRenderVersion = 'v2'
     if (s.roadV3TierGeom === undefined) s.roadV3TierGeom = [
-      { cornerRoundness: 0.8, pathStraightness: 0.8, segmentVariation: 0.00, variationCharacter: 0, entryOvershoot: 0.25 },
-      { cornerRoundness: 0.6, pathStraightness: 0.5, segmentVariation: 0.06, variationCharacter: 1, entryOvershoot: 0.20 },
-      { cornerRoundness: 0.3, pathStraightness: 0.2, segmentVariation: 0.12, variationCharacter: 2, entryOvershoot: 0.12 },
+      { cornerRoundness: 0.8, pathStraightness: 0.8, segmentVariation: 0.00, variationCharacter: 0 },
+      { cornerRoundness: 0.6, pathStraightness: 0.5, segmentVariation: 0.06, variationCharacter: 1 },
+      { cornerRoundness: 0.3, pathStraightness: 0.2, segmentVariation: 0.12, variationCharacter: 2 },
     ]
-    // Patch entryOvershoot onto any existing V3 tier geom that was saved before this field existed
-    const existing = s.roadV3TierGeom as Array<Record<string, unknown>> | undefined
-    if (existing) {
-      const defaults = [0.25, 0.20, 0.12]
-      existing.forEach((g, i) => { if (g.entryOvershoot === undefined) g.entryOvershoot = defaults[i] })
-    }
   }
   return s
 }
