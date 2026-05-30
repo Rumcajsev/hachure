@@ -31,6 +31,7 @@ export type DrawTerrainParams = {
   /** terrain name → loaded texture image */
   terrainTextures: Map<string, HTMLImageElement | null>
   px: number; py: number; pw: number; ph: number
+  backgroundTerrainBlobs: { terrain: string; polys: [number, number][][] }[]
   defaultTerrainBlobs: { terrain: string; polys: [number, number][][] }[]
   defaultLakeBlobs: { terrain: string; polys: [number, number][][] }[]
   terrainBlobOverrides: Record<string, BlobOverride>
@@ -255,7 +256,7 @@ export function drawTerrain(tCtx: Ctx, params: DrawTerrainParams): void {
     terrainColors, terrainTextureScales, terrainTextureBlendModes, terrainTextureOpacities,
     terrainTextureTintColors, terrainTextureTintOpacities, terrainTextureFillOnly, terrainTextures,
     px, py, pw, ph,
-    defaultTerrainBlobs, defaultLakeBlobs,
+    backgroundTerrainBlobs, defaultTerrainBlobs, defaultLakeBlobs,
     terrainBlobOverrides, lakeOverrides,
     blobComponents, blobComponentsByTerrain,
     terrainBlobParams, lakeBlobParams,
@@ -353,6 +354,37 @@ export function drawTerrain(tCtx: Ctx, params: DrawTerrainParams): void {
     const { elevationBlobs, hillsColor, mountainsColor, reliefShadingOpacity } = params
     drawElevationBlobsWithShading(tCtx, elevationBlobs.hills, hillsColor, reliefShadingOpacity)
     drawElevationBlobsWithShading(tCtx, elevationBlobs.mountains, mountainsColor, reliefShadingOpacity)
+  }
+
+  // ── 3d. Background terrain blobs ─────────────────────────────────────────────
+  // Drawn before primary blobs so primary terrain sits on top.
+  // The fringe effect appears where the primary blob's organic boundary
+  // doesn't fully cover the hex.
+  if (backgroundTerrainBlobs.length > 0) {
+    for (const { terrain, polys } of backgroundTerrainBlobs) {
+      if (polys.length === 0) continue
+      const rawMode = terrainTextureBlendModes[terrain] ?? 'multiply'
+      const isColorMode = rawMode === 'color' || rawMode === 'color-bg'
+      const fillOnly = (terrainTextureFillOnly[terrain] ?? false) || isColorMode
+      const tex = terrainTextures.get(terrain) ?? null
+      const texBlend = rawMode as GlobalCompositeOperation
+      const texOpacity = terrainTextureOpacities[terrain] ?? 0.6
+      const texTint = isColorMode ? (terrainColors[terrain] ?? '') : (terrainTextureTintColors[terrain] ?? '')
+      const texTintOpacity = isColorMode ? 1.0 : (terrainTextureTintOpacities[terrain] ?? 0.5)
+      if (!fillOnly) {
+        tCtx.fillStyle = terrainColors[terrain] ?? '#cccccc'
+        tCtx.beginPath()
+        for (const poly of polys) {
+          if (poly.length < 3) continue
+          tCtx.moveTo(poly[0][0], poly[0][1])
+          for (let i = 1; i < poly.length; i++) tCtx.lineTo(poly[i][0], poly[i][1])
+          tCtx.closePath()
+        }
+        tCtx.fill('evenodd')
+      }
+      const texScale = terrainTextureScales[terrain] ?? 3
+      if (tex) applyTextureOverlay(tCtx, tex, polys, R, texScale, R * 0.12, texBlend, texOpacity, texTint, texTintOpacity, isColorMode)
+    }
   }
 
   // ── 4. Blob mode ────────────────────────────────────────────────────────────
@@ -535,12 +567,18 @@ export function drawTerrain(tCtx: Ctx, params: DrawTerrainParams): void {
   // ── 5b. Edge blobs ───────────────────────────────────────────────────────────
   const { edgeBlobPainted, edgeBlobParams, edgeBlobOverrides, hexVertMap } = params
   if (Object.keys(edgeBlobPainted).length > 0) {
-    // Build terrain → hex-key set for the connection extension check
+    // Build terrain → hex-key set for the connection extension check.
+    // Includes both primary terrain layers and backgroundTerrain so edge blobs
+    // can extend into background hexes of the same type.
     const terrainToHexes = new Map<string, Set<string>>()
     for (const { hex } of projected) {
       for (const t of hexTerrainLayers(hex)) {
         if (!terrainToHexes.has(t)) terrainToHexes.set(t, new Set())
         terrainToHexes.get(t)!.add(`${hex.q},${hex.r}`)
+      }
+      if (hex.backgroundTerrain) {
+        if (!terrainToHexes.has(hex.backgroundTerrain)) terrainToHexes.set(hex.backgroundTerrain, new Set())
+        terrainToHexes.get(hex.backgroundTerrain)!.add(`${hex.q},${hex.r}`)
       }
     }
 

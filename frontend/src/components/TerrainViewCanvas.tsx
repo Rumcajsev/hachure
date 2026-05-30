@@ -168,7 +168,7 @@ export const TerrainViewCanvas = forwardRef<TerrainViewCanvasHandle, { surroundC
     roadControlOverrides, setRoadControlOverride, deleteRoadControlOverride,
     roadSnapBindings, setRoadSnapBinding, deleteRoadSnapBinding,
     roadNodeEditMode,
-    roadWiggleAmp, roadWiggleFreq, roadSmoothing, roadPathSmoothing, roadTierGeometry, roadDensityMinChain, roadWiggleDragging,
+    roadWiggleAmp, roadWiggleFreq, roadSmoothing, roadPathSmoothing, roadCenterPull, roadTierGeometry, roadDensityMinChain, roadWiggleDragging,
     roadRenderVersion, roadV3TierGeom,
     roadChainOverrides, setRoadChainOverride,
     riverEdges, canalEdges,
@@ -351,6 +351,7 @@ export const TerrainViewCanvas = forwardRef<TerrainViewCanvasHandle, { surroundC
   const roadWiggleFreqRef = useRef(roadWiggleFreq)
   const roadSmoothingRef = useRef(roadSmoothing)
   const roadPathSmoothingRef = useRef(roadPathSmoothing)
+  const roadCenterPullRef = useRef(roadCenterPull)
   const roadChainOverridesRef = useRef(roadChainOverrides)
   const setRoadChainOverrideRef = useRef(setRoadChainOverride)
   const { deleteRoadChainOverride } = useMapStore()
@@ -681,6 +682,7 @@ export const TerrainViewCanvas = forwardRef<TerrainViewCanvasHandle, { surroundC
   roadWiggleFreqRef.current = roadWiggleFreq
   roadSmoothingRef.current = roadSmoothing
   roadPathSmoothingRef.current = roadPathSmoothing
+  roadCenterPullRef.current = roadCenterPull
   roadChainOverridesRef.current = roadChainOverrides
   setRoadChainOverrideRef.current = setRoadChainOverride
   deleteRoadChainOverrideRef.current = deleteRoadChainOverride
@@ -980,7 +982,7 @@ export const TerrainViewCanvas = forwardRef<TerrainViewCanvasHandle, { surroundC
 
   const roadTierGeomMap = useMemo(
     () => {
-      const map: Record<number, { wiggleAmp?: number; wiggleFreq?: number; pathSmoothing?: number; smoothing?: number }> = {}
+      const map: Record<number, { wiggleAmp?: number; wiggleFreq?: number; pathSmoothing?: number; smoothing?: number; centerPull?: number }> = {}
       roadTierGeometry.forEach((g, i) => { if (g) map[i] = g })
       return Object.keys(map).length > 0 ? map : undefined
     },
@@ -988,8 +990,8 @@ export const TerrainViewCanvas = forwardRef<TerrainViewCanvasHandle, { surroundC
   )
 
   const roadBaseDataV2 = useMemo(
-    () => buildRoadChainsV2(roadEdges, hexCenterIdx, roadControlOverrides, 0, 0, roadSmoothing, roadPathSmoothing, roadChainOverrides, {}, {}, roadSnapBindings, 2, roadTierGeomMap),
-    [roadEdges, hexCenterIdx, roadControlOverrides, roadSmoothing, roadPathSmoothing, roadChainOverrides, roadSnapBindings, roadTierGeomMap],
+    () => buildRoadChainsV2(roadEdges, hexCenterIdx, roadControlOverrides, 0, 0, roadSmoothing, roadPathSmoothing, roadChainOverrides, {}, {}, roadSnapBindings, 2, roadTierGeomMap, roadCenterPull),
+    [roadEdges, hexCenterIdx, roadControlOverrides, roadSmoothing, roadPathSmoothing, roadChainOverrides, roadSnapBindings, roadTierGeomMap, roadCenterPull],
   )
   const smoothedRoadDataV2 = useMemo(
     () => {
@@ -1260,6 +1262,39 @@ export const TerrainViewCanvas = forwardRef<TerrainViewCanvasHandle, { surroundC
   const defaultTerrainBlobsRef = useRef(defaultTerrainBlobs)
   defaultTerrainBlobsRef.current = defaultTerrainBlobs
 
+  // ── Background terrain blobs ──────────────────────────────────────────────
+  const prevBackgroundBlobsRef = useRef<{ terrain: string; polys: [number, number][][] }[]>([])
+  const backgroundBlobCache = useRef(new Map<string, { hexKey: string; blobs: { terrain: string; polys: [number, number][][] }[] }>())
+  const defaultBackgroundBlobs = useMemo(() => {
+    if (projectedHexes.length === 0 || hexRadius === 0 || !terrainLayersEnabled) return []
+    if (isTerrainPainting) return prevBackgroundBlobsRef.current
+    // Group hexes by backgroundTerrain. Include adjacent primary hexes of the same
+    // type so the background blob merges seamlessly with the primary blob at edges.
+    const bgTypeSet = new Set<string>()
+    for (const p of projectedHexes) {
+      const h = p.hex as GeneratedHex
+      if (h.backgroundTerrain) bgTypeSet.add(h.backgroundTerrain)
+    }
+    if (bgTypeSet.size === 0) { prevBackgroundBlobsRef.current = []; return [] }
+    const result = [...bgTypeSet].flatMap(terrain => {
+      const bgProjected = projectedHexes.filter(p => {
+        const h = p.hex as GeneratedHex
+        return h.backgroundTerrain === terrain || h.terrain === terrain
+      }).map(p => ({ ...p, hex: { ...p.hex, terrain } }))
+      if (bgProjected.length === 0) return []
+      const hexKey = bgProjected.map(p => `${p.hex.q},${p.hex.r}`).join('|')
+      const cached = backgroundBlobCache.current.get(terrain)
+      if (cached?.hexKey === hexKey) return cached.blobs
+      const blobs = buildTerrainBlobsV2(bgProjected, terrainBlobSmooth, terrainBlobOffset, terrainBlobBump, terrainBlobSweepFreq, terrainBlobLobeFreq, terrainBlobLobeAmp, terrainBlobLobeThreshold, terrainBlobLobeDirection, hexRadius)
+      backgroundBlobCache.current.set(terrain, { hexKey, blobs })
+      return blobs
+    })
+    prevBackgroundBlobsRef.current = result
+    return result
+  }, [isTerrainPainting, projectedHexes, hexRadius, terrainLayersEnabled, terrainBlobSmooth, terrainBlobOffset, terrainBlobBump, terrainBlobSweepFreq, terrainBlobLobeFreq, terrainBlobLobeAmp, terrainBlobLobeThreshold, terrainBlobLobeDirection])
+  const defaultBackgroundBlobsRef = useRef(defaultBackgroundBlobs)
+  defaultBackgroundBlobsRef.current = defaultBackgroundBlobs
+
   const prevLakeBlobsRef = useRef<{ terrain: string; polys: [number, number][][] }[]>([])
   const lakeBlobCache = useRef<{ hexKey: string; styleKey: string; blobs: { terrain: string; polys: [number, number][][] }[] } | null>(null)
   const defaultLakeBlobs = useMemo(() => {
@@ -1528,6 +1563,7 @@ export const TerrainViewCanvas = forwardRef<TerrainViewCanvasHandle, { surroundC
       terrainTextureFillOnly: terrainTextureFillOnlyRef.current,
       terrainTextures: buildTerrainTextures(),
       px, py, pw, ph,
+      backgroundTerrainBlobs: defaultBackgroundBlobsRef.current,
       defaultTerrainBlobs: defaultTerrainBlobsRef.current,
       defaultLakeBlobs: defaultLakeBlobsRef.current,
       terrainBlobOverrides: terrainBlobOverridesRef.current,
@@ -1682,7 +1718,7 @@ export const TerrainViewCanvas = forwardRef<TerrainViewCanvasHandle, { surroundC
           ? buildTerrainBlobsV2(defaultLakeProjected, lakeBlobSmoothRef.current, lakeBlobOffsetRef.current, lakeBlobBumpRef.current, lakeBlobSweepFreqRef.current, lakeBlobLobeFreqRef.current, lakeBlobLobeAmpRef.current, lakeBlobLobeThresholdRef.current, lakeBlobLobeDirectionRef.current, R)
           : []
       }
-      _drawTerrain(ctx, { ...terrainParams, defaultTerrainBlobs: exportTerrainBlobs, defaultLakeBlobs: exportLakeBlobs })
+      _drawTerrain(ctx, { ...terrainParams, backgroundTerrainBlobs: defaultBackgroundBlobsRef.current, defaultTerrainBlobs: exportTerrainBlobs, defaultLakeBlobs: exportLakeBlobs })
     }
 
     // Historical map image overlay — screen only, drawn after terrain so hex borders render on top
@@ -2038,7 +2074,7 @@ export const TerrainViewCanvas = forwardRef<TerrainViewCanvasHandle, { surroundC
     // During a CP drag, compute road geometry with the live position directly — no store update,
     // no React re-render cycle, no useMemo. On drop, the store is updated once for the full rebuild.
     const liveTierGeomMap = (() => {
-      const map: Record<number, { wiggleAmp?: number; wiggleFreq?: number; pathSmoothing?: number; smoothing?: number }> = {}
+      const map: Record<number, { wiggleAmp?: number; wiggleFreq?: number; pathSmoothing?: number; smoothing?: number; centerPull?: number }> = {}
       roadTierGeometryRef.current.forEach((g, i) => { if (g) map[i] = g })
       return Object.keys(map).length > 0 ? map : undefined
     })()
@@ -2067,6 +2103,7 @@ export const TerrainViewCanvas = forwardRef<TerrainViewCanvasHandle, { surroundC
             undefined,
             0,
             liveTierGeomMap,
+            roadCenterPullRef.current,
           )
         : isDraggingDense
           ? buildRoadChainsV2(
@@ -2083,6 +2120,7 @@ export const TerrainViewCanvas = forwardRef<TerrainViewCanvasHandle, { surroundC
               undefined,
               0,
               liveTierGeomMap,
+              roadCenterPullRef.current,
             )
           : smoothedRoadDataV2Ref.current ?? smoothedRoadDataRef.current
 
