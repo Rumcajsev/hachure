@@ -259,6 +259,7 @@ function PaintingOptionsFlyout({ onClose }: { onClose: () => void }) {
     terrainEdgePaintEnabled, setTerrainEdgePaintEnabled,
     realisticCoastline, setRealisticCoastline,
     terrainLayersEnabled, setTerrainLayersEnabled,
+    terrainBackgroundPaintEnabled, setTerrainBackgroundPaintEnabled,
     beachStrip, setBeachStrip, beachColor, setBeachColor, beachWidth, setBeachWidth,
     coastlineDPEpsilon, setCoastlineDPEpsilon, coastlineChaikinPasses, setCoastlineChaikinPasses,
   } = useMapStore()
@@ -271,6 +272,12 @@ function PaintingOptionsFlyout({ onClose }: { onClose: () => void }) {
           hint="Drag along a region edge to paint a blob along it."
           checked={terrainEdgePaintEnabled}
           onChange={setTerrainEdgePaintEnabled}
+        />
+        <ToggleRow
+          label="Background painting"
+          hint="Paint a background terrain on hexes — rendered below the primary terrain."
+          checked={terrainBackgroundPaintEnabled}
+          onChange={setTerrainBackgroundPaintEnabled}
         />
         <ToggleRow
           label="Terrain layers"

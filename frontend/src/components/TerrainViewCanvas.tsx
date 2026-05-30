@@ -198,6 +198,7 @@ export const TerrainViewCanvas = forwardRef<TerrainViewCanvasHandle, { surroundC
     edgeBlobPainted,
     paintEdgeBlob, eraseEdgeBlob,
     terrainEdgePaintEnabled,
+    terrainBackgroundPaintEnabled, overrideHexBackground,
     customTerrains,
     edgeBlobSmooth, edgeBlobOffset, edgeBlobBump,
     edgeBlobSweepFreq, edgeBlobLobeFreq, edgeBlobLobeAmp, edgeBlobLobeThreshold, edgeBlobLobeDirection,
@@ -269,6 +270,8 @@ export const TerrainViewCanvas = forwardRef<TerrainViewCanvasHandle, { surroundC
   const overrideHexElevationRef = useRef(overrideHexElevation)
   const addHexTerrainLayerRef = useRef(addHexTerrainLayer)
   const terrainEdgePaintEnabledRef = useRef(terrainEdgePaintEnabled)
+  const terrainBackgroundPaintEnabledRef = useRef(terrainBackgroundPaintEnabled)
+  const overrideHexBackgroundRef = useRef(overrideHexBackground)
   const paintEdgeBlobRef = useRef(paintEdgeBlob)
   const eraseEdgeBlobRef = useRef(eraseEdgeBlob)
   const edgeBlobPaintedRef = useRef(edgeBlobPainted)
@@ -575,6 +578,8 @@ export const TerrainViewCanvas = forwardRef<TerrainViewCanvasHandle, { surroundC
   overrideHexElevationRef.current = overrideHexElevation
   addHexTerrainLayerRef.current = addHexTerrainLayer
   terrainLayersEnabledRef.current = terrainLayersEnabled
+  terrainBackgroundPaintEnabledRef.current = terrainBackgroundPaintEnabled
+  overrideHexBackgroundRef.current = overrideHexBackground
   roadEdgesRef.current = roadEdges
   railEdgesRef.current = railEdges
   rawRoadWaysRef.current = rawRoadWays
@@ -673,6 +678,8 @@ export const TerrainViewCanvas = forwardRef<TerrainViewCanvasHandle, { surroundC
   overrideHexTerrainRef.current = overrideHexTerrain
   addHexTerrainLayerRef.current = addHexTerrainLayer
   terrainLayersEnabledRef.current = terrainLayersEnabled
+  terrainBackgroundPaintEnabledRef.current = terrainBackgroundPaintEnabled
+  overrideHexBackgroundRef.current = overrideHexBackground
   resetHexOverrideRef.current = resetHexOverride
   removeHexTerrainLayerRef.current = removeHexTerrainLayer
   elevationPaintModeRef.current = elevationPaintMode
@@ -3154,6 +3161,9 @@ export const TerrainViewCanvas = forwardRef<TerrainViewCanvasHandle, { surroundC
           strokeTrailRef.current.set(`hex:${key}`, target)
           if (elevationPaintModeRef.current) {
             overrideHexElevationRef.current(target.q, target.r, elevationPaintBrushRef.current)
+          } else if (terrainBackgroundPaintEnabledRef.current) {
+            const brush = terrainPaintBrushRef.current
+            overrideHexBackgroundRef.current(target.q, target.r, brush === 'clear' ? undefined : brush)
           } else {
             const brush = terrainPaintBrushRef.current
             if (terrainLayersEnabledRef.current && brush !== 'clear') {
