@@ -862,6 +862,17 @@ export function migratePersisted(persisted: unknown, fromVersion: number): Recor
     if (s.labelPresetId === undefined) s.labelPresetId = 'ibm_hybrid'
     if (s.labelOverrides === undefined) s.labelOverrides = {}
   }
+  if (fromVersion < 62) {
+    if (s.labelOffsets === undefined) s.labelOffsets = {}
+  }
+  if (fromVersion < 63) {
+    if (s.roadRenderVersion === undefined) s.roadRenderVersion = 'v2'
+    if (s.roadV3TierGeom === undefined) s.roadV3TierGeom = [
+      { cornerRoundness: 0.8, pathStraightness: 0.8, segmentVariation: 0.00, variationCharacter: 0 },
+      { cornerRoundness: 0.6, pathStraightness: 0.5, segmentVariation: 0.06, variationCharacter: 1 },
+      { cornerRoundness: 0.3, pathStraightness: 0.2, segmentVariation: 0.12, variationCharacter: 2 },
+    ]
+  }
   return s
 }
 

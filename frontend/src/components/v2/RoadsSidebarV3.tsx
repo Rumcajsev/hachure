@@ -2,9 +2,11 @@ import { useEffect, useRef, useMemo, useState } from 'react'
 import {
   useMapStore,
   DEFAULT_ROAD_TIER_STYLES, DEFAULT_RAIL_STYLE, DEFAULT_ROAD_GEOM, DEFAULT_RAIL_GEOM,
+  DEFAULT_ROAD_V3_TIER_GEOM,
 } from '../../store/mapStore'
 import type { RoadDashStyle, RoadTierStyle } from '../../store/mapStore'
 import { buildRoadChains, buildRailChains } from '../../lib/roadChains'
+import { buildRoadChainsV3 } from '../../lib/roadChainsV3'
 import { drawRoadsAndRails } from '../../lib/drawRoadsRails'
 import { PALETTE_RAIL_LIGHT, PALETTE_RAIL_DARK } from '../../palettes'
 import { computePaper } from '../../lib/projection'
@@ -58,7 +60,7 @@ function HexPreview({ mode, tier = 0 }: { mode: 'road' | 'rail'; tier?: 0 | 1 | 
   const {
     hexSizeMm, hexOrientation,
     roadTierStyles, roadWiggleAmp, roadWiggleFreq, roadSmoothing, roadPathSmoothing,
-    roadTierGeometry, mapStyle,
+    roadTierGeometry, mapStyle, roadRenderVersion, roadV3TierGeom,
     railStyle, railWiggleAmp, railWiggleFreq, railSmoothing, railGeomOverride,
     generatedMetadata,
   } = useMapStore()
@@ -118,16 +120,23 @@ function HexPreview({ mode, tier = 0 }: { mode: 'road' | 'rail'; tier?: 0 | 1 | 
     const project = (x: number, y: number): [number, number] => [x, y]
 
     if (mode === 'road') {
-      const geom = roadTierGeometry[tier]
-      const wiggleAmp     = geom?.wiggleAmp     ?? roadWiggleAmp
-      const wiggleFreq    = geom?.wiggleFreq    ?? roadWiggleFreq
-      const smoothing     = geom?.smoothing     ?? roadSmoothing
-      const pathSmoothing = geom?.pathSmoothing ?? roadPathSmoothing
-
       const edges = Array.from({ length: numHexes - 1 }, (_, i) => ({
         q1: i, r1: 0, q2: i + 1, r2: 0, tier,
       }))
-      const { chains } = buildRoadChains(edges, hexIdx, {}, wiggleAmp, wiggleFreq, smoothing, pathSmoothing)
+
+      let chains: { tier: 0 | 1 | 2; chain: [number, number][] }[]
+      if (roadRenderVersion === 'v3') {
+        const result = buildRoadChainsV3(edges, hexIdx, {}, roadV3TierGeom)
+        chains = result.chains
+      } else {
+        const geom = roadTierGeometry[tier]
+        const wiggleAmp     = geom?.wiggleAmp     ?? roadWiggleAmp
+        const wiggleFreq    = geom?.wiggleFreq    ?? roadWiggleFreq
+        const smoothing     = geom?.smoothing     ?? roadSmoothing
+        const pathSmoothing = geom?.pathSmoothing ?? roadPathSmoothing
+        const result = buildRoadChains(edges, hexIdx, {}, wiggleAmp, wiggleFreq, smoothing, pathSmoothing)
+        chains = result.chains
+      }
 
       const tierStyles = DEFAULT_ROAD_TIER_STYLES.map(
         (def, idx) => idx === tier
@@ -162,7 +171,7 @@ function HexPreview({ mode, tier = 0 }: { mode: 'road' | 'rail'; tier?: 0 | 1 | 
   }, [
     mode, tier, W, H, cy, interHexDist, physicalScale,
     roadTierStyles, roadWiggleAmp, roadWiggleFreq, roadSmoothing, roadPathSmoothing,
-    roadTierGeometry, mapStyle,
+    roadTierGeometry, mapStyle, roadRenderVersion, roadV3TierGeom,
     railStyle, railWiggleAmp, railWiggleFreq, railSmoothing, railGeomOverride,
     generatedMetadata,
   ])
@@ -238,6 +247,7 @@ function RoadShapeFlyout({ onClose }: { onClose: () => void }) {
     roadWiggleFreq, setRoadWiggleFreq,
     roadPathSmoothing, setRoadPathSmoothing,
     roadSmoothing, setRoadSmoothing,
+    roadRenderVersion, setRoadRenderVersion,
   } = useMapStore()
 
   const isModified =
@@ -254,20 +264,37 @@ function RoadShapeFlyout({ onClose }: { onClose: () => void }) {
   }
 
   return (
-    <FlyoutShell title="Road shape" subtitle={isModified ? 'Modified from default' : 'Default for all tiers'} onClose={onClose}>
-      <MiniSlider label="Wiggle amp"   display={`${Math.round(roadWiggleAmp * 100)}%`} value={Math.round(roadWiggleAmp * 100)}  min={0} max={100} step={1}  accentColor={t.rust} onChange={v => setRoadWiggleAmp(v / 100)} />
-      <MiniSlider label="Wiggle freq"  display={roadWiggleFreq.toFixed(1)}               value={Math.round(roadWiggleFreq * 10)} min={5} max={100} step={1}  accentColor={t.rust} onChange={v => setRoadWiggleFreq(v / 10)} />
-      <MiniSlider label="Path smooth"  display={roadPathSmoothing}                        value={roadPathSmoothing}               min={0} max={50}  step={1}  accentColor={t.rust} onChange={setRoadPathSmoothing} />
-      <MiniSlider label="Line smooth"  display={roadSmoothing}                            value={roadSmoothing}                   min={0} max={30}  step={1}  accentColor={t.rust} onChange={setRoadSmoothing} />
-      {isModified && (
-        <div style={{ margin: '8px 12px 0', borderTop: `1px solid ${t.line2}`, paddingTop: 8 }}>
-          <button
-            onClick={handleReset}
-            style={{ width: '100%', padding: '4px 0', background: 'none', border: `1px solid ${t.line}`, color: t.inkMute, cursor: 'pointer', fontFamily: t.mono, fontSize: 9, letterSpacing: 0.5 }}
-          >
-            Reset to default
-          </button>
+    <FlyoutShell title="Road shape" subtitle={roadRenderVersion === 'v3' ? 'V3 pipeline active' : isModified ? 'Modified from default' : 'Default for all tiers'} onClose={onClose}>
+      <FSectionLabel label="Pipeline" />
+      <div style={{ padding: '4px 12px 6px' }}>
+        <SegmentedControl
+          options={[{ value: 'v2', label: 'Classic' }, { value: 'v3', label: 'V3 (new)' }]}
+          value={roadRenderVersion}
+          onChange={v => setRoadRenderVersion(v as 'v2' | 'v3')}
+        />
+      </div>
+      {roadRenderVersion === 'v3' ? (
+        <div style={{ padding: '4px 12px 8px', fontFamily: t.sans, fontSize: 10.5, color: t.inkMute, lineHeight: 1.5 }}>
+          Shape is configured per tier — open each tier's style flyout (⚙) to adjust corner rounding, path straightness, and segment variation.
         </div>
+      ) : (
+        <>
+          <FSectionDivider />
+          <MiniSlider label="Wiggle amp"   display={`${Math.round(roadWiggleAmp * 100)}%`} value={Math.round(roadWiggleAmp * 100)}  min={0} max={100} step={1}  accentColor={t.rust} onChange={v => setRoadWiggleAmp(v / 100)} />
+          <MiniSlider label="Wiggle freq"  display={roadWiggleFreq.toFixed(1)}               value={Math.round(roadWiggleFreq * 10)} min={5} max={100} step={1}  accentColor={t.rust} onChange={v => setRoadWiggleFreq(v / 10)} />
+          <MiniSlider label="Path smooth"  display={roadPathSmoothing}                        value={roadPathSmoothing}               min={0} max={50}  step={1}  accentColor={t.rust} onChange={setRoadPathSmoothing} />
+          <MiniSlider label="Line smooth"  display={roadSmoothing}                            value={roadSmoothing}                   min={0} max={30}  step={1}  accentColor={t.rust} onChange={setRoadSmoothing} />
+          {isModified && (
+            <div style={{ margin: '8px 12px 0', borderTop: `1px solid ${t.line2}`, paddingTop: 8 }}>
+              <button
+                onClick={handleReset}
+                style={{ width: '100%', padding: '4px 0', background: 'none', border: `1px solid ${t.line}`, color: t.inkMute, cursor: 'pointer', fontFamily: t.mono, fontSize: 9, letterSpacing: 0.5 }}
+              >
+                Reset to default
+              </button>
+            </div>
+          )}
+        </>
       )}
     </FlyoutShell>
   )
@@ -332,6 +359,7 @@ function RoadStyleFlyout({ tier, onClose }: { tier: 0 | 1 | 2; onClose: () => vo
     roadTierStyles, setRoadTierStyle,
     roadWiggleAmp, roadWiggleFreq, roadPathSmoothing, roadSmoothing,
     roadTierGeometry, setRoadTierGeometry, clearRoadTierGeometry,
+    roadRenderVersion, roadV3TierGeom, setRoadV3TierGeom, resetRoadV3TierGeom,
   } = useMapStore()
 
   const s = roadTierStyles[tier]
@@ -342,6 +370,13 @@ function RoadStyleFlyout({ tier, onClose }: { tier: 0 | 1 | 2; onClose: () => vo
   const overrideEnabled = geomOverride !== null
   const globalGeom = { wiggleAmp: roadWiggleAmp, wiggleFreq: roadWiggleFreq, pathSmoothing: roadPathSmoothing, smoothing: roadSmoothing }
   const effectiveGeom = geomOverride ?? globalGeom
+
+  const v3Geom = roadV3TierGeom[tier]
+  const defV3 = DEFAULT_ROAD_V3_TIER_GEOM[tier]
+  const v3Modified = v3Geom.cornerRoundness !== defV3.cornerRoundness ||
+    v3Geom.pathStraightness !== defV3.pathStraightness ||
+    v3Geom.segmentVariation !== defV3.segmentVariation ||
+    v3Geom.variationCharacter !== defV3.variationCharacter
 
   const isModified =
     s.outer !== def.outer || s.inner !== def.inner || s.outerW !== def.outerW ||
@@ -370,32 +405,52 @@ function RoadStyleFlyout({ tier, onClose }: { tier: 0 | 1 | 2; onClose: () => vo
         <SegmentedControl options={DASH_OPTIONS} value={s.caseDash} onChange={v => setRoadTierStyle(tier, { caseDash: v })} />
       </div>
 
-      <FSectionDivider />
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '6px 12px 4px' }}>
-        <span style={{ fontFamily: t.mono, fontSize: 8.5, letterSpacing: 0.8, color: t.inkFaint, textTransform: 'uppercase', fontWeight: 600 }}>Geometry override</span>
-        <button
-          onClick={() => {
-            if (overrideEnabled) clearRoadTierGeometry(tier)
-            else setRoadTierGeometry(tier, { ...globalGeom })
-          }}
-          style={{
-            width: 30, height: 16, flexShrink: 0,
-            background: overrideEnabled ? t.ink : t.line,
-            border: 'none', cursor: 'pointer', padding: 0, position: 'relative',
-          }}
-        >
-          <div style={{
-            position: 'absolute', top: 3, left: overrideEnabled ? 15 : 3,
-            width: 10, height: 10, background: t.surface, transition: 'left 0.12s ease',
-          }} />
-        </button>
-      </div>
-      <div style={{ opacity: overrideEnabled ? 1 : 0.35, pointerEvents: overrideEnabled ? 'auto' : 'none' }}>
+      {roadRenderVersion === 'v3' ? (
+        <>
+          <FSectionDivider />
+          <FSectionLabel label="Shape (V3)" />
+          <MiniSlider label="Corner round"  display={`${Math.round(v3Geom.cornerRoundness * 100)}%`}  value={Math.round(v3Geom.cornerRoundness * 100)}  min={0} max={100} step={1}  accentColor={tierColor} onChange={v => setRoadV3TierGeom(tier, { cornerRoundness: v / 100 })} />
+          <MiniSlider label="Straightness"  display={`${Math.round(v3Geom.pathStraightness * 100)}%`} value={Math.round(v3Geom.pathStraightness * 100)} min={0} max={100} step={1}  accentColor={tierColor} onChange={v => setRoadV3TierGeom(tier, { pathStraightness: v / 100 })} />
+          <MiniSlider label="Variation"     display={`${Math.round(v3Geom.segmentVariation * 100)}%`} value={Math.round(v3Geom.segmentVariation * 100)} min={0} max={60}  step={1}  accentColor={tierColor} onChange={v => setRoadV3TierGeom(tier, { segmentVariation: v / 100 })} />
+          <MiniSlider label="Var character" display={String(Math.round(v3Geom.variationCharacter))}   value={Math.round(v3Geom.variationCharacter)}      min={0} max={3}   step={1}  accentColor={tierColor} onChange={v => setRoadV3TierGeom(tier, { variationCharacter: v })} />
+          {v3Modified && (
+            <div style={{ padding: '4px 12px 0' }}>
+              <button onClick={() => resetRoadV3TierGeom(tier)} style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 0, fontFamily: t.mono, fontSize: 9, color: t.inkFaint, letterSpacing: 0.3 }}>
+                ↺ reset shape
+              </button>
+            </div>
+          )}
+        </>
+      ) : (
+        <>
+          <FSectionDivider />
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '6px 12px 4px' }}>
+            <span style={{ fontFamily: t.mono, fontSize: 8.5, letterSpacing: 0.8, color: t.inkFaint, textTransform: 'uppercase', fontWeight: 600 }}>Geometry override</span>
+            <button
+              onClick={() => {
+                if (overrideEnabled) clearRoadTierGeometry(tier)
+                else setRoadTierGeometry(tier, { ...globalGeom })
+              }}
+              style={{
+                width: 30, height: 16, flexShrink: 0,
+                background: overrideEnabled ? t.ink : t.line,
+                border: 'none', cursor: 'pointer', padding: 0, position: 'relative',
+              }}
+            >
+              <div style={{
+                position: 'absolute', top: 3, left: overrideEnabled ? 15 : 3,
+                width: 10, height: 10, background: t.surface, transition: 'left 0.12s ease',
+              }} />
+            </button>
+          </div>
+          <div style={{ opacity: overrideEnabled ? 1 : 0.35, pointerEvents: overrideEnabled ? 'auto' : 'none' }}>
         <MiniSlider label="Wiggle amp"  display={`${Math.round(effectiveGeom.wiggleAmp * 100)}%`} value={Math.round(effectiveGeom.wiggleAmp * 100)} min={0} max={100} step={1} accentColor={tierColor} onChange={v => setRoadTierGeometry(tier, { wiggleAmp: v / 100 })} />
         <MiniSlider label="Wiggle freq" display={effectiveGeom.wiggleFreq.toFixed(1)}              value={Math.round(effectiveGeom.wiggleFreq * 10)} min={5} max={100} step={1} accentColor={tierColor} onChange={v => setRoadTierGeometry(tier, { wiggleFreq: v / 10 })} />
         <MiniSlider label="Path smooth" display={effectiveGeom.pathSmoothing}                      value={effectiveGeom.pathSmoothing}               min={0} max={50}  step={1} accentColor={tierColor} onChange={v => setRoadTierGeometry(tier, { pathSmoothing: v })} />
         <MiniSlider label="Line smooth" display={effectiveGeom.smoothing}                          value={effectiveGeom.smoothing}                   min={0} max={30}  step={1} accentColor={tierColor} onChange={v => setRoadTierGeometry(tier, { smoothing: v })} />
-      </div>
+          </div>
+        </>
+      )}
 
       {isModified && (
         <div style={{ margin: '8px 12px 0', borderTop: `1px solid ${t.line2}`, paddingTop: 8 }}>

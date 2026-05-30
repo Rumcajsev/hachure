@@ -19,6 +19,8 @@ import { type MegaHexSlice, createMegaHexSlice } from './slices/megaHexSlice'
 import { type AreasSlice, createAreasSlice } from './slices/areasSlice'
 import { type PresetsSlice, createPresetsSlice } from './slices/presetsSlice'
 import { type MapImageSlice, createMapImageSlice } from './slices/mapImageSlice'
+import { type LabelOffsetsSlice, createLabelOffsetsSlice } from './slices/labelOffsetsSlice'
+export type { LabelBBox } from './slices/labelOffsetsSlice'
 import type { LabelSpec } from '../lib/labelPresets'
 
 export interface RoadGeomOverride {
@@ -34,6 +36,19 @@ export interface RailGeomOverride {
   pathSmoothing: number
   smoothing: number
 }
+
+export interface RoadV3TierGeom {
+  cornerRoundness: number
+  pathStraightness: number
+  segmentVariation: number
+  variationCharacter: number
+}
+
+export const DEFAULT_ROAD_V3_TIER_GEOM: [RoadV3TierGeom, RoadV3TierGeom, RoadV3TierGeom] = [
+  { cornerRoundness: 0.8, pathStraightness: 0.8, segmentVariation: 0.00, variationCharacter: 0 },
+  { cornerRoundness: 0.6, pathStraightness: 0.5, segmentVariation: 0.06, variationCharacter: 1 },
+  { cornerRoundness: 0.3, pathStraightness: 0.2, segmentVariation: 0.12, variationCharacter: 2 },
+]
 
 export interface MapArea {
   id: string
@@ -135,6 +150,7 @@ export type ActiveTool =
   | { type: 'areas-erase' }
   | { type: 'align-image' }
   | { type: 'blob-draw'; mode: 'add' | 'cut' }
+  | { type: 'label-drag' }
 
 export type MapMode = 'single' | 'diptych'
 export type DiptychJoin = 'long' | 'short'
@@ -669,7 +685,8 @@ export type MapStore =
   MegaHexSlice &
   AreasSlice &
   PresetsSlice &
-  MapImageSlice
+  MapImageSlice &
+  LabelOffsetsSlice
 
 export const useMapStore = create<MapStore>()(persist((set, get) => ({
   ...createSetupSlice(set, get),
@@ -689,6 +706,7 @@ export const useMapStore = create<MapStore>()(persist((set, get) => ({
   ...createAreasSlice(set, get),
   ...createPresetsSlice(set, get),
   ...createMapImageSlice(set, get),
+  ...createLabelOffsetsSlice(set),
 }), {
   name: 'ig2-map-store',
   storage: createJSONStorage(() => ({
@@ -775,6 +793,8 @@ export const useMapStore = create<MapStore>()(persist((set, get) => ({
     roadSnapBindings: s.roadSnapBindings,
     roadPathSmoothing: s.roadPathSmoothing,
     roadDensityMinChain: s.roadDensityMinChain,
+    roadRenderVersion: s.roadRenderVersion,
+    roadV3TierGeom: s.roadV3TierGeom,
     railStyle: s.railStyle,
     railControlOverrides: s.railControlOverrides,
     railSnapBindings: s.railSnapBindings,
@@ -883,8 +903,9 @@ export const useMapStore = create<MapStore>()(persist((set, get) => ({
     mapImageTransform: s.mapImageTransform,
     mapImageOpacity: s.mapImageOpacity,
     mapTitle: s.mapTitle,
+    labelOffsets: s.labelOffsets,
   }),
-  version: 61,
+  version: 63,
   migrate: migratePersisted,
   merge: (persisted, current) => rehydrateState({ ...current, ...(persisted as Partial<MapStore>) }),
 }))

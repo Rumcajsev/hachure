@@ -14,6 +14,7 @@ const RIVER_V2 = true
 import { drawRivers as _drawRivers } from '../lib/drawRivers'
 import { buildRoadChains, buildRailChains, spineSideCpKey, applyRoadWiggle, applyRailWiggle } from '../lib/roadChains'
 import { buildRoadChainsV2, applyRoadWiggleV2 } from '../lib/roadChainsV2'
+import { buildRoadChainsV3 } from '../lib/roadChainsV3'
 import { drawHighlights as _drawHighlights } from '../lib/drawHighlights'
 import { drawAreas as _drawAreas } from '../lib/drawAreas'
 import { drawIcons as _drawIcons } from '../lib/drawIcons'
@@ -150,7 +151,7 @@ export const TerrainViewCanvas = forwardRef<TerrainViewCanvasHandle, { surroundC
     roadEdges, railEdges, rawRoadWays, rawRailWays, roadTierStyles, railStyle,
     showRawOsmRoads, osmHighlightTier, osmSpotlightMode, osmSpotlightRadius, osmSpotlightTiers,
     osmRailHexPaths, osmRailHighlight,
-    osmRiverWays, hoveredOsmRiverIdx,
+    osmRiverWays, hoveredOsmRiverIdx, appliedOsmRiverIndices,
     roadPaintMode, roadPaintBrush, roadPaintEraser,
     railPaintMode, railPaintEraser,
     railNodeEditMode,
@@ -168,6 +169,7 @@ export const TerrainViewCanvas = forwardRef<TerrainViewCanvasHandle, { surroundC
     roadSnapBindings, setRoadSnapBinding, deleteRoadSnapBinding,
     roadNodeEditMode,
     roadWiggleAmp, roadWiggleFreq, roadSmoothing, roadPathSmoothing, roadTierGeometry, roadDensityMinChain, roadWiggleDragging,
+    roadRenderVersion, roadV3TierGeom,
     roadChainOverrides, setRoadChainOverride,
     riverEdges, canalEdges,
     riverEditMode, canalEditMode, toggleRiverEdge, toggleCanalEdge,
@@ -244,6 +246,7 @@ export const TerrainViewCanvas = forwardRef<TerrainViewCanvasHandle, { surroundC
     mapImageDataUrl, mapImageTransform, mapImageOpacity, setMapImageTransform,
     dataSource,
     blobPatches, addBlobPatch, deleteBlobPatch,
+    labelOffsets, setLabelOffset, clearAllLabelOffsets,
   } = useMapStore()
   // dev-only: expose store for dry-run console injection
   useEffect(() => { (window as any).__mapStore = useMapStore }, [])
@@ -293,7 +296,17 @@ export const TerrainViewCanvas = forwardRef<TerrainViewCanvasHandle, { surroundC
   const osmRailHexPathsRef = useRef(osmRailHexPaths)
   const osmRailHighlightRef = useRef(osmRailHighlight)
   const osmRiverWaysRef = useRef(osmRiverWays)
+  const appliedOsmRiverIndicesRef = useRef(appliedOsmRiverIndices)
   const hoveredOsmRiverIdxRef = useRef(hoveredOsmRiverIdx)
+  const labelOffsetsRef = useRef(labelOffsets)
+  // Populated each draw pass when either layer rebuilds; used for hit-testing in label-drag mode
+  const labelBBoxCacheRef = useRef<Record<string, import('../store/slices/labelOffsetsSlice').LabelBBox>>({})
+  // Live offset applied during an in-progress drag (not yet committed to the store)
+  const liveLabelOffsetRef = useRef<{ id: string; dx: number; dy: number } | null>(null)
+  // Drag state: which label is being dragged and where the drag started
+  const labelDragStateRef = useRef<{ id: string; startLx: number; startLy: number; startDx: number; startDy: number } | null>(null)
+  // ID of the label currently under the cursor in label-drag mode (for hover highlight)
+  const hoveredLabelIdRef = useRef<string | null>(null)
   const spotlightCursorRef = useRef<{ lx: number; ly: number } | null>(null)
   const spotlightRafRef = useRef<number | null>(null)
   const roadTierStylesRef = useRef(roadTierStyles)
@@ -573,7 +586,9 @@ export const TerrainViewCanvas = forwardRef<TerrainViewCanvasHandle, { surroundC
   osmRailHexPathsRef.current = osmRailHexPaths
   osmRailHighlightRef.current = osmRailHighlight
   osmRiverWaysRef.current = osmRiverWays
+  appliedOsmRiverIndicesRef.current = appliedOsmRiverIndices
   hoveredOsmRiverIdxRef.current = hoveredOsmRiverIdx
+  labelOffsetsRef.current = labelOffsets
   roadTierStylesRef.current = roadTierStyles
   railStyleRef.current = railStyle
   bridgesEnabledRef.current = bridgesEnabled
@@ -994,6 +1009,19 @@ export const TerrainViewCanvas = forwardRef<TerrainViewCanvasHandle, { surroundC
   const smoothedRoadDataV2Ref = useRef(smoothedRoadDataV2)
   smoothedRoadDataV2Ref.current = smoothedRoadDataV2
 
+  const roadDataV3 = useMemo(
+    () => roadRenderVersion === 'v3'
+      ? buildRoadChainsV3(roadEdges, hexCenterIdx, roadControlOverrides, roadV3TierGeom)
+      : null,
+    [roadEdges, hexCenterIdx, roadControlOverrides, roadV3TierGeom, roadRenderVersion],
+  )
+  const roadDataV3Ref = useRef(roadDataV3)
+  roadDataV3Ref.current = roadDataV3
+  const roadV3TierGeomRef = useRef(roadV3TierGeom)
+  roadV3TierGeomRef.current = roadV3TierGeom
+  const roadRenderVersionRef = useRef(roadRenderVersion)
+  roadRenderVersionRef.current = roadRenderVersion
+
   // Memoize paper dims, projected hex coords, and default blob geometry outside draw().
   // These are all stable across zoom/pan (which is handled by canvas transform, not coordinate recalculation),
   // so caching them here means draw() skips the expensive recomputation on every scroll/zoom frame.
@@ -1371,6 +1399,17 @@ export const TerrainViewCanvas = forwardRef<TerrainViewCanvasHandle, { surroundC
     if (!canvas || !meta || (!exportTarget && frameCssW === 0) || hexes.length === 0) return
     const ctx = canvas.getContext('2d')
     if (!ctx) return
+
+    // Reset bbox cache so it's freshly populated by this draw pass
+    if (!exportTarget) labelBBoxCacheRef.current = {}
+
+    // When a label is being live-dragged, force the appropriate layer to rebuild
+    // so the new position is rendered and the bbox is accurate for hit-testing
+    const live = liveLabelOffsetRef.current
+    if (!exportTarget && live) {
+      if (live.id.startsWith('river:')) riversDirtyRef.current = true
+      else if (live.id.startsWith('settlement:')) settlementsDirtyRef.current = true
+    }
 
     const getPattern = (img: HTMLImageElement): CanvasPattern | null => {
       const cache = patternCacheRef.current
@@ -1872,9 +1911,14 @@ export const TerrainViewCanvas = forwardRef<TerrainViewCanvasHandle, { surroundC
       project,
       showRiverLabels: showRiverLabelsRef.current,
       riverLabelData: showRiverLabelsRef.current
-        ? osmRiverWaysRef.current.filter(w => w.name).map(w => ({ name: w.name, coords: w.coords }))
+        ? osmRiverWaysRef.current
+            .filter((w, i) => w.name && appliedOsmRiverIndicesRef.current.includes(i))
+            .map(w => ({ name: w.name, coords: w.coords }))
         : undefined,
       waterLabelSpec: resolvedLabelSpecsRef.current.water,
+      labelOffsets: labelOffsetsRef.current,
+      liveLabelOffset: liveLabelOffsetRef.current ?? undefined,
+      labelBBoxOut: labelBBoxCacheRef.current,
     }
 
     // Compute drag state upfront — needed for both river and road live previews below
@@ -1999,39 +2043,48 @@ export const TerrainViewCanvas = forwardRef<TerrainViewCanvasHandle, { surroundC
       return Object.keys(map).length > 0 ? map : undefined
     })()
 
-    const liveRoadData = isDraggingCP
-      ? buildRoadChainsV2(
-          roadEdgesRef.current,
-          hexIdxRef.current as Map<string, { center: [number, number] }>,
-          { ...roadControlOverridesRef.current, ...dragLiveOverrideRef.current },
-          roadWiggleAmpRef.current,
-          roadWiggleFreqRef.current,
-          roadSmoothingRef.current,
-          roadPathSmoothingRef.current,
-          roadChainOverridesRef.current,
-          roadSegmentPropsRef.current,
-          roadHopPropsRef.current,
-          undefined,
-          0,
-          liveTierGeomMap,
-        )
-      : isDraggingDense
+    const liveRoadData = roadRenderVersionRef.current === 'v3'
+      ? (isDraggingCP
+          ? buildRoadChainsV3(
+              roadEdgesRef.current,
+              hexIdxRef.current as Map<string, { center: [number, number] }>,
+              { ...roadControlOverridesRef.current, ...dragLiveOverrideRef.current },
+              roadV3TierGeomRef.current,
+            )
+          : roadDataV3Ref.current ?? smoothedRoadDataRef.current)
+      : isDraggingCP
         ? buildRoadChainsV2(
             roadEdgesRef.current,
             hexIdxRef.current as Map<string, { center: [number, number] }>,
-            roadControlOverridesRef.current,
+            { ...roadControlOverridesRef.current, ...dragLiveOverrideRef.current },
             roadWiggleAmpRef.current,
             roadWiggleFreqRef.current,
             roadSmoothingRef.current,
             roadPathSmoothingRef.current,
-            liveChainOverrides,
+            roadChainOverridesRef.current,
             roadSegmentPropsRef.current,
             roadHopPropsRef.current,
             undefined,
             0,
             liveTierGeomMap,
           )
-        : smoothedRoadDataV2Ref.current ?? smoothedRoadDataRef.current
+        : isDraggingDense
+          ? buildRoadChainsV2(
+              roadEdgesRef.current,
+              hexIdxRef.current as Map<string, { center: [number, number] }>,
+              roadControlOverridesRef.current,
+              roadWiggleAmpRef.current,
+              roadWiggleFreqRef.current,
+              roadSmoothingRef.current,
+              roadPathSmoothingRef.current,
+              liveChainOverrides,
+              roadSegmentPropsRef.current,
+              roadHopPropsRef.current,
+              undefined,
+              0,
+              liveTierGeomMap,
+            )
+          : smoothedRoadDataV2Ref.current ?? smoothedRoadDataRef.current
 
     const liveRailGeomOverride = railGeomOverrideRef.current ?? undefined
     const liveRailData = isDraggingRailCP
@@ -2226,7 +2279,7 @@ export const TerrainViewCanvas = forwardRef<TerrainViewCanvasHandle, { surroundC
           oCtx.rect(px, py, pw, ph)
           oCtx.clip()
           const activeRoadChainsS = smoothedRoadDataV2Ref.current ? smoothedRoadDataV2Ref.current.chains : smoothedRoadDataRef.current.chains
-          _drawSettlements(oCtx, { settlements: settlementsRef.current, tierStyles: settlementTierStylesRef.current, labelSpecs: resolvedLabelSpecsRef.current, roadChains: activeRoadChainsS, railChains: smoothedRailDataRef.current.chains, project, hexCenterOf: (q, r) => { const h = hexesRef.current.find(h => h.q === q && h.r === r); return h ? project(h.center[0], h.center[1]) : null }, hexRadiusPx: hexRadiusRef.current })
+          _drawSettlements(oCtx, { settlements: settlementsRef.current, tierStyles: settlementTierStylesRef.current, labelSpecs: resolvedLabelSpecsRef.current, roadChains: activeRoadChainsS, railChains: smoothedRailDataRef.current.chains, project, hexCenterOf: (q, r) => { const h = hexesRef.current.find(h => h.q === q && h.r === r); return h ? project(h.center[0], h.center[1]) : null }, hexRadiusPx: hexRadiusRef.current, labelOffsets: labelOffsetsRef.current, liveLabelOffset: liveLabelOffsetRef.current ?? undefined, labelBBoxOut: labelBBoxCacheRef.current })
           oCtx.restore()
           settlementsLayerRef.current = offscreen
           settlementsDirtyRef.current = false
