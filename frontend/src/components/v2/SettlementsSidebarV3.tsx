@@ -13,7 +13,7 @@ import {
   BrushRow, MiniSlider, InlineColorSwatch, SegmentedControl,
   StripShell, FlyoutShell, V2Divider, TriggerRow, TGap, ToggleRow,
 } from './sidebar'
-import { LABEL_PRESETS, resolveLabels } from '../../lib/labelPresets'
+import { resolveLabels } from '../../lib/labelPresets'
 import type { LabelCategory, LabelSpec } from '../../lib/labelPresets'
 import { LabelSpecEditorRows } from './LabelSpecEditor'
 
@@ -24,7 +24,6 @@ type FlyoutState =
   | { kind: 'urban' }
   | { kind: 'osm' }
   | { kind: 'label'; index: number }
-  | { kind: 'settlement-labels' }
   | null
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -71,10 +70,25 @@ function SubLabel({ label }: { label: string }) {
 
 // ── TierStyleFlyout ───────────────────────────────────────────────────────────
 
+const TIER_CATEGORY_MAP: Record<SettlementTier, LabelCategory> = {
+  1: 'cityMajor', 2: 'cityMinor', 3: 'town', 4: 'village',
+}
+
+const TIER_PREVIEW_TEXT: Record<SettlementTier, string> = {
+  1: 'Berlin', 2: 'Leipzig', 3: 'Goslar', 4: 'Wesel',
+}
+
 function TierStyleFlyout({ tier, onClose }: { tier: SettlementTier; onClose: () => void }) {
   const t = useTheme()
-  const { settlementTierStyles, setSettlementTierStyle } = useMapStore()
+  const {
+    settlementTierStyles, setSettlementTierStyle,
+    labelPresetId, labelOverrides, setLabelCategoryOverride, resetLabelCategoryOverride,
+  } = useMapStore()
   const style = settlementTierStyles[tier]
+  const cat = TIER_CATEGORY_MAP[tier]
+  const labelSpec = resolveLabels(labelPresetId, labelOverrides)[cat]
+  const labelOverride = labelOverrides[cat]
+  const hasLabelOverride = !!labelOverride && Object.keys(labelOverride).length > 0
 
   return (
     <FlyoutShell title={TIER_LABELS[tier]} onClose={onClose}>
@@ -174,6 +188,19 @@ function TierStyleFlyout({ tier, onClose }: { tier: SettlementTier; onClose: () 
           </div>
         </div>
       )}
+
+      <div style={{ borderTop: `1px solid ${t.line}` }}>
+        <SubLabel label="Label" />
+        <div style={{ padding: '2px 14px 12px' }}>
+          <LabelSpecEditorRows
+            spec={labelSpec}
+            previewText={TIER_PREVIEW_TEXT[tier]}
+            onChange={p => setLabelCategoryOverride(cat, p)}
+            onReset={() => resetLabelCategoryOverride(cat)}
+            hasOverride={hasLabelOverride}
+          />
+        </div>
+      </div>
     </FlyoutShell>
   )
 }
@@ -343,15 +370,6 @@ function OsmSettlementsFlyout({ onClose }: { onClose: () => void }) {
 
 // ── SettlementsSidebarV3 ──────────────────────────────────────────────────────
 
-const TIER_CATEGORY_MAP: Record<SettlementTier, LabelCategory> = {
-  1: 'cityMajor', 2: 'cityMinor', 3: 'town', 4: 'village',
-}
-
-const TIER_CATEGORY_LABELS: Record<LabelCategory, string> = {
-  cityMajor: 'City I', cityMinor: 'City II', town: 'Town', village: 'Village',
-  water: '', terrain: '', hexRef: '',
-}
-
 function SettlementLabelFlyout({ index, onClose }: { index: number; onClose: () => void }) {
   const { settlements, updateSettlement, labelPresetId, labelOverrides } = useMapStore()
   const s = settlements[index]
@@ -380,157 +398,6 @@ function SettlementLabelFlyout({ index, onClose }: { index: number; onClose: () 
   )
 }
 
-// ── SettlementLabelsGlobalFlyout ──────────────────────────────────────────────
-
-function CategoryOverrideRow({
-  cat,
-  label,
-  base,
-  override,
-  onPatch,
-  onReset,
-}: {
-  cat: LabelCategory
-  label: string
-  base: LabelSpec
-  override?: Partial<LabelSpec>
-  onPatch: (p: Partial<LabelSpec>) => void
-  onReset: () => void
-}) {
-  const t = useTheme()
-  const [open, setOpen] = useState(false)
-  const hasOverride = override && Object.keys(override).length > 0
-  const resolved: LabelSpec = { ...base, ...(override ?? {}) }
-
-  return (
-    <div style={{ borderBottom: `1px solid ${t.line2}` }}>
-      <div
-        onClick={() => setOpen(v => !v)}
-        style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '6px 14px', cursor: 'pointer' }}
-      >
-        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-          {hasOverride && <div style={{ width: 5, height: 5, borderRadius: '50%', background: '#7de0a0', flexShrink: 0 }} />}
-          <span style={{ fontFamily: t.mono, fontSize: 10, color: t.ink }}>{label}</span>
-        </div>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-          <span style={{
-            fontFamily: resolved.family.split(',')[0].replace(/"/g, ''),
-            fontSize: 11, fontStyle: resolved.italic ? 'italic' : 'normal',
-            fontWeight: resolved.weight, color: resolved.color,
-          }}>Aa</span>
-          <span style={{ fontFamily: t.mono, fontSize: 9, color: t.inkFaint }}>{open ? '▲' : '▼'}</span>
-        </div>
-      </div>
-      {open && (
-        <div style={{ padding: '4px 14px 10px' }}>
-          <LabelSpecEditorRows
-            spec={resolved}
-            onChange={onPatch}
-            onReset={onReset}
-            hasOverride={!!hasOverride}
-          />
-        </div>
-      )}
-    </div>
-  )
-}
-
-function SettlementLabelsGlobalFlyout({ onClose }: { onClose: () => void }) {
-  const t = useTheme()
-  const {
-    showSettlementLabels, setShowSettlementLabels,
-    labelPresetId, setLabelPresetId,
-    labelOverrides, setLabelCategoryOverride, resetLabelCategoryOverride, resetAllLabelOverrides,
-    activeTool, setActiveTool, labelOffsets, clearAllLabelOffsets,
-  } = useMapStore()
-  const resolved = resolveLabels(labelPresetId, labelOverrides)
-  const hasAnyOverride = (['cityMajor', 'cityMinor', 'town', 'village'] as LabelCategory[]).some(
-    c => labelOverrides[c] && Object.keys(labelOverrides[c]!).length > 0
-  )
-  const isDragMode = activeTool.type === 'label-drag'
-  const hasAnyOffset = Object.keys(labelOffsets).length > 0
-
-  return (
-    <FlyoutShell title="Label Style" onClose={onClose}>
-      <div style={{ padding: '4px 0 2px' }}>
-        <ToggleRow label="Show labels" checked={showSettlementLabels} onChange={setShowSettlementLabels} />
-      </div>
-      <div style={{ padding: '4px 14px 8px', borderTop: `1px solid ${t.line2}`, display: 'flex', alignItems: 'center', gap: 8 }}>
-        <button
-          onClick={() => setActiveTool(isDragMode ? { type: 'none' } : { type: 'label-drag' })}
-          style={{
-            flex: 1, padding: '5px 10px', borderRadius: 4, border: `1px solid ${isDragMode ? t.accent : t.line}`,
-            background: isDragMode ? t.accent : t.bg2, color: isDragMode ? '#fff' : t.ink,
-            fontFamily: t.mono, fontSize: 11, cursor: 'pointer',
-          }}
-        >
-          {isDragMode ? '✕ Done moving' : '⊹ Move labels'}
-        </button>
-        {hasAnyOffset && (
-          <button
-            onClick={clearAllLabelOffsets}
-            title="Reset all label positions"
-            style={{ padding: '5px 8px', borderRadius: 4, border: `1px solid ${t.line}`, background: t.bg2, color: t.inkFaint, fontFamily: t.mono, fontSize: 11, cursor: 'pointer' }}
-          >
-            ↺
-          </button>
-        )}
-      </div>
-
-      <div style={{ borderTop: `1px solid ${t.line2}`, padding: '8px 14px 4px' }}>
-        <div style={{ fontFamily: t.mono, fontSize: 9, letterSpacing: 0.8, color: t.inkFaint, textTransform: 'uppercase', marginBottom: 6 }}>
-          Preset
-        </div>
-        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>
-          {LABEL_PRESETS.map(p => {
-            const active = labelPresetId === p.id
-            return (
-              <button
-                key={p.id}
-                onClick={() => setLabelPresetId(p.id)}
-                style={{
-                  padding: '3px 9px', fontFamily: t.mono, fontSize: 9, letterSpacing: 0.2,
-                  background: active ? t.ink : 'transparent',
-                  color: active ? t.surface : t.inkMute,
-                  border: `1px solid ${active ? t.ink : t.line}`,
-                  cursor: 'pointer',
-                }}
-              >
-                {p.name}
-              </button>
-            )
-          })}
-        </div>
-        {hasAnyOverride && (
-          <button onClick={resetAllLabelOverrides} style={{
-            marginTop: 6, padding: '2px 10px', fontFamily: t.mono, fontSize: 9,
-            background: 'transparent', color: t.inkMute, border: `1px solid ${t.line}`, cursor: 'pointer',
-          }}>
-            ↺ Clear all overrides
-          </button>
-        )}
-      </div>
-
-      <div style={{ borderTop: `1px solid ${t.line}` }}>
-        {([1, 2, 3, 4] as SettlementTier[]).map(tier => {
-          const cat = TIER_CATEGORY_MAP[tier]
-          return (
-            <CategoryOverrideRow
-              key={tier}
-              cat={cat}
-              label={TIER_CATEGORY_LABELS[cat]}
-              base={resolved[cat]}
-              override={labelOverrides[cat]}
-              onPatch={p => setLabelCategoryOverride(cat, p)}
-              onReset={() => resetLabelCategoryOverride(cat)}
-            />
-          )
-        })}
-      </div>
-    </FlyoutShell>
-  )
-}
-
 export function SettlementsSidebarV3() {
   const t = useTheme()
   const {
@@ -540,9 +407,13 @@ export function SettlementsSidebarV3() {
     deleteSettlement, updateSettlement,
     settlementMoveIndex, setSettlementMoveIndex,
     urbanHexes, urbanPaintMode,
-    setActiveTool,
+    activeTool, setActiveTool,
+    labelOffsets, clearAllLabelOffsets,
+    showSettlementLabels, setShowSettlementLabels,
     dataSource,
   } = useMapStore()
+  const isDragMode = activeTool.type === 'label-drag'
+  const hasAnyOffset = Object.keys(labelOffsets).length > 0
 
   const [flyout, setFlyout] = useState<FlyoutState>(null)
   const [editingName, setEditingName] = useState<number | null>(null)
@@ -703,7 +574,23 @@ export function SettlementsSidebarV3() {
 
         <TGap />
         <V2Divider label="Labels" />
-        <TriggerRow label="Label Style" active={flyout?.kind === 'settlement-labels'} onClick={() => setFlyout(prev => prev?.kind === 'settlement-labels' ? null : { kind: 'settlement-labels' })} />
+        <ToggleRow label="Show labels" checked={showSettlementLabels} onChange={setShowSettlementLabels} />
+        <BrushRow
+          label="Move labels"
+          color={isDragMode ? '#c07040' : t.inkFaint}
+          active={isDragMode}
+          onSelect={() => setActiveTool(isDragMode ? { type: 'none' } : { type: 'label-drag' })}
+        />
+        {hasAnyOffset && (
+          <div style={{ padding: '2px 10px 4px' }}>
+            <button
+              onClick={clearAllLabelOffsets}
+              style={{ background: 'none', border: `1px solid ${t.line}`, color: t.inkFaint, cursor: 'pointer', fontFamily: t.mono, fontSize: 9, padding: '2px 8px', letterSpacing: 0.3, width: '100%' }}
+            >
+              ↺ Reset positions
+            </button>
+          </div>
+        )}
 
       </StripShell>
 
@@ -718,9 +605,6 @@ export function SettlementsSidebarV3() {
       )}
       {flyout?.kind === 'label' && (
         <SettlementLabelFlyout index={flyout.index} onClose={() => setFlyout(null)} />
-      )}
-      {flyout?.kind === 'settlement-labels' && (
-        <SettlementLabelsGlobalFlyout onClose={() => setFlyout(null)} />
       )}
 
     </div>
