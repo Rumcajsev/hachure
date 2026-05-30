@@ -27,7 +27,6 @@ export type DrawTerrainParams = {
   terrainTextureOpacities: Record<string, number>
   terrainTextureTintColors: Record<string, string>
   terrainTextureTintOpacities: Record<string, number>
-  terrainTextureFillOnly: Record<string, boolean>
   /** terrain name → loaded texture image */
   terrainTextures: Map<string, HTMLImageElement | null>
   px: number; py: number; pw: number; ph: number
@@ -255,7 +254,7 @@ export function drawTerrain(tCtx: Ctx, params: DrawTerrainParams): void {
   const {
     projected, edgeMode, inMargin,
     terrainColors, terrainTextureScales, terrainTextureBlendModes, terrainTextureOpacities,
-    terrainTextureTintColors, terrainTextureTintOpacities, terrainTextureFillOnly, terrainTextures,
+    terrainTextureTintColors, terrainTextureTintOpacities, terrainTextures,
     px, py, pw, ph,
     backgroundTerrainBlobs, defaultTerrainBlobs, defaultLakeBlobs,
     terrainBlobOverrides, lakeOverrides,
@@ -366,13 +365,12 @@ export function drawTerrain(tCtx: Ctx, params: DrawTerrainParams): void {
       if (polys.length === 0) continue
       const rawMode = terrainTextureBlendModes[terrain] ?? 'multiply'
       const isColorMode = rawMode === 'color' || rawMode === 'color-bg'
-      const fillOnly = (terrainTextureFillOnly[terrain] ?? false) || isColorMode
       const tex = terrainTextures.get(terrain) ?? null
       const texBlend = rawMode as GlobalCompositeOperation
       const texOpacity = terrainTextureOpacities[terrain] ?? 0.6
       const texTint = isColorMode ? (terrainColors[terrain] ?? '') : (terrainTextureTintColors[terrain] ?? '')
       const texTintOpacity = isColorMode ? 1.0 : (terrainTextureTintOpacities[terrain] ?? 0.5)
-      if (!fillOnly) {
+      if (!isColorMode) {
         tCtx.fillStyle = terrainColors[terrain] ?? '#cccccc'
         tCtx.beginPath()
         for (const poly of polys) {
@@ -419,7 +417,6 @@ export function drawTerrain(tCtx: Ctx, params: DrawTerrainParams): void {
 
       const rawMode = terrainTextureBlendModes[terrain] ?? 'multiply'
       const isColorMode = rawMode === 'color' || rawMode === 'color-bg'
-      const fillOnly = (terrainTextureFillOnly[terrain] ?? false) || isColorMode
       const tex = terrainTextures.get(terrain) ?? null
       const texBlend = rawMode as GlobalCompositeOperation
       const texOpacity = terrainTextureOpacities[terrain] ?? 0.6
@@ -428,7 +425,7 @@ export function drawTerrain(tCtx: Ctx, params: DrawTerrainParams): void {
 
       // a. Fill default polys (cut patches traced as even-odd holes)
       if (defaultPolys.length > 0) {
-        if (!fillOnly) {
+        if (!isColorMode) {
           tCtx.fillStyle = terrainColors[terrain] ?? '#cccccc'
           tCtx.beginPath()
           for (const poly of defaultPolys) {
@@ -480,7 +477,7 @@ export function drawTerrain(tCtx: Ctx, params: DrawTerrainParams): void {
         )
         const ovPolys = ovBlobs.find(b => b.terrain === terrain)?.polys ?? []
 
-        if (!fillOnly) {
+        if (!isColorMode) {
           const ovColor = override.color ?? terrainColors[terrain] ?? '#cccccc'
           tCtx.fillStyle = ovColor
           tCtx.beginPath()
@@ -505,7 +502,7 @@ export function drawTerrain(tCtx: Ctx, params: DrawTerrainParams): void {
       for (const patch of addPatches) {
         if (patch.points.length < 3) continue
         const aPts = perturbPatch(patch.points, terrainBlobParams, R, patchSeed(patch.id))
-        if (!fillOnly) {
+        if (!isColorMode) {
           tCtx.fillStyle = terrainColors[terrain] ?? '#cccccc'
           tCtx.beginPath()
           tCtx.moveTo(aPts[0][0], aPts[0][1])
@@ -604,7 +601,7 @@ export function drawTerrain(tCtx: Ctx, params: DrawTerrainParams): void {
       const hexTerrainSet = chain.terrain === 'clear' ? undefined : terrainToHexes.get(chain.terrain)
       const polys = buildEdgeBlobPolys(chain, hexVertMap, chainParams, R, hexTerrainSet)
       if (polys.length === 0) continue
-      if (!(terrainTextureFillOnly[chain.terrain] ?? false)) {
+      {
         const color = override?.color ?? terrainColors[chain.terrain] ?? '#cccccc'
         tCtx.fillStyle = color
         for (const poly of polys) {

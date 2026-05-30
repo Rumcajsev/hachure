@@ -47,7 +47,6 @@ export type TerrainSlice = {
   terrainTextureOpacities: Record<string, number>
   terrainTextureTintColors: Record<string, string>
   terrainTextureTintOpacities: Record<string, number>
-  terrainTextureFillOnly: Record<string, boolean>
   terrainTextureFile: Record<string, string>
   terrainTextureEnabled: Record<string, boolean>
   terrainBlobOverrides: Record<string, BlobOverride>
@@ -128,7 +127,6 @@ export type TerrainSlice = {
   setTerrainTextureOpacity: (terrain: string, opacity: number) => void
   setTerrainTextureTintColor: (terrain: string, color: string) => void
   setTerrainTextureTintOpacity: (terrain: string, opacity: number) => void
-  setTerrainTextureFillOnly: (terrain: string, v: boolean) => void
   setTerrainTextureFile: (terrain: string, fileId: string) => void
   setTerrainTextureEnabled: (terrain: string, v: boolean) => void
   setTerrainBlobOverride: (key: string, override: BlobOverride | null) => void
@@ -212,7 +210,6 @@ export const createTerrainSlice = (set: Set, get: () => MapStore): TerrainSlice 
   terrainTextureOpacities: {},
   terrainTextureTintColors: {},
   terrainTextureTintOpacities: {},
-  terrainTextureFillOnly: {},
   terrainTextureFile: {},
   terrainTextureEnabled: {},
   terrainBlobOverrides: {},
@@ -717,7 +714,6 @@ export const createTerrainSlice = (set: Set, get: () => MapStore): TerrainSlice 
   setTerrainTextureOpacity: (terrain, opacity) => set((s) => ({ terrainTextureOpacities: { ...s.terrainTextureOpacities, [terrain]: opacity } })),
   setTerrainTextureTintColor: (terrain, color) => set((s) => ({ terrainTextureTintColors: { ...s.terrainTextureTintColors, [terrain]: color } })),
   setTerrainTextureTintOpacity: (terrain, opacity) => set((s) => ({ terrainTextureTintOpacities: { ...s.terrainTextureTintOpacities, [terrain]: opacity } })),
-  setTerrainTextureFillOnly: (terrain, v) => set((s) => ({ terrainTextureFillOnly: { ...s.terrainTextureFillOnly, [terrain]: v } })),
   setTerrainTextureFile: (terrain, fileId) => set((s) => ({ terrainTextureFile: { ...s.terrainTextureFile, [terrain]: fileId } })),
   setTerrainTextureEnabled: (terrain, v) => set((s) => ({ terrainTextureEnabled: { ...s.terrainTextureEnabled, [terrain]: v } })),
 

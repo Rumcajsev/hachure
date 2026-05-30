@@ -542,7 +542,6 @@ function TerrainCogFlyout({ terrain, onClose }: { terrain: string; onClose: () =
     terrainTextureScales, setTerrainTextureScale,
     terrainTextureBlendModes, setTerrainTextureBlendMode,
     terrainTextureOpacities, setTerrainTextureOpacity,
-    terrainTextureFillOnly, setTerrainTextureFillOnly,
     terrainTextureFile, setTerrainTextureFile,
     terrainTextureEnabled, setTerrainTextureEnabled,
     terrainTypeBlobStyles, setTerrainTypeBlobStyle,
@@ -559,7 +558,6 @@ function TerrainCogFlyout({ terrain, onClose }: { terrain: string; onClose: () =
   const textureScale = terrainTextureScales[terrain] ?? 3
   const textureBlendMode: GlobalCompositeOperation = terrainTextureBlendModes[terrain] ?? 'multiply'
   const textureOpacity = terrainTextureOpacities[terrain] ?? (terrain === 'clear' ? 0.3 : 0.6)
-  const fillOnly = terrainTextureFillOnly[terrain] ?? false
 
   const typeStyle = terrainTypeBlobStyles[terrain]
   const overrideEnabled = typeStyle?.enabled ?? false
@@ -646,25 +644,36 @@ function TerrainCogFlyout({ terrain, onClose }: { terrain: string; onClose: () =
           }} />
         </div>
         {textureEnabled && <div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '4px 14px' }}>
-            <span style={{ fontFamily: tk.sans, fontSize: 11, color: tk.ink2, flexShrink: 0, width: 96 }}>File</span>
-            <select
-              value={textureFileId}
-              onChange={e => setTerrainTextureFile(terrain, e.target.value)}
-              style={{
-                flex: 1, background: tk.surface, color: tk.ink,
-                border: `1px solid ${tk.line}`, borderRadius: 2,
-                fontFamily: tk.mono, fontSize: 10, padding: '2px 4px', cursor: 'pointer',
-              }}
-            >
-              {TEXTURE_OPTIONS.map(({ id, label }) => (
-                <option key={id} value={id}>{label}</option>
-              ))}
-            </select>
-          </div>
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '4px 14px' }}>
-            <span style={{ fontFamily: tk.sans, fontSize: 11, color: tk.ink2 }}>Texture only</span>
-            <ToggleSwitch enabled={fillOnly} onChange={v => setTerrainTextureFillOnly(terrain, v)} />
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 6, padding: '6px 14px 8px' }}>
+            {TEXTURE_OPTIONS.map(({ id, label }) => {
+              const selected = textureFileId === id
+              return (
+                <div
+                  key={id}
+                  onClick={() => setTerrainTextureFile(terrain, id)}
+                  style={{
+                    display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 3,
+                    cursor: 'pointer', borderRadius: 4,
+                    padding: 3,
+                    border: selected ? `2px solid ${tk.accent ?? tk.ink}` : `2px solid transparent`,
+                    background: selected ? `${tk.accent ?? tk.ink}18` : 'transparent',
+                  }}
+                >
+                  <div style={{
+                    width: 48, height: 48, borderRadius: 3, overflow: 'hidden',
+                    border: `1px solid ${tk.line}`,
+                    background: '#e8e0d0',
+                  }}>
+                    <img
+                      src={`/textures/${id}.png`}
+                      alt={label}
+                      style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block', mixBlendMode: 'multiply' }}
+                    />
+                  </div>
+                  <span style={{ fontFamily: tk.mono, fontSize: 8, color: selected ? (tk.accent ?? tk.ink) : tk.ink2, textAlign: 'center', lineHeight: 1.2 }}>{label}</span>
+                </div>
+              )
+            })}
           </div>
           <MiniSlider
             label="Scale"
@@ -695,10 +704,8 @@ function TerrainCogFlyout({ terrain, onClose }: { terrain: string; onClose: () =
               <option value="color-bg">Background</option>
               <option disabled>──────────</option>
               <option value="multiply">Multiply</option>
-              <option value="overlay">Overlay</option>
               <option value="screen">Screen</option>
-              <option value="darken">Darken</option>
-              <option value="soft-light">Soft Light</option>
+              <option value="overlay">Overlay</option>
             </select>
           </div>
         </div>}
