@@ -28,6 +28,7 @@ export interface RoadGeomOverride {
   wiggleFreq: number
   pathSmoothing: number
   smoothing: number
+  centerPull: number
 }
 
 export interface RailGeomOverride {
@@ -179,6 +180,7 @@ export interface GeneratedHex {
   coverage: Record<string, number>
   partial: boolean
   manual_override?: boolean
+  backgroundTerrain?: string
   isLake?: boolean
   lakeManualOverride?: boolean
   elevation_avg_m: number | null
@@ -432,6 +434,7 @@ export const DEFAULT_ROAD_GEOM = {
   wiggleFreq: 0.9,
   pathSmoothing: 0,
   smoothing: 10,
+  centerPull: 0,
 }
 
 export const DEFAULT_RAIL_GEOM = {
@@ -792,6 +795,7 @@ export const useMapStore = create<MapStore>()(persist((set, get) => ({
     roadControlOverrides: s.roadControlOverrides,
     roadSnapBindings: s.roadSnapBindings,
     roadPathSmoothing: s.roadPathSmoothing,
+    roadCenterPull: s.roadCenterPull,
     roadDensityMinChain: s.roadDensityMinChain,
     roadRenderVersion: s.roadRenderVersion,
     roadV3TierGeom: s.roadV3TierGeom,
@@ -905,7 +909,7 @@ export const useMapStore = create<MapStore>()(persist((set, get) => ({
     mapTitle: s.mapTitle,
     labelOffsets: s.labelOffsets,
   }),
-  version: 63,
+  version: 65,
   migrate: migratePersisted,
   merge: (persisted, current) => rehydrateState({ ...current, ...(persisted as Partial<MapStore>) }),
 }))

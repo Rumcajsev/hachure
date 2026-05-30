@@ -873,6 +873,18 @@ export function migratePersisted(persisted: unknown, fromVersion: number): Recor
       { cornerRoundness: 0.3, pathStraightness: 0.2, segmentVariation: 0.12, variationCharacter: 2 },
     ]
   }
+  if (fromVersion < 65) {
+    // backgroundTerrain added to GeneratedHex — no migration needed,
+    // existing hexes get undefined (no background) which is correct
+  }
+  if (fromVersion < 64) {
+    if (s.roadCenterPull === undefined) s.roadCenterPull = 0
+    if (Array.isArray(s.roadTierGeometry)) {
+      for (const g of s.roadTierGeometry as Array<Record<string, unknown> | null>) {
+        if (g && g.centerPull === undefined) g.centerPull = 0
+      }
+    }
+  }
   return s
 }
 

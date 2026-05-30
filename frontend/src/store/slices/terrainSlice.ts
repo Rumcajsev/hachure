@@ -60,6 +60,7 @@ export type TerrainSlice = {
   terrainPaintMode: boolean
   terrainPaintBrush: string
   terrainEdgePaintEnabled: boolean
+  terrainBackgroundPaintEnabled: boolean
   // Edge blob paint + state
   edgeBlobPainted: Record<string, string>
   edgeBlobSmooth: number
@@ -147,6 +148,8 @@ export type TerrainSlice = {
   setTerrainPaintMode: (v: boolean) => void
   setTerrainPaintBrush: (v: string) => void
   setTerrainEdgePaintEnabled: (v: boolean) => void
+  setTerrainBackgroundPaintEnabled: (v: boolean) => void
+  overrideHexBackground: (q: number, r: number, terrain: string | undefined) => void
   paintEdgeBlob: (edgeKey: string, terrain: string) => void
   eraseEdgeBlob: (edgeKey: string) => void
   setEdgeBlobSmooth: (v: number) => void
@@ -177,6 +180,14 @@ export type TerrainSlice = {
 }
 
 import { TERRAIN_COLORS } from '../mapStore'
+
+/** Auto-derive backgroundTerrain for non-manual hexes.
+ *  Rule: if primary terrain is woods and light_woods also meets threshold,
+ *  assign light_woods as background so it shows as a fringe beneath woods blobs. */
+function autoBackgroundTerrain(terrain: string, terrains: string[]): string | undefined {
+  if (terrain === 'woods' && terrains.includes('light_woods')) return 'light_woods'
+  return undefined
+}
 
 type Set = (partial: Partial<MapStore> | ((s: MapStore) => Partial<MapStore>)) => void
 
@@ -229,6 +240,7 @@ export const createTerrainSlice = (set: Set, get: () => MapStore): TerrainSlice 
   terrainPaintMode: false,
   terrainPaintBrush: 'clear',
   terrainEdgePaintEnabled: false,
+  terrainBackgroundPaintEnabled: false,
 
   edgeBlobPainted: {},
   edgeBlobSmooth: 0,
@@ -497,12 +509,14 @@ export const createTerrainSlice = (set: Set, get: () => MapStore): TerrainSlice 
             const rawHexes = event.hexes as (GeneratedHex & { is_lake?: boolean })[]
             const reclassified = rawHexes.map((h) => {
               const terrain = classifyHex(h.coverage ?? {}, thresholds, disabledTerrains)
+              const terrains = classifyHexLayers(h.coverage ?? {}, thresholds, disabledTerrains)
               return {
                 ...h,
                 lakeManualOverride: false,
                 isLake: autoLakesEnabled && (h.coverage?.lake ?? 0) >= lakeSensitivity,
                 terrain,
-                terrains: classifyHexLayers(h.coverage ?? {}, thresholds, disabledTerrains),
+                terrains,
+                backgroundTerrain: autoBackgroundTerrain(terrain, terrains),
               }
             })
             set({
@@ -567,12 +581,14 @@ export const createTerrainSlice = (set: Set, get: () => MapStore): TerrainSlice 
             const rawHexes = event.hexes as (GeneratedHex & { is_lake?: boolean })[]
             const updates = new Map(rawHexes.map((h) => {
               const terrain = classifyHex(h.coverage ?? {}, thresholds, disabledTerrains)
+              const terrains = classifyHexLayers(h.coverage ?? {}, thresholds, disabledTerrains)
               return [`${h.q},${h.r}`, {
                 ...h,
                 lakeManualOverride: false,
                 isLake: autoLakesEnabled && (h.coverage?.lake ?? 0) >= lakeSensitivity,
                 terrain,
-                terrains: classifyHexLayers(h.coverage ?? {}, thresholds, disabledTerrains),
+                terrains,
+                backgroundTerrain: autoBackgroundTerrain(terrain, terrains),
               }]
             }))
             set({
@@ -599,7 +615,8 @@ export const createTerrainSlice = (set: Set, get: () => MapStore): TerrainSlice 
     const updated = generatedHexes.map((h) => {
       if (h.manual_override) return h
       const t = classifyHex(h.coverage ?? {}, next, disabledTerrains)
-      return { ...h, terrain: t, terrains: classifyHexLayers(h.coverage ?? {}, next, disabledTerrains) }
+      const ts = classifyHexLayers(h.coverage ?? {}, next, disabledTerrains)
+      return { ...h, terrain: t, terrains: ts, backgroundTerrain: autoBackgroundTerrain(t, ts) }
     })
     set({ thresholds: next, generatedHexes: updated })
   },
@@ -610,7 +627,8 @@ export const createTerrainSlice = (set: Set, get: () => MapStore): TerrainSlice 
     const updated = generatedHexes.map((h) => {
       if (h.manual_override) return h
       const t = classifyHex(h.coverage ?? {}, thresholds, disabledTerrains)
-      return { ...h, terrain: t, terrains: classifyHexLayers(h.coverage ?? {}, thresholds, disabledTerrains) }
+      const ts = classifyHexLayers(h.coverage ?? {}, thresholds, disabledTerrains)
+      return { ...h, terrain: t, terrains: ts, backgroundTerrain: autoBackgroundTerrain(t, ts) }
     })
     set({ generatedHexes: updated })
   },
@@ -623,7 +641,8 @@ export const createTerrainSlice = (set: Set, get: () => MapStore): TerrainSlice 
     const updated = generatedHexes.map((h) => {
       if (h.manual_override) return h
       const t = classifyHex(h.coverage ?? {}, thresholds, next)
-      return { ...h, terrain: t, terrains: classifyHexLayers(h.coverage ?? {}, thresholds, next) }
+      const ts = classifyHexLayers(h.coverage ?? {}, thresholds, next)
+      return { ...h, terrain: t, terrains: ts, backgroundTerrain: autoBackgroundTerrain(t, ts) }
     })
     set({ disabledTerrains: next, generatedHexes: updated })
   },
@@ -750,6 +769,14 @@ export const createTerrainSlice = (set: Set, get: () => MapStore): TerrainSlice 
   setTerrainPaintMode: (v) => set({ terrainPaintMode: v, ...(v ? { roadPaintMode: false, railPaintMode: false, lakePaintMode: false, elevationPaintMode: false } : {}) }),
   setTerrainPaintBrush: (v) => set({ terrainPaintBrush: v }),
   setTerrainEdgePaintEnabled: (v) => set({ terrainEdgePaintEnabled: v }),
+  setTerrainBackgroundPaintEnabled: (v) => set({ terrainBackgroundPaintEnabled: v }),
+  overrideHexBackground: (q, r, terrain) => {
+    const { generatedHexes } = get()
+    const updated = generatedHexes.map((h) =>
+      h.q === q && h.r === r ? { ...h, backgroundTerrain: terrain, manual_override: true } : h
+    )
+    set({ generatedHexes: updated })
+  },
 
   paintEdgeBlob: (edgeKey, terrain) => set((s) => ({
     edgeBlobPainted: { ...s.edgeBlobPainted, [edgeKey]: terrain },
