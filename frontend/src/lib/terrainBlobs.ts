@@ -45,6 +45,35 @@ export function coastalBlobTerrains(hex: GeneratedHex, realisticCoastline: boole
   return [...merged]
 }
 
+/** Which terrain types a hex participates in for blob building.
+ *
+ * When families are enabled, a hex whose primary terrain has a declared
+ * background companion (e.g. woods → light_woods) also contributes to the
+ * companion's blob, producing the background bleed effect.
+ *
+ * When families are disabled (primary-only mode), only the hex's primary
+ * terrain is returned — equivalent to the old single-terrain behaviour.
+ *
+ * Coastal hex land-side additions from coastalBlobTerrains are always kept
+ * regardless of the families flag.
+ */
+export function effectiveBlobTerrains(
+  hex: GeneratedHex,
+  realisticCoastline: boolean,
+  terrainFamilies: Record<string, string>,
+  familiesEnabled: boolean,
+): string[] {
+  const base = coastalBlobTerrains(hex, realisticCoastline)
+  const companion = familiesEnabled ? terrainFamilies[hex.terrain] : undefined
+  const isCoastal = (hex.coastline_clip?.length ?? 0) > 0
+  return base.filter(t => {
+    if (t === hex.terrain) return true
+    if (companion && t === companion) return true
+    if (isCoastal) return true   // land-side additions for coastal hexes always pass through
+    return false
+  })
+}
+
 // ── Blob shape helpers ───────────────────────────────────────────────────────
 
 export function bleedPolygon(poly: [number, number][], maxBleed: number, R: number, perm: Uint8Array): [number, number][] {

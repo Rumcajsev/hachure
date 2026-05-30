@@ -19,6 +19,7 @@ export type TerrainSlice = {
   disabledTerrains: Set<string>
   generateProgress: GenerateProgress | null
   terrainLayersEnabled: boolean
+  terrainFamilies: Record<string, string>
   // Terrain blob style
   terrainBlobSmooth: number
   terrainBlobOffset: number
@@ -107,6 +108,7 @@ export type TerrainSlice = {
   removeHexTerrainLayer: (q: number, r: number, terrain: string) => void
   resetHexOverride: (q: number, r: number) => void
   setTerrainLayersEnabled: (v: boolean) => void
+  setTerrainFamilies: (families: Record<string, string>) => void
   setTerrainBlobSmooth: (v: number) => void
   setTerrainBlobOffset: (v: number) => void
   setTerrainBlobBump: (v: number) => void
@@ -189,6 +191,7 @@ export const createTerrainSlice = (set: Set, get: () => MapStore): TerrainSlice 
   disabledTerrains: new Set<string>(),
   generateProgress: null,
   terrainLayersEnabled: true,
+  terrainFamilies: { woods: 'light_woods' },
 
   terrainBlobSmooth: DEFAULT_TERRAIN_BLOB.smooth,
   terrainBlobOffset: DEFAULT_TERRAIN_BLOB.offset,
@@ -661,6 +664,7 @@ export const createTerrainSlice = (set: Set, get: () => MapStore): TerrainSlice 
   },
 
   setTerrainLayersEnabled: (v) => set({ terrainLayersEnabled: v }),
+  setTerrainFamilies: (families) => set({ terrainFamilies: families }),
 
   resetHexOverride: (q, r) => {
     get().pushUndoSnapshot()

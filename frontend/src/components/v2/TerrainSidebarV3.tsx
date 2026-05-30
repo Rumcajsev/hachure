@@ -273,8 +273,8 @@ function PaintingOptionsFlyout({ onClose }: { onClose: () => void }) {
           onChange={setTerrainEdgePaintEnabled}
         />
         <ToggleRow
-          label="Terrain layers"
-          hint="Render each terrain as its own texture layer."
+          label="Terrain families"
+          hint="Background terrain bleed — e.g. light woods shows beneath dense woods."
           checked={terrainLayersEnabled}
           onChange={setTerrainLayersEnabled}
         />
