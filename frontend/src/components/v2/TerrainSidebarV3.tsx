@@ -565,8 +565,10 @@ function TexturePickerPopover({
   let left = rect.left
   if (left + popW > window.innerWidth - 8) left = window.innerWidth - popW - 8
 
-  const spaceBelow = window.innerHeight - rect.bottom
-  const above = spaceBelow < 180
+  const spaceBelow = window.innerHeight - rect.bottom - 8
+  const spaceAbove = rect.top - 8
+  const above = spaceBelow < 180 && spaceAbove > spaceBelow
+  const maxHeight = Math.min(above ? spaceAbove : spaceBelow, window.innerHeight - 16)
 
   return (
     <div
@@ -577,6 +579,8 @@ function TexturePickerPopover({
         transform: above ? 'translateY(-100%)' : undefined,
         left,
         width: popW,
+        maxHeight,
+        overflowY: 'auto',
         background: tk.surface,
         border: `1px solid ${tk.line}`,
         borderRadius: 6,
@@ -586,6 +590,7 @@ function TexturePickerPopover({
         display: 'grid',
         gridTemplateColumns: 'repeat(3, 1fr)',
         gap: 6,
+        alignContent: 'start',
       }}
     >
       {options.map(({ id, label }) => {
