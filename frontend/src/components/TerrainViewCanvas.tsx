@@ -27,7 +27,7 @@ import { drawAllBuildings as _drawAllBuildings, type BuildingCmd } from '../lib/
 import { drawAllBuildingsV2 as _drawAllBuildingsV2 } from '../lib/drawBuildingsV2'
 import { drawHexBorders as _drawHexBorders, drawMapBoundary as _drawMapBoundary, drawHexGridMask as _drawHexGridMask, drawExcludedHexOverlay as _drawExcludedHexOverlay } from '../lib/drawHexBorders'
 import { drawTerrain as _drawTerrain } from '../lib/drawTerrain'
-import { TEXTURE_OPTIONS, DEFAULT_TERRAIN_TEXTURES } from '../lib/terrainTextures'
+import { TEXTURE_OPTIONS, TEXTURE_PATHS, DEFAULT_TERRAIN_TEXTURES } from '../lib/terrainTextures'
 import { computeHillshade } from '../lib/drawHillshade'
 import { computeContours } from '../lib/drawContours'
 import { drawHexNumbers as _drawHexNumbers, buildHexNumberMap } from '../lib/drawHexNumbers'
@@ -1704,14 +1704,17 @@ export const TerrainViewCanvas = forwardRef<TerrainViewCanvasHandle, { surroundC
 
     // Historical map image overlay — screen only, drawn after terrain so hex borders render on top
     if (!isExport && mapImageElementRef.current) {
+      const alignMode = activeToolRef.current.type === 'align-image'
       const peekMode = mapOverlayRef.current && dataSourceRef.current === 'map_image'
-      drawMapImageOverlay({
-        ctx,
-        image: mapImageElementRef.current,
-        transform: mapImageTransformRef.current,
-        opacity: peekMode ? 1.0 : mapImageOpacityRef.current,
-        px, py, pw, ph,
-      })
+      if (alignMode || peekMode) {
+        drawMapImageOverlay({
+          ctx,
+          image: mapImageElementRef.current,
+          transform: mapImageTransformRef.current,
+          opacity: peekMode ? 1.0 : mapImageOpacityRef.current,
+          px, py, pw, ph,
+        })
+      }
     }
 
     // Hex borders — offscreen cached; suppressed in areas mode
@@ -2839,7 +2842,7 @@ export const TerrainViewCanvas = forwardRef<TerrainViewCanvasHandle, { surroundC
   useEffect(() => {
     for (const { id } of TEXTURE_OPTIONS) {
       const img = new Image()
-      img.src = new URL(`../../textures/${id}.png`, import.meta.url).href
+      img.src = TEXTURE_PATHS[id] ?? `/textures/${id}.png`
       img.onload = () => { textureCacheRef.current.set(id, img); terrainDirtyRef.current = true; draw() }
       img.onerror = () => { /* texture not present — silently skip */ }
     }

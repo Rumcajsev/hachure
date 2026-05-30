@@ -12,7 +12,7 @@ import {
   BrushRow, ElevBrushRow, ToggleRow, ToggleSwitch, DashedAddBtn, MiniSlider, BigColorSwatch, tintBg,
   STRIP_W, FLYOUT_W, StripShell, FlyoutShell, V2Divider, TriggerRow, TGap,
 } from './sidebar'
-import { TEXTURE_OPTIONS, DEFAULT_TERRAIN_TEXTURES } from '../../lib/terrainTextures'
+import { TEXTURE_OPTIONS, TEXTURE_PATHS, DEFAULT_TERRAIN_TEXTURES } from '../../lib/terrainTextures'
 
 // ── Constants ──────────────────────────────────────────────────────────────
 
@@ -607,7 +607,7 @@ function TexturePickerPopover({
             }}
           >
             <div style={{ width: 48, height: 48, borderRadius: 3, overflow: 'hidden', border: `1px solid ${tk.line}`, background: '#e8e0d0' }}>
-              <img src={`/textures/${id}.png`} alt={label} style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block', mixBlendMode: 'multiply' }} />
+              <img src={TEXTURE_PATHS[id] ?? `/textures/${id}.png`} alt={label} style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block', mixBlendMode: 'multiply' }} />
             </div>
             <span style={{ fontFamily: tk.mono, fontSize: 8, color: selected ? (tk.accent ?? tk.ink) : tk.ink2, textAlign: 'center', lineHeight: 1.2 }}>{label}</span>
           </div>
@@ -743,7 +743,7 @@ function TerrainCogFlyout({ terrain, onClose }: { terrain: string; onClose: () =
               padding: '2px 6px',
             }}>
               <div style={{ width: 16, height: 16, borderRadius: 2, overflow: 'hidden', background: '#e8e0d0', flexShrink: 0 }}>
-                <img src={`/textures/${textureFileId}.png`} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block', mixBlendMode: 'multiply' }} />
+                <img src={TEXTURE_PATHS[textureFileId] ?? `/textures/${textureFileId}.png`} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block', mixBlendMode: 'multiply' }} />
               </div>
               <span style={{ fontFamily: tk.mono, fontSize: 10, color: tk.ink, flex: 1 }}>
                 {TEXTURE_OPTIONS.find(o => o.id === textureFileId)?.label ?? textureFileId}
