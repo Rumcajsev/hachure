@@ -63,14 +63,6 @@ export type TerrainSlice = {
   terrainBackgroundPaintEnabled: boolean
   // Edge blob paint + state
   edgeBlobPainted: Record<string, string>
-  edgeBlobSmooth: number
-  edgeBlobOffset: number
-  edgeBlobBump: number
-  edgeBlobSweepFreq: number
-  edgeBlobLobeFreq: number
-  edgeBlobLobeAmp: number
-  edgeBlobLobeThreshold: number
-  edgeBlobLobeDirection: number
   edgeBlobWidth: number
   edgeBlobOverrides: Record<string, BlobOverride>
   // Custom terrain types
@@ -152,14 +144,6 @@ export type TerrainSlice = {
   overrideHexBackground: (q: number, r: number, terrain: string | undefined) => void
   paintEdgeBlob: (edgeKey: string, terrain: string) => void
   eraseEdgeBlob: (edgeKey: string) => void
-  setEdgeBlobSmooth: (v: number) => void
-  setEdgeBlobOffset: (v: number) => void
-  setEdgeBlobBump: (v: number) => void
-  setEdgeBlobSweepFreq: (v: number) => void
-  setEdgeBlobLobeFreq: (v: number) => void
-  setEdgeBlobLobeAmp: (v: number) => void
-  setEdgeBlobLobeThreshold: (v: number) => void
-  setEdgeBlobLobeDirection: (v: number) => void
   setEdgeBlobWidth: (v: number) => void
   setEdgeBlobOverride: (key: string, override: BlobOverride | null) => void
   setAutoLakesEnabled: (v: boolean) => void
@@ -243,14 +227,6 @@ export const createTerrainSlice = (set: Set, get: () => MapStore): TerrainSlice 
   terrainBackgroundPaintEnabled: false,
 
   edgeBlobPainted: {},
-  edgeBlobSmooth: 0,
-  edgeBlobOffset: -0.10,
-  edgeBlobBump: 0.47,
-  edgeBlobSweepFreq: 1.0,
-  edgeBlobLobeFreq: 4.1,
-  edgeBlobLobeAmp: 0.49,
-  edgeBlobLobeThreshold: 0.08,
-  edgeBlobLobeDirection: -1,
   edgeBlobWidth: 0.25,
   edgeBlobOverrides: {},
 
@@ -651,7 +627,9 @@ export const createTerrainSlice = (set: Set, get: () => MapStore): TerrainSlice 
     const { generatedHexes } = get()
     const terrains = terrain === 'clear' ? [] : [terrain]
     const updated = generatedHexes.map((h) =>
-      h.q === q && h.r === r ? { ...h, terrain, terrains, manual_override: true } : h
+      h.q === q && h.r === r
+        ? { ...h, terrain, terrains, backgroundTerrain: undefined, manual_override: true }
+        : h
     )
     set({ generatedHexes: updated })
   },
@@ -663,7 +641,7 @@ export const createTerrainSlice = (set: Set, get: () => MapStore): TerrainSlice 
       if (h.q !== q || h.r !== r) return h
       const layers = h.terrains ?? (h.terrain === 'clear' ? [] : [h.terrain])
       if (layers.includes(terrain)) return h
-      return { ...h, terrains: [...layers, terrain], manual_override: true }
+      return { ...h, terrains: [...layers, terrain], backgroundTerrain: undefined, manual_override: true }
     })
     set({ generatedHexes: updated })
   },
@@ -674,7 +652,7 @@ export const createTerrainSlice = (set: Set, get: () => MapStore): TerrainSlice 
       if (h.q !== q || h.r !== r) return h
       const layers = h.terrains ?? (h.terrain === 'clear' ? [] : [h.terrain])
       const next = layers.filter(t => t !== terrain)
-      return { ...h, terrains: next, manual_override: true }
+      return { ...h, terrains: next, backgroundTerrain: undefined, manual_override: true }
     })
     set({ generatedHexes: updated })
   },
@@ -689,7 +667,9 @@ export const createTerrainSlice = (set: Set, get: () => MapStore): TerrainSlice 
     const terrain = classifyHex(hex.coverage ?? {}, thresholds, disabledTerrains)
     const terrains = classifyHexLayers(hex.coverage ?? {}, thresholds, disabledTerrains)
     const updated = generatedHexes.map((h) =>
-      h.q === q && h.r === r ? { ...h, terrain, terrains, manual_override: false } : h
+      h.q === q && h.r === r
+        ? { ...h, terrain, terrains, backgroundTerrain: autoBackgroundTerrain(terrain, terrains), manual_override: false }
+        : h
     )
     set({ generatedHexes: updated })
   },
@@ -785,14 +765,6 @@ export const createTerrainSlice = (set: Set, get: () => MapStore): TerrainSlice 
     const { [edgeKey]: _, ...rest } = s.edgeBlobPainted
     return { edgeBlobPainted: rest }
   }),
-  setEdgeBlobSmooth: (v) => set({ edgeBlobSmooth: v }),
-  setEdgeBlobOffset: (v) => set({ edgeBlobOffset: v }),
-  setEdgeBlobBump: (v) => set({ edgeBlobBump: v }),
-  setEdgeBlobSweepFreq: (v) => set({ edgeBlobSweepFreq: v }),
-  setEdgeBlobLobeFreq: (v) => set({ edgeBlobLobeFreq: v }),
-  setEdgeBlobLobeAmp: (v) => set({ edgeBlobLobeAmp: v }),
-  setEdgeBlobLobeThreshold: (v) => set({ edgeBlobLobeThreshold: v }),
-  setEdgeBlobLobeDirection: (v) => set({ edgeBlobLobeDirection: v }),
   setEdgeBlobWidth: (v) => set({ edgeBlobWidth: v }),
   setEdgeBlobOverride: (key, override) => set((s) => {
     if (override === null) {
