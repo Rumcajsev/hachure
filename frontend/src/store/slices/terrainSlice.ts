@@ -163,12 +163,17 @@ export type TerrainSlice = {
 
 import { TERRAIN_COLORS } from '../mapStore'
 
-/** Auto-derive backgroundTerrain for non-manual hexes.
- *  Rule: if primary terrain is woods and light_woods also meets threshold,
- *  assign light_woods as background so it shows as a fringe beneath woods blobs. */
-function autoBackgroundTerrain(terrain: string, terrains: string[]): string | undefined {
-  if (terrain === 'woods' && terrains.includes('light_woods')) return 'light_woods'
-  return undefined
+/** Auto-classify a hex terrain, stripping background sub-types from the primary
+ *  layers array so they don't join the wrong blob.
+ *  Rule: woods + light_woods in same hex → light_woods becomes backgroundTerrain,
+ *  removed from terrains so the hex only participates in the woods primary blob. */
+function classifyWithBackground(
+  terrain: string, allTerrains: string[],
+): { terrains: string[]; backgroundTerrain: string | undefined } {
+  if (terrain === 'woods' && allTerrains.includes('light_woods')) {
+    return { terrains: allTerrains.filter(t => t !== 'light_woods'), backgroundTerrain: 'light_woods' }
+  }
+  return { terrains: allTerrains, backgroundTerrain: undefined }
 }
 
 type Set = (partial: Partial<MapStore> | ((s: MapStore) => Partial<MapStore>)) => void
@@ -482,14 +487,14 @@ export const createTerrainSlice = (set: Set, get: () => MapStore): TerrainSlice 
             const rawHexes = event.hexes as (GeneratedHex & { is_lake?: boolean })[]
             const reclassified = rawHexes.map((h) => {
               const terrain = classifyHex(h.coverage ?? {}, thresholds, disabledTerrains)
-              const terrains = classifyHexLayers(h.coverage ?? {}, thresholds, disabledTerrains)
+              const { terrains, backgroundTerrain } = classifyWithBackground(terrain, classifyHexLayers(h.coverage ?? {}, thresholds, disabledTerrains))
               return {
                 ...h,
                 lakeManualOverride: false,
                 isLake: autoLakesEnabled && (h.coverage?.lake ?? 0) >= lakeSensitivity,
                 terrain,
                 terrains,
-                backgroundTerrain: autoBackgroundTerrain(terrain, terrains),
+                backgroundTerrain,
               }
             })
             set({
@@ -554,14 +559,14 @@ export const createTerrainSlice = (set: Set, get: () => MapStore): TerrainSlice 
             const rawHexes = event.hexes as (GeneratedHex & { is_lake?: boolean })[]
             const updates = new Map(rawHexes.map((h) => {
               const terrain = classifyHex(h.coverage ?? {}, thresholds, disabledTerrains)
-              const terrains = classifyHexLayers(h.coverage ?? {}, thresholds, disabledTerrains)
+              const { terrains, backgroundTerrain } = classifyWithBackground(terrain, classifyHexLayers(h.coverage ?? {}, thresholds, disabledTerrains))
               return [`${h.q},${h.r}`, {
                 ...h,
                 lakeManualOverride: false,
                 isLake: autoLakesEnabled && (h.coverage?.lake ?? 0) >= lakeSensitivity,
                 terrain,
                 terrains,
-                backgroundTerrain: autoBackgroundTerrain(terrain, terrains),
+                backgroundTerrain,
               }]
             }))
             set({
@@ -588,8 +593,8 @@ export const createTerrainSlice = (set: Set, get: () => MapStore): TerrainSlice 
     const updated = generatedHexes.map((h) => {
       if (h.manual_override) return h
       const t = classifyHex(h.coverage ?? {}, next, disabledTerrains)
-      const ts = classifyHexLayers(h.coverage ?? {}, next, disabledTerrains)
-      return { ...h, terrain: t, terrains: ts, backgroundTerrain: autoBackgroundTerrain(t, ts) }
+      const { terrains, backgroundTerrain } = classifyWithBackground(t, classifyHexLayers(h.coverage ?? {}, next, disabledTerrains))
+      return { ...h, terrain: t, terrains, backgroundTerrain }
     })
     set({ thresholds: next, generatedHexes: updated })
   },
@@ -600,8 +605,8 @@ export const createTerrainSlice = (set: Set, get: () => MapStore): TerrainSlice 
     const updated = generatedHexes.map((h) => {
       if (h.manual_override) return h
       const t = classifyHex(h.coverage ?? {}, thresholds, disabledTerrains)
-      const ts = classifyHexLayers(h.coverage ?? {}, thresholds, disabledTerrains)
-      return { ...h, terrain: t, terrains: ts, backgroundTerrain: autoBackgroundTerrain(t, ts) }
+      const { terrains, backgroundTerrain } = classifyWithBackground(t, classifyHexLayers(h.coverage ?? {}, thresholds, disabledTerrains))
+      return { ...h, terrain: t, terrains, backgroundTerrain }
     })
     set({ generatedHexes: updated })
   },
@@ -614,8 +619,8 @@ export const createTerrainSlice = (set: Set, get: () => MapStore): TerrainSlice 
     const updated = generatedHexes.map((h) => {
       if (h.manual_override) return h
       const t = classifyHex(h.coverage ?? {}, thresholds, next)
-      const ts = classifyHexLayers(h.coverage ?? {}, thresholds, next)
-      return { ...h, terrain: t, terrains: ts, backgroundTerrain: autoBackgroundTerrain(t, ts) }
+      const { terrains, backgroundTerrain } = classifyWithBackground(t, classifyHexLayers(h.coverage ?? {}, thresholds, next))
+      return { ...h, terrain: t, terrains, backgroundTerrain }
     })
     set({ disabledTerrains: next, generatedHexes: updated })
   },
@@ -662,10 +667,10 @@ export const createTerrainSlice = (set: Set, get: () => MapStore): TerrainSlice 
     const hex = generatedHexes.find((h) => h.q === q && h.r === r)
     if (!hex) return
     const terrain = classifyHex(hex.coverage ?? {}, thresholds, disabledTerrains)
-    const terrains = classifyHexLayers(hex.coverage ?? {}, thresholds, disabledTerrains)
+    const { terrains, backgroundTerrain } = classifyWithBackground(terrain, classifyHexLayers(hex.coverage ?? {}, thresholds, disabledTerrains))
     const updated = generatedHexes.map((h) =>
       h.q === q && h.r === r
-        ? { ...h, terrain, terrains, backgroundTerrain: autoBackgroundTerrain(terrain, terrains), manual_override: false }
+        ? { ...h, terrain, terrains, backgroundTerrain, manual_override: false }
         : h
     )
     set({ generatedHexes: updated })
