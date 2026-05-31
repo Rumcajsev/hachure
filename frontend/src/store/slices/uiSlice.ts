@@ -833,11 +833,6 @@ export function migratePersisted(persisted: unknown, fromVersion: number): Recor
       s.pageGrid = { colWidths: Array(cols).fill(pw), rowHeights: Array(rows).fill(ph) }
     }
   }
-  if (fromVersion < 56) {
-    if (s.terrainBlobClearingChance === undefined) s.terrainBlobClearingChance = 0
-    if (s.terrainBlobSatelliteChance === undefined) s.terrainBlobSatelliteChance = 0
-    if (s.terrainBlobPatchSize === undefined) s.terrainBlobPatchSize = 0.2
-  }
   if (fromVersion < 59) {
     if (!s.hillshadeDisabledTerrains) s.hillshadeDisabledTerrains = []
     if (!s.hillshadeDisabledElevClasses) s.hillshadeDisabledElevClasses = []
@@ -872,12 +867,33 @@ export function migratePersisted(persisted: unknown, fromVersion: number): Recor
   if (fromVersion < 67) {
     if (s.terrainBlobFeather === undefined) s.terrainBlobFeather = 0
   }
+  if (fromVersion < 68) {
+    if (s.blobCutsEnabled === undefined) s.blobCutsEnabled = false
+    if (s.blobCutBuffer === undefined) s.blobCutBuffer = 0.15
+    if (s.blobCutRoadTiers === undefined) s.blobCutRoadTiers = { '0': true, '1': true, '2': false }
+    if (s.blobCutRiverEnabled === undefined) s.blobCutRiverEnabled = true
+    if (s.blobCutCanalEnabled === undefined) s.blobCutCanalEnabled = false
+    if (s.blobCutTerrains === undefined) s.blobCutTerrains = ['woods', 'light_woods', 'marsh', 'rough']
+  }
   if (fromVersion < 64) {
     if (s.roadCenterPull === undefined) s.roadCenterPull = 0
     if (Array.isArray(s.roadTierGeometry)) {
       for (const g of s.roadTierGeometry as Array<Record<string, unknown> | null>) {
         if (g && g.centerPull === undefined) g.centerPull = 0
       }
+    }
+  }
+  if (fromVersion < 69) {
+    const cp = s.classificationParams as Record<string, unknown> | undefined
+    if (cp) {
+      delete cp.mountainsPct
+      delete cp.hillsPct
+      delete cp.rangeFloorM
+      delete cp.medianFloorM
+      if (cp.rangeHillsM === undefined) cp.rangeHillsM = 100
+      if (cp.rangeMountainsM === undefined) cp.rangeMountainsM = 300
+      if (cp.medianHillsM === undefined) cp.medianHillsM = 400
+      if (cp.medianMountainsM === undefined) cp.medianMountainsM = 900
     }
   }
   return s

@@ -37,8 +37,6 @@ export function ElevationFlyout({ anchorY, onClose }: Props) {
   const flatCount = hasData ? generatedHexes.filter(h => h.elevation_class === 'flat').length : 0
   const hillsCount = hasData ? generatedHexes.filter(h => h.elevation_class === 'hills').length : 0
   const mountainsCount = hasData ? generatedHexes.filter(h => h.elevation_class === 'mountains').length : 0
-  const pctSum = classificationParams.mountainsPct + classificationParams.hillsPct
-
   return (
     <FlyoutContainer
       top={Math.min(anchorY, window.innerHeight - 48)}
@@ -106,16 +104,12 @@ export function ElevationFlyout({ anchorY, onClose }: Props) {
             Classification
           </div>
 
-          <SliderRow label="Mountains %" value={classificationParams.mountainsPct} min={1} max={50} step={1} unit="%" onChange={v => setClassificationParam('mountainsPct', v)} />
-          <SliderRow label="Hills %" value={classificationParams.hillsPct} min={1} max={60} step={1} unit="%" onChange={v => setClassificationParam('hillsPct', v)} />
-          <SliderRow label="Min ruggedness" value={classificationParams.rangeFloorM} min={0} max={400} step={10} unit="m" onChange={v => setClassificationParam('rangeFloorM', v)} />
-          <SliderRow label="Min altitude" value={classificationParams.medianFloorM} min={0} max={2000} step={50} unit="m" onChange={v => setClassificationParam('medianFloorM', v)} />
-
-          {pctSum > 95 && (
-            <div style={{ fontSize: 10, color: '#9e5a5a', marginBottom: 6 }}>
-              Mountains + hills exceeds 95% — flat hexes will be scarce
-            </div>
-          )}
+          <div style={{ fontSize: 10, letterSpacing: 0.5, textTransform: 'uppercase', color: '#4a4a6a', marginBottom: 4 }}>Relief (internal range)</div>
+          <SliderRow label="Hills ≥" value={classificationParams.rangeHillsM} min={10} max={500} step={10} unit="m" onChange={v => setClassificationParam('rangeHillsM', v)} />
+          <SliderRow label="Mountains ≥" value={classificationParams.rangeMountainsM} min={50} max={1000} step={25} unit="m" onChange={v => setClassificationParam('rangeMountainsM', v)} />
+          <div style={{ fontSize: 10, letterSpacing: 0.5, textTransform: 'uppercase', color: '#4a4a6a', marginBottom: 4, marginTop: 6 }}>Altitude (median)</div>
+          <SliderRow label="Hills ≥" value={classificationParams.medianHillsM} min={0} max={2000} step={50} unit="m" onChange={v => setClassificationParam('medianHillsM', v)} />
+          <SliderRow label="Mountains ≥" value={classificationParams.medianMountainsM} min={100} max={4000} step={50} unit="m" onChange={v => setClassificationParam('medianMountainsM', v)} />
 
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 4, fontSize: 10, textAlign: 'center' }}>
             {[

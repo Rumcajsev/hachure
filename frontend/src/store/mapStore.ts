@@ -84,9 +84,6 @@ export interface BlobOverride {
   lobeAmp?: number
   lobeThreshold?: number
   lobeDirection?: number
-  clearingChance?: number
-  satelliteChance?: number
-  patchSize?: number
   textureScale?: number
   enabled?: boolean
   width?: number
@@ -98,17 +95,17 @@ export interface BlobOverride {
 
 
 export interface ClassificationParams {
-  mountainsPct: number  // top X% by either signal → mountains
-  hillsPct: number      // next Y% by either signal → hills
-  rangeFloorM: number   // min range_m for the ruggedness signal to activate
-  medianFloorM: number  // min median_m for the height signal to activate
+  rangeHillsM: number     // min relief (range) to qualify as hills
+  rangeMountainsM: number // min relief (range) to qualify as mountains
+  medianHillsM: number    // min altitude (median) to qualify as hills
+  medianMountainsM: number // min altitude (median) to qualify as mountains
 }
 
 export const DEFAULT_CLASSIFICATION_PARAMS: ClassificationParams = {
-  mountainsPct: 15,
-  hillsPct: 25,
-  rangeFloorM: 50,
-  medianFloorM: 300,
+  rangeHillsM: 100,
+  rangeMountainsM: 300,
+  medianHillsM: 400,
+  medianMountainsM: 900,
 }
 
 export type PaperSize = 'A4' | 'A3' | 'A2' | 'A1'
@@ -387,9 +384,6 @@ export const DEFAULT_TERRAIN_BLOB = {
   lobeAmp: 0.49,
   lobeThreshold: 0.08,
   lobeDirection: -1 as const,
-  clearingChance: 0,
-  satelliteChance: 0,
-  patchSize: 0.2,
 }
 
 export const DEFAULT_EDGE_BLOB = {
@@ -897,7 +891,7 @@ export const useMapStore = create<MapStore>()(persist((set, get) => ({
     mapTitle: s.mapTitle,
     labelOffsets: s.labelOffsets,
   }),
-  version: 67,
+  version: 69,
   migrate: migratePersisted,
   merge: (persisted, current) => rehydrateState({ ...current, ...(persisted as Partial<MapStore>) }),
 }))
