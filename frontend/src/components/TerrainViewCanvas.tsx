@@ -299,6 +299,8 @@ export const TerrainViewCanvas = forwardRef<TerrainViewCanvasHandle, { surroundC
   const overrideHexElevationRef = useRef(overrideHexElevation)
   const terrainEdgePaintEnabledRef = useRef(terrainEdgePaintEnabled)
   const terrainBackgroundPaintEnabledRef = useRef(terrainBackgroundPaintEnabled)
+  const edgePaintHoldRef = useRef(false)
+  const bgPaintHoldRef = useRef(false)
   const overrideHexBackgroundRef = useRef(overrideHexBackground)
   const paintEdgeBlobRef = useRef(paintEdgeBlob)
   const eraseEdgeBlobRef = useRef(eraseEdgeBlob)
@@ -2493,14 +2495,30 @@ export const TerrainViewCanvas = forwardRef<TerrainViewCanvasHandle, { surroundC
         const rawColor = terrainColorsRef.current[brush] ?? TERRAIN_COLORS[brush] ?? '#888888'
         ctx.save()
         if (hoverTarget.type === 'hex') {
-          ctx.globalAlpha = 0.40
-          ctx.fillStyle = rawColor
-          ctx.beginPath()
           const { verts } = hoverTarget
-          ctx.moveTo(verts[0][0], verts[0][1])
-          for (let i = 1; i < verts.length; i++) ctx.lineTo(verts[i][0], verts[i][1])
-          ctx.closePath()
-          ctx.fill()
+          const isBgMode = terrainBackgroundPaintEnabledRef.current || bgPaintHoldRef.current
+          if (isBgMode) {
+            const cx = verts.reduce((s, v) => s + v[0], 0) / verts.length
+            const cy = verts.reduce((s, v) => s + v[1], 0) / verts.length
+            const inset = 0.82
+            const iv = verts.map(v => [cx + (v[0] - cx) * inset, cy + (v[1] - cy) * inset] as [number, number])
+            ctx.globalAlpha = 0.70
+            ctx.strokeStyle = rawColor
+            ctx.lineWidth = R * 0.10
+            ctx.beginPath()
+            ctx.moveTo(iv[0][0], iv[0][1])
+            for (let i = 1; i < iv.length; i++) ctx.lineTo(iv[i][0], iv[i][1])
+            ctx.closePath()
+            ctx.stroke()
+          } else {
+            ctx.globalAlpha = 0.40
+            ctx.fillStyle = rawColor
+            ctx.beginPath()
+            ctx.moveTo(verts[0][0], verts[0][1])
+            for (let i = 1; i < verts.length; i++) ctx.lineTo(verts[i][0], verts[i][1])
+            ctx.closePath()
+            ctx.fill()
+          }
         } else {
           ctx.globalAlpha = 0.70
           ctx.strokeStyle = rawColor
@@ -3157,7 +3175,7 @@ export const TerrainViewCanvas = forwardRef<TerrainViewCanvasHandle, { surroundC
     const hexMap = new Map<string, GeneratedHex>()
     for (const hex of hexesRef.current) hexMap.set(`${hex.q},${hex.r}`, hex)
 
-    if (terrainEdgePaintEnabledRef.current) {
+    if (terrainEdgePaintEnabledRef.current || edgePaintHoldRef.current) {
       const threshold = R * 0.35
       let bestDist = threshold
       let bestEdge: { p1: [number, number]; p2: [number, number]; edgeKey: string } | null = null
@@ -3210,6 +3228,38 @@ export const TerrainViewCanvas = forwardRef<TerrainViewCanvasHandle, { surroundC
     }
   }, [terrainPaintMode, elevationPaintMode, draw])
 
+  // Hold-key shortcuts: Shift = edge paint, Alt/Option = bg paint (only when not already toggled on)
+  useEffect(() => {
+    if (!terrainPaintMode) return
+    const onDown = (e: KeyboardEvent) => {
+      if (e.key === 'Shift' && !terrainEdgePaintEnabledRef.current && !edgePaintHoldRef.current) {
+        edgePaintHoldRef.current = true
+        paintHoverTargetRef.current = null
+        draw()
+      }
+      if (e.key === 'Alt' && !terrainBackgroundPaintEnabledRef.current && !bgPaintHoldRef.current) {
+        bgPaintHoldRef.current = true
+        paintHoverTargetRef.current = null
+        draw()
+      }
+    }
+    const onUp = (e: KeyboardEvent) => {
+      if (e.key === 'Shift' && edgePaintHoldRef.current) {
+        edgePaintHoldRef.current = false
+        paintHoverTargetRef.current = null
+        draw()
+      }
+      if (e.key === 'Alt' && bgPaintHoldRef.current) {
+        bgPaintHoldRef.current = false
+        paintHoverTargetRef.current = null
+        draw()
+      }
+    }
+    window.addEventListener('keydown', onDown)
+    window.addEventListener('keyup', onUp)
+    return () => { window.removeEventListener('keydown', onDown); window.removeEventListener('keyup', onUp) }
+  }, [terrainPaintMode, draw])
+
   useEffect(() => {
     const el = containerRef.current
     if (!el) return
@@ -3230,7 +3280,7 @@ export const TerrainViewCanvas = forwardRef<TerrainViewCanvasHandle, { surroundC
           strokeTrailRef.current.set(`hex:${key}`, target)
           if (elevationPaintModeRef.current) {
             overrideHexElevationRef.current(target.q, target.r, elevationPaintBrushRef.current)
-          } else if (terrainBackgroundPaintEnabledRef.current) {
+          } else if (terrainBackgroundPaintEnabledRef.current || bgPaintHoldRef.current) {
             const brush = terrainPaintBrushRef.current
             overrideHexBackgroundRef.current(target.q, target.r, brush === 'clear' ? undefined : brush)
           } else {

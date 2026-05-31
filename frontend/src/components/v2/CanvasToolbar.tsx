@@ -77,6 +77,20 @@ function Label({ children }: { children: React.ReactNode }) {
   )
 }
 
+function KeyHint({ children }: { children: React.ReactNode }) {
+  const t = useTheme()
+  return (
+    <span style={{
+      fontFamily: t.mono, fontSize: 9, letterSpacing: 0,
+      color: 'inherit', opacity: 0.55,
+      border: '1px solid currentColor', borderRadius: 3,
+      padding: '0 3px', lineHeight: '14px',
+    }}>
+      {children}
+    </span>
+  )
+}
+
 // ── Icons ─────────────────────────────────────────────────────────────────────
 
 function EdgeIcon() {
@@ -131,6 +145,7 @@ function TerrainPaintBar() {
       <ToggleBtn active={terrainEdgePaintEnabled} onClick={() => setTerrainEdgePaintEnabled(!terrainEdgePaintEnabled)}>
         <EdgeIcon />
         <Label>Edge paint</Label>
+        <KeyHint>⇧</KeyHint>
       </ToggleBtn>
 
       <Sep />
@@ -139,6 +154,7 @@ function TerrainPaintBar() {
       <ToggleBtn active={terrainBackgroundPaintEnabled} onClick={() => setTerrainBackgroundPaintEnabled(!terrainBackgroundPaintEnabled)}>
         <BgIcon />
         <Label>Bg paint</Label>
+        <KeyHint>⌥</KeyHint>
       </ToggleBtn>
     </Bar>
   )
