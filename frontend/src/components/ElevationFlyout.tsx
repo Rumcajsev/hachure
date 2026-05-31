@@ -104,12 +104,12 @@ export function ElevationFlyout({ anchorY, onClose }: Props) {
             Classification
           </div>
 
-          <div style={{ fontSize: 10, letterSpacing: 0.5, textTransform: 'uppercase', color: '#4a4a6a', marginBottom: 4 }}>Relief (internal range)</div>
-          <SliderRow label="Hills ≥" value={classificationParams.rangeHillsM} min={10} max={500} step={10} unit="m" onChange={v => setClassificationParam('rangeHillsM', v)} />
-          <SliderRow label="Mountains ≥" value={classificationParams.rangeMountainsM} min={50} max={1000} step={25} unit="m" onChange={v => setClassificationParam('rangeMountainsM', v)} />
-          <div style={{ fontSize: 10, letterSpacing: 0.5, textTransform: 'uppercase', color: '#4a4a6a', marginBottom: 4, marginTop: 6 }}>Altitude (median)</div>
-          <SliderRow label="Hills ≥" value={classificationParams.medianHillsM} min={0} max={2000} step={50} unit="m" onChange={v => setClassificationParam('medianHillsM', v)} />
-          <SliderRow label="Mountains ≥" value={classificationParams.medianMountainsM} min={100} max={4000} step={50} unit="m" onChange={v => setClassificationParam('medianMountainsM', v)} />
+          <div style={{ fontSize: 10, letterSpacing: 0.5, textTransform: 'uppercase', color: '#4a4a6a', marginBottom: 4 }}>Hills</div>
+          <SliderRow label="Relief ≥" value={classificationParams.rangeHillsM} min={10} max={500} step={10} unit="m" onChange={v => setClassificationParam('rangeHillsM', v)} />
+          <SliderRow label="Altitude ≥" value={classificationParams.medianHillsM} min={0} max={2000} step={50} unit="m" onChange={v => setClassificationParam('medianHillsM', v)} />
+          <div style={{ fontSize: 10, letterSpacing: 0.5, textTransform: 'uppercase', color: '#4a4a6a', marginBottom: 4, marginTop: 6 }}>Mountains</div>
+          <SliderRow label="Relief ≥" value={classificationParams.rangeMountainsM} min={50} max={1000} step={25} unit="m" onChange={v => setClassificationParam('rangeMountainsM', v)} />
+          <SliderRow label="Altitude ≥" value={classificationParams.medianMountainsM} min={100} max={4000} step={50} unit="m" onChange={v => setClassificationParam('medianMountainsM', v)} />
 
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 4, fontSize: 10, textAlign: 'center' }}>
             {[
