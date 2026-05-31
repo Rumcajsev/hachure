@@ -14,7 +14,6 @@ export type BlobParams = {
   smooth: number; offset: number; bump: number
   sweepFreq: number; lobeFreq: number; lobeAmp: number
   lobeThreshold: number; lobeDirection: number
-  clearingChance: number; satelliteChance: number; patchSize: number
 }
 
 export type DrawTerrainParams = {
@@ -549,14 +548,9 @@ export function drawTerrain(tCtx: Ctx, params: DrawTerrainParams): void {
         const ovLobeAmp         = override.lobeAmp         ?? terrainBlobParams.lobeAmp
         const ovLobeThreshold   = override.lobeThreshold   ?? terrainBlobParams.lobeThreshold
         const ovLobeDirection   = override.lobeDirection   ?? terrainBlobParams.lobeDirection
-        const ovClearingChance  = override.clearingChance  ?? terrainBlobParams.clearingChance
-        const ovSatelliteChance = override.satelliteChance ?? terrainBlobParams.satelliteChance
-        const ovPatchSize       = override.patchSize       ?? terrainBlobParams.patchSize
-
         const ovBlobs = buildTerrainBlobsV2(
           ovProjected, ovSmooth, ovOffset, ovNoise,
           ovSweepFreq, ovLobeFreq, ovLobeAmp, ovLobeThreshold, ovLobeDirection, R,
-          ovClearingChance, ovSatelliteChance, ovPatchSize,
         )
         const ovPolys = ovBlobs.find(b => b.terrain === terrain)?.polys ?? []
 
@@ -649,7 +643,6 @@ export function drawTerrain(tCtx: Ctx, params: DrawTerrainParams): void {
         ovLakeProjected, ovSmooth, ovOffset, ovNoise,
         ovSweepFreq, ovLobeFreq, ovLobeAmp, ovLobeThreshold, ovLobeDirection, R,
       )
-      // Lakes intentionally omit clearing/satellite params — decorators on water would look odd.
       const ovPolys = ovBlobs.find(b => b.terrain === 'lake')?.polys ?? []
       drawLakePolys(ovPolys, override.color ?? lakeColor)
     }

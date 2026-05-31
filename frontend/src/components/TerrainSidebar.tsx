@@ -6,6 +6,7 @@ import { CoastlineSettingsFlyout } from './CoastlineSettingsFlyout'
 import { EdgeBlobShapeFlyout } from './EdgeBlobShapeFlyout'
 import { ClassificationFlyout } from './ClassificationFlyout'
 import { AddTerrainFlyout } from './AddTerrainFlyout'
+import { BlobCutsFlyout } from './BlobCutsFlyout'
 import { ElevationFlyout } from './ElevationFlyout'
 import { ToolButton, CogIcon } from './ToolButton'
 import { sidebarStyle, sectionStyle, labelStyle } from './sidebarStyles'
@@ -35,6 +36,8 @@ export function TerrainSidebar() {
   const [defaultsAnchorY, setDefaultsAnchorY] = useState(0)
   const [edgeBlobShapeOpen, setEdgeBlobShapeOpen] = useState(false)
   const [edgeBlobShapeAnchorY, setEdgeBlobShapeAnchorY] = useState(0)
+  const [blobCutsOpen, setBlobCutsOpen] = useState(false)
+  const [blobCutsAnchorY, setBlobCutsAnchorY] = useState(0)
   const [coastlineFlyoutOpen, setCoastlineFlyoutOpen] = useState(false)
   const [coastlineAnchorY, setCoastlineAnchorY] = useState(0)
   const [classificationOpen, setClassificationOpen] = useState(false)
@@ -152,6 +155,9 @@ export function TerrainSidebar() {
       {edgeBlobShapeOpen && (
         <EdgeBlobShapeFlyout anchorY={edgeBlobShapeAnchorY} onClose={() => setEdgeBlobShapeOpen(false)} />
       )}
+      {blobCutsOpen && (
+        <BlobCutsFlyout anchorY={blobCutsAnchorY} onClose={() => setBlobCutsOpen(false)} />
+      )}
       {classificationOpen && (
         <ClassificationFlyout anchorY={classificationAnchorY} onClose={() => setClassificationOpen(false)} />
       )}
@@ -246,6 +252,12 @@ export function TerrainSidebar() {
                 if (defaultsOpen) { setDefaultsOpen(false) }
                 else { setOpenSettingsTerrain(null); setDefaultsOpen(true); setDefaultsAnchorY(e.currentTarget.getBoundingClientRect().top) }
               },
+            )}
+            {flyoutBtn(
+              'Road & river cuts',
+              blobCutsOpen,
+              'data-blob-cuts-flyout',
+              e => { setBlobCutsOpen(o => !o); setBlobCutsAnchorY(e.currentTarget.getBoundingClientRect().top) },
             )}
 
           </div>

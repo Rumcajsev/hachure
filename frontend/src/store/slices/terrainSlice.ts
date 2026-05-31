@@ -28,11 +28,15 @@ export type TerrainSlice = {
   terrainBlobLobeAmp: number
   terrainBlobLobeThreshold: number
   terrainBlobLobeDirection: number
-  terrainBlobClearingChance: number
-  terrainBlobSatelliteChance: number
-  terrainBlobPatchSize: number
   terrainBlobFeather: number
   terrainBlobOutlineEnabled: boolean
+  // Blob cuts
+  blobCutsEnabled: boolean
+  blobCutBuffer: number
+  blobCutRoadTiers: Record<string, boolean>
+  blobCutRiverEnabled: boolean
+  blobCutCanalEnabled: boolean
+  blobCutTerrains: string[]
   terrainBlobOutlineColor: string
   terrainBlobOutlineWidth: number
   realisticCoastline: boolean
@@ -109,11 +113,14 @@ export type TerrainSlice = {
   setTerrainBlobLobeAmp: (v: number) => void
   setTerrainBlobLobeThreshold: (v: number) => void
   setTerrainBlobLobeDirection: (v: number) => void
-  setTerrainBlobClearingChance: (v: number) => void
-  setTerrainBlobSatelliteChance: (v: number) => void
-  setTerrainBlobPatchSize: (v: number) => void
   setTerrainBlobFeather: (v: number) => void
   setTerrainBlobOutlineEnabled: (v: boolean) => void
+  setBlobCutsEnabled: (v: boolean) => void
+  setBlobCutBuffer: (v: number) => void
+  setBlobCutRoadTier: (tier: string, enabled: boolean) => void
+  setBlobCutRiverEnabled: (v: boolean) => void
+  setBlobCutCanalEnabled: (v: boolean) => void
+  setBlobCutTerrains: (v: string[]) => void
   setTerrainBlobOutlineColor: (v: string) => void
   setTerrainBlobOutlineWidth: (v: number) => void
   applyTerrainBlobPreset: (id: BlobPresetId) => void
@@ -202,11 +209,14 @@ export const createTerrainSlice = (set: Set, get: () => MapStore): TerrainSlice 
   terrainBlobLobeAmp: DEFAULT_TERRAIN_BLOB.lobeAmp,
   terrainBlobLobeThreshold: DEFAULT_TERRAIN_BLOB.lobeThreshold,
   terrainBlobLobeDirection: DEFAULT_TERRAIN_BLOB.lobeDirection,
-  terrainBlobClearingChance: DEFAULT_TERRAIN_BLOB.clearingChance,
-  terrainBlobSatelliteChance: DEFAULT_TERRAIN_BLOB.satelliteChance,
-  terrainBlobPatchSize: DEFAULT_TERRAIN_BLOB.patchSize,
   terrainBlobFeather: 0,
   terrainBlobOutlineEnabled: false,
+  blobCutsEnabled: false,
+  blobCutBuffer: 0.15,
+  blobCutRoadTiers: { '0': true, '1': true, '2': false },
+  blobCutRiverEnabled: true,
+  blobCutCanalEnabled: false,
+  blobCutTerrains: ['woods', 'light_woods', 'marsh', 'rough'],
   terrainBlobOutlineColor: '#000000',
   terrainBlobOutlineWidth: 1,
   realisticCoastline: false,
@@ -692,10 +702,13 @@ export const createTerrainSlice = (set: Set, get: () => MapStore): TerrainSlice 
   setTerrainBlobLobeAmp: (v) => set({ terrainBlobLobeAmp: v }),
   setTerrainBlobLobeThreshold: (v) => set({ terrainBlobLobeThreshold: v }),
   setTerrainBlobLobeDirection: (v) => set({ terrainBlobLobeDirection: v }),
-  setTerrainBlobClearingChance: (v) => set({ terrainBlobClearingChance: v }),
-  setTerrainBlobSatelliteChance: (v) => set({ terrainBlobSatelliteChance: v }),
-  setTerrainBlobPatchSize: (v) => set({ terrainBlobPatchSize: v }),
   setTerrainBlobFeather: (v) => set({ terrainBlobFeather: v }),
+  setBlobCutsEnabled: (v) => set({ blobCutsEnabled: v }),
+  setBlobCutBuffer: (v) => set({ blobCutBuffer: v }),
+  setBlobCutRoadTier: (tier, enabled) => set(s => ({ blobCutRoadTiers: { ...s.blobCutRoadTiers, [tier]: enabled } })),
+  setBlobCutRiverEnabled: (v) => set({ blobCutRiverEnabled: v }),
+  setBlobCutCanalEnabled: (v) => set({ blobCutCanalEnabled: v }),
+  setBlobCutTerrains: (v) => set({ blobCutTerrains: v }),
   setTerrainBlobOutlineEnabled: (v) => set({ terrainBlobOutlineEnabled: v }),
   setTerrainBlobOutlineColor: (v) => set({ terrainBlobOutlineColor: v }),
   setTerrainBlobOutlineWidth: (v) => set({ terrainBlobOutlineWidth: v }),
@@ -710,9 +723,6 @@ export const createTerrainSlice = (set: Set, get: () => MapStore): TerrainSlice 
       terrainBlobLobeAmp: values.lobeAmp,
       terrainBlobLobeThreshold: values.lobeThreshold,
       terrainBlobLobeDirection: values.lobeDirection,
-      terrainBlobClearingChance: values.clearingChance,
-      terrainBlobSatelliteChance: values.satelliteChance,
-      terrainBlobPatchSize: values.patchSize,
     })
   },
   setRealisticCoastline: (v) => set({ realisticCoastline: v }),

@@ -90,6 +90,39 @@ export function distToSeg(p: [number, number], a: [number, number], b: [number, 
   return Math.hypot(p[0] - a[0] - t * dx, p[1] - a[1] - t * dy)
 }
 
+/** Closed ribbon polygon around an open polyline with rounded end caps.
+ *  halfWidth is the total half-width of the ribbon (visual half-width + buffer). */
+export function bufferPolyline(pts: [number, number][], halfWidth: number, capSegments = 8): [number, number][] {
+  if (pts.length < 2 || halfWidth <= 0) return []
+  const left  = offsetPolyline(pts,  halfWidth)
+  const right = offsetPolyline(pts, -halfWidth)
+
+  const arc = (cx: number, cy: number, fromPt: [number, number], toPt: [number, number]): [number, number][] => {
+    const a0 = Math.atan2(fromPt[1] - cy, fromPt[0] - cx)
+    const a1 = Math.atan2(toPt[1]   - cy, toPt[0]   - cx)
+    let da = a1 - a0
+    if (da > Math.PI)  da -= Math.PI * 2
+    if (da < -Math.PI) da += Math.PI * 2
+    const r = halfWidth
+    const result: [number, number][] = []
+    for (let i = 1; i < capSegments; i++) {
+      const a = a0 + (da * i) / capSegments
+      result.push([cx + Math.cos(a) * r, cy + Math.sin(a) * r])
+    }
+    return result
+  }
+
+  const startCap = arc(pts[0][0], pts[0][1], right[0], left[0])
+  const endCap   = arc(pts[pts.length - 1][0], pts[pts.length - 1][1], left[left.length - 1], right[right.length - 1])
+
+  return [
+    ...left,
+    ...endCap,
+    ...[...right].reverse(),
+    ...startCap,
+  ]
+}
+
 export function offsetPolyline(pts: [number, number][], offset: number): [number, number][] {
   if (pts.length < 2 || offset === 0) return pts
   return pts.map((p, i) => {

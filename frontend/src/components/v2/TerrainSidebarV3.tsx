@@ -95,9 +95,6 @@ function ShapeSettingsFlyout({ onClose }: { onClose: () => void }) {
     terrainBlobLobeAmp, setTerrainBlobLobeAmp,
     terrainBlobLobeThreshold, setTerrainBlobLobeThreshold,
     terrainBlobLobeDirection, setTerrainBlobLobeDirection,
-    terrainBlobClearingChance, setTerrainBlobClearingChance,
-    terrainBlobSatelliteChance, setTerrainBlobSatelliteChance,
-    terrainBlobPatchSize, setTerrainBlobPatchSize,
     terrainBlobFeather, setTerrainBlobFeather,
     terrainBlobOutlineEnabled, setTerrainBlobOutlineEnabled,
     terrainBlobOutlineColor, setTerrainBlobOutlineColor,
@@ -111,9 +108,6 @@ function ShapeSettingsFlyout({ onClose }: { onClose: () => void }) {
     sweepFreq: terrainBlobSweepFreq, lobeFreq: terrainBlobLobeFreq,
     lobeAmp: terrainBlobLobeAmp, lobeThreshold: terrainBlobLobeThreshold,
     lobeDirection: terrainBlobLobeDirection,
-    clearingChance: terrainBlobClearingChance,
-    satelliteChance: terrainBlobSatelliteChance,
-    patchSize: terrainBlobPatchSize,
   }
 
   const [local, setLocal] = useState<BlobPresetValues>(storeValues)
@@ -138,9 +132,6 @@ function ShapeSettingsFlyout({ onClose }: { onClose: () => void }) {
         bump: setTerrainBlobBump, sweepFreq: setTerrainBlobSweepFreq,
         lobeFreq: setTerrainBlobLobeFreq, lobeAmp: setTerrainBlobLobeAmp,
         lobeThreshold: setTerrainBlobLobeThreshold, lobeDirection: setTerrainBlobLobeDirection,
-        clearingChance: setTerrainBlobClearingChance,
-        satelliteChance: setTerrainBlobSatelliteChance,
-        patchSize: setTerrainBlobPatchSize,
       }
       setters[field]?.(val)
     }, 150)
@@ -174,9 +165,6 @@ function ShapeSettingsFlyout({ onClose }: { onClose: () => void }) {
     setTerrainBlobLobeAmp(DEFAULT_TERRAIN_BLOB.lobeAmp)
     setTerrainBlobLobeThreshold(DEFAULT_TERRAIN_BLOB.lobeThreshold)
     setTerrainBlobLobeDirection(DEFAULT_TERRAIN_BLOB.lobeDirection)
-    setTerrainBlobClearingChance(DEFAULT_TERRAIN_BLOB.clearingChance)
-    setTerrainBlobSatelliteChance(DEFAULT_TERRAIN_BLOB.satelliteChance)
-    setTerrainBlobPatchSize(DEFAULT_TERRAIN_BLOB.patchSize)
   }
 
   return (
@@ -213,12 +201,6 @@ function ShapeSettingsFlyout({ onClose }: { onClose: () => void }) {
         <span style={{ fontFamily: t.mono, fontSize: 9, letterSpacing: 0.8, color: t.inkFaint, textTransform: 'uppercase', fontWeight: 600 }}>Edge blob</span>
       </div>
       <MiniSlider label="Default width" display={`${Math.round(edgeBlobWidth * 100)}%`} value={Math.round(edgeBlobWidth * 100)} min={5} max={80} step={1} onChange={v => setEdgeBlobWidth(v / 100)} />
-      <div style={{ margin: '6px 12px 2px', borderTop: `1px solid ${t.line2}`, paddingTop: 8 }}>
-        <span style={{ fontFamily: t.mono, fontSize: 9, letterSpacing: 0.8, color: t.inkFaint, textTransform: 'uppercase', fontWeight: 600 }}>Variation</span>
-      </div>
-      <MiniSlider label="Clearing Chance" display={`${Math.round(local.clearingChance * 100)}%`} value={Math.round(local.clearingChance * 100)} min={0} max={50} step={1} onChange={v => set('clearingChance', v / 100)} />
-      <MiniSlider label="Scatter Chance" display={`${Math.round(local.satelliteChance * 100)}%`} value={Math.round(local.satelliteChance * 100)} min={0} max={50} step={1} onChange={v => set('satelliteChance', v / 100)} />
-      <MiniSlider label="Patch Size" display={`${Math.round(local.patchSize * 100)}%`} value={Math.round(local.patchSize * 100)} min={5} max={50} step={1} onChange={v => set('patchSize', v / 100)} />
       {isModified && (
         <div style={{ margin: '8px 12px 0', borderTop: `1px solid ${t.line2}`, paddingTop: 8 }}>
           <button

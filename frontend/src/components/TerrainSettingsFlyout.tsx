@@ -25,9 +25,6 @@ export function TerrainSettingsFlyout({ terrain, anchorY, onClose }: Props) {
     terrainBlobLobeAmp, setTerrainBlobLobeAmp,
     terrainBlobLobeThreshold, setTerrainBlobLobeThreshold,
     terrainBlobLobeDirection, setTerrainBlobLobeDirection,
-    terrainBlobClearingChance, setTerrainBlobClearingChance,
-    terrainBlobSatelliteChance, setTerrainBlobSatelliteChance,
-    terrainBlobPatchSize, setTerrainBlobPatchSize,
   } = useMapStore()
 
   const isDefaults = terrain === undefined
@@ -58,9 +55,6 @@ export function TerrainSettingsFlyout({ terrain, anchorY, onClose }: Props) {
     lobeAmp: overrideEnabled ? (typeStyle?.lobeAmp ?? terrainBlobLobeAmp) : terrainBlobLobeAmp,
     lobeThreshold: overrideEnabled ? (typeStyle?.lobeThreshold ?? terrainBlobLobeThreshold) : terrainBlobLobeThreshold,
     lobeDirection: overrideEnabled ? (typeStyle?.lobeDirection ?? terrainBlobLobeDirection) : terrainBlobLobeDirection,
-    clearingChance: overrideEnabled ? (typeStyle?.clearingChance ?? terrainBlobClearingChance) : terrainBlobClearingChance,
-    satelliteChance: overrideEnabled ? (typeStyle?.satelliteChance ?? terrainBlobSatelliteChance) : terrainBlobSatelliteChance,
-    patchSize: overrideEnabled ? (typeStyle?.patchSize ?? terrainBlobPatchSize) : terrainBlobPatchSize,
   }
 
   // Local mirror of blobVals — updates instantly on drag, commits to store after 150 ms idle.
@@ -74,8 +68,7 @@ export function TerrainSettingsFlyout({ terrain, anchorY, onClose }: Props) {
     if (!draggingRef.current) setLocal(blobVals)
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [local.smooth, local.offset, local.bump, local.sweepFreq,
-      local.lobeFreq, local.lobeAmp, local.lobeThreshold, local.lobeDirection,
-      local.clearingChance, local.satelliteChance, local.patchSize])
+      local.lobeFreq, local.lobeAmp, local.lobeThreshold, local.lobeDirection])
 
   useEffect(() => () => { if (debounceRef.current) clearTimeout(debounceRef.current) }, [])
 
@@ -86,9 +79,6 @@ export function TerrainSettingsFlyout({ terrain, anchorY, onClose }: Props) {
         sweepFreq: setTerrainBlobSweepFreq, lobeFreq: setTerrainBlobLobeFreq,
         lobeAmp: setTerrainBlobLobeAmp, lobeThreshold: setTerrainBlobLobeThreshold,
         lobeDirection: setTerrainBlobLobeDirection,
-        clearingChance: setTerrainBlobClearingChance,
-        satelliteChance: setTerrainBlobSatelliteChance,
-        patchSize: setTerrainBlobPatchSize,
       }
       setters[field]?.(val)
     } else if (terrain && overrideEnabled) {
@@ -109,9 +99,6 @@ export function TerrainSettingsFlyout({ terrain, anchorY, onClose }: Props) {
         lobeAmp: terrainBlobLobeAmp,
         lobeThreshold: terrainBlobLobeThreshold,
         lobeDirection: terrainBlobLobeDirection,
-        clearingChance: terrainBlobClearingChance,
-        satelliteChance: terrainBlobSatelliteChance,
-        patchSize: terrainBlobPatchSize,
       })
     } else {
       setTerrainTypeBlobStyle(terrain, { enabled: false })
@@ -202,38 +189,6 @@ export function TerrainSettingsFlyout({ terrain, anchorY, onClose }: Props) {
           value={local.lobeDirection >= 0 ? 'outward' : 'inward'}
           onChange={v => setBlob('lobeDirection', v === 'outward' ? 1 : -1)}
         />
-      </div>
-      <div style={{ borderTop: '1px solid #2a2a3a', marginTop: 4, paddingTop: 8 }}>
-        <div style={{ fontSize: 10, letterSpacing: 0.5, textTransform: 'uppercase', color: '#4a4a6a', marginBottom: 8 }}>Variation</div>
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-          <div>
-            <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 3 }}>
-              <span>Clearing Chance</span>
-              <span style={{ color: '#5a5a7a', fontSize: 10 }}>{Math.round(local.clearingChance * 100)}%</span>
-            </div>
-            <input type="range" min={0} max={50} step={1} value={Math.round(local.clearingChance * 100)}
-              onChange={e => setBlob('clearingChance', Number(e.target.value) / 100)}
-              style={{ width: '100%', accentColor: color }} />
-          </div>
-          <div>
-            <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 3 }}>
-              <span>Scatter Chance</span>
-              <span style={{ color: '#5a5a7a', fontSize: 10 }}>{Math.round(local.satelliteChance * 100)}%</span>
-            </div>
-            <input type="range" min={0} max={50} step={1} value={Math.round(local.satelliteChance * 100)}
-              onChange={e => setBlob('satelliteChance', Number(e.target.value) / 100)}
-              style={{ width: '100%', accentColor: color }} />
-          </div>
-          <div>
-            <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 3 }}>
-              <span>Patch Size</span>
-              <span style={{ color: '#5a5a7a', fontSize: 10 }}>{Math.round(local.patchSize * 100)}%</span>
-            </div>
-            <input type="range" min={5} max={50} step={1} value={Math.round(local.patchSize * 100)}
-              onChange={e => setBlob('patchSize', Number(e.target.value) / 100)}
-              style={{ width: '100%', accentColor: color }} />
-          </div>
-        </div>
       </div>
     </div>
   )

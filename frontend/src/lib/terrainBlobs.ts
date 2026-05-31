@@ -1,8 +1,8 @@
 /** Terrain blob building and field-style rendering utilities.
  *  Depends on geometry, noise, and projection libs — no React, no store state. */
 
-import { chaikin, subdivideClosedPolygon, resampleSmoothQuad, pointInPolygon } from './geometry'
-import { makePermutation, perlinNoise2D, perturbXY, perturbNormal, mulberry32 } from './noise'
+import { chaikin, subdivideClosedPolygon, resampleSmoothQuad } from './geometry'
+import { makePermutation, perlinNoise2D, perturbXY, perturbNormal } from './noise'
 import { projectToCanvas } from './projection'
 import { hexTerrainLayers } from '../store/mapStore'
 import type { GridMetadata, GeneratedHex } from '../store/mapStore'
@@ -61,29 +61,6 @@ export function bleedPolygon(poly: [number, number][], maxBleed: number, R: numb
     return [pt[0] + (odx / olen) * bleed, pt[1] + (ody / olen) * bleed] as [number, number]
   })
   return chaikin(p, 1, true)
-}
-
-// ── Organic patch helper ─────────────────────────────────────────────────────
-
-/** Small organic blob at (cx, cy) with given radius. Used for clearings and satellites. */
-function makeOrganicPatch(
-  cx: number, cy: number,
-  radius: number,
-  seed: number,
-  sweepFreq: number,
-  bumpFraction: number,
-): [number, number][] {
-  const N = 10
-  const pts: [number, number][] = []
-  for (let i = 0; i < N; i++) {
-    const a = (i / N) * Math.PI * 2
-    pts.push([cx + Math.cos(a) * radius, cy + Math.sin(a) * radius])
-  }
-  const perm1 = makePermutation(seed)
-  const perm2 = makePermutation(seed + 19)
-  let p = perturbXY(pts, perm1, perm2, sweepFreq / radius, bumpFraction * radius * 0.5)
-  p = resampleSmoothQuad(p, 4)
-  return p
 }
 
 // ── V2 blob pipeline ─────────────────────────────────────────────────────────
@@ -213,9 +190,6 @@ export function shapeTerrainBlobs(
   lobeThreshold: number,
   lobeDirection: number,
   R: number,
-  clearingChance = 0,
-  satelliteChance = 0,
-  patchSize = 0.2,
   blobSeeds: Record<string, number> = {},
 ): { terrain: string; polys: [number, number][][]; blobKeys: string[] }[] {
   const result: { terrain: string; polys: [number, number][][]; blobKeys: string[] }[] = []
@@ -258,59 +232,6 @@ export function shapeTerrainBlobs(
 
     const allPolys: [number, number][][] = [...finalPolys]
 
-    if (clearingChance > 0 || satelliteChance > 0) {
-      for (let i = 0; i < finalPolys.length; i++) {
-        const poly = finalPolys[i]
-        const seed = rawSeeds[i]?.seed ?? Math.abs(Math.round(poly[0][0] * 73 + poly[0][1] * 97))
-        const cx = poly.reduce((s, p) => s + p[0], 0) / poly.length
-        const cy = poly.reduce((s, p) => s + p[1], 0) / poly.length
-        const avgR = poly.reduce((s, p) => s + Math.hypot(p[0] - cx, p[1] - cy), 0) / poly.length
-        const patchR = patchSize * R
-
-        if (clearingChance > 0 && patchR < avgR * 0.45) {
-          const cRng = mulberry32(seed + 400)
-          if (cRng() < clearingChance) {
-            for (let attempt = 0; attempt < 6; attempt++) {
-              const angle = cRng() * Math.PI * 2
-              const dist = cRng() * (avgR - patchR) * 0.5
-              const hx = cx + Math.cos(angle) * dist
-              const hy = cy + Math.sin(angle) * dist
-              if (pointInPolygon(hx, hy, poly)) {
-                allPolys.push(makeOrganicPatch(hx, hy, patchR, seed + 401 + attempt, sweepFreq, bumpFraction))
-                break
-              }
-            }
-          }
-        }
-
-        if (satelliteChance > 0) {
-          const sRng = mulberry32(seed + 500)
-          if (sRng() < satelliteChance) {
-            const vi = Math.floor(sRng() * poly.length)
-            const v = poly[vi]
-            const prev = poly[(vi - 1 + poly.length) % poly.length]
-            const next = poly[(vi + 1) % poly.length]
-            const n1x = -(v[1] - prev[1]), n1y = v[0] - prev[0]
-            const n2x = -(next[1] - v[1]), n2y = next[0] - v[0]
-            const nx = n1x + n2x, ny = n1y + n2y
-            const nl = Math.hypot(nx, ny)
-            if (nl > 1e-6) {
-              const gap = patchR * 1.7
-              let satCx = v[0] + (nx / nl) * gap
-              let satCy = v[1] + (ny / nl) * gap
-              if (pointInPolygon(satCx, satCy, poly)) {
-                satCx = v[0] - (nx / nl) * gap
-                satCy = v[1] - (ny / nl) * gap
-              }
-              if (!pointInPolygon(satCx, satCy, poly)) {
-                allPolys.push(makeOrganicPatch(satCx, satCy, patchR, seed + 501, sweepFreq, bumpFraction))
-              }
-            }
-          }
-        }
-      }
-    }
-
     const blobKeys = rawSeeds.map(rs => String(rs.posHash))
     result.push({ terrain, polys: allPolys, blobKeys })
   }
@@ -329,15 +250,12 @@ export function buildTerrainBlobsV2(
   lobeThreshold: number,
   lobeDirection: number,
   R: number,
-  clearingChance = 0,
-  satelliteChance = 0,
-  patchSize = 0.2,
 ): { terrain: string; polys: [number, number][][] }[] {
   return shapeTerrainBlobs(
     buildTerrainBlobTopology(projected, R),
     smooth, offsetFraction, bumpFraction,
     sweepFreq, lobeFreq, lobeAmp, lobeThreshold, lobeDirection,
-    R, clearingChance, satelliteChance, patchSize,
+    R,
   )
 }
 
