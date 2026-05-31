@@ -393,10 +393,10 @@ function ElevationFlyout({ onClose }: { onClose: () => void }) {
               <span style={{ fontFamily: t.mono, fontSize: 9, color: t.inkMute }}>enabled</span>
             </label>
           </div>
-          <MiniSlider label="Mountains %" display={`${classificationParams.mountainsPct}%`} value={classificationParams.mountainsPct} min={1} max={50} step={1} onChange={v => setClassificationParam('mountainsPct', v)} accentColor='#7a6a5a' onDragStart={showOverlay} onDragEnd={hideOverlay} />
-          <MiniSlider label="Hills %" display={`${classificationParams.hillsPct}%`} value={classificationParams.hillsPct} min={1} max={60} step={1} onChange={v => setClassificationParam('hillsPct', v)} accentColor='#9a8a5a' onDragStart={showOverlay} onDragEnd={hideOverlay} />
-          <MiniSlider label="Min ruggedness" display={`${classificationParams.rangeFloorM}m`} value={classificationParams.rangeFloorM} min={0} max={400} step={10} onChange={v => setClassificationParam('rangeFloorM', v)} onDragStart={showOverlay} onDragEnd={hideOverlay} />
-          <MiniSlider label="Min altitude" display={`${classificationParams.medianFloorM}m`} value={classificationParams.medianFloorM} min={0} max={2000} step={50} onChange={v => setClassificationParam('medianFloorM', v)} onDragStart={showOverlay} onDragEnd={hideOverlay} />
+          <MiniSlider label="Hills relief ≥" display={`${classificationParams.rangeHillsM}m`} value={classificationParams.rangeHillsM} min={10} max={500} step={10} onChange={v => setClassificationParam('rangeHillsM', v)} accentColor='#9a8a5a' onDragStart={showOverlay} onDragEnd={hideOverlay} />
+          <MiniSlider label="Mtns relief ≥" display={`${classificationParams.rangeMountainsM}m`} value={classificationParams.rangeMountainsM} min={50} max={1000} step={25} onChange={v => setClassificationParam('rangeMountainsM', v)} accentColor='#7a6a5a' onDragStart={showOverlay} onDragEnd={hideOverlay} />
+          <MiniSlider label="Hills alt ≥" display={`${classificationParams.medianHillsM}m`} value={classificationParams.medianHillsM} min={0} max={2000} step={50} onChange={v => setClassificationParam('medianHillsM', v)} onDragStart={showOverlay} onDragEnd={hideOverlay} />
+          <MiniSlider label="Mtns alt ≥" display={`${classificationParams.medianMountainsM}m`} value={classificationParams.medianMountainsM} min={100} max={4000} step={50} onChange={v => setClassificationParam('medianMountainsM', v)} onDragStart={showOverlay} onDragEnd={hideOverlay} />
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 4, padding: '6px 12px 2px' }}>
             {[
               { label: 'Flat',  count: flatCount,      color: '#5a7a5a' },
