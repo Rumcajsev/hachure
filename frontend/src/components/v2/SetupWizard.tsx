@@ -3,11 +3,12 @@ import { TK, TK_DARK } from '../../theme'
 import { useMapStore } from '../../store/mapStore'
 import type { PaperSize, Orientation, HexOrientation } from '../../store/mapStore'
 import { MapView } from '../MapView'
+import { TerrainViewCanvas } from '../TerrainViewCanvas'
 import { generateMapTitle, nominatimZoomForWidth } from '../../lib/generateMapTitle'
 import type { NominatimResult } from '../../lib/generateMapTitle'
 
 type Theme = typeof TK
-type WizardStep = 'source' | 'paper-blank' | 'paper-area' | 'generating'
+type WizardStep = 'source' | 'paper-blank' | 'paper-area' | 'paper-reference' | 'generating'
 type SourceMode = 'osm' | 'blank' | 'reference'
 
 export function SetupWizard({ onCancel, onDone, isDark = false }: {
@@ -22,20 +23,19 @@ export function SetupWizard({ onCancel, onDone, isDark = false }: {
 
   function handleContinue() {
     if (step === 'source') {
-      if (source === 'blank') {
-        setStep('paper-blank')
-      } else if (source === 'reference') {
-        startImageImport()
-      } else {
-        setStep('paper-area')
-      }
+      if (source === 'blank') setStep('paper-blank')
+      else if (source === 'reference') setStep('paper-reference')
+      else setStep('paper-area')
     }
   }
 
   function handleStartBlank() {
-    setBlankMap(true)
-    generateMap()
     onDone()
+  }
+
+  async function handleStartReference() {
+    await startImageImport()
+    if (useMapStore.getState().generateStatus !== 'error') onDone()
   }
 
   function handleGenerate() {
@@ -69,6 +69,10 @@ export function SetupWizard({ onCancel, onDone, isDark = false }: {
 
       {step === 'paper-area' && (
         <PaperAreaStep onBack={() => setStep('source')} onGenerate={handleGenerate} t={t} />
+      )}
+
+      {step === 'paper-reference' && (
+        <PaperAreaStep showMap={false} onBack={() => setStep('source')} onGenerate={handleStartReference} generateLabel="UPLOAD IMAGE →" t={t} />
       )}
 
       {step === 'generating' && (
@@ -297,20 +301,36 @@ function SourceCard({ num, category, title, desc, footer, selected, onClick, ill
   )
 }
 
-function PaperAreaStep({ onBack, onGenerate, showMap = true, t }: {
-  onBack: () => void; onGenerate: () => void; showMap?: boolean; t: Theme
+function PaperAreaStep({ onBack, onGenerate, showMap = true, generateLabel, t }: {
+  onBack: () => void; onGenerate: () => void; showMap?: boolean; generateLabel?: string; t: Theme
 }) {
   const {
-    paperSize, orientation,
+    paperSize, orientation, pageGrid,
     hexSizeMm, hexOrientation, marginMm, hexEdgeMode,
     zoom, framePixelWidth,
     setPaperSize, setOrientation,
     setHexSizeMm, setHexOrientation, setMarginMm, setHexEdgeMode,
-    flyTo,
+    flyTo, setBlankMap, generateMap,
   } = useMapStore()
 
   const [advancedOpen, setAdvancedOpen] = useState(false)
   const [searchQuery, setSearchQuery] = useState('')
+
+  // For blank mode: generate immediately on mount, then debounce on settings changes
+  useEffect(() => {
+    if (showMap) return
+    setBlankMap(true)
+    generateMap()
+  }, []) // eslint-disable-line react-hooks/exhaustive-deps
+
+  useEffect(() => {
+    if (showMap) return
+    const timer = setTimeout(() => {
+      setBlankMap(true)
+      generateMap()
+    }, 600)
+    return () => clearTimeout(timer)
+  }, [hexSizeMm, hexOrientation, paperSize, orientation, marginMm, hexEdgeMode]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const isDisabled = showMap && framePixelWidth === 0
 
@@ -450,9 +470,12 @@ function PaperAreaStep({ onBack, onGenerate, showMap = true, t }: {
           )}
         </div>
 
-        {/* ── Right: map or paper preview ── */}
+        {/* ── Right: map or blank canvas preview ── */}
         <div style={{ flex: 1, display: 'flex', overflow: 'hidden' }}>
-          <MapView editable />
+          {showMap
+            ? <MapView editable />
+            : <TerrainViewCanvas surroundColor={t.paper2} />
+          }
         </div>
       </div>
 
@@ -466,7 +489,7 @@ function PaperAreaStep({ onBack, onGenerate, showMap = true, t }: {
       }}>
         <NavButton onClick={onBack} ghost t={t}>← BACK</NavButton>
         <NavButton onClick={onGenerate} disabled={isDisabled} t={t}>
-          {showMap ? 'GENERATE →' : 'START EDITING →'}
+          {generateLabel ?? (showMap ? 'GENERATE →' : 'START EDITING →')}
         </NavButton>
       </div>
     </div>

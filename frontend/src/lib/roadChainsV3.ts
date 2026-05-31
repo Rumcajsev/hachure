@@ -306,39 +306,61 @@ export function buildRoadChainsV3(
       }
     }
 
-    // ── Stage 2: Intra-segment variation ───────────────────────────────────────
-    // For each segment A→B, insert noisePts intermediate points displaced
-    // perpendicularly. Displacement fades to zero at both endpoints (sin window)
-    // so the road still enters/exits each hex at the correct midpoint.
+    // ── Stage 2: Entry overshoot + intra-segment variation ────────────────────
+    // For each segment A → B:
+    //   1. Insert a post-entry guide point: A + entry_dir * d
+    //      This keeps the road travelling in its entry direction for a short
+    //      distance inside the hex before curving. The bend happens in the hex
+    //      interior, not right at the boundary.
+    //   2. Insert intra-segment noise points (displaced perpendicularly, faded
+    //      to zero at endpoints so entry/exit positions are not affected).
+    //   3. Insert a pre-exit guide point: B - entry_dir * d
+    //      This ensures the road arrives at the exit edge already aligned with
+    //      the segment direction, making the approach clean.
     const noisePts = Math.round(Math.max(0, geom.variationCharacter))
-    const amplitude = geom.segmentVariation * interHexDist
+    const noiseAmp = geom.segmentVariation * interHexDist
+    const overshootDist = geom.entryOvershoot * interHexDist
     const augmented: [number, number][] = []
 
     for (let i = 0; i < straightened.length; i++) {
       augmented.push(straightened[i])
 
-      if (i < straightened.length - 1 && noisePts > 0 && amplitude > 1e-10) {
+      if (i < straightened.length - 1) {
         const A = straightened[i], B = straightened[i + 1]
         const dx = B[0] - A[0], dy = B[1] - A[1]
         const len = Math.hypot(dx, dy)
         if (len < 1e-6) continue
 
-        // Perpendicular unit vector in lon/lat space
-        const perpX = -dy / len, perpY = dx / len
+        const ux = dx / len, uy = dy / len      // entry direction unit vector
+        const perpX = -uy, perpY = ux            // perpendicular for noise
 
-        // Stable seed: combine both endpoint segment keys and noise point index
-        const segSeed = `${rawSegKeys[i] ?? ''}:${rawSegKeys[i + 1] ?? ''}:${i}`
+        // Cap overshoot so the two guide points never overlap each other
+        const d = Math.min(overshootDist, len * 0.4)
 
-        for (let j = 0; j < noisePts; j++) {
-          const t = (j + 1) / (noisePts + 1)
-          const fade = Math.sin(Math.PI * t)   // 0 at endpoints, 1 at midpoint
-          const rng = seededRng(hashStr(segSeed + '|' + j))
-          const noise = rng() * 2 - 1          // range [-1, 1]
+        // Post-entry guide — fires after every waypoint, giving straight departure
+        if (d > 1e-10) {
+          augmented.push([A[0] + ux * d, A[1] + uy * d])
+        }
 
-          augmented.push([
-            A[0] + dx * t + perpX * noise * fade * amplitude,
-            A[1] + dy * t + perpY * noise * fade * amplitude,
-          ])
+        // Intra-segment noise points (between the two guide points)
+        if (noisePts > 0 && noiseAmp > 1e-10) {
+          const segSeed = `${rawSegKeys[i] ?? ''}:${rawSegKeys[i + 1] ?? ''}:${i}`
+          for (let j = 0; j < noisePts; j++) {
+            const t = (j + 1) / (noisePts + 1)
+            const fade = Math.sin(Math.PI * t)
+            const rng = seededRng(hashStr(segSeed + '|' + j))
+            const noise = rng() * 2 - 1
+            augmented.push([
+              A[0] + dx * t + perpX * noise * fade * noiseAmp,
+              A[1] + dy * t + perpY * noise * fade * noiseAmp,
+            ])
+          }
+        }
+
+        // Pre-exit guide — only for free (non-pinned) destinations so the road
+        // still arrives exactly at junctions and dead-ends
+        if (d > 1e-10 && !pinned[i + 1]) {
+          augmented.push([B[0] - ux * d, B[1] - uy * d])
         }
       }
     }

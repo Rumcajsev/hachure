@@ -468,13 +468,12 @@ function RiverLabelFlyout({ onClose }: { onClose: () => void }) {
   const {
     showRiverLabels, setShowRiverLabels,
     labelPresetId, labelOverrides, setLabelCategoryOverride, resetLabelCategoryOverride,
-    activeTool, setActiveTool, labelOffsets, clearAllLabelOffsets,
+    labelOffsets, clearAllLabelOffsets,
   } = useMapStore()
   const resolved = resolveLabels(labelPresetId, labelOverrides)
   const override = labelOverrides['water']
   const spec = resolved['water']
   const hasOverride = !!override && Object.keys(override).length > 0
-  const isDragMode = activeTool.type === 'label-drag'
   const hasAnyOffset = Object.keys(labelOffsets).length > 0
 
   return (
@@ -482,27 +481,17 @@ function RiverLabelFlyout({ onClose }: { onClose: () => void }) {
       <div style={{ padding: '4px 0 4px' }}>
         <ToggleRow label="Show river labels" checked={showRiverLabels} onChange={setShowRiverLabels} />
       </div>
-      <div style={{ padding: '4px 14px 8px', borderTop: `1px solid ${t.line2}`, display: 'flex', alignItems: 'center', gap: 8 }}>
-        <button
-          onClick={() => setActiveTool(isDragMode ? { type: 'none' } : { type: 'label-drag' })}
-          style={{
-            flex: 1, padding: '5px 10px', borderRadius: 4, border: `1px solid ${isDragMode ? t.accent : t.line}`,
-            background: isDragMode ? t.accent : t.bg2, color: isDragMode ? '#fff' : t.ink,
-            fontFamily: t.mono, fontSize: 11, cursor: 'pointer',
-          }}
-        >
-          {isDragMode ? '✕ Done moving' : '⊹ Move labels'}
-        </button>
-        {hasAnyOffset && (
+      {hasAnyOffset && (
+        <div style={{ padding: '4px 14px 8px', borderTop: `1px solid ${t.line2}` }}>
           <button
             onClick={clearAllLabelOffsets}
             title="Reset all label positions"
-            style={{ padding: '5px 8px', borderRadius: 4, border: `1px solid ${t.line}`, background: t.bg2, color: t.inkFaint, fontFamily: t.mono, fontSize: 11, cursor: 'pointer' }}
+            style={{ width: '100%', padding: '5px 10px', borderRadius: 4, border: `1px solid ${t.line}`, background: t.bg2, color: t.inkFaint, fontFamily: t.mono, fontSize: 11, cursor: 'pointer' }}
           >
-            ↺
+            ↺ Reset all positions
           </button>
-        )}
-      </div>
+        </div>
+      )}
       <div style={{ padding: '8px 14px 12px', borderTop: `1px solid ${t.line2}` }}>
         <LabelSpecEditorRows
           spec={spec}

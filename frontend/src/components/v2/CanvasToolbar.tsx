@@ -88,11 +88,20 @@ function EdgeIcon() {
   )
 }
 
+function BgIcon() {
+  return (
+    <svg width="13" height="13" viewBox="0 0 13 13" fill="none" stroke="currentColor" strokeWidth="1.35" strokeLinecap="round" strokeLinejoin="round">
+      <rect x="1.5" y="1.5" width="10" height="10" rx="1.5" strokeDasharray="2.5 1.5" />
+      <rect x="3.5" y="3.5" width="6" height="6" rx="1" />
+    </svg>
+  )
+}
+
 // ── Per-tool sections ─────────────────────────────────────────────────────────
 
 function TerrainPaintBar() {
   const t = useTheme()
-  const { activeTool, terrainColors, customTerrains, terrainEdgePaintEnabled, setTerrainEdgePaintEnabled } = useMapStore()
+  const { activeTool, terrainColors, customTerrains, terrainEdgePaintEnabled, setTerrainEdgePaintEnabled, terrainBackgroundPaintEnabled, setTerrainBackgroundPaintEnabled } = useMapStore()
   if (activeTool.type !== 'terrain') return null
 
   const brush = activeTool.brush
@@ -122,6 +131,14 @@ function TerrainPaintBar() {
       <ToggleBtn active={terrainEdgePaintEnabled} onClick={() => setTerrainEdgePaintEnabled(!terrainEdgePaintEnabled)}>
         <EdgeIcon />
         <Label>Edge paint</Label>
+      </ToggleBtn>
+
+      <Sep />
+
+      {/* Background painting toggle */}
+      <ToggleBtn active={terrainBackgroundPaintEnabled} onClick={() => setTerrainBackgroundPaintEnabled(!terrainBackgroundPaintEnabled)}>
+        <BgIcon />
+        <Label>Bg paint</Label>
       </ToggleBtn>
     </Bar>
   )

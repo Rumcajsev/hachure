@@ -3,7 +3,7 @@ import { useTheme } from '../../context/ThemeContext'
 
 // ── Strip / flyout layout constants ──────────────────────────────────────────
 
-export const STRIP_W = 154
+export const STRIP_W = 176
 export const FLYOUT_W = 232
 
 // ── StripShell ────────────────────────────────────────────────────────────────
@@ -254,12 +254,13 @@ interface BrushRowProps {
   shortcut?: string
   showCog?: boolean
   cogOpen?: boolean
+  customShape?: boolean
   onSelect: () => void
   onCog?: (y: number) => void
   cogDataAttr?: string
 }
 
-export function BrushRow({ label, color, active, shortcut, showCog, cogOpen, onSelect, onCog, cogDataAttr }: BrushRowProps) {
+export function BrushRow({ label, color, active, shortcut, showCog, cogOpen, customShape, onSelect, onCog, cogDataAttr }: BrushRowProps) {
   const t = useTheme()
   const [hovered, setHovered] = useState(false)
   return (
@@ -279,13 +280,26 @@ export function BrushRow({ label, color, active, shortcut, showCog, cogOpen, onS
       }}
     >
       {/* Swatch */}
-      <div style={{
-        width: 14,
-        height: 14,
-        background: color,
-        border: `1px solid rgba(0,0,0,0.18)`,
-        flexShrink: 0,
-      }} />
+      <div style={{ position: 'relative', width: 14, height: 14, flexShrink: 0 }}>
+        <div style={{
+          width: 14,
+          height: 14,
+          background: color,
+          border: `1px solid rgba(0,0,0,0.18)`,
+        }} />
+        {customShape && (
+          <span title="Custom blob shape" style={{
+            position: 'absolute',
+            bottom: -2, right: -2,
+            width: 5, height: 5,
+            borderRadius: 1,
+            background: t.rust,
+            transform: 'rotate(45deg)',
+            display: 'block',
+            boxShadow: '0 0 0 1px rgba(0,0,0,0.3)',
+          }} />
+        )}
+      </div>
 
       {/* Label */}
       <span style={{

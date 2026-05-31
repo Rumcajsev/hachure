@@ -66,11 +66,14 @@ export const createMapImageSlice = (set: Set, get: () => MapStore): MapImageSlic
 
   startImageImport: async () => {
     const { paperSize, orientation, pageGrid, hexSizeMm, hexOrientation, bearing, center, zoom, framePixelWidth, marginMm } = get()
-    if (framePixelWidth === 0) return
 
     const [cwMm, chMm] = combinedDimsMm(paperSize, orientation, pageGrid)
     const res = mapResolutionMpx(center[1], zoom)
-    const widthM = framePixelWidth * res
+    const aspect = cwMm / chMm
+    const effectiveFrameWidth = framePixelWidth > 0
+      ? framePixelWidth
+      : Math.round(Math.min(window.innerWidth, window.innerHeight * aspect) * 0.85)
+    const widthM = effectiveFrameWidth * res
     const heightM = widthM * (chMm / cwMm)
 
     set({ generateStatus: 'loading', generateError: null, generateProgress: null })
@@ -177,5 +180,6 @@ export const createMapImageSlice = (set: Set, get: () => MapStore): MapImageSlic
   confirmImageAlign: () => set({
     step: 'terrain',
     dataSource: 'map_image',
+    activeTool: { type: 'none' },
   }),
 })

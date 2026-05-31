@@ -30,7 +30,7 @@ export type RoadBaseDataV2 = {
   interHexDist: number
 }
 
-export type RoadTierGeomMap = Record<number, { wiggleAmp?: number; wiggleFreq?: number; pathSmoothing?: number; smoothing?: number }>
+export type RoadTierGeomMap = Record<number, { wiggleAmp?: number; wiggleFreq?: number; pathSmoothing?: number; smoothing?: number; centerPull?: number }>
 
 export function buildRoadChainsV2(
   roadEdges: { q1: number; r1: number; q2: number; r2: number; tier: 0 | 1 | 2 }[],
@@ -46,6 +46,7 @@ export function buildRoadChainsV2(
   snapBindings: Record<string, string> = {},
   chaikinPasses = 2,
   tierGeom?: RoadTierGeomMap,
+  centerPull = 0,
 ): RoadBaseDataV2 {
   if (roadEdges.length === 0) return { chains: [], junctions: [], controlPoints: [], interHexDist: 0 }
 
@@ -214,20 +215,23 @@ export function buildRoadChainsV2(
   }
 
   // Walk: returns waypoints, per-waypoint tier (null for terminals), and end key.
+  // ptArrivalHex[i] is the hex key we stepped INTO when pushing edge midpoint i (null for pins).
   const walk = (startKey: string): {
     pts: [number, number][]
     endKey: string
     pinned: boolean[]
     edgeKeys: (string | null)[]
     ptsTiers: (0 | 1 | 2 | null)[]
+    ptArrivalHex: (string | null)[]
   } => {
     const h0 = hexIdx.get(startKey)
-    if (!h0) return { pts: [], endKey: startKey, pinned: [], edgeKeys: [], ptsTiers: [] }
+    if (!h0) return { pts: [], endKey: startKey, pinned: [], edgeKeys: [], ptsTiers: [], ptArrivalHex: [] }
     const startDeg = (adj.get(startKey) ?? []).length
     const pts: [number, number][] = []
     const pinned: boolean[] = []
     const edgeKeys: (string | null)[] = []
     const ptsTiers: (0 | 1 | 2 | null)[] = []
+    const ptArrivalHex: (string | null)[] = []
     let firstStep = true
     let prevKey = startKey
     let cur = startKey
@@ -240,7 +244,7 @@ export function buildRoadChainsV2(
       if (firstStep) {
         firstStep = false
         if (startDeg !== 2 || isJunction(startKey)) {
-          pts.push(jPos(startKey, h0, next)); pinned.push(true); edgeKeys.push(null); ptsTiers.push(null)
+          pts.push(jPos(startKey, h0, next)); pinned.push(true); edgeKeys.push(null); ptsTiers.push(null); ptArrivalHex.push(null)
         }
       }
       const ep = cur < next ? `${cur}|${next}` : `${next}|${cur}`
@@ -255,19 +259,20 @@ export function buildRoadChainsV2(
         const rawEk = cur < next ? `${cur}|${next}` : `${next}|${cur}`
         pts.push(mid); pinned.push(isOverridden); edgeKeys.push(ek)
         ptsTiers.push(edgeMinTier.get(rawEk) ?? 2)
+        ptArrivalHex.push(next)
         seenEdges.add(ek)
       }
       prevKey = cur
       cur = next
       const curDeg = (adj.get(cur) ?? []).length
-      if (curDeg === 1) { const he = hexIdx.get(cur); if (he) { pts.push(he.center); pinned.push(true); edgeKeys.push(null); ptsTiers.push(null) } break }
-      if (isJunction(cur)) { const hj = hexIdx.get(cur); if (hj) { pts.push(jPos(cur, hj, prevKey)); pinned.push(true); edgeKeys.push(null); ptsTiers.push(null) } break }
+      if (curDeg === 1) { const he = hexIdx.get(cur); if (he) { pts.push(he.center); pinned.push(true); edgeKeys.push(null); ptsTiers.push(null); ptArrivalHex.push(null) } break }
+      if (isJunction(cur)) { const hj = hexIdx.get(cur); if (hj) { pts.push(jPos(cur, hj, prevKey)); pinned.push(true); edgeKeys.push(null); ptsTiers.push(null); ptArrivalHex.push(null) } break }
     }
-    return { pts, endKey: cur, pinned, edgeKeys, ptsTiers }
+    return { pts, endKey: cur, pinned, edgeKeys, ptsTiers, ptArrivalHex }
   }
 
   const pushChain = (startKey: string) => {
-    const { pts, endKey, pinned, edgeKeys, ptsTiers } = walk(startKey)
+    const { pts, endKey, pinned, edgeKeys, ptsTiers, ptArrivalHex } = walk(startKey)
     if (pts.length < 2) return
 
     const a = startKey < endKey ? startKey : endKey
@@ -281,6 +286,7 @@ export function buildRoadChainsV2(
     const effectiveSmoothing = tg?.smoothing ?? smoothing
     const effectiveWiggleAmp = tg?.wiggleAmp ?? wiggleAmpFactor
     const effectiveWiggleFreq = tg?.wiggleFreq ?? wiggleFreqFactor
+    const effectiveCenterPull = tg?.centerPull ?? centerPull
 
     const relaxed = pts.slice() as [number, number][]
     const iters = Math.round(effectivePathSmoothing)
@@ -296,16 +302,49 @@ export function buildRoadChainsV2(
       }
     }
 
-    const storedHandles = chainOverrides[id]
+    // After relaxation, optionally insert a blended hex-center waypoint between
+    // each pair of consecutive edge midpoints. At effectiveCenterPull=1, the inserted
+    // point lands exactly on the hex center; at 0, no points are inserted.
+    let augPts = relaxed as [number, number][]
+    let augEdgeKeys = edgeKeys as (string | null)[]
+    let augPtsTiers = ptsTiers as (0 | 1 | 2 | null)[]
+    if (effectiveCenterPull > 1e-9) {
+      const newPts: [number, number][] = []
+      const newEdgeKeys: (string | null)[] = []
+      const newPtsTiers: (0 | 1 | 2 | null)[] = []
+      for (let i = 0; i < relaxed.length; i++) {
+        newPts.push(relaxed[i])
+        newEdgeKeys.push(edgeKeys[i])
+        newPtsTiers.push(ptsTiers[i])
+        if (i < relaxed.length - 1 && edgeKeys[i] !== null && edgeKeys[i + 1] !== null) {
+          const arrHex = ptArrivalHex[i]
+          const hc = arrHex ? hexIdx.get(arrHex) : null
+          if (hc && arrHex && !isJunction(arrHex)) {
+            const mx = (relaxed[i][0] + relaxed[i + 1][0]) / 2
+            const my = (relaxed[i][1] + relaxed[i + 1][1]) / 2
+            const cp = effectiveCenterPull
+            newPts.push([mx + cp * (hc.center[0] - mx), my + cp * (hc.center[1] - my)])
+            newEdgeKeys.push(null)
+            newPtsTiers.push(ptsTiers[i])
+          }
+        }
+      }
+      augPts = newPts
+      augEdgeKeys = newEdgeKeys
+      augPtsTiers = newPtsTiers
+    }
+
+    // Ignore stored chain handles when center pull is active — topology has changed.
+    const storedHandles = effectiveCenterPull <= 1e-9 ? chainOverrides[id] : undefined
     const steps = Math.round(effectiveSmoothing)
     const stepsActual = steps === 0 ? 1 : Math.max(2, steps)
     const chainWiggleAmplitude = effectiveWiggleAmp * interHexDist
     const chainWiggleFreqScaled = interHexDist > 0 ? effectiveWiggleFreq / interHexDist : 0
 
-    for (let i = 0; i < edgeKeys.length; i++) {
-      const ek = edgeKeys[i]
+    for (let i = 0; i < augEdgeKeys.length; i++) {
+      const ek = augEdgeKeys[i]
       if (ek !== null) controlPoints.push({
-        key: ek, pos: relaxed[i], chainId: id,
+        key: ek, pos: augPts[i], chainId: id,
         chainIdx: storedHandles ? undefined : i * stepsActual,
       })
     }
@@ -313,18 +352,18 @@ export function buildRoadChainsV2(
     let baseChain: [number, number][]
     if (steps === 0) {
       baseChain = storedHandles && storedHandles.length >= 2
-        ? [relaxed[0], ...storedHandles.slice(1, -1), relaxed[relaxed.length - 1]]
-        : relaxed.slice()
+        ? [augPts[0], ...storedHandles.slice(1, -1), augPts[augPts.length - 1]]
+        : augPts.slice()
     } else if (storedHandles && storedHandles.length >= 2) {
-      const pinnedHandles: [number, number][] = [relaxed[0], ...storedHandles.slice(1, -1), relaxed[relaxed.length - 1]]
+      const pinnedHandles: [number, number][] = [augPts[0], ...storedHandles.slice(1, -1), augPts[augPts.length - 1]]
       baseChain = catmullRom(pinnedHandles, Math.max(2, steps))
     } else {
-      baseChain = catmullRom(relaxed, Math.max(2, steps))
+      baseChain = catmullRom(augPts, Math.max(2, steps))
     }
 
     const effectiveCtrl = (storedHandles && storedHandles.length >= 2)
-      ? [relaxed[0], ...storedHandles.slice(1, -1), relaxed[relaxed.length - 1]] as [number, number][]
-      : relaxed
+      ? [augPts[0], ...storedHandles.slice(1, -1), augPts[augPts.length - 1]] as [number, number][]
+      : augPts
     const hopCount = effectiveCtrl.length - 1
     const denseSteps = Math.max(1, steps)
     const hopKeysList: string[] = []
@@ -335,7 +374,7 @@ export function buildRoadChainsV2(
       hopRanges.push([h * denseSteps, (h + 1) * denseSteps])
       // Assign hop tier from the waypoint tier values: prefer the destination midpoint's
       // tier, fall back to the source midpoint, then default to 2.
-      const tA = ptsTiers[h], tB = ptsTiers[h + 1]
+      const tA = augPtsTiers[h], tB = augPtsTiers[h + 1]
       hopTiers.push((tA ?? tB ?? 2) as 0 | 1 | 2)
     }
 

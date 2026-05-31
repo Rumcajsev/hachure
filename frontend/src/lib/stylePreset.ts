@@ -19,7 +19,8 @@ export const COLOR_PALETTE_KEYS: string[] = [
 export const STYLE_PRESET_KEYS: string[] = [
   // Terrain appearance
   'thresholds',
-  'terrainColors', 'terrainTextureScales', 'terrainRenderMode',
+  'terrainColors', 'terrainTextureScales', 'terrainTextureOpacities', 'terrainTextureBlendModes',
+  'terrainTextureFile', 'terrainTextureEnabled', 'terrainRenderMode',
   'terrainDisplacement', 'terrainNoiseFrequency', 'terrainNoiseSeed', 'terrainNoiseOctaves',
   'woodsHexStyle', 'blobSize', 'blobCount',
   'illustratedStyle', 'realisticCoastline', 'beachStrip', 'beachColor', 'beachWidth',
@@ -120,7 +121,11 @@ const URBAN_STYLE_DEFAULT = {
 function baseStructural(): StylePreset {
   return {
     thresholds: { sea: 0.4, marsh: 0.2, woods: 0.3, light_woods: 0.15, rough: 0.25, clear: 0 },
-    terrainTextureScales: { clear: 3, woods: 3, light_woods: 3 },
+    terrainTextureScales: { clear: 3, woods: 3, light_woods: 8 },
+    terrainTextureOpacities: { light_woods: 1.0 },
+    terrainTextureBlendModes: { light_woods: 'color' },
+    terrainTextureFile: {},
+    terrainTextureEnabled: {},
     terrainRenderMode: 'blob',
     terrainDisplacement: 18,
     terrainNoiseFrequency: 6,
@@ -223,47 +228,8 @@ export const BUILTIN_PRESETS: BuiltinPreset[] = [
     id: 'standard',
     name: 'Standard',
     description: 'Modern topographic style',
-    defaultPaletteId: 'natural',
+    defaultPaletteId: 'summer',
     data: { ...baseStructural() },
-  },
-  {
-    id: 'historical',
-    name: 'Historical',
-    description: 'Aged cartographic style',
-    defaultPaletteId: 'parchment',
-    data: {
-      ...baseStructural(),
-      mapStyle: 'historical_simple',
-      labelPresetId: 'classic_cartographic',
-      showPaperTexture: true,
-      paperTextureOpacity: 0.28,
-      showPaperVignette: true,
-      roadTierStyles: [
-        { outer: '#d8c898', inner: '#a07830', outerW: 4.5, caseDash: 'solid', fillDash: 'solid', roughness: 0.4, bowing: 0.6 },
-        { outer: '#c8c0a0', inner: '#806030', outerW: 3.0, caseDash: 'solid', fillDash: 'solid', roughness: 0.4, bowing: 0.6 },
-        { outer: '#b8b8a0', inner: '#686868', outerW: 2.0, caseDash: 'solid', fillDash: 'solid', roughness: 0.4, bowing: 0.6 },
-      ],
-      areasStyle: { borderWidth: 1.5, labelSize: 1.0, borderColor: '#4a3010' },
-    },
-  },
-  {
-    id: 'wargame',
-    name: 'Wargame',
-    description: 'Classic hex wargame style',
-    defaultPaletteId: 'wargame',
-    data: {
-      ...baseStructural(),
-      labelPresetId: 'gmt_wargame',
-      terrainBlobBump: 0.35,
-      hexNumbersEnabled: true,
-      hexNumberFontScale: 0.85,
-      roadTierStyles: [
-        { outer: '#f0c040', inner: '#c08000', outerW: 5.0, caseDash: 'solid', fillDash: 'solid', roughness: 0.2, bowing: 0.3 },
-        { outer: '#e0c0a0', inner: '#906040', outerW: 3.5, caseDash: 'solid', fillDash: 'solid', roughness: 0.2, bowing: 0.3 },
-        { outer: '#c8c8b8', inner: '#686868', outerW: 2.5, caseDash: 'solid', fillDash: 'solid', roughness: 0.2, bowing: 0.3 },
-      ],
-      areasStyle: { borderWidth: 2.5, labelSize: 1.0, borderColor: '#1a1a0a' },
-    },
   },
 ]
 
@@ -283,8 +249,8 @@ export interface BuiltinPalette {
 
 export const BUILTIN_PALETTES: BuiltinPalette[] = [
   {
-    id: 'natural',
-    name: 'Natural',
+    id: 'summer',
+    name: 'Summer',
     description: 'Balanced greens and blues',
     swatches: ['#ede8d5', '#4d7a50', '#3a6898', '#9e8c6a'],
     data: {
@@ -297,57 +263,6 @@ export const BUILTIN_PALETTES: BuiltinPalette[] = [
       riverLabelColor: '#2a5a8a',
       hexNumberColor: '#8a8a8a',
       megaHexColor: '#cc4444',
-    },
-  },
-  {
-    id: 'parchment',
-    name: 'Parchment',
-    description: 'Warm aged tones on cream',
-    swatches: ['#f5ecd0', '#4a7048', '#8aaccf', '#b09870'],
-    data: {
-      terrainColors: { clear: '#e8dfc4', woods: '#4a7048', light_woods: '#85a068', rough: '#b09870', marsh: '#7a9480', sea: '#8aaccf', river: '#8ab5cc', beach: '#dfd0a0' },
-      beachColor: '#dfd0a0',
-      mapBgColor: '#f5ecd0',
-      mapBorderColor: '#4a3010',
-      riverStyle: { color: '#4a7898', strokeEnabled: false, strokeColor: '#2a4a6a', strokeWidth: 0.4 },
-      canalStyle: { color: '#6a9a8a', strokeEnabled: true, strokeColor: '#3a5a4a', strokeWidth: 0.5 },
-      riverLabelColor: '#3a5878',
-      hexNumberColor: '#8a7a5a',
-      megaHexColor: '#8a4020',
-    },
-  },
-  {
-    id: 'wargame',
-    name: 'Wargame',
-    description: 'Bold hex-counter greens',
-    swatches: ['#e8f0d0', '#2d5a2d', '#7aadcf', '#c0a870'],
-    data: {
-      terrainColors: { clear: '#e8f0d0', woods: '#2d5a2d', light_woods: '#4d7a4d', rough: '#c0a870', marsh: '#6a9870', sea: '#7aadcf', river: '#7aadcf', beach: '#dfd0a0' },
-      beachColor: '#dfd0a0',
-      mapBgColor: '#ffffff',
-      mapBorderColor: '#1a1a0a',
-      riverStyle: { color: '#7aadcf', strokeEnabled: false, strokeColor: '#2a4a6a', strokeWidth: 0.4 },
-      canalStyle: { color: '#6a9a8a', strokeEnabled: true, strokeColor: '#3a5a4a', strokeWidth: 0.5 },
-      riverLabelColor: '#2a5a8a',
-      hexNumberColor: '#606050',
-      megaHexColor: '#cc0000',
-    },
-  },
-  {
-    id: 'muted',
-    name: 'Muted',
-    description: 'Desaturated topo tones',
-    swatches: ['#f0ece0', '#6a8060', '#8aa0b0', '#9a8e78'],
-    data: {
-      terrainColors: { clear: '#ddd8c8', woods: '#6a8060', light_woods: '#8a9878', rough: '#9a8e78', marsh: '#7a8e80', sea: '#8aa0b0', river: '#9ab0c0', beach: '#d0c8b0' },
-      beachColor: '#d8cca0',
-      mapBgColor: '#f0ece0',
-      mapBorderColor: '#606050',
-      riverStyle: { color: '#8aacbc', strokeEnabled: false, strokeColor: '#5a7a8a', strokeWidth: 0.4 },
-      canalStyle: { color: '#7a9080', strokeEnabled: true, strokeColor: '#506050', strokeWidth: 0.5 },
-      riverLabelColor: '#5a7890',
-      hexNumberColor: '#908880',
-      megaHexColor: '#9a6050',
     },
   },
 ]

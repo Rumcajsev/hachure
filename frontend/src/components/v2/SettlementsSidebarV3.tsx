@@ -407,13 +407,9 @@ export function SettlementsSidebarV3() {
     deleteSettlement, updateSettlement,
     settlementMoveIndex, setSettlementMoveIndex,
     urbanHexes, urbanPaintMode,
-    activeTool, setActiveTool,
-    labelOffsets, clearAllLabelOffsets,
     showSettlementLabels, setShowSettlementLabels,
     dataSource,
   } = useMapStore()
-  const isDragMode = activeTool.type === 'label-drag'
-  const hasAnyOffset = Object.keys(labelOffsets).length > 0
 
   const [flyout, setFlyout] = useState<FlyoutState>(null)
   const [editingName, setEditingName] = useState<number | null>(null)
@@ -575,22 +571,6 @@ export function SettlementsSidebarV3() {
         <TGap />
         <V2Divider label="Labels" />
         <ToggleRow label="Show labels" checked={showSettlementLabels} onChange={setShowSettlementLabels} />
-        <BrushRow
-          label="Move labels"
-          color={isDragMode ? '#c07040' : t.inkFaint}
-          active={isDragMode}
-          onSelect={() => setActiveTool(isDragMode ? { type: 'none' } : { type: 'label-drag' })}
-        />
-        {hasAnyOffset && (
-          <div style={{ padding: '2px 10px 4px' }}>
-            <button
-              onClick={clearAllLabelOffsets}
-              style={{ background: 'none', border: `1px solid ${t.line}`, color: t.inkFaint, cursor: 'pointer', fontFamily: t.mono, fontSize: 9, padding: '2px 8px', letterSpacing: 0.3, width: '100%' }}
-            >
-              ↺ Reset positions
-            </button>
-          </div>
-        )}
 
       </StripShell>
 

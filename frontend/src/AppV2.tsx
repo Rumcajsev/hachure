@@ -19,19 +19,38 @@ import { BottomDock } from './components/v2/BottomDock'
 import { CanvasToolbar } from './components/v2/CanvasToolbar'
 import { SetupLandingPage } from './components/v2/SetupLandingPage'
 import { SetupWizard } from './components/v2/SetupWizard'
+import { ErrorBoundary } from './components/ErrorBoundary'
 
 export function AppV2() {
+  const [screen, setScreen] = useState<'landing' | 'wizard' | 'editor'>('landing')
+  const [isDark, setIsDark] = useState(false)
+
+  return (
+    <ErrorBoundary onReset={() => setScreen('landing')}>
+      <AppV2Inner
+        screen={screen}
+        setScreen={setScreen}
+        isDark={isDark}
+        setIsDark={setIsDark}
+      />
+    </ErrorBoundary>
+  )
+}
+
+function AppV2Inner({ screen, setScreen, isDark, setIsDark }: {
+  screen: 'landing' | 'wizard' | 'editor'
+  setScreen: (s: 'landing' | 'wizard' | 'editor') => void
+  isDark: boolean
+  setIsDark: (v: boolean) => void
+}) {
   const { step, activePanel, undo, redo, generateStatus, generateProgress, uiScale } = useMapStore()
   const canvasHandleRef = useRef<TerrainViewCanvasHandle>(null)
-const [screen, setScreen] = useState<'landing' | 'wizard' | 'editor'>('landing')
-  const [isDark, setIsDark] = useState(false)
 
   // If the store resets step to 'setup' while in the editor (e.g. mid-generation SSE flow),
   // treat it as wizard so the editor doesn't render against an empty store.
   const activeScreen = screen === 'editor' && step === 'setup' ? 'wizard' : screen
 
   const captureAndStoreThumb = useCallback(() => {
-    // Give the canvas time to mount and draw before capturing
     const timer = setTimeout(() => {
       const dataUrl = canvasHandleRef.current?.captureThumb()
       if (dataUrl) idbSet('hachure-thumb', dataUrl).catch(() => {})
@@ -87,7 +106,7 @@ const [screen, setScreen] = useState<'landing' | 'wizard' | 'editor'>('landing')
         onResume={() => { setScreen('editor'); captureAndStoreThumb() }}
         onLoadFile={() => { /* TODO: file load */ setScreen('editor') }}
         isDark={isDark}
-        onToggleDark={() => setIsDark(d => !d)}
+        onToggleDark={() => setIsDark(!isDark)}
       />
     )
   }
@@ -131,7 +150,6 @@ const [screen, setScreen] = useState<'landing' | 'wizard' | 'editor'>('landing')
 
         {/* Canvas + floating sidebar */}
         <div style={{ flex: 1, position: 'relative', overflow: 'hidden' }}>
-          {/* Canvas fills the full area */}
           <div style={{ width: '100%', height: '100%', display: 'flex' }}>
             <TerrainViewCanvas ref={canvasHandleRef} surroundColor={surroundColor} />
           </div>
@@ -142,10 +160,7 @@ const [screen, setScreen] = useState<'landing' | 'wizard' | 'editor'>('landing')
             </div>
           </div>
 
-          {/* Tool options bar — centered, context-sensitive */}
           <CanvasToolbar />
-
-          {/* Bottom dock */}
           <BottomDock canvasRef={canvasHandleRef} />
         </div>
       </div>
