@@ -3,6 +3,7 @@ import maplibregl from 'maplibre-gl'
 import 'maplibre-gl/dist/maplibre-gl.css'
 import { useMapStore, TERRAIN_COLORS, LAKE_COLOR, TERRAIN_PRIORITY, hexTerrainLayers, edgeBlobCanonicalKey, type GeneratedHex, type RoadTierStyle } from '../store/mapStore'
 import { BlobOverrideFlyout } from './BlobOverrideFlyout'
+import { useTheme } from '../context/ThemeContext'
 import { hexAdjacent, catmullRom, offsetPolyline, pointInPolygon, distToSeg, douglasPeucker, chaikin } from '../lib/geometry'
 import { mulberry32, makePermutation } from '../lib/noise'
 import { projectToCanvas, unprojectFromCanvas, computePaper } from '../lib/projection'
@@ -71,6 +72,7 @@ export type TerrainViewCanvasHandle = {
 }
 
 export const TerrainViewCanvas = forwardRef<TerrainViewCanvasHandle, { surroundColor?: string }>(function TerrainViewCanvas({ surroundColor = '#1a1a2a' }, ref) {
+  const t = useTheme()
   const containerRef = useRef<HTMLDivElement>(null)
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const osmOverlayCanvasRef = useRef<HTMLCanvasElement>(null)
@@ -4679,27 +4681,6 @@ export const TerrainViewCanvas = forwardRef<TerrainViewCanvasHandle, { surroundC
         if (items.length > 0) items.push({ label: '─', action: () => {} })
       }
 
-      if (hex && activePanelRef.current === 'terrain') {
-        const storedHex = hexesRef.current.find(h => h.q === hex.q && h.r === hex.r)
-        const isOverridden = !!(storedHex?.manual_override)
-        if (isOverridden) {
-          items.push({
-            label: 'Revert to default',
-            action: () => resetHexOverrideRef.current(hex.q, hex.r),
-            danger: true,
-          })
-          items.push({ label: '─', action: () => {} })
-        }
-        for (const terrain of TERRAIN_PRIORITY) {
-          const isCurrent = hex.terrain === terrain
-          items.push({
-            label: terrain.replace(/_/g, ' '),
-            action: () => overrideHexTerrainRef.current(hex.q, hex.r, terrain),
-            color: terrainColorsRef.current[terrain] ?? '#888',
-            dim: isCurrent,
-          } as CtxItem)
-        }
-      }
 
       // Bridge tier assignment — right-click near any detected bridge
       if (bridgesEnabledRef.current && detectedBridgesRef.current.length > 0) {
@@ -5701,7 +5682,8 @@ export const TerrainViewCanvas = forwardRef<TerrainViewCanvasHandle, { surroundC
   }, [])
 
   const menuItemStyle: CSSProperties = {
-    padding: '5px 14px', cursor: 'pointer', color: '#a0a0c0', whiteSpace: 'nowrap',
+    padding: '5px 14px', cursor: 'pointer', whiteSpace: 'nowrap',
+    fontFamily: t.mono, fontSize: 11,
   }
 
   return (
@@ -5816,27 +5798,26 @@ export const TerrainViewCanvas = forwardRef<TerrainViewCanvasHandle, { surroundC
             top: Math.min(ctxMenu.y, window.innerHeight - 60),
             maxHeight: `${window.innerHeight - Math.min(ctxMenu.y, window.innerHeight - 60) - 10}px`,
             overflowY: 'auto',
-            background: '#0e0f18', border: '1px solid #2a2a4a',
-            borderRadius: 4, padding: '3px 0', zIndex: 200,
-            fontFamily: 'ui-monospace, monospace', fontSize: 12,
-            minWidth: 170, boxShadow: '0 4px 16px rgba(0,0,0,0.5)',
+            background: t.surface, border: `1px solid ${t.line}`,
+            borderRadius: 6, padding: '3px 0', zIndex: 200,
+            minWidth: 180, boxShadow: t.shadowFlyout,
             userSelect: 'none',
           }}
           onClick={e => e.stopPropagation()}
         >
           {ctxMenu.items.map((item, i) => item.label === '─' ? (
-            <div key={i} style={{ borderTop: '1px solid #1e1f2e', margin: '3px 0' }} />
+            <div key={i} style={{ borderTop: `1px solid ${t.line2}`, margin: '3px 0' }} />
           ) : (
             <div
               key={i}
               onClick={() => { if (!item.dim) { item.action(); setCtxMenu(null) } }}
               style={{
                 ...menuItemStyle,
-                color: item.danger ? '#9e5a5a' : item.dim ? '#3a3a5a' : '#a0a0c0',
+                color: item.danger ? '#b05050' : item.dim ? t.inkFaint : t.ink2,
                 display: 'flex', alignItems: 'center', gap: 8,
                 cursor: item.dim ? 'default' : 'pointer',
               }}
-              onMouseEnter={e => { if (!item.dim) e.currentTarget.style.background = '#1a1a2e' }}
+              onMouseEnter={e => { if (!item.dim) e.currentTarget.style.background = t.paper }}
               onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}
             >
               {item.color && (
