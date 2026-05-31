@@ -5753,11 +5753,17 @@ export const TerrainViewCanvas = forwardRef<TerrainViewCanvasHandle, { surroundC
       ctx.moveTo(poly[0][0], poly[0][1])
       for (let i = 1; i < poly.length; i++) ctx.lineTo(poly[i][0], poly[i][1])
       ctx.closePath()
-      ctx.fillStyle = 'rgba(255,255,255,0.12)'
+      ctx.fillStyle = 'rgba(255,255,255,0.18)'
       ctx.fill()
-      ctx.strokeStyle = 'rgba(255,255,255,0.7)'
+      // glow pass
+      ctx.strokeStyle = 'rgba(255,255,255,0.25)'
+      ctx.lineWidth = 5 / zoom
+      ctx.setLineDash([])
+      ctx.stroke()
+      // crisp dashed outline on top
+      ctx.strokeStyle = 'rgba(255,255,255,0.95)'
       ctx.lineWidth = 1.5 / zoom
-      ctx.setLineDash([4 / zoom, 3 / zoom])
+      ctx.setLineDash([5 / zoom, 3 / zoom])
       ctx.stroke()
       ctx.setLineDash([])
     }
