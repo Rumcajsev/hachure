@@ -869,6 +869,9 @@ export function migratePersisted(persisted: unknown, fromVersion: number): Recor
     // backgroundTerrain added to GeneratedHex — no migration needed,
     // existing hexes get undefined (no background) which is correct
   }
+  if (fromVersion < 67) {
+    if (s.terrainBlobFeather === undefined) s.terrainBlobFeather = 0
+  }
   if (fromVersion < 64) {
     if (s.roadCenterPull === undefined) s.roadCenterPull = 0
     if (Array.isArray(s.roadTierGeometry)) {

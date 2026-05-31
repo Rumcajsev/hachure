@@ -13,6 +13,29 @@ const CLASS_BG: Record<string, string> = {
 }
 const DEFAULT_BG = 'rgba(0,0,0,0.60)'
 
+const CLASS_FILL: Record<string, string> = {
+  flat:      'rgba(60,140,60,0.45)',
+  hills:     'rgba(180,160,40,0.50)',
+  mountains: 'rgba(180,90,30,0.55)',
+}
+const NO_DATA_FILL = 'rgba(0,0,0,0.18)'
+
+export function drawElevationClassOverlay({ ctx, projected, R: _R }: DrawElevationDebugParams): void {
+  ctx.save()
+  for (const { hex, verts } of projected) {
+    const fill = hex.elevation_class
+      ? (CLASS_FILL[hex.elevation_class] ?? NO_DATA_FILL)
+      : hex.elevation_avg_m != null ? CLASS_FILL.flat : NO_DATA_FILL
+    ctx.fillStyle = fill
+    ctx.beginPath()
+    ctx.moveTo(verts[0][0], verts[0][1])
+    for (let i = 1; i < verts.length; i++) ctx.lineTo(verts[i][0], verts[i][1])
+    ctx.closePath()
+    ctx.fill()
+  }
+  ctx.restore()
+}
+
 export function drawElevationDebug({ ctx, projected, R }: DrawElevationDebugParams): void {
   const fontSize = Math.min(7, Math.max(4, Math.round(R * 0.038)))
   ctx.save()

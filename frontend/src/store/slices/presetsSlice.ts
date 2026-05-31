@@ -1,13 +1,13 @@
 import type { MapStore } from '../mapStore'
 import {
   extractStylePreset, type StylePreset,
-  extractColorPalette, type ColorPalette,
-  BUILTIN_PRESET_MAP, BUILTIN_PALETTE_MAP,
+  BUILTIN_PRESET_MAP,
 } from '../../lib/stylePreset'
 
 const STORAGE_KEY = 'ig2-style-presets'
 const ACTIVE_PRESET_KEY = 'ig2-active-preset'
-const ACTIVE_PALETTE_KEY = 'ig2-active-palette'
+
+
 
 export interface StylePresetEntry {
   id: string
@@ -16,24 +16,15 @@ export interface StylePresetEntry {
   data: StylePreset
 }
 
-export interface ColorPaletteEntry {
-  id: string
-  name: string
-  createdAt: number
-  data: ColorPalette
-}
-
 export interface PresetsSlice {
   userPresets: StylePresetEntry[]
   activePresetId: string | null
-  activePaletteId: string | null
   savePreset: (name: string) => void
   loadPreset: (id: string) => void
   loadBuiltinPreset: (id: string) => void
   deletePreset: (id: string) => void
   exportPreset: (id: string) => void
   importPresetData: (data: unknown) => string | null
-  loadBuiltinPalette: (id: string) => void
 }
 
 function loadFromStorage(): StylePresetEntry[] {
@@ -68,7 +59,6 @@ export function createPresetsSlice(
   return {
     userPresets: loadFromStorage(),
     activePresetId: loadId(ACTIVE_PRESET_KEY),
-    activePaletteId: loadId(ACTIVE_PALETTE_KEY),
 
     savePreset: (name: string) => {
       const entry: StylePresetEntry = {
@@ -80,39 +70,21 @@ export function createPresetsSlice(
       const updated = [...get().userPresets, entry]
       saveToStorage(updated)
       saveId(ACTIVE_PRESET_KEY, null)
-      saveId(ACTIVE_PALETTE_KEY, null)
-      set({ userPresets: updated, activePresetId: null, activePaletteId: null })
+      set({ userPresets: updated, activePresetId: null })
     },
 
     loadPreset: (id: string) => {
       const entry = get().userPresets.find(p => p.id === id)
       if (!entry) return
       saveId(ACTIVE_PRESET_KEY, null)
-      saveId(ACTIVE_PALETTE_KEY, null)
-      set({ ...(entry.data as Partial<MapStore>), activePresetId: null, activePaletteId: null })
+      set({ ...(entry.data as Partial<MapStore>), activePresetId: null })
     },
 
     loadBuiltinPreset: (id: string) => {
       const preset = BUILTIN_PRESET_MAP[id]
       if (!preset) return
-      // Also load the preset's default palette
-      const palette = BUILTIN_PALETTE_MAP[preset.defaultPaletteId]
-      const paletteData = palette?.data ?? {}
       saveId(ACTIVE_PRESET_KEY, id)
-      saveId(ACTIVE_PALETTE_KEY, preset.defaultPaletteId ?? null)
-      set({
-        ...(preset.data as Partial<MapStore>),
-        ...(paletteData as Partial<MapStore>),
-        activePresetId: id,
-        activePaletteId: preset.defaultPaletteId ?? null,
-      })
-    },
-
-    loadBuiltinPalette: (id: string) => {
-      const palette = BUILTIN_PALETTE_MAP[id]
-      if (!palette) return
-      saveId(ACTIVE_PALETTE_KEY, id)
-      set({ ...(palette.data as Partial<MapStore>), activePaletteId: id })
+      set({ ...(preset.data as Partial<MapStore>), activePresetId: id })
     },
 
     deletePreset: (id: string) => {

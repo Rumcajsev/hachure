@@ -2,7 +2,7 @@ import { useState, useRef, useMemo, useCallback } from 'react'
 import { useMapStore } from '../../store/mapStore'
 import { useTheme } from '../../context/ThemeContext'
 import { PresetsDropdown } from '../PresetsPanel'
-import { BUILTIN_PRESET_MAP, BUILTIN_PALETTE_MAP, isPresetEdited, isPaletteEdited } from '../../lib/stylePreset'
+import { BUILTIN_PRESET_MAP, isPresetEdited } from '../../lib/stylePreset'
 
 const TABS = [
   { id: 'terrain',     label: 'Terrain'     },
@@ -11,7 +11,6 @@ const TABS = [
   { id: 'settlements', label: 'Settlements' },
   { id: 'highlights',  label: 'Overlays'    },
   { id: 'areas',       label: 'Areas'       },
-  { id: 'elevation',   label: 'Elevation'   },
   { id: 'display',     label: 'Display'     },
 ] as const
 
@@ -23,10 +22,9 @@ export function EditorTopBar({ onExportPDF, onGoHome }: { onExportPDF: () => Pro
     activePanel, setActivePanel,
     saveProject, restoreProject,
     mapTitle, setMapTitle,
-    activePresetId, activePaletteId,
+    activePresetId,
   } = useMapStore()
   const presetEdited = useMapStore(s => isPresetEdited(s, s.activePresetId))
-  const paletteEdited = useMapStore(s => isPaletteEdited(s, s.activePaletteId))
 
   const [exporting, setExporting] = useState(false)
   const [editingTitle, setEditingTitle] = useState(false)
@@ -77,7 +75,6 @@ export function EditorTopBar({ onExportPDF, onGoHome }: { onExportPDF: () => Pro
   const canRedo = redoStack.length > 0
 
   const activePresetName = activePresetId ? (BUILTIN_PRESET_MAP[activePresetId]?.name ?? null) : null
-  const activePaletteName = activePaletteId ? (BUILTIN_PALETTE_MAP[activePaletteId]?.name ?? null) : null
 
   return (
     <>
@@ -179,8 +176,7 @@ export function EditorTopBar({ onExportPDF, onGoHome }: { onExportPDF: () => Pro
           {activePresetName
             ? <>
                 {activePresetName}
-                {activePaletteName && <span style={{ color: t.inkMute }}> · {activePaletteName}</span>}
-                {(presetEdited || paletteEdited) && <span style={{ color: t.rust, fontSize: 10 }}> (edited)</span>}
+                {presetEdited && <span style={{ color: t.rust, fontSize: 10 }}> (edited)</span>}
               </>
             : 'Preset'
           }

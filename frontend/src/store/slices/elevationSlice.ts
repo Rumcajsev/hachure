@@ -1,4 +1,4 @@
-import type { MapStore, GeneratedHex, GenerateProgress, ClassificationParams } from '../mapStore'
+import type { MapStore, GeneratedHex, GenerateProgress, ClassificationParams, BlobOverride } from '../mapStore'
 import { DEFAULT_CLASSIFICATION_PARAMS } from '../mapStore'
 import { classifyElevation as _classify } from '../../lib/elevationClassify'
 
@@ -31,6 +31,12 @@ export type ElevationSlice = {
   contourLineWidth: number
   contourDisabledTerrains: string[]
   contourDisabledElevClasses: string[]
+  elevationImportEnabled: boolean
+  setElevationImportEnabled: (v: boolean) => void
+  showElevationClassOverlay: boolean
+  setShowElevationClassOverlay: (v: boolean) => void
+  elevationOverridesTerrain: boolean
+  setElevationOverridesTerrain: (v: boolean) => void
   fetchElevation: () => Promise<void>
   setShowElevationDebug: (v: boolean) => void
   setClassificationParam: (key: keyof ClassificationParams, v: number) => void
@@ -51,6 +57,8 @@ export type ElevationSlice = {
   setContourLineWidth: (v: number) => void
   setContourDisabledTerrains: (v: string[]) => void
   setContourDisabledElevClasses: (v: string[]) => void
+  elevationTypeBlobStyles: Record<string, BlobOverride>
+  setElevationTypeBlobStyle: (cls: string, style: Partial<BlobOverride>) => void
 }
 
 type Set = (partial: Partial<MapStore> | ((s: MapStore) => Partial<MapStore>)) => void
@@ -77,6 +85,12 @@ export const createElevationSlice = (set: Set, get: () => MapStore): ElevationSl
   contourLineWidth: 1.5,
   contourDisabledTerrains: [],
   contourDisabledElevClasses: [],
+  elevationImportEnabled: true,
+  setElevationImportEnabled: (v) => set({ elevationImportEnabled: v }),
+  showElevationClassOverlay: false,
+  setShowElevationClassOverlay: (v) => set({ showElevationClassOverlay: v }),
+  elevationOverridesTerrain: false,
+  setElevationOverridesTerrain: (v) => set({ elevationOverridesTerrain: v }),
 
   fetchElevation: async () => {
     const { generatedHexes, generatedMetadata, hexOrientation } = get()
@@ -171,7 +185,7 @@ export const createElevationSlice = (set: Set, get: () => MapStore): ElevationSl
     const { generatedHexes } = get()
     const updated = generatedHexes.map(h =>
       h.q === q && h.r === r
-        ? { ...h, elevation_class: cls, elevation_manual_override: true }
+        ? { ...h, elevation_class: cls, elevation_background: cls === 'mountains' ? 'hills' : null, elevation_manual_override: true }
         : h
     )
     set({ generatedHexes: updated })
@@ -195,4 +209,8 @@ export const createElevationSlice = (set: Set, get: () => MapStore): ElevationSl
   setContourLineWidth: (v) => set({ contourLineWidth: v }),
   setContourDisabledTerrains: (v) => set({ contourDisabledTerrains: v }),
   setContourDisabledElevClasses: (v) => set({ contourDisabledElevClasses: v }),
+  elevationTypeBlobStyles: {},
+  setElevationTypeBlobStyle: (cls, style) => set(s => ({
+    elevationTypeBlobStyles: { ...s.elevationTypeBlobStyles, [cls]: { ...s.elevationTypeBlobStyles[cls], ...style } },
+  })),
 })

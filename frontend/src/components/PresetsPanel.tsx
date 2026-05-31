@@ -1,6 +1,6 @@
 import { useRef, useState, useEffect } from 'react'
 import { useMapStore } from '../store/mapStore'
-import { BUILTIN_PRESETS, BUILTIN_PALETTES, isPresetEdited, isPaletteEdited } from '../lib/stylePreset'
+import { BUILTIN_PRESETS, isPresetEdited } from '../lib/stylePreset'
 import { useTheme } from '../context/ThemeContext'
 
 interface Props {
@@ -11,12 +11,11 @@ interface Props {
 export function PresetsDropdown({ anchorRef, onClose }: Props) {
   const t = useTheme()
   const {
-    userPresets, activePresetId, activePaletteId,
-    savePreset, loadPreset, loadBuiltinPreset, loadBuiltinPalette,
+    userPresets, activePresetId,
+    savePreset, loadPreset, loadBuiltinPreset,
     deletePreset, exportPreset, importPresetData,
   } = useMapStore()
   const presetEdited = useMapStore(s => isPresetEdited(s, s.activePresetId))
-  const paletteEdited = useMapStore(s => isPaletteEdited(s, s.activePaletteId))
 
   const [saveName, setSaveName] = useState('')
   const [importError, setImportError] = useState<string | null>(null)
@@ -124,8 +123,7 @@ export function PresetsDropdown({ anchorRef, onClose }: Props) {
               key={preset.id}
               onClick={() => { loadBuiltinPreset(preset.id); onClose() }}
               style={{
-                display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-                width: '100%', padding: '7px 14px',
+                display: 'flex', alignItems: 'center', gap: 10, width: '100%', padding: '7px 14px',
                 background: isActive ? t.rustTint : 'none',
                 border: 'none', borderBottom: `1px solid ${t.line2}`,
                 cursor: 'pointer', fontFamily: t.sans, fontSize: 13,
@@ -134,7 +132,12 @@ export function PresetsDropdown({ anchorRef, onClose }: Props) {
               onMouseEnter={e => { if (!isActive) e.currentTarget.style.background = t.paper2 }}
               onMouseLeave={e => { if (!isActive) e.currentTarget.style.background = 'none' }}
             >
-              <span style={{ fontWeight: isActive ? 600 : 400 }}>{preset.name}</span>
+              <div style={{ display: 'flex', gap: 2, flexShrink: 0 }}>
+                {preset.swatches.map((c, i) => (
+                  <div key={i} style={{ width: 12, height: 12, borderRadius: 2, background: c, border: `1px solid ${t.line}` }} />
+                ))}
+              </div>
+              <span style={{ flex: 1, fontWeight: isActive ? 600 : 400 }}>{preset.name}</span>
               <span style={{ fontSize: 11, color: isActive ? t.rust : t.inkFaint }}>
                 {isActive && presetEdited ? 'edited' : isActive ? '✓' : ''}
               </span>
@@ -153,53 +156,6 @@ export function PresetsDropdown({ anchorRef, onClose }: Props) {
             onMouseEnter={e => { e.currentTarget.style.color = t.ink }}
             onMouseLeave={e => { e.currentTarget.style.color = t.inkMute }}
           >↺ Revert style to preset defaults</button>
-        )}
-
-        {divider}
-
-        {/* ── Colour palettes ── */}
-        {sectionTitle('Colour palette')}
-        {BUILTIN_PALETTES.map(palette => {
-          const isActive = activePaletteId === palette.id
-          return (
-            <button
-              key={palette.id}
-              onClick={() => { loadBuiltinPalette(palette.id); onClose() }}
-              style={{
-                display: 'flex', alignItems: 'center', gap: 10, width: '100%', padding: '7px 14px',
-                background: isActive ? t.rustTint : 'none',
-                border: 'none', borderBottom: `1px solid ${t.line2}`,
-                cursor: 'pointer', fontFamily: t.sans, fontSize: 13,
-                color: isActive ? t.rust : t.ink, textAlign: 'left',
-              }}
-              onMouseEnter={e => { if (!isActive) e.currentTarget.style.background = t.paper2 }}
-              onMouseLeave={e => { if (!isActive) e.currentTarget.style.background = 'none' }}
-            >
-              {/* Swatch strip */}
-              <div style={{ display: 'flex', gap: 2, flexShrink: 0 }}>
-                {palette.swatches.map((c, i) => (
-                  <div key={i} style={{ width: 12, height: 12, borderRadius: 2, background: c, border: `1px solid ${t.line}` }} />
-                ))}
-              </div>
-              <span style={{ flex: 1, fontWeight: isActive ? 600 : 400 }}>{palette.name}</span>
-              <span style={{ fontSize: 11, color: isActive ? t.rust : t.inkFaint }}>
-                {isActive && paletteEdited ? 'edited' : isActive ? '✓' : ''}
-              </span>
-            </button>
-          )
-        })}
-
-        {activePaletteId && paletteEdited && (
-          <button
-            onClick={() => { loadBuiltinPalette(activePaletteId); onClose() }}
-            style={{
-              display: 'block', width: '100%', padding: '5px 14px',
-              background: 'none', border: 'none', borderBottom: `1px solid ${t.line2}`,
-              color: t.inkMute, cursor: 'pointer', fontFamily: t.sans, fontSize: 11, textAlign: 'left',
-            }}
-            onMouseEnter={e => { e.currentTarget.style.color = t.ink }}
-            onMouseLeave={e => { e.currentTarget.style.color = t.inkMute }}
-          >↺ Revert palette to defaults</button>
         )}
 
         {/* ── User presets ── */}

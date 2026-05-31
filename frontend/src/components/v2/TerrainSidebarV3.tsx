@@ -102,6 +102,7 @@ function ShapeSettingsFlyout({ onClose }: { onClose: () => void }) {
     terrainBlobOutlineEnabled, setTerrainBlobOutlineEnabled,
     terrainBlobOutlineColor, setTerrainBlobOutlineColor,
     terrainBlobOutlineWidth, setTerrainBlobOutlineWidth,
+    edgeBlobWidth, setEdgeBlobWidth,
     applyTerrainBlobPreset,
   } = useMapStore()
 
@@ -209,6 +210,10 @@ function ShapeSettingsFlyout({ onClose }: { onClose: () => void }) {
         <MiniSlider label="Width" display={`${terrainBlobOutlineWidth}px`} value={terrainBlobOutlineWidth} min={0.5} max={8} step={0.5} onChange={setTerrainBlobOutlineWidth} />
       </>}
       <div style={{ margin: '6px 12px 2px', borderTop: `1px solid ${t.line2}`, paddingTop: 8 }}>
+        <span style={{ fontFamily: t.mono, fontSize: 9, letterSpacing: 0.8, color: t.inkFaint, textTransform: 'uppercase', fontWeight: 600 }}>Edge blob</span>
+      </div>
+      <MiniSlider label="Default width" display={`${Math.round(edgeBlobWidth * 100)}%`} value={Math.round(edgeBlobWidth * 100)} min={5} max={80} step={1} onChange={v => setEdgeBlobWidth(v / 100)} />
+      <div style={{ margin: '6px 12px 2px', borderTop: `1px solid ${t.line2}`, paddingTop: 8 }}>
         <span style={{ fontFamily: t.mono, fontSize: 9, letterSpacing: 0.8, color: t.inkFaint, textTransform: 'uppercase', fontWeight: 600 }}>Variation</span>
       </div>
       <MiniSlider label="Clearing Chance" display={`${Math.round(local.clearingChance * 100)}%`} value={Math.round(local.clearingChance * 100)} min={0} max={50} step={1} onChange={v => set('clearingChance', v / 100)} />
@@ -283,45 +288,18 @@ function PaintingOptionsFlyout({ onClose }: { onClose: () => void }) {
   const {
     realisticCoastline, setRealisticCoastline,
     terrainLayersEnabled, setTerrainLayersEnabled,
-    terrainEdgePaintEnabled, setTerrainEdgePaintEnabled,
-    terrainBackgroundPaintEnabled, setTerrainBackgroundPaintEnabled,
     beachStrip, setBeachStrip, beachColor, setBeachColor, beachWidth, setBeachWidth,
     coastlineDPEpsilon, setCoastlineDPEpsilon, coastlineChaikinPasses, setCoastlineChaikinPasses,
-    edgeBlobWidth, setEdgeBlobWidth,
   } = useMapStore()
 
   return (
     <FlyoutShell title="Painting Options" onClose={onClose}>
       <div style={{ padding: '4px 0' }}>
         <ToggleRow
-          label="Edge painting"
-          hint="Drag along a region edge to paint a blob along it."
-          checked={terrainEdgePaintEnabled}
-          onChange={setTerrainEdgePaintEnabled}
-        />
-        <ToggleRow
-          label="Background painting"
-          hint="Paint a background terrain underneath the foreground — shows as fringe at blob edges."
-          checked={terrainBackgroundPaintEnabled}
-          onChange={setTerrainBackgroundPaintEnabled}
-        />
-        <ToggleRow
           label="Background fringe"
           hint="Render background terrain blobs. Turn off to see foreground only."
           checked={terrainLayersEnabled}
           onChange={setTerrainLayersEnabled}
-        />
-      </div>
-      <div style={{ borderTop: `1px solid ${t.line2}`, paddingTop: 4 }}>
-        <div style={{ padding: '6px 12px 4px', fontFamily: t.mono, fontSize: 8.5, letterSpacing: 0.8, color: t.inkFaint, textTransform: 'uppercase' as const, fontWeight: 600 }}>
-          Edge painting
-        </div>
-        <MiniSlider
-          label="Default width"
-          display={`${Math.round(edgeBlobWidth * 100)}%`}
-          value={Math.round(edgeBlobWidth * 100)}
-          min={5} max={80} step={1}
-          onChange={v => setEdgeBlobWidth(v / 100)}
         />
       </div>
       <div style={{ borderTop: `1px solid ${t.line2}`, marginTop: 4, paddingTop: 4 }}>
@@ -370,7 +348,13 @@ function ElevationFlyout({ onClose }: { onClose: () => void }) {
     showElevationDebug, setShowElevationDebug,
     classificationParams, setClassificationParam,
     fetchElevation, dataSource,
+    elevationImportEnabled, setElevationImportEnabled,
+    elevationOverridesTerrain, setElevationOverridesTerrain,
+    setShowElevationClassOverlay,
   } = useMapStore()
+
+  const showOverlay = () => setShowElevationClassOverlay(true)
+  const hideOverlay = () => setShowElevationClassOverlay(false)
 
   const hasData = generatedHexes.some(h => h.elevation_avg_m != null)
   const fetchedCount = generatedHexes.filter(h => h.elevation_avg_m != null).length
@@ -418,13 +402,19 @@ function ElevationFlyout({ onClose }: { onClose: () => void }) {
 
       {hasData && (
         <div style={{ borderTop: `1px solid ${t.line2}`, paddingTop: 4 }}>
-          <div style={{ padding: '4px 12px 2px', fontFamily: t.mono, fontSize: 9, letterSpacing: 0.8, color: t.inkFaint, textTransform: 'uppercase', fontWeight: 600 }}>
-            Step 2 — Classify
+          <div style={{ padding: '4px 12px 2px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+            <div style={{ fontFamily: t.mono, fontSize: 9, letterSpacing: 0.8, color: t.inkFaint, textTransform: 'uppercase', fontWeight: 600 }}>
+              Step 2 — Classify
+            </div>
+            <label style={{ display: 'flex', alignItems: 'center', gap: 4, cursor: 'pointer' }}>
+              <input type="checkbox" checked={elevationImportEnabled} onChange={e => setElevationImportEnabled(e.target.checked)} style={{ margin: 0 }} />
+              <span style={{ fontFamily: t.mono, fontSize: 9, color: t.inkMute }}>enabled</span>
+            </label>
           </div>
-          <MiniSlider label="Mountains %" display={`${classificationParams.mountainsPct}%`} value={classificationParams.mountainsPct} min={1} max={50} step={1} onChange={v => setClassificationParam('mountainsPct', v)} accentColor='#7a6a5a' />
-          <MiniSlider label="Hills %" display={`${classificationParams.hillsPct}%`} value={classificationParams.hillsPct} min={1} max={60} step={1} onChange={v => setClassificationParam('hillsPct', v)} accentColor='#9a8a5a' />
-          <MiniSlider label="Min ruggedness" display={`${classificationParams.rangeFloorM}m`} value={classificationParams.rangeFloorM} min={0} max={400} step={10} onChange={v => setClassificationParam('rangeFloorM', v)} />
-          <MiniSlider label="Min altitude" display={`${classificationParams.medianFloorM}m`} value={classificationParams.medianFloorM} min={0} max={2000} step={50} onChange={v => setClassificationParam('medianFloorM', v)} />
+          <MiniSlider label="Mountains %" display={`${classificationParams.mountainsPct}%`} value={classificationParams.mountainsPct} min={1} max={50} step={1} onChange={v => setClassificationParam('mountainsPct', v)} accentColor='#7a6a5a' onDragStart={showOverlay} onDragEnd={hideOverlay} />
+          <MiniSlider label="Hills %" display={`${classificationParams.hillsPct}%`} value={classificationParams.hillsPct} min={1} max={60} step={1} onChange={v => setClassificationParam('hillsPct', v)} accentColor='#9a8a5a' onDragStart={showOverlay} onDragEnd={hideOverlay} />
+          <MiniSlider label="Min ruggedness" display={`${classificationParams.rangeFloorM}m`} value={classificationParams.rangeFloorM} min={0} max={400} step={10} onChange={v => setClassificationParam('rangeFloorM', v)} onDragStart={showOverlay} onDragEnd={hideOverlay} />
+          <MiniSlider label="Min altitude" display={`${classificationParams.medianFloorM}m`} value={classificationParams.medianFloorM} min={0} max={2000} step={50} onChange={v => setClassificationParam('medianFloorM', v)} onDragStart={showOverlay} onDragEnd={hideOverlay} />
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 4, padding: '6px 12px 2px' }}>
             {[
               { label: 'Flat',  count: flatCount,      color: '#5a7a5a' },
@@ -442,6 +432,7 @@ function ElevationFlyout({ onClose }: { onClose: () => void }) {
 
       {hasData && (
         <div style={{ borderTop: `1px solid ${t.line2}`, padding: '6px 12px 0' }}>
+          <ToggleRow label="Elevation overrides terrain" checked={elevationOverridesTerrain} onChange={setElevationOverridesTerrain} />
           <ToggleRow label="Show avg / max per hex" checked={showElevationDebug} onChange={setShowElevationDebug} />
         </div>
       )}
@@ -1215,11 +1206,6 @@ export function TerrainSidebarV3() {
             onCog={() => openCog(t)}
           />
         ))}
-        <TGap />
-        <TriggerRow label="Default shape" active={flyout === 't-shape'} onClick={() => toggleFlyout('t-shape')} />
-        <TriggerRow label="Import / classify" active={flyout === 't-import'} onClick={() => toggleFlyout('t-import')} icon={IMPORT_ICON} />
-        <TriggerRow label="Painting options" active={flyout === 't-opts'} onClick={() => toggleFlyout('t-opts')} />
-
         <V2Divider label="Terrain · manual" />
         {MANUAL_TERRAINS.map((t, idx) => (
           <BrushRow
@@ -1256,6 +1242,10 @@ export function TerrainSidebarV3() {
             setAddTerrainOpen(o => !o)
           }}
         />
+        <TGap />
+        <TriggerRow label="Default shape" active={flyout === 't-shape'} onClick={() => toggleFlyout('t-shape')} />
+        <TriggerRow label="Import / classify" active={flyout === 't-import'} onClick={() => toggleFlyout('t-import')} icon={IMPORT_ICON} />
+        <TriggerRow label="Painting options" active={flyout === 't-opts'} onClick={() => toggleFlyout('t-opts')} />
 
         <V2Divider label="Elevation" />
         {ELEV_BRUSHES.map(({ brush, tier, color, key }) => {

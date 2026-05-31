@@ -39,7 +39,7 @@ export function classifyElevation(
       || h.elevation_range_m == null
       || h.elevation_median_m == null
     ) {
-      return { ...h, elevation_class: null }
+      return { ...h, elevation_class: null, elevation_background: null }
     }
 
     const range = h.elevation_range_m
@@ -60,6 +60,6 @@ export function classifyElevation(
     }
 
     const result: ElevClass = RANK[byRange] >= RANK[byMedian] ? byRange : byMedian
-    return { ...h, elevation_class: result }
+    return { ...h, elevation_class: result, elevation_background: result === 'mountains' ? 'hills' : null }
   })
 }

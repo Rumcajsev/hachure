@@ -372,17 +372,24 @@ interface ElevBrushRowProps {
   color: string
   active: boolean
   shortcut: string
+  showCog?: boolean
+  cogOpen?: boolean
+  customShape?: boolean
   onSelect: () => void
+  onCog?: () => void
 }
 
-export function ElevBrushRow({ tier, label, color, active, shortcut, onSelect }: ElevBrushRowProps) {
+export function ElevBrushRow({ tier, label, color, active, shortcut, showCog, cogOpen, customShape, onSelect, onCog }: ElevBrushRowProps) {
   const t = useTheme()
+  const [hovered, setHovered] = useState(false)
   return (
     <div
       onClick={onSelect}
+      onMouseEnter={() => setHovered(true)}
+      onMouseLeave={() => setHovered(false)}
       style={{
         display: 'grid',
-        gridTemplateColumns: '36px 1fr auto',
+        gridTemplateColumns: `36px 1fr ${showCog ? 'auto ' : ''}auto`,
         alignItems: 'center',
         gap: 10,
         padding: '6px 12px 6px 10px',
@@ -392,15 +399,42 @@ export function ElevBrushRow({ tier, label, color, active, shortcut, onSelect }:
       }}
     >
       {/* SVG glyph */}
-      <svg width="36" height="20" viewBox="0 0 36 20">
-        {tier === 0 && <line x1="2" y1="10" x2="34" y2="10" stroke={color} strokeWidth="2" />}
-        {tier === 1 && <path d="M2 16 Q8 5 14 9 T26 7 T34 13 L34 18 L2 18 Z" fill={color} stroke="rgba(0,0,0,0.2)" strokeWidth="0.6" />}
-        {tier === 2 && <path d="M2 18 L10 4 L18 11 L24 5 L34 18 Z" fill={color} stroke="rgba(0,0,0,0.25)" strokeWidth="0.6" />}
-      </svg>
+      <div style={{ position: 'relative', width: 36, height: 20, flexShrink: 0 }}>
+        <svg width="36" height="20" viewBox="0 0 36 20">
+          {tier === 0 && <line x1="2" y1="10" x2="34" y2="10" stroke={color} strokeWidth="2" />}
+          {tier === 1 && <path d="M2 16 Q8 5 14 9 T26 7 T34 13 L34 18 L2 18 Z" fill={color} stroke="rgba(0,0,0,0.2)" strokeWidth="0.6" />}
+          {tier === 2 && <path d="M2 18 L10 4 L18 11 L24 5 L34 18 Z" fill={color} stroke="rgba(0,0,0,0.25)" strokeWidth="0.6" />}
+        </svg>
+        {customShape && (
+          <span title="Custom blob shape" style={{
+            position: 'absolute', bottom: 0, right: 0,
+            width: 5, height: 5, borderRadius: 1,
+            background: t.rust, transform: 'rotate(45deg)', display: 'block',
+            boxShadow: '0 0 0 1px rgba(0,0,0,0.3)',
+          }} />
+        )}
+      </div>
 
       <span style={{ fontFamily: t.sans, fontSize: 12.5, fontWeight: active ? 600 : 500, color: t.ink, textTransform: 'capitalize' }}>
         {label}
       </span>
+
+      {showCog && (
+        <button
+          onClick={e => { e.stopPropagation(); onCog?.() }}
+          style={{
+            width: 20, height: 20, display: 'flex', alignItems: 'center', justifyContent: 'center',
+            background: 'none', border: 'none', cursor: 'pointer',
+            color: cogOpen ? t.rust : t.inkFaint,
+            opacity: active || cogOpen || hovered ? 1 : 0, padding: 0,
+          }}
+        >
+          <svg width="11" height="11" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.3">
+            <circle cx="6" cy="6" r="1.8" />
+            <path d="M6 0v2M6 10v2M0 6h2M10 6h2M2 2l1.4 1.4M8.6 8.6L10 10M2 10l1.4-1.4M8.6 3.4L10 2" />
+          </svg>
+        </button>
+      )}
 
       <span style={{
         fontFamily: t.mono, fontSize: 9.5,
@@ -717,13 +751,15 @@ export function DetailSection({
 // ── MiniSlider ────────────────────────────────────────────────────────────────
 
 export function MiniSlider({
-  label, display, value, min, max, step, onChange, disabled, accentColor,
+  label, display, value, min, max, step, onChange, disabled, accentColor, onDragStart, onDragEnd,
 }: {
   label: React.ReactNode; display: string | number; value: number;
   min: number; max: number; step: number;
   onChange: (v: number) => void;
   disabled?: boolean;
   accentColor?: string;
+  onDragStart?: () => void;
+  onDragEnd?: () => void;
 }) {
   const t = useTheme()
   const trackRef = useRef<HTMLDivElement>(null)
@@ -744,8 +780,10 @@ export function MiniSlider({
     <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '4px 14px', opacity: disabled ? 0.4 : 1 }}>
       <span style={{ fontFamily: t.sans, fontSize: 11, color: t.ink2, flexShrink: 0, width: 96 }}>{label}</span>
       <div
-        onPointerDown={e => { if (disabled) return; e.currentTarget.setPointerCapture(e.pointerId); compute(e.clientX) }}
+        onPointerDown={e => { if (disabled) return; e.currentTarget.setPointerCapture(e.pointerId); onDragStart?.(); compute(e.clientX) }}
         onPointerMove={e => { if (disabled || e.buttons === 0) return; compute(e.clientX) }}
+        onPointerUp={() => onDragEnd?.()}
+        onPointerCancel={() => onDragEnd?.()}
         style={{ flex: 1, padding: '6px 0', cursor: disabled ? 'default' : 'ew-resize', userSelect: 'none', touchAction: 'none' }}
       >
         <div ref={trackRef} style={{ position: 'relative', height: 2, background: t.line }}>
