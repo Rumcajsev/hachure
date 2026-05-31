@@ -142,12 +142,13 @@ export const TerrainViewCanvas = forwardRef<TerrainViewCanvasHandle, { surroundC
     hexBorderMode, hexEdgeMode, hexBorderOpacity, hexBorderColor, hexBorderDifference,
     terrainBlobSmooth, terrainBlobOffset, terrainBlobBump,
     terrainBlobSweepFreq, terrainBlobLobeFreq, terrainBlobLobeAmp, terrainBlobLobeThreshold, terrainBlobLobeDirection,
-    terrainBlobClearingChance, terrainBlobSatelliteChance, terrainBlobPatchSize,
+    terrainBlobClearingChance, terrainBlobSatelliteChance, terrainBlobPatchSize, terrainBlobFeather,
     terrainColors, terrainTextureScales, terrainTextureBlendModes, terrainTextureOpacities,
     terrainTextureTintColors, terrainTextureTintOpacities,
     terrainTextureFile, terrainTextureEnabled,
     terrainPaintMode, terrainPaintBrush, overrideHexTerrain, resetHexOverride,
     elevationPaintMode, elevationPaintBrush, overrideHexElevation,
+    elevationTypeBlobStyles,
     terrainLayersEnabled,
     roadEdges, railEdges, rawRoadWays, rawRailWays, roadTierStyles, railStyle,
     showRawOsmRoads, osmHighlightTier, osmSpotlightMode, osmSpotlightRadius, osmSpotlightTiers,
@@ -246,6 +247,7 @@ export const TerrainViewCanvas = forwardRef<TerrainViewCanvasHandle, { surroundC
     mapImageDataUrl, mapImageTransform, mapImageOpacity, setMapImageTransform,
     dataSource,
     blobPatches, addBlobPatch, deleteBlobPatch,
+    blobSeeds, randomizeBlobSeed,
     labelOffsets, setLabelOffset, clearAllLabelOffsets,
   } = useMapStore()
   // dev-only: expose store for dry-run console injection
@@ -455,6 +457,7 @@ export const TerrainViewCanvas = forwardRef<TerrainViewCanvasHandle, { surroundC
   const terrainBlobClearingChanceRef = useRef(terrainBlobClearingChance)
   const terrainBlobSatelliteChanceRef = useRef(terrainBlobSatelliteChance)
   const terrainBlobPatchSizeRef = useRef(terrainBlobPatchSize)
+  const terrainBlobFeatherRef = useRef(terrainBlobFeather)
   const terrainColorsRef = useRef(terrainColors)
   const terrainTextureScalesRef = useRef(terrainTextureScales)
   const terrainTextureBlendModesRef = useRef(terrainTextureBlendModes)
@@ -513,6 +516,7 @@ export const TerrainViewCanvas = forwardRef<TerrainViewCanvasHandle, { surroundC
   const blobPatchesRef = useRef(blobPatches)
   const addBlobPatchRef = useRef(addBlobPatch)
   const deleteBlobPatchRef = useRef(deleteBlobPatch)
+  const randomizeBlobSeedRef = useRef(randomizeBlobSeed)
   const activeToolRef = useRef(activeTool)
   const setHexHighlightRef = useRef(setHexHighlight)
   const clearHexHighlightRef = useRef(clearHexHighlight)
@@ -631,6 +635,7 @@ export const TerrainViewCanvas = forwardRef<TerrainViewCanvasHandle, { surroundC
   blobPatchesRef.current = blobPatches
   addBlobPatchRef.current = addBlobPatch
   deleteBlobPatchRef.current = deleteBlobPatch
+  randomizeBlobSeedRef.current = randomizeBlobSeed
   setHexHighlightRef.current = setHexHighlight
   clearHexHighlightRef.current = clearHexHighlight
   startNewLineSegmentRef.current = startNewLineSegment
@@ -770,6 +775,7 @@ export const TerrainViewCanvas = forwardRef<TerrainViewCanvasHandle, { surroundC
   terrainBlobClearingChanceRef.current = terrainBlobClearingChance
   terrainBlobSatelliteChanceRef.current = terrainBlobSatelliteChance
   terrainBlobPatchSizeRef.current = terrainBlobPatchSize
+  terrainBlobFeatherRef.current = terrainBlobFeather
   terrainColorsRef.current = terrainColors
   terrainTextureScalesRef.current = terrainTextureScales
   terrainTextureBlendModesRef.current = terrainTextureBlendModes
@@ -793,6 +799,8 @@ export const TerrainViewCanvas = forwardRef<TerrainViewCanvasHandle, { surroundC
   hillsColorRef.current = hillsColor
   const mountainsColorRef = useRef(mountainsColor)
   mountainsColorRef.current = mountainsColor
+  const elevationTypeBlobStylesRef = useRef(elevationTypeBlobStyles)
+  elevationTypeBlobStylesRef.current = elevationTypeBlobStyles
   const reliefShadingOpacityRef = useRef(reliefShadingOpacity)
   reliefShadingOpacityRef.current = reliefShadingOpacity
   const hillshadeAzimuthRef = useRef(hillshadeAzimuth)
@@ -1175,8 +1183,8 @@ export const TerrainViewCanvas = forwardRef<TerrainViewCanvasHandle, { surroundC
   const smoothedCoastlineBoundaryRef = useRef(smoothedCoastlineBoundary)
   smoothedCoastlineBoundaryRef.current = smoothedCoastlineBoundary
 
-  const prevTerrainBlobsRef = useRef<{ terrain: string; polys: [number, number][][] }[]>([])
-  type TerrainBlobCacheEntry = { hexKey: string; rawPolys: [number, number][][]; hexCenters: [number, number][]; styleKey: string; blobs: { terrain: string; polys: [number, number][][] }[] }
+  const prevTerrainBlobsRef = useRef<{ terrain: string; polys: [number, number][][]; blobKeys: string[] }[]>([])
+  type TerrainBlobCacheEntry = { hexKey: string; rawPolys: [number, number][][]; hexCenters: [number, number][]; styleKey: string; blobs: { terrain: string; polys: [number, number][][]; blobKeys: string[] }[] }
   const perTerrainBlobCache = useRef(new Map<string, TerrainBlobCacheEntry>())
   const defaultTerrainBlobs = useMemo(() => {
     if (projectedHexes.length === 0 || hexRadius === 0) return []
@@ -1226,7 +1234,7 @@ export const TerrainViewCanvas = forwardRef<TerrainViewCanvasHandle, { surroundC
       const satelliteChance = ts?.satelliteChance ?? terrainBlobSatelliteChance
       const patchSize       = ts?.patchSize       ?? terrainBlobPatchSize
       const hexKey = terrainProjected.map(p => `${p.hex.q},${p.hex.r}`).join('|')
-      const styleKey = `${smooth}|${offset}|${bump}|${sweepFreq}|${lobeFreq}|${lobeAmp}|${lobeThreshold}|${lobeDirection}|${clearingChance}|${satelliteChance}|${patchSize}|${hexRadius}`
+      const styleKey = `${smooth}|${offset}|${bump}|${sweepFreq}|${lobeFreq}|${lobeAmp}|${lobeThreshold}|${lobeDirection}|${clearingChance}|${satelliteChance}|${patchSize}|${hexRadius}|${JSON.stringify(blobSeeds)}`
       const cached = perTerrainBlobCache.current.get(terrain)
       if (cached?.hexKey === hexKey && cached?.styleKey === styleKey) return cached.blobs
       let rawPolys: [number, number][][]
@@ -1240,7 +1248,7 @@ export const TerrainViewCanvas = forwardRef<TerrainViewCanvasHandle, { surroundC
         rawPolys = entry?.rawPolys ?? []
         hexCenters = entry?.hexCenters ?? []
       }
-      const blobs = shapeTerrainBlobs([{ terrain, rawPolys, hexCenters }], smooth, offset, bump, sweepFreq, lobeFreq, lobeAmp, lobeThreshold, lobeDirection, hexRadius, clearingChance, satelliteChance, patchSize)
+      const blobs = shapeTerrainBlobs([{ terrain, rawPolys, hexCenters }], smooth, offset, bump, sweepFreq, lobeFreq, lobeAmp, lobeThreshold, lobeDirection, hexRadius, clearingChance, satelliteChance, patchSize, blobSeeds)
       perTerrainBlobCache.current.set(terrain, { hexKey, rawPolys, hexCenters, styleKey, blobs })
       return blobs
     })
@@ -1249,7 +1257,7 @@ export const TerrainViewCanvas = forwardRef<TerrainViewCanvasHandle, { surroundC
     }
     prevTerrainBlobsRef.current = result
     return result
-  }, [isTerrainPainting, projectedHexes, blobComponentsByTerrain, terrainBlobOverrides, terrainTypeBlobStyles, terrainBlobSmooth, terrainBlobOffset, terrainBlobBump, terrainBlobSweepFreq, terrainBlobLobeFreq, terrainBlobLobeAmp, terrainBlobLobeThreshold, terrainBlobLobeDirection, terrainBlobClearingChance, terrainBlobSatelliteChance, terrainBlobPatchSize, hexRadius, realisticCoastline])
+  }, [isTerrainPainting, projectedHexes, blobComponentsByTerrain, terrainBlobOverrides, terrainTypeBlobStyles, terrainBlobSmooth, terrainBlobOffset, terrainBlobBump, terrainBlobSweepFreq, terrainBlobLobeFreq, terrainBlobLobeAmp, terrainBlobLobeThreshold, terrainBlobLobeDirection, terrainBlobClearingChance, terrainBlobSatelliteChance, terrainBlobPatchSize, hexRadius, realisticCoastline, blobSeeds])
   const defaultTerrainBlobsRef = useRef(defaultTerrainBlobs)
   defaultTerrainBlobsRef.current = defaultTerrainBlobs
 
@@ -1333,11 +1341,23 @@ export const TerrainViewCanvas = forwardRef<TerrainViewCanvasHandle, { surroundC
     if (projectedHexes.length === 0 || hexRadius === 0) return prevElevationBlobsRef.current
     if (isTerrainPainting) return prevElevationBlobsRef.current
     const hexKey = projectedHexes.map(p => { const h = p.hex as GeneratedHex; return `${h.q},${h.r}:${h.elevation_class ?? ''}:${h.elevation_background ?? ''}` }).join('|')
-    const styleKey = `${terrainBlobSmooth}|${terrainBlobOffset}|${terrainBlobBump}|${terrainBlobSweepFreq}|${terrainBlobLobeFreq}|${terrainBlobLobeAmp}|${terrainBlobLobeThreshold}|${terrainBlobLobeDirection}|${hexRadius}`
+    const hillsStyle = elevationTypeBlobStyles['hills']
+    const mountainsStyle = elevationTypeBlobStyles['mountains']
+    const styleKey = `${terrainBlobSmooth}|${terrainBlobOffset}|${terrainBlobBump}|${terrainBlobSweepFreq}|${terrainBlobLobeFreq}|${terrainBlobLobeAmp}|${terrainBlobLobeThreshold}|${terrainBlobLobeDirection}|${hexRadius}|${JSON.stringify(hillsStyle)}|${JSON.stringify(mountainsStyle)}`
     if (elevationBlobsCache.current?.hexKey === hexKey && elevationBlobsCache.current?.styleKey === styleKey) {
       return elevationBlobsCache.current.blobs
     }
     const makePolys = (cls: 'hills' | 'mountains', cachedTopo: BlobTopologyEntry | null | undefined) => {
+      const clsStyle = cls === 'hills' ? hillsStyle : mountainsStyle
+      const useCustom = clsStyle?.enabled === true
+      const smooth        = useCustom ? (clsStyle?.smooth        ?? terrainBlobSmooth)        : terrainBlobSmooth
+      const offset        = useCustom ? (clsStyle?.offset        ?? terrainBlobOffset)        : terrainBlobOffset
+      const bump          = useCustom ? (clsStyle?.bump          ?? terrainBlobBump)          : terrainBlobBump
+      const sweepFreq     = useCustom ? (clsStyle?.sweepFreq     ?? terrainBlobSweepFreq)     : terrainBlobSweepFreq
+      const lobeFreq      = useCustom ? (clsStyle?.lobeFreq      ?? terrainBlobLobeFreq)      : terrainBlobLobeFreq
+      const lobeAmp       = useCustom ? (clsStyle?.lobeAmp       ?? terrainBlobLobeAmp)       : terrainBlobLobeAmp
+      const lobeThreshold = useCustom ? (clsStyle?.lobeThreshold ?? terrainBlobLobeThreshold) : terrainBlobLobeThreshold
+      const lobeDirection = useCustom ? (clsStyle?.lobeDirection ?? terrainBlobLobeDirection) : terrainBlobLobeDirection
       const elevProjected = projectedHexes
         .filter(p => {
           const h = p.hex as GeneratedHex
@@ -1349,7 +1369,7 @@ export const TerrainViewCanvas = forwardRef<TerrainViewCanvasHandle, { surroundC
         ? cachedTopo
         : (buildTerrainBlobTopology(elevProjected, hexRadius).find(e => e.terrain === cls) ?? null)
       if (!topoEntry) return { topo: null, polys: [] as [number, number][][] }
-      const shaped = shapeTerrainBlobs([topoEntry], terrainBlobSmooth, terrainBlobOffset, terrainBlobBump, terrainBlobSweepFreq, terrainBlobLobeFreq, terrainBlobLobeAmp, terrainBlobLobeThreshold, terrainBlobLobeDirection, hexRadius)
+      const shaped = shapeTerrainBlobs([topoEntry], smooth, offset, bump, sweepFreq, lobeFreq, lobeAmp, lobeThreshold, lobeDirection, hexRadius)
       return { topo: topoEntry, polys: shaped.find(b => b.terrain === cls)?.polys ?? [] }
     }
     const hillsResult = makePolys('hills', elevationBlobsCache.current?.topoHills)
@@ -1358,7 +1378,7 @@ export const TerrainViewCanvas = forwardRef<TerrainViewCanvasHandle, { surroundC
     elevationBlobsCache.current = { hexKey, topoHills: hillsResult.topo, topoMountains: mountainsResult.topo, styleKey, blobs }
     prevElevationBlobsRef.current = blobs
     return blobs
-  }, [isTerrainPainting, projectedHexes, terrainBlobSmooth, terrainBlobOffset, terrainBlobBump, terrainBlobSweepFreq, terrainBlobLobeFreq, terrainBlobLobeAmp, terrainBlobLobeThreshold, terrainBlobLobeDirection, hexRadius])
+  }, [isTerrainPainting, projectedHexes, terrainBlobSmooth, terrainBlobOffset, terrainBlobBump, terrainBlobSweepFreq, terrainBlobLobeFreq, terrainBlobLobeAmp, terrainBlobLobeThreshold, terrainBlobLobeDirection, hexRadius, elevationTypeBlobStyles])
   const defaultElevationBlobsRef = useRef(defaultElevationBlobs)
   defaultElevationBlobsRef.current = defaultElevationBlobs
 
@@ -1588,6 +1608,7 @@ export const TerrainViewCanvas = forwardRef<TerrainViewCanvasHandle, { surroundC
         satelliteChance: terrainBlobSatelliteChanceRef.current,
         patchSize: terrainBlobPatchSizeRef.current,
       },
+      terrainBlobFeather: terrainBlobFeatherRef.current,
       lakeBlobParams: {
         smooth: lakeBlobSmoothRef.current, offset: lakeBlobOffsetRef.current,
         bump: lakeBlobBumpRef.current, sweepFreq: lakeBlobSweepFreqRef.current,
@@ -1605,8 +1626,11 @@ export const TerrainViewCanvas = forwardRef<TerrainViewCanvasHandle, { surroundC
       beachColor: beachColorRef.current,
       beachWidth: beachWidthRef.current,
       elevationBlobs: defaultElevationBlobsRef.current,
-      hillsColor: hillsColorRef.current,
-      mountainsColor: mountainsColorRef.current,
+      hillsColor: terrainColorsRef.current['hills'] ?? hillsColorRef.current,
+      mountainsColor: terrainColorsRef.current['mountains'] ?? mountainsColorRef.current,
+      elevationTextureScales: terrainTextureScalesRef.current,
+      elevationTextureBlendModes: terrainTextureBlendModesRef.current,
+      elevationTextureOpacities: terrainTextureOpacitiesRef.current,
       reliefShadingOpacity: reliefShadingOpacityRef.current,
       coastlineBoundaryRings: smoothedCoastlineBoundaryRef.current,
       coastlineRawBoundaryRings: rawCoastlineBoundaryRef.current,
@@ -2683,7 +2707,7 @@ export const TerrainViewCanvas = forwardRef<TerrainViewCanvasHandle, { surroundC
   //   forestTextureVersion, frameDims, draw])
 
   // Mark terrain layer dirty when terrain-affecting data changes
-  useEffect(() => { terrainDirtyRef.current = true }, [defaultTerrainBlobs, defaultLakeBlobs, defaultElevationBlobs, terrainColors, terrainTextureScales, terrainTextureBlendModes, terrainTextureOpacities, terrainTextureTintColors, terrainTextureTintOpacities, terrainTextureFile, terrainTextureEnabled, terrainBlobOverrides, terrainTypeBlobStyles, lakeOverrides, terrainRenderMode, hexEdgeMode, generatedHexes, realisticCoastline, coastlineDebugRaw, smoothedCoastlineBoundary, rawCoastlineBoundary, beachStrip, beachColor, beachWidth, hillsColor, mountainsColor, reliefShadingOpacity, coastlineDPEpsilon, coastlineChaikinPasses, edgeBlobPainted, edgeBlobOverrides, edgeBlobWidth, mapStyle, historicalIconParams, blobPatches])
+  useEffect(() => { terrainDirtyRef.current = true }, [defaultTerrainBlobs, defaultLakeBlobs, defaultElevationBlobs, terrainColors, terrainTextureScales, terrainTextureBlendModes, terrainTextureOpacities, terrainTextureTintColors, terrainTextureTintOpacities, terrainTextureFile, terrainTextureEnabled, terrainBlobOverrides, terrainTypeBlobStyles, lakeOverrides, terrainRenderMode, hexEdgeMode, generatedHexes, realisticCoastline, coastlineDebugRaw, smoothedCoastlineBoundary, rawCoastlineBoundary, beachStrip, beachColor, beachWidth, hillsColor, mountainsColor, reliefShadingOpacity, coastlineDPEpsilon, coastlineChaikinPasses, edgeBlobPainted, edgeBlobOverrides, edgeBlobWidth, mapStyle, historicalIconParams, blobPatches, elevationTypeBlobStyles, terrainBlobFeather])
   useEffect(() => { terrainDirtyRef.current = true; draw() }, [hillshadeDisabledTerrains, hillshadeDisabledElevClasses, contourDisabledTerrains, contourDisabledElevClasses]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // Decode heightmap PNG → ImageData when URL changes, then recompute derived canvases
@@ -4712,6 +4736,29 @@ export const TerrainViewCanvas = forwardRef<TerrainViewCanvasHandle, { surroundC
                 dim: tier.id === currentTierId,
               })
             }
+          }
+        }
+      }
+
+      // Terrain blob randomize
+      if (activePanelRef.current === 'terrain') {
+        const logical2 = clientToLogicalRef.current(e.clientX, e.clientY)
+        if (logical2) {
+          const { lx: lx2, ly: ly2 } = logical2
+          const allBlobs = defaultTerrainBlobsRef.current
+          let hitBlobKey: string | null = null
+          outer: for (const entry of allBlobs) {
+            for (let i = 0; i < entry.polys.length; i++) {
+              if (pointInPolygon(lx2, ly2, entry.polys[i])) {
+                hitBlobKey = entry.blobKeys[i] ?? null
+                break outer
+              }
+            }
+          }
+          if (hitBlobKey) {
+            const captured = hitBlobKey
+            if (items.length > 0) items.push({ label: '─', action: () => {} })
+            items.push({ label: 'Randomize blob', action: () => randomizeBlobSeedRef.current(captured) })
           }
         }
       }

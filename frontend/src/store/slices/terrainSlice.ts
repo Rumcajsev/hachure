@@ -31,6 +31,7 @@ export type TerrainSlice = {
   terrainBlobClearingChance: number
   terrainBlobSatelliteChance: number
   terrainBlobPatchSize: number
+  terrainBlobFeather: number
   realisticCoastline: boolean
   coastlineDebugRaw: boolean
   beachStrip: boolean
@@ -110,6 +111,7 @@ export type TerrainSlice = {
   setTerrainBlobClearingChance: (v: number) => void
   setTerrainBlobSatelliteChance: (v: number) => void
   setTerrainBlobPatchSize: (v: number) => void
+  setTerrainBlobFeather: (v: number) => void
   applyTerrainBlobPreset: (id: BlobPresetId) => void
   setRealisticCoastline: (v: boolean) => void
   setCoastlineDebugRaw: (v: boolean) => void
@@ -159,6 +161,8 @@ export type TerrainSlice = {
   setLakeOverride: (key: string, override: BlobOverride | null) => void
   addBlobPatch: (patch: BlobPatch) => void
   deleteBlobPatch: (id: string) => void
+  blobSeeds: Record<string, number>
+  randomizeBlobSeed: (terrain: string) => void
 }
 
 import { TERRAIN_COLORS } from '../mapStore'
@@ -199,6 +203,7 @@ export const createTerrainSlice = (set: Set, get: () => MapStore): TerrainSlice 
   terrainBlobClearingChance: DEFAULT_TERRAIN_BLOB.clearingChance,
   terrainBlobSatelliteChance: DEFAULT_TERRAIN_BLOB.satelliteChance,
   terrainBlobPatchSize: DEFAULT_TERRAIN_BLOB.patchSize,
+  terrainBlobFeather: 0,
   realisticCoastline: false,
   coastlineDebugRaw: false,
   beachStrip: false,
@@ -257,6 +262,7 @@ export const createTerrainSlice = (set: Set, get: () => MapStore): TerrainSlice 
   lakeOverrides: {},
 
   blobPatches: [],
+  blobSeeds: {},
 
   resetToSetup: () => set({
     step: 'setup',
@@ -687,6 +693,7 @@ export const createTerrainSlice = (set: Set, get: () => MapStore): TerrainSlice 
   setTerrainBlobClearingChance: (v) => set({ terrainBlobClearingChance: v }),
   setTerrainBlobSatelliteChance: (v) => set({ terrainBlobSatelliteChance: v }),
   setTerrainBlobPatchSize: (v) => set({ terrainBlobPatchSize: v }),
+  setTerrainBlobFeather: (v) => set({ terrainBlobFeather: v }),
   applyTerrainBlobPreset: (id) => {
     const values = BLOB_PRESETS[id].values
     set({
@@ -826,4 +833,5 @@ export const createTerrainSlice = (set: Set, get: () => MapStore): TerrainSlice 
 
   addBlobPatch: (patch) => set((s) => ({ blobPatches: [...s.blobPatches, patch] })),
   deleteBlobPatch: (id) => set((s) => ({ blobPatches: s.blobPatches.filter(p => p.id !== id) })),
+  randomizeBlobSeed: (terrain) => set((s) => ({ blobSeeds: { ...s.blobSeeds, [terrain]: (Math.random() * 0x7fffffff) | 0 } })),
 })

@@ -216,19 +216,28 @@ export function shapeTerrainBlobs(
   clearingChance = 0,
   satelliteChance = 0,
   patchSize = 0.2,
-): { terrain: string; polys: [number, number][][] }[] {
-  const result: { terrain: string; polys: [number, number][][] }[] = []
+  blobSeeds: Record<string, number> = {},
+): { terrain: string; polys: [number, number][][]; blobKeys: string[] }[] {
+  const result: { terrain: string; polys: [number, number][][]; blobKeys: string[] }[] = []
 
   for (const { terrain, rawPolys, hexCenters } of topology) {
     const resizeS = Math.max(0.1, 1 + offsetFraction)
     const p1Amp = bumpFraction * R
     const p2Amp = bumpFraction * lobeAmp * R * lobeDirection
 
-    const finalPolys = rawPolys.map(poly => {
-      const seed = Math.abs(Math.round(poly[0][0] * 73 + poly[0][1] * 97))
+    const rawSeeds = rawPolys.map(poly => {
+      const posHash = Math.abs(Math.round(poly[0][0] * 73 + poly[0][1] * 97))
+      return { posHash, seed: posHash ^ (blobSeeds[String(posHash)] ?? 0) }
+    })
+
+    const finalPolys = rawPolys.map((poly, i) => {
+      const { seed } = rawSeeds[i]
 
       let p: [number, number][] = poly
-      for (let pass = 0; pass < smooth; pass++) p = preSmoothVar(p, 0.4)
+      const smoothPasses = Math.floor(smooth)
+      const smoothRemainder = smooth - smoothPasses
+      for (let pass = 0; pass < smoothPasses; pass++) p = preSmoothVar(p, 0.4)
+      if (smoothRemainder > 0) p = preSmoothVar(p, 0.4 * smoothRemainder)
       p = resizeToHexAnchors(p, hexCenters, resizeS)
 
       // R * 0.25 (was 0.15) halves the point count before perturbXY and the
@@ -250,8 +259,9 @@ export function shapeTerrainBlobs(
     const allPolys: [number, number][][] = [...finalPolys]
 
     if (clearingChance > 0 || satelliteChance > 0) {
-      for (const poly of finalPolys) {
-        const seed = Math.abs(Math.round(poly[0][0] * 73 + poly[0][1] * 97))
+      for (let i = 0; i < finalPolys.length; i++) {
+        const poly = finalPolys[i]
+        const seed = rawSeeds[i]?.seed ?? Math.abs(Math.round(poly[0][0] * 73 + poly[0][1] * 97))
         const cx = poly.reduce((s, p) => s + p[0], 0) / poly.length
         const cy = poly.reduce((s, p) => s + p[1], 0) / poly.length
         const avgR = poly.reduce((s, p) => s + Math.hypot(p[0] - cx, p[1] - cy), 0) / poly.length
@@ -301,7 +311,8 @@ export function shapeTerrainBlobs(
       }
     }
 
-    result.push({ terrain, polys: allPolys })
+    const blobKeys = rawSeeds.map(rs => String(rs.posHash))
+    result.push({ terrain, polys: allPolys, blobKeys })
   }
 
   return result
