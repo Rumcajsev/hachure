@@ -258,6 +258,8 @@ function PaintingOptionsFlyout({ onClose }: { onClose: () => void }) {
   const {
     realisticCoastline, setRealisticCoastline,
     terrainLayersEnabled, setTerrainLayersEnabled,
+    terrainEdgePaintEnabled, setTerrainEdgePaintEnabled,
+    terrainBackgroundPaintEnabled, setTerrainBackgroundPaintEnabled,
     beachStrip, setBeachStrip, beachColor, setBeachColor, beachWidth, setBeachWidth,
     coastlineDPEpsilon, setCoastlineDPEpsilon, coastlineChaikinPasses, setCoastlineChaikinPasses,
     edgeBlobWidth, setEdgeBlobWidth,
@@ -267,8 +269,20 @@ function PaintingOptionsFlyout({ onClose }: { onClose: () => void }) {
     <FlyoutShell title="Painting Options" onClose={onClose}>
       <div style={{ padding: '4px 0' }}>
         <ToggleRow
-          label="Terrain layers"
-          hint="Render each terrain as its own texture layer."
+          label="Edge painting"
+          hint="Drag along a region edge to paint a blob along it."
+          checked={terrainEdgePaintEnabled}
+          onChange={setTerrainEdgePaintEnabled}
+        />
+        <ToggleRow
+          label="Background painting"
+          hint="Paint a background terrain underneath the foreground — shows as fringe at blob edges."
+          checked={terrainBackgroundPaintEnabled}
+          onChange={setTerrainBackgroundPaintEnabled}
+        />
+        <ToggleRow
+          label="Background fringe"
+          hint="Render background terrain blobs. Turn off to see foreground only."
           checked={terrainLayersEnabled}
           onChange={setTerrainLayersEnabled}
         />

@@ -145,7 +145,7 @@ export const TerrainViewCanvas = forwardRef<TerrainViewCanvasHandle, { surroundC
     terrainColors, terrainTextureScales, terrainTextureBlendModes, terrainTextureOpacities,
     terrainTextureTintColors, terrainTextureTintOpacities,
     terrainTextureFile, terrainTextureEnabled,
-    terrainPaintMode, terrainPaintBrush, overrideHexTerrain, addHexTerrainLayer, removeHexTerrainLayer, resetHexOverride,
+    terrainPaintMode, terrainPaintBrush, overrideHexTerrain, resetHexOverride,
     elevationPaintMode, elevationPaintBrush, overrideHexElevation,
     terrainLayersEnabled,
     roadEdges, railEdges, rawRoadWays, rawRailWays, roadTierStyles, railStyle,
@@ -266,7 +266,6 @@ export const TerrainViewCanvas = forwardRef<TerrainViewCanvasHandle, { surroundC
   const elevationPaintModeRef = useRef(elevationPaintMode)
   const elevationPaintBrushRef = useRef(elevationPaintBrush)
   const overrideHexElevationRef = useRef(overrideHexElevation)
-  const addHexTerrainLayerRef = useRef(addHexTerrainLayer)
   const terrainEdgePaintEnabledRef = useRef(terrainEdgePaintEnabled)
   const terrainBackgroundPaintEnabledRef = useRef(terrainBackgroundPaintEnabled)
   const overrideHexBackgroundRef = useRef(overrideHexBackground)
@@ -276,7 +275,6 @@ export const TerrainViewCanvas = forwardRef<TerrainViewCanvasHandle, { surroundC
   const edgeBlobOverridesRef = useRef(edgeBlobOverrides)
   const customTerrainsRef = useRef(customTerrains)
   const edgeBlobWidthRef = useRef(edgeBlobWidth)
-  const terrainLayersEnabledRef = useRef(terrainLayersEnabled)
   const roadEdgesRef = useRef(roadEdges)
   const railEdgesRef = useRef(railEdges)
   const rawRoadWaysRef = useRef(rawRoadWays)
@@ -339,7 +337,6 @@ export const TerrainViewCanvas = forwardRef<TerrainViewCanvasHandle, { surroundC
   const setRoadSnapBindingRef = useRef(setRoadSnapBinding)
   const deleteRoadSnapBindingRef = useRef(deleteRoadSnapBinding)
   const resetHexOverrideRef = useRef(resetHexOverride)
-  const removeHexTerrainLayerRef = useRef(removeHexTerrainLayer)
   const roadWiggleAmpRef = useRef(roadWiggleAmp)
   const roadWiggleFreqRef = useRef(roadWiggleFreq)
   const roadSmoothingRef = useRef(roadSmoothing)
@@ -565,8 +562,6 @@ export const TerrainViewCanvas = forwardRef<TerrainViewCanvasHandle, { surroundC
   elevationPaintModeRef.current = elevationPaintMode
   elevationPaintBrushRef.current = elevationPaintBrush
   overrideHexElevationRef.current = overrideHexElevation
-  addHexTerrainLayerRef.current = addHexTerrainLayer
-  terrainLayersEnabledRef.current = terrainLayersEnabled
   terrainBackgroundPaintEnabledRef.current = terrainBackgroundPaintEnabled
   overrideHexBackgroundRef.current = overrideHexBackground
   roadEdgesRef.current = roadEdges
@@ -665,12 +660,9 @@ export const TerrainViewCanvas = forwardRef<TerrainViewCanvasHandle, { surroundC
   setRoadSnapBindingRef.current = setRoadSnapBinding
   deleteRoadSnapBindingRef.current = deleteRoadSnapBinding
   overrideHexTerrainRef.current = overrideHexTerrain
-  addHexTerrainLayerRef.current = addHexTerrainLayer
-  terrainLayersEnabledRef.current = terrainLayersEnabled
   terrainBackgroundPaintEnabledRef.current = terrainBackgroundPaintEnabled
   overrideHexBackgroundRef.current = overrideHexBackground
   resetHexOverrideRef.current = resetHexOverride
-  removeHexTerrainLayerRef.current = removeHexTerrainLayer
   elevationPaintModeRef.current = elevationPaintMode
   elevationPaintBrushRef.current = elevationPaintBrush
   overrideHexElevationRef.current = overrideHexElevation
@@ -3142,12 +3134,7 @@ export const TerrainViewCanvas = forwardRef<TerrainViewCanvasHandle, { surroundC
             const brush = terrainPaintBrushRef.current
             overrideHexBackgroundRef.current(target.q, target.r, brush === 'clear' ? undefined : brush)
           } else {
-            const brush = terrainPaintBrushRef.current
-            if (terrainLayersEnabledRef.current && brush !== 'clear') {
-              addHexTerrainLayerRef.current(target.q, target.r, brush)
-            } else {
-              overrideHexTerrainRef.current(target.q, target.r, brush)
-            }
+            overrideHexTerrainRef.current(target.q, target.r, terrainPaintBrushRef.current)
           }
         }
       } else {
@@ -4647,19 +4634,6 @@ export const TerrainViewCanvas = forwardRef<TerrainViewCanvasHandle, { surroundC
             danger: true,
           })
           items.push({ label: '─', action: () => {} })
-        }
-        if (terrainLayersEnabledRef.current && storedHex) {
-          const layers = hexTerrainLayers(storedHex)
-          if (layers.length > 1) {
-            for (const t of layers) {
-              items.push({
-                label: `Remove ${t.replace(/_/g, ' ')} layer`,
-                action: () => removeHexTerrainLayerRef.current(hex.q, hex.r, t),
-                color: terrainColorsRef.current[t] ?? '#888',
-              } as CtxItem)
-            }
-            items.push({ label: '─', action: () => {} })
-          }
         }
         for (const terrain of TERRAIN_PRIORITY) {
           const isCurrent = hex.terrain === terrain
