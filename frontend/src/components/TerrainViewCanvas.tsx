@@ -170,6 +170,7 @@ export const TerrainViewCanvas = forwardRef<TerrainViewCanvasHandle, { surroundC
     terrainBlobSmooth, terrainBlobOffset, terrainBlobBump,
     terrainBlobSweepFreq, terrainBlobLobeFreq, terrainBlobLobeAmp, terrainBlobLobeThreshold, terrainBlobLobeDirection,
     terrainBlobClearingChance, terrainBlobSatelliteChance, terrainBlobPatchSize, terrainBlobFeather,
+    terrainBlobOutlineEnabled, terrainBlobOutlineColor, terrainBlobOutlineWidth,
     terrainColors, terrainTextureScales, terrainTextureBlendModes, terrainTextureOpacities,
     terrainTextureTintColors, terrainTextureTintOpacities,
     terrainTextureFile, terrainTextureEnabled,
@@ -485,6 +486,9 @@ export const TerrainViewCanvas = forwardRef<TerrainViewCanvasHandle, { surroundC
   const terrainBlobSatelliteChanceRef = useRef(terrainBlobSatelliteChance)
   const terrainBlobPatchSizeRef = useRef(terrainBlobPatchSize)
   const terrainBlobFeatherRef = useRef(terrainBlobFeather)
+  const terrainBlobOutlineEnabledRef = useRef(terrainBlobOutlineEnabled)
+  const terrainBlobOutlineColorRef = useRef(terrainBlobOutlineColor)
+  const terrainBlobOutlineWidthRef = useRef(terrainBlobOutlineWidth)
   const terrainColorsRef = useRef(terrainColors)
   const terrainTextureScalesRef = useRef(terrainTextureScales)
   const terrainTextureBlendModesRef = useRef(terrainTextureBlendModes)
@@ -803,6 +807,9 @@ export const TerrainViewCanvas = forwardRef<TerrainViewCanvasHandle, { surroundC
   terrainBlobSatelliteChanceRef.current = terrainBlobSatelliteChance
   terrainBlobPatchSizeRef.current = terrainBlobPatchSize
   terrainBlobFeatherRef.current = terrainBlobFeather
+  terrainBlobOutlineEnabledRef.current = terrainBlobOutlineEnabled
+  terrainBlobOutlineColorRef.current = terrainBlobOutlineColor
+  terrainBlobOutlineWidthRef.current = terrainBlobOutlineWidth
   terrainColorsRef.current = terrainColors
   terrainTextureScalesRef.current = terrainTextureScales
   terrainTextureBlendModesRef.current = terrainTextureBlendModes
@@ -1636,6 +1643,9 @@ export const TerrainViewCanvas = forwardRef<TerrainViewCanvasHandle, { surroundC
         patchSize: terrainBlobPatchSizeRef.current,
       },
       terrainBlobFeather: terrainBlobFeatherRef.current,
+      terrainBlobOutlineEnabled: terrainBlobOutlineEnabledRef.current,
+      terrainBlobOutlineColor: terrainBlobOutlineColorRef.current,
+      terrainBlobOutlineWidth: terrainBlobOutlineWidthRef.current,
       lakeBlobParams: {
         smooth: lakeBlobSmoothRef.current, offset: lakeBlobOffsetRef.current,
         bump: lakeBlobBumpRef.current, sweepFreq: lakeBlobSweepFreqRef.current,
@@ -1653,6 +1663,7 @@ export const TerrainViewCanvas = forwardRef<TerrainViewCanvasHandle, { surroundC
       beachColor: beachColorRef.current,
       beachWidth: beachWidthRef.current,
       elevationBlobs: defaultElevationBlobsRef.current,
+      elevationTypeBlobStyles: elevationTypeBlobStylesRef.current,
       hillsColor: terrainColorsRef.current['hills'] ?? hillsColorRef.current,
       mountainsColor: terrainColorsRef.current['mountains'] ?? mountainsColorRef.current,
       elevationTextureScales: terrainTextureScalesRef.current,
@@ -2741,7 +2752,7 @@ export const TerrainViewCanvas = forwardRef<TerrainViewCanvasHandle, { surroundC
   //   forestTextureVersion, frameDims, draw])
 
   // Mark terrain layer dirty when terrain-affecting data changes
-  useEffect(() => { terrainDirtyRef.current = true }, [defaultTerrainBlobs, defaultLakeBlobs, defaultElevationBlobs, terrainColors, terrainTextureScales, terrainTextureBlendModes, terrainTextureOpacities, terrainTextureTintColors, terrainTextureTintOpacities, terrainTextureFile, terrainTextureEnabled, terrainBlobOverrides, terrainTypeBlobStyles, lakeOverrides, terrainRenderMode, hexEdgeMode, generatedHexes, realisticCoastline, coastlineDebugRaw, smoothedCoastlineBoundary, rawCoastlineBoundary, beachStrip, beachColor, beachWidth, hillsColor, mountainsColor, reliefShadingOpacity, coastlineDPEpsilon, coastlineChaikinPasses, edgeBlobPainted, edgeBlobOverrides, edgeBlobWidth, mapStyle, historicalIconParams, blobPatches, elevationTypeBlobStyles, terrainBlobFeather])
+  useEffect(() => { terrainDirtyRef.current = true }, [defaultTerrainBlobs, defaultLakeBlobs, defaultElevationBlobs, terrainColors, terrainTextureScales, terrainTextureBlendModes, terrainTextureOpacities, terrainTextureTintColors, terrainTextureTintOpacities, terrainTextureFile, terrainTextureEnabled, terrainBlobOverrides, terrainTypeBlobStyles, lakeOverrides, terrainRenderMode, hexEdgeMode, generatedHexes, realisticCoastline, coastlineDebugRaw, smoothedCoastlineBoundary, rawCoastlineBoundary, beachStrip, beachColor, beachWidth, hillsColor, mountainsColor, reliefShadingOpacity, coastlineDPEpsilon, coastlineChaikinPasses, edgeBlobPainted, edgeBlobOverrides, edgeBlobWidth, mapStyle, historicalIconParams, blobPatches, elevationTypeBlobStyles, terrainBlobFeather, terrainBlobOutlineEnabled, terrainBlobOutlineColor, terrainBlobOutlineWidth])
   useEffect(() => { terrainDirtyRef.current = true; draw() }, [hillshadeDisabledTerrains, hillshadeDisabledElevClasses, contourDisabledTerrains, contourDisabledElevClasses]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // Decode heightmap PNG → ImageData when URL changes, then recompute derived canvases

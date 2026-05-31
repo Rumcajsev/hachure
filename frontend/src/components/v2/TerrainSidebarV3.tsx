@@ -99,6 +99,10 @@ function ShapeSettingsFlyout({ onClose }: { onClose: () => void }) {
     terrainBlobClearingChance, setTerrainBlobClearingChance,
     terrainBlobSatelliteChance, setTerrainBlobSatelliteChance,
     terrainBlobPatchSize, setTerrainBlobPatchSize,
+    terrainBlobFeather, setTerrainBlobFeather,
+    terrainBlobOutlineEnabled, setTerrainBlobOutlineEnabled,
+    terrainBlobOutlineColor, setTerrainBlobOutlineColor,
+    terrainBlobOutlineWidth, setTerrainBlobOutlineWidth,
     applyTerrainBlobPreset,
   } = useMapStore()
 
@@ -142,6 +146,19 @@ function ShapeSettingsFlyout({ onClose }: { onClose: () => void }) {
     }, 150)
   }
 
+  const setFringe = (amp: number) => {
+    const lobeFreq = 2.0 + amp * 3.0
+    setLocal(prev => ({ ...prev, lobeAmp: amp, lobeFreq, lobeThreshold: 0 }))
+    draggingRef.current = true
+    if (debounceRef.current) clearTimeout(debounceRef.current)
+    debounceRef.current = setTimeout(() => {
+      draggingRef.current = false
+      setTerrainBlobLobeAmp(amp)
+      setTerrainBlobLobeFreq(lobeFreq)
+      setTerrainBlobLobeThreshold(0)
+    }, 150)
+  }
+
   const isModified =
     terrainBlobSmooth !== DEFAULT_TERRAIN_BLOB.smooth ||
     terrainBlobOffset !== DEFAULT_TERRAIN_BLOB.offset ||
@@ -173,16 +190,25 @@ function ShapeSettingsFlyout({ onClose }: { onClose: () => void }) {
         applyTerrainBlobPreset(id)
         setLocal(prev => ({ ...prev, ...values }))
       }} />
-      <MiniSlider label="Corner Rounding" display={local.smooth} value={local.smooth} min={0} max={5} step={1} onChange={v => set('smooth', v)} accentColor={t.rust} />
+      <MiniSlider label="Corner Rounding" display={Math.round(local.smooth * 4) / 4} value={local.smooth} min={0} max={2} step={0.25} onChange={v => set('smooth', v)} accentColor={t.rust} />
       <MiniSlider label="Waviness" display={`${Math.round(local.bump * 100)}%`} value={Math.round(local.bump * 100)} min={0} max={60} step={1} onChange={v => set('bump', v / 100)} accentColor={t.rust} />
       <MiniSlider label="Inset" display={`${local.offset > 0 ? '+' : ''}${Math.round(local.offset * 100)}%`} value={Math.round(local.offset * 100)} min={-80} max={30} step={1} onChange={v => set('offset', v / 100)} accentColor={t.rust} />
-      <MiniSlider label="Wave Scale" display={local.sweepFreq.toFixed(2)} value={Math.round(local.sweepFreq * 100)} min={40} max={100} step={1} onChange={v => set('sweepFreq', v / 100)} accentColor={t.rust} />
       <div style={{ margin: '6px 12px 2px', borderTop: `1px solid ${t.line2}`, paddingTop: 8 }}>
         <span style={{ fontFamily: t.mono, fontSize: 9, letterSpacing: 0.8, color: t.inkFaint, textTransform: 'uppercase', fontWeight: 600 }}>Fringe</span>
       </div>
-      <MiniSlider label="Scale" display={local.lobeFreq.toFixed(1)} value={Math.round(local.lobeFreq * 10)} min={20} max={50} step={1} onChange={v => set('lobeFreq', v / 10)} />
-      <MiniSlider label="Strength" display={`${Math.round(local.lobeAmp * 100)}%`} value={Math.round(local.lobeAmp * 100)} min={0} max={100} step={1} onChange={v => set('lobeAmp', v / 100)} />
-      <MiniSlider label="Sparsity" display={`${Math.round(local.lobeThreshold * 100)}%`} value={Math.round(local.lobeThreshold * 100)} min={0} max={40} step={1} onChange={v => set('lobeThreshold', v / 100)} />
+      <MiniSlider label="Fringe" display={`${Math.round(local.lobeAmp * 100)}%`} value={Math.round(local.lobeAmp * 100)} min={0} max={100} step={1} onChange={v => setFringe(v / 100)} />
+      <div style={{ margin: '6px 12px 2px', borderTop: `1px solid ${t.line2}`, paddingTop: 8 }}>
+        <span style={{ fontFamily: t.mono, fontSize: 9, letterSpacing: 0.8, color: t.inkFaint, textTransform: 'uppercase', fontWeight: 600 }}>Edge fade</span>
+      </div>
+      <MiniSlider label="Fade" display={terrainBlobFeather > 0 ? `${Math.round(terrainBlobFeather * 100)}%` : 'off'} value={Math.round(terrainBlobFeather * 100)} min={0} max={100} step={1} onChange={v => setTerrainBlobFeather(v / 100)} />
+      <div style={{ margin: '6px 12px 2px', borderTop: `1px solid ${t.line2}`, paddingTop: 8 }}>
+        <span style={{ fontFamily: t.mono, fontSize: 9, letterSpacing: 0.8, color: t.inkFaint, textTransform: 'uppercase', fontWeight: 600 }}>Blob outline</span>
+      </div>
+      <ToggleRow label="Outline" enabled={terrainBlobOutlineEnabled} onChange={setTerrainBlobOutlineEnabled} />
+      {terrainBlobOutlineEnabled && <>
+        <BigColorSwatch value={terrainBlobOutlineColor} onChange={setTerrainBlobOutlineColor} />
+        <MiniSlider label="Width" display={`${terrainBlobOutlineWidth}px`} value={terrainBlobOutlineWidth} min={0.5} max={8} step={0.5} onChange={setTerrainBlobOutlineWidth} />
+      </>}
       <div style={{ margin: '6px 12px 2px', borderTop: `1px solid ${t.line2}`, paddingTop: 8 }}>
         <span style={{ fontFamily: t.mono, fontSize: 9, letterSpacing: 0.8, color: t.inkFaint, textTransform: 'uppercase', fontWeight: 600 }}>Variation</span>
       </div>
@@ -645,6 +671,8 @@ function TerrainCogFlyout({ terrain, onClose }: { terrain: string; onClose: () =
     terrainTypeBlobStyles, setTerrainTypeBlobStyle,
     terrainBlobSmooth, terrainBlobOffset, terrainBlobBump, terrainBlobSweepFreq,
     terrainBlobLobeFreq, terrainBlobLobeAmp, terrainBlobLobeThreshold, terrainBlobLobeDirection,
+    terrainBlobFeather,
+    terrainBlobOutlineEnabled, terrainBlobOutlineColor, terrainBlobOutlineWidth,
     edgeBlobWidth,
   } = useMapStore()
 
@@ -693,6 +721,17 @@ function TerrainCogFlyout({ terrain, onClose }: { terrain: string; onClose: () =
     debounceRef.current = setTimeout(() => {
       draggingRef.current = false
       if (overrideEnabled) setTerrainTypeBlobStyle(terrain, { [field]: val })
+    }, 150)
+  }
+
+  const setBlobFringe = (amp: number) => {
+    const lobeFreq = 2.0 + amp * 3.0
+    setLocalBlob(prev => ({ ...prev, lobeAmp: amp, lobeFreq, lobeThreshold: 0 }))
+    draggingRef.current = true
+    if (debounceRef.current) clearTimeout(debounceRef.current)
+    debounceRef.current = setTimeout(() => {
+      draggingRef.current = false
+      if (overrideEnabled) setTerrainTypeBlobStyle(terrain, { lobeAmp: amp, lobeFreq, lobeThreshold: 0 })
     }, 150)
   }
 
@@ -818,17 +857,28 @@ function TerrainCogFlyout({ terrain, onClose }: { terrain: string; onClose: () =
         </div>
         {overrideEnabled && <div>
           <BlobPresetChips currentValues={local} onSelect={applyBlobPreset} />
-          <MiniSlider label="Corner Rounding" display={local.smooth} value={local.smooth} min={0} max={5} step={1} onChange={v => setBlob('smooth', v)} />
+          <MiniSlider label="Corner Rounding" display={Math.round(local.smooth * 4) / 4} value={local.smooth} min={0} max={2} step={0.25} onChange={v => setBlob('smooth', v)} />
           <MiniSlider label="Waviness" display={`${Math.round(local.bump * 100)}%`} value={Math.round(local.bump * 100)} min={0} max={60} step={1} onChange={v => setBlob('bump', v / 100)} />
           <MiniSlider label="Inset" display={`${local.offset > 0 ? '+' : ''}${Math.round(local.offset * 100)}%`} value={Math.round(local.offset * 100)} min={-80} max={30} step={1} onChange={v => setBlob('offset', v / 100)} />
-          <MiniSlider label="Wave Scale" display={local.sweepFreq.toFixed(2)} value={Math.round(local.sweepFreq * 100)} min={40} max={100} step={1} onChange={v => setBlob('sweepFreq', v / 100)} />
           <div style={{ margin: '6px 12px 2px', borderTop: `1px solid ${tk.line2}`, paddingTop: 8 }}>
             <span style={{ fontFamily: tk.mono, fontSize: 9, letterSpacing: 0.8, color: tk.inkFaint, textTransform: 'uppercase', fontWeight: 600 }}>Fringe</span>
           </div>
-          <MiniSlider label="Scale" display={local.lobeFreq.toFixed(1)} value={Math.round(local.lobeFreq * 10)} min={20} max={50} step={1} onChange={v => setBlob('lobeFreq', v / 10)} />
-          <MiniSlider label="Strength" display={`${Math.round(local.lobeAmp * 100)}%`} value={Math.round(local.lobeAmp * 100)} min={0} max={100} step={1} onChange={v => setBlob('lobeAmp', v / 100)} />
-          <MiniSlider label="Sparsity" display={`${Math.round(local.lobeThreshold * 100)}%`} value={Math.round(local.lobeThreshold * 100)} min={0} max={40} step={1} onChange={v => setBlob('lobeThreshold', v / 100)} />
+          <MiniSlider label="Fringe" display={`${Math.round(local.lobeAmp * 100)}%`} value={Math.round(local.lobeAmp * 100)} min={0} max={100} step={1} onChange={v => setBlobFringe(v / 100)} />
         </div>}
+      </div>
+
+      {/* Per-terrain edge fade */}
+      <div style={{ borderTop: `1px solid ${tk.line2}`, paddingTop: 4 }}>
+        <div style={{ padding: '6px 12px 4px', fontFamily: tk.mono, fontSize: 8.5, letterSpacing: 0.8, color: tk.inkFaint, textTransform: 'uppercase' as const, fontWeight: 600 }}>
+          Edge fade
+        </div>
+        <MiniSlider
+          label="Fade"
+          display={typeStyle?.feather != null ? `${Math.round(typeStyle.feather * 100)}%` : 'default'}
+          value={Math.round((typeStyle?.feather ?? terrainBlobFeather) * 100)}
+          min={0} max={100} step={1}
+          onChange={v => setTerrainTypeBlobStyle(terrain, { feather: v / 100 })}
+        />
       </div>
 
       {/* Edge width override */}
@@ -842,6 +892,29 @@ function TerrainCogFlyout({ terrain, onClose }: { terrain: string; onClose: () =
           value={Math.round((typeStyle?.width ?? edgeBlobWidth) * 100)}
           min={5} max={80} step={1}
           onChange={v => setTerrainTypeBlobStyle(terrain, { width: v / 100 })}
+        />
+      </div>
+
+      {/* Blob outline */}
+      <div style={{ borderTop: `1px solid ${tk.line2}`, paddingTop: 4 }}>
+        <div style={{ padding: '6px 12px 4px', fontFamily: tk.mono, fontSize: 8.5, letterSpacing: 0.8, color: tk.inkFaint, textTransform: 'uppercase' as const, fontWeight: 600 }}>
+          Blob outline
+        </div>
+        <ToggleRow
+          label="Outline"
+          enabled={typeStyle?.outlineEnabled ?? terrainBlobOutlineEnabled}
+          onChange={v => setTerrainTypeBlobStyle(terrain, { outlineEnabled: v })}
+        />
+        <BigColorSwatch
+          value={typeStyle?.outlineColor ?? terrainBlobOutlineColor}
+          onChange={v => setTerrainTypeBlobStyle(terrain, { outlineColor: v })}
+        />
+        <MiniSlider
+          label="Width"
+          display={`${typeStyle?.outlineWidth ?? terrainBlobOutlineWidth}px`}
+          value={typeStyle?.outlineWidth ?? terrainBlobOutlineWidth}
+          min={0.5} max={8} step={0.5}
+          onChange={v => setTerrainTypeBlobStyle(terrain, { outlineWidth: v })}
         />
       </div>
     </FlyoutShell>
@@ -920,6 +993,202 @@ function BlobEditFlyout({ onClose }: { onClose: () => void }) {
   )
 }
 
+// ── Flyout content: elevation class settings ────────────────────────────────
+
+function ElevationCogFlyout({ cls, defaultColor, onClose }: { cls: 'hills' | 'mountains'; defaultColor: string; onClose: () => void }) {
+  const tk = useTheme()
+  const [texturePickerOpen, setTexturePickerOpen] = useState(false)
+  const texturePickerAnchorRef = useRef<HTMLDivElement>(null)
+  const {
+    terrainColors, setTerrainColor,
+    terrainTextureScales, setTerrainTextureScale,
+    terrainTextureBlendModes, setTerrainTextureBlendMode,
+    terrainTextureOpacities, setTerrainTextureOpacity,
+    terrainTextureFile, setTerrainTextureFile,
+    terrainTextureEnabled, setTerrainTextureEnabled,
+    terrainBlobSmooth, terrainBlobOffset, terrainBlobBump, terrainBlobSweepFreq,
+    terrainBlobLobeFreq, terrainBlobLobeAmp, terrainBlobLobeThreshold, terrainBlobLobeDirection,
+    terrainBlobOutlineEnabled, terrainBlobOutlineColor, terrainBlobOutlineWidth,
+    elevationTypeBlobStyles, setElevationTypeBlobStyle,
+  } = useMapStore()
+
+  const color = terrainColors[cls] ?? defaultColor
+  const textureEnabled = terrainTextureEnabled[cls] === true
+  const textureFileId = terrainTextureFile[cls] ?? TEXTURE_OPTIONS[0].id
+  const textureScale = terrainTextureScales[cls] ?? 3
+  const textureBlendMode: GlobalCompositeOperation = terrainTextureBlendModes[cls] ?? 'multiply'
+  const textureOpacity = terrainTextureOpacities[cls] ?? 0.5
+
+  const typeStyle = elevationTypeBlobStyles[cls]
+  const overrideEnabled = typeStyle?.enabled ?? false
+
+  const storeSmooth        = overrideEnabled ? (typeStyle?.smooth        ?? terrainBlobSmooth)        : terrainBlobSmooth
+  const storeOffset        = overrideEnabled ? (typeStyle?.offset        ?? terrainBlobOffset)        : terrainBlobOffset
+  const storeBump          = overrideEnabled ? (typeStyle?.bump          ?? terrainBlobBump)          : terrainBlobBump
+  const storeSweepFreq     = overrideEnabled ? (typeStyle?.sweepFreq     ?? terrainBlobSweepFreq)     : terrainBlobSweepFreq
+  const storeLobeFreq      = overrideEnabled ? (typeStyle?.lobeFreq      ?? terrainBlobLobeFreq)      : terrainBlobLobeFreq
+  const storeLobeAmp       = overrideEnabled ? (typeStyle?.lobeAmp       ?? terrainBlobLobeAmp)       : terrainBlobLobeAmp
+  const storeLobeThreshold = overrideEnabled ? (typeStyle?.lobeThreshold ?? terrainBlobLobeThreshold) : terrainBlobLobeThreshold
+  const storeLobeDirection = overrideEnabled ? (typeStyle?.lobeDirection ?? terrainBlobLobeDirection) : terrainBlobLobeDirection
+
+  const [local, setLocalBlob] = useState<BlobLocal>({
+    smooth: storeSmooth, offset: storeOffset, bump: storeBump, sweepFreq: storeSweepFreq,
+    lobeFreq: storeLobeFreq, lobeAmp: storeLobeAmp, lobeThreshold: storeLobeThreshold, lobeDirection: storeLobeDirection,
+  })
+  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const draggingRef = useRef(false)
+
+  useEffect(() => {
+    if (!draggingRef.current) setLocalBlob({
+      smooth: storeSmooth, offset: storeOffset, bump: storeBump, sweepFreq: storeSweepFreq,
+      lobeFreq: storeLobeFreq, lobeAmp: storeLobeAmp, lobeThreshold: storeLobeThreshold, lobeDirection: storeLobeDirection,
+    })
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [storeSmooth, storeOffset, storeBump, storeSweepFreq, storeLobeFreq, storeLobeAmp, storeLobeThreshold, storeLobeDirection])
+  useEffect(() => () => { if (debounceRef.current) clearTimeout(debounceRef.current) }, [])
+
+  const setBlob = (field: keyof BlobLocal, val: number) => {
+    setLocalBlob(prev => ({ ...prev, [field]: val }))
+    draggingRef.current = true
+    if (debounceRef.current) clearTimeout(debounceRef.current)
+    debounceRef.current = setTimeout(() => {
+      draggingRef.current = false
+      if (overrideEnabled) setElevationTypeBlobStyle(cls, { [field]: val })
+    }, 150)
+  }
+
+  const handleEnableToggle = (checked: boolean) => {
+    if (checked) {
+      setElevationTypeBlobStyle(cls, {
+        enabled: true,
+        smooth: terrainBlobSmooth, offset: terrainBlobOffset, bump: terrainBlobBump,
+        sweepFreq: terrainBlobSweepFreq, lobeFreq: terrainBlobLobeFreq,
+        lobeAmp: terrainBlobLobeAmp, lobeThreshold: terrainBlobLobeThreshold, lobeDirection: terrainBlobLobeDirection,
+      })
+    } else {
+      setElevationTypeBlobStyle(cls, { enabled: false })
+    }
+  }
+
+  const applyBlobPreset = (id: BlobPresetId) => {
+    const v = BLOB_PRESETS[id].values
+    setLocalBlob({ smooth: v.smooth, offset: v.offset, bump: v.bump, sweepFreq: v.sweepFreq, lobeFreq: v.lobeFreq, lobeAmp: v.lobeAmp, lobeThreshold: v.lobeThreshold, lobeDirection: v.lobeDirection })
+    setElevationTypeBlobStyle(cls, { smooth: v.smooth, offset: v.offset, bump: v.bump, sweepFreq: v.sweepFreq, lobeFreq: v.lobeFreq, lobeAmp: v.lobeAmp, lobeThreshold: v.lobeThreshold, lobeDirection: v.lobeDirection })
+  }
+
+  const sectionLabel = (label: string) => (
+    <div style={{ padding: '6px 12px 2px', fontFamily: tk.mono, fontSize: 8.5, letterSpacing: 0.8, color: tk.inkFaint, textTransform: 'uppercase' as const, fontWeight: 600 }}>
+      {label}
+    </div>
+  )
+
+  return (
+    <FlyoutShell
+      title={cls.charAt(0).toUpperCase() + cls.slice(1)}
+      subtitle={overrideEnabled ? 'Custom blob shape active' : 'Using default blob shape'}
+      onClose={onClose}
+    >
+      {sectionLabel('Color')}
+      <BigColorSwatch value={color} onChange={v => setTerrainColor(cls, v)} groups={PALETTE_TERRAIN_GROUPS} />
+
+      <div style={{ borderTop: `1px solid ${tk.line2}`, paddingTop: 4 }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '6px 12px 6px' }}>
+          <span style={{ fontFamily: tk.mono, fontSize: 8.5, letterSpacing: 0.8, color: tk.inkFaint, textTransform: 'uppercase', fontWeight: 600 }}>Texture</span>
+          <ToggleSwitch enabled={textureEnabled} onChange={v => {
+            setTerrainTextureEnabled(cls, v)
+            if (v && !(cls in terrainTextureFile)) setTerrainTextureFile(cls, TEXTURE_OPTIONS[0].id)
+          }} />
+        </div>
+        {textureEnabled && (
+          <div>
+            <div
+              ref={texturePickerAnchorRef}
+              onClick={() => setTexturePickerOpen(v => !v)}
+              style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '4px 14px', cursor: 'pointer' }}
+            >
+              <span style={{ fontFamily: tk.sans, fontSize: 11, color: tk.ink2, flexShrink: 0, width: 96 }}>File</span>
+              <div style={{ flex: 1, display: 'flex', alignItems: 'center', gap: 6, background: tk.surface, border: `1px solid ${tk.line}`, borderRadius: 2, padding: '2px 6px' }}>
+                <div style={{ width: 16, height: 16, borderRadius: 2, overflow: 'hidden', background: '#e8e0d0', flexShrink: 0 }}>
+                  <img src={TEXTURE_PATHS[textureFileId] ?? `/textures/${textureFileId}.png`} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block', mixBlendMode: 'multiply' }} />
+                </div>
+                <span style={{ fontFamily: tk.mono, fontSize: 10, color: tk.ink, flex: 1 }}>
+                  {TEXTURE_OPTIONS.find(o => o.id === textureFileId)?.label ?? textureFileId}
+                </span>
+                <span style={{ fontFamily: tk.mono, fontSize: 9, color: tk.inkFaint }}>▾</span>
+              </div>
+            </div>
+            {texturePickerOpen && (
+              <TexturePickerPopover
+                options={TEXTURE_OPTIONS}
+                selectedId={textureFileId}
+                onSelect={id => setTerrainTextureFile(cls, id)}
+                anchorRef={texturePickerAnchorRef}
+                onClose={() => setTexturePickerOpen(false)}
+              />
+            )}
+            <MiniSlider label="Scale" display={`${textureScale.toFixed(1)}×`} value={Math.round(textureScale * 10)} min={5} max={100} step={1} onChange={v => setTerrainTextureScale(cls, v / 10)} />
+            <MiniSlider label="Opacity" display={`${Math.round(textureOpacity * 100)}%`} value={Math.round(textureOpacity * 100)} min={0} max={100} step={1} onChange={v => setTerrainTextureOpacity(cls, v / 100)} />
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '4px 14px' }}>
+              <span style={{ fontFamily: tk.sans, fontSize: 11, color: tk.ink2, flexShrink: 0, width: 96 }}>Mode</span>
+              <select value={textureBlendMode} onChange={e => setTerrainTextureBlendMode(cls, e.target.value as GlobalCompositeOperation | 'color' | 'color-bg')}
+                style={{ flex: 1, background: tk.surface, color: tk.ink, border: `1px solid ${tk.line}`, borderRadius: 2, fontFamily: tk.mono, fontSize: 10, padding: '2px 4px', cursor: 'pointer' }}>
+                <option value="multiply">Multiply</option>
+                <option value="screen">Screen</option>
+                <option value="overlay">Overlay</option>
+              </select>
+            </div>
+          </div>
+        )}
+      </div>
+
+      <div style={{ borderTop: `1px solid ${tk.line2}`, paddingTop: 4 }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '6px 12px 6px' }}>
+          <span style={{ fontFamily: tk.mono, fontSize: 8.5, letterSpacing: 0.8, color: tk.inkFaint, textTransform: 'uppercase', fontWeight: 600 }}>Custom blob shape</span>
+          <ToggleSwitch enabled={overrideEnabled} onChange={handleEnableToggle} />
+        </div>
+        {overrideEnabled && (
+          <div>
+            <BlobPresetChips currentValues={local} onSelect={applyBlobPreset} />
+            <MiniSlider label="Corner Rounding" display={local.smooth} value={local.smooth} min={0} max={5} step={1} onChange={v => setBlob('smooth', v)} />
+            <MiniSlider label="Waviness" display={`${Math.round(local.bump * 100)}%`} value={Math.round(local.bump * 100)} min={0} max={60} step={1} onChange={v => setBlob('bump', v / 100)} />
+            <MiniSlider label="Inset" display={`${local.offset > 0 ? '+' : ''}${Math.round(local.offset * 100)}%`} value={Math.round(local.offset * 100)} min={-80} max={30} step={1} onChange={v => setBlob('offset', v / 100)} />
+            <MiniSlider label="Wave Scale" display={local.sweepFreq.toFixed(2)} value={Math.round(local.sweepFreq * 100)} min={40} max={100} step={1} onChange={v => setBlob('sweepFreq', v / 100)} />
+            <div style={{ margin: '6px 12px 2px', borderTop: `1px solid ${tk.line2}`, paddingTop: 8 }}>
+              <span style={{ fontFamily: tk.mono, fontSize: 9, letterSpacing: 0.8, color: tk.inkFaint, textTransform: 'uppercase', fontWeight: 600 }}>Fringe</span>
+            </div>
+            <MiniSlider label="Scale" display={local.lobeFreq.toFixed(1)} value={Math.round(local.lobeFreq * 10)} min={20} max={50} step={1} onChange={v => setBlob('lobeFreq', v / 10)} />
+            <MiniSlider label="Strength" display={`${Math.round(local.lobeAmp * 100)}%`} value={Math.round(local.lobeAmp * 100)} min={0} max={100} step={1} onChange={v => setBlob('lobeAmp', v / 100)} />
+            <MiniSlider label="Sparsity" display={`${Math.round(local.lobeThreshold * 100)}%`} value={Math.round(local.lobeThreshold * 100)} min={0} max={40} step={1} onChange={v => setBlob('lobeThreshold', v / 100)} />
+          </div>
+        )}
+      </div>
+
+      {/* Blob outline */}
+      <div style={{ borderTop: `1px solid ${tk.line2}`, paddingTop: 4 }}>
+        <div style={{ padding: '6px 12px 4px', fontFamily: tk.mono, fontSize: 8.5, letterSpacing: 0.8, color: tk.inkFaint, textTransform: 'uppercase' as const, fontWeight: 600 }}>
+          Blob outline
+        </div>
+        <ToggleRow
+          label="Outline"
+          enabled={typeStyle?.outlineEnabled ?? terrainBlobOutlineEnabled}
+          onChange={v => setElevationTypeBlobStyle(cls, { outlineEnabled: v })}
+        />
+        <BigColorSwatch
+          value={typeStyle?.outlineColor ?? terrainBlobOutlineColor}
+          onChange={v => setElevationTypeBlobStyle(cls, { outlineColor: v })}
+        />
+        <MiniSlider
+          label="Width"
+          display={`${typeStyle?.outlineWidth ?? terrainBlobOutlineWidth}px`}
+          value={typeStyle?.outlineWidth ?? terrainBlobOutlineWidth}
+          min={0.5} max={8} step={0.5}
+          onChange={v => setElevationTypeBlobStyle(cls, { outlineWidth: v })}
+        />
+      </div>
+    </FlyoutShell>
+  )
+}
+
 // ── Main component ──────────────────────────────────────────────────────────
 
 const IMPORT_ICON = (
@@ -936,6 +1205,7 @@ export function TerrainSidebarV3() {
     activeTool, setActiveTool,
     terrainColors, customTerrains,
     terrainTypeBlobStyles,
+    elevationTypeBlobStyles,
     mapStyle,
     blobPatches,
     heightmapUrl,
@@ -943,6 +1213,7 @@ export function TerrainSidebarV3() {
 
   const [flyout, setFlyout] = useState<FlyoutId>(null)
   const [cogTerrain, setCogTerrain] = useState<string | null>(null)
+  const [cogElevBrush, setCogElevBrush] = useState<'hills' | 'mountains' | null>(null)
   const [addTerrainOpen, setAddTerrainOpen] = useState(false)
   const [addTerrainAnchorY, setAddTerrainAnchorY] = useState(0)
 
@@ -952,6 +1223,12 @@ export function TerrainSidebarV3() {
   const openCog = (terrain: string) => {
     setCogTerrain(terrain)
     setFlyout('t-terrain')
+  }
+
+  const openElevCog = (cls: 'hills' | 'mountains') => {
+    if (flyout === 'e-terrain' && cogElevBrush === cls) { setFlyout(null); return }
+    setCogElevBrush(cls)
+    setFlyout('e-terrain')
   }
 
   const selectBrush = (terrain: string) => {
@@ -1053,17 +1330,25 @@ export function TerrainSidebarV3() {
         />
 
         <V2Divider label="Elevation" />
-        {ELEV_BRUSHES.map(({ brush, tier, color, key }) => (
-          <ElevBrushRow
-            key={brush}
-            tier={tier}
-            label={brush}
-            color={color}
-            active={elevationPaintMode && elevationPaintBrush === brush}
-            shortcut={key}
-            onSelect={() => toggleElev(brush)}
-          />
-        ))}
+        {ELEV_BRUSHES.map(({ brush, tier, color, key }) => {
+          const displayColor = terrainColors[brush] ?? color
+          const hasCog = brush !== 'flat'
+          return (
+            <ElevBrushRow
+              key={brush}
+              tier={tier}
+              label={brush}
+              color={displayColor}
+              active={elevationPaintMode && elevationPaintBrush === brush}
+              shortcut={key}
+              showCog={hasCog}
+              cogOpen={flyout === 'e-terrain' && cogElevBrush === brush}
+              customShape={elevationTypeBlobStyles[brush]?.enabled === true}
+              onSelect={() => toggleElev(brush)}
+              onCog={hasCog ? () => openElevCog(brush as 'hills' | 'mountains') : undefined}
+            />
+          )
+        })}
         <TGap />
         <TriggerRow label="Import / classify" active={flyout === 'e-import'} onClick={() => toggleFlyout('e-import')} icon={IMPORT_ICON} />
         {heightmapUrl && (
@@ -1101,6 +1386,13 @@ export function TerrainSidebarV3() {
       {flyout === 'blob-patches' && <BlobEditFlyout       onClose={() => { setFlyout(null); setActiveTool({ type: 'none' }) }} />}
       {flyout === 't-terrain' && cogTerrain && (
         <TerrainCogFlyout terrain={cogTerrain} onClose={() => setFlyout(null)} />
+      )}
+      {flyout === 'e-terrain' && cogElevBrush && (
+        <ElevationCogFlyout
+          cls={cogElevBrush}
+          defaultColor={ELEV_BRUSHES.find(b => b.brush === cogElevBrush)?.color ?? '#888'}
+          onClose={() => setFlyout(null)}
+        />
       )}
 
     </div>

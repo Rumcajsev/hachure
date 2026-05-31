@@ -90,6 +90,10 @@ export interface BlobOverride {
   textureScale?: number
   enabled?: boolean
   width?: number
+  feather?: number
+  outlineEnabled?: boolean
+  outlineColor?: string
+  outlineWidth?: number
 }
 
 
@@ -901,7 +905,7 @@ export const useMapStore = create<MapStore>()(persist((set, get) => ({
     mapTitle: s.mapTitle,
     labelOffsets: s.labelOffsets,
   }),
-  version: 66,
+  version: 67,
   migrate: migratePersisted,
   merge: (persisted, current) => rehydrateState({ ...current, ...(persisted as Partial<MapStore>) }),
 }))

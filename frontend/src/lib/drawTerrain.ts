@@ -61,9 +61,13 @@ export type DrawTerrainParams = {
   hexVertMap: Map<string, [number, number][]>
   mapStyle: 'standard' | 'historical_simple'
   elevationBlobs: { hills: [number, number][][]; mountains: [number, number][][] }
+  elevationTypeBlobStyles: Record<string, BlobOverride>
   hillsColor: string
   mountainsColor: string
   reliefShadingOpacity: number
+  elevationTextureScales: Record<string, number>
+  elevationTextureBlendModes: Record<string, GlobalCompositeOperation | 'color' | 'color-bg'>
+  elevationTextureOpacities: Record<string, number>
   historicalIconSets: Record<string, HTMLImageElement[]>
   historicalIconParams: Record<string, HistoricalIconTerrainParams>
   hillshadeCanvas: OffscreenCanvas | null
@@ -73,6 +77,10 @@ export type DrawTerrainParams = {
   contourDisabledTerrains: Set<string>
   contourDisabledElevClasses: Set<string>
   blobPatches: BlobPatch[]
+  terrainBlobFeather: number
+  terrainBlobOutlineEnabled: boolean
+  terrainBlobOutlineColor: string
+  terrainBlobOutlineWidth: number
 }
 
 export type { EdgeBlobParams, EdgeBlobChain }
@@ -200,6 +208,8 @@ function drawElevationBlobsWithShading(
   polys: [number, number][][],
   color: string,
   reliefOpacity: number,
+  cls: 'hills' | 'mountains',
+  params: Pick<DrawTerrainParams, 'terrainTextures' | 'elevationTextureScales' | 'elevationTextureBlendModes' | 'elevationTextureOpacities' | 'R'>,
 ): void {
   if (polys.length === 0) return
   tCtx.fillStyle = color
@@ -211,6 +221,17 @@ function drawElevationBlobsWithShading(
     tCtx.closePath()
   }
   tCtx.fill('evenodd')
+
+  // Texture overlay for elevation class
+  const tex = params.terrainTextures.get(cls)
+  if (tex) {
+    const texScale = params.elevationTextureScales[cls] ?? 3
+    const blendRaw = params.elevationTextureBlendModes[cls] ?? 'multiply'
+    const texOpacity = params.elevationTextureOpacities[cls] ?? 0.5
+    const isColorMode = blendRaw === 'color' || blendRaw === 'color-bg'
+    const blendMode = isColorMode ? 'multiply' : blendRaw as GlobalCompositeOperation
+    applyTextureOverlay(tCtx, tex, polys, params.R, texScale, 0, blendMode, texOpacity, undefined, 0, isColorMode)
+  }
 
   if (reliefOpacity <= 0) return
 
@@ -241,6 +262,39 @@ function drawElevationBlobsWithShading(
   }
 }
 
+/**
+ * Fill a single hex with a radial gradient: solid colour from centre out to
+ * (1−featherRatio)×R, then a gradient to fully transparent at the hex edge R.
+ * featherRatio=0.5 → outer 50% of the hex radius fades; centre stays solid.
+ */
+function drawHexWithFade(
+  ctx: Ctx,
+  verts: [number, number][],
+  R: number,
+  color: string,
+  r: number, g: number, b: number,
+  featherRatio: number,
+): void {
+  let cx = 0, cy = 0
+  for (const [x, y] of verts) { cx += x; cy += y }
+  cx /= verts.length; cy /= verts.length
+
+  const innerR = R * (1 - featherRatio)
+  const grad = ctx.createRadialGradient(cx, cy, innerR, cx, cy, R)
+  grad.addColorStop(0, color)
+  grad.addColorStop(1, `rgba(${r},${g},${b},0)`)
+
+  ctx.save()
+  ctx.beginPath()
+  ctx.moveTo(verts[0][0], verts[0][1])
+  for (let i = 1; i < verts.length; i++) ctx.lineTo(verts[i][0], verts[i][1])
+  ctx.closePath()
+  ctx.clip()
+  ctx.fillStyle = grad
+  ctx.fillRect(cx - R * 1.2, cy - R * 1.2, R * 2.4, R * 2.4)
+  ctx.restore()
+}
+
 function polyArea(pts: [number, number][]): number {
   let a = 0
   for (let i = 0; i < pts.length; i++) {
@@ -266,6 +320,8 @@ export function drawTerrain(tCtx: Ctx, params: DrawTerrainParams): void {
     beachStrip, beachColor, beachWidth,
     coastlineBoundaryRings, coastlineRawBoundaryRings,
     // edge blobs destructured inline below where used
+    terrainBlobFeather,
+    terrainBlobOutlineEnabled, terrainBlobOutlineColor, terrainBlobOutlineWidth,
   } = params
 
   // ── 1. Base fills ───────────────────────────────────────────────────────────
@@ -351,9 +407,29 @@ export function drawTerrain(tCtx: Ctx, params: DrawTerrainParams): void {
 
   // ── 3c. Elevation blobs (hills / mountains) ──────────────────────────────────
   {
-    const { elevationBlobs, hillsColor, mountainsColor, reliefShadingOpacity } = params
-    drawElevationBlobsWithShading(tCtx, elevationBlobs.hills, hillsColor, reliefShadingOpacity)
-    drawElevationBlobsWithShading(tCtx, elevationBlobs.mountains, mountainsColor, reliefShadingOpacity)
+    const { elevationBlobs, hillsColor, mountainsColor, reliefShadingOpacity, elevationTypeBlobStyles } = params
+    const elevTexParams = { terrainTextures: params.terrainTextures, elevationTextureScales: params.elevationTextureScales, elevationTextureBlendModes: params.elevationTextureBlendModes, elevationTextureOpacities: params.elevationTextureOpacities, R }
+    drawElevationBlobsWithShading(tCtx, elevationBlobs.hills, hillsColor, reliefShadingOpacity, 'hills', elevTexParams)
+    drawElevationBlobsWithShading(tCtx, elevationBlobs.mountains, mountainsColor, reliefShadingOpacity, 'mountains', elevTexParams)
+
+    for (const [cls, polys] of [['hills', elevationBlobs.hills], ['mountains', elevationBlobs.mountains]] as const) {
+      const clsStyle = elevationTypeBlobStyles[cls]
+      const effectiveOutline = clsStyle?.outlineEnabled ?? terrainBlobOutlineEnabled
+      if (!effectiveOutline || polys.length === 0) continue
+      tCtx.save()
+      tCtx.strokeStyle = clsStyle?.outlineColor ?? terrainBlobOutlineColor
+      tCtx.lineWidth   = clsStyle?.outlineWidth ?? terrainBlobOutlineWidth
+      tCtx.lineJoin    = 'round'
+      tCtx.beginPath()
+      for (const poly of polys) {
+        if (poly.length < 3) continue
+        tCtx.moveTo(poly[0][0], poly[0][1])
+        for (let i = 1; i < poly.length; i++) tCtx.lineTo(poly[i][0], poly[i][1])
+        tCtx.closePath()
+      }
+      tCtx.stroke()
+      tCtx.restore()
+    }
   }
 
   // ── 3d. Background terrain blobs ─────────────────────────────────────────────
@@ -423,25 +499,46 @@ export function drawTerrain(tCtx: Ctx, params: DrawTerrainParams): void {
       const texTint = isColorMode ? (terrainColors[terrain] ?? '') : (terrainTextureTintColors[terrain] ?? '')
       const texTintOpacity = isColorMode ? 1.0 : (terrainTextureTintOpacities[terrain] ?? 0.5)
 
-      // a. Fill default polys (cut patches traced as even-odd holes)
+      const typeFeather = params.terrainTypeBlobStyles[terrain]?.feather
+      const featherRatio = typeFeather ?? terrainBlobFeather
+
+      // Pre-parse colour RGB once for gradient transparent stop
+      const terrainColor = terrainColors[terrain] ?? '#cccccc'
+      const _tr = parseInt(terrainColor.slice(1, 3), 16) || 0
+      const _tg = parseInt(terrainColor.slice(3, 5), 16) || 0
+      const _tb = parseInt(terrainColor.slice(5, 7), 16) || 0
+
+      // a. Fill default polys
       if (defaultPolys.length > 0) {
         if (!isColorMode) {
-          tCtx.fillStyle = terrainColors[terrain] ?? '#cccccc'
-          tCtx.beginPath()
-          for (const poly of defaultPolys) {
-            if (poly.length < 3) continue
-            tCtx.moveTo(poly[0][0], poly[0][1])
-            for (let i = 1; i < poly.length; i++) tCtx.lineTo(poly[i][0], poly[i][1])
-            tCtx.closePath()
+          if (featherRatio > 0) {
+            // Per-hex radial gradient: solid from centre to (1-ratio)×R, fades to
+            // transparent at the hex edge. Interior hexes look solid because adjacent
+            // gradients overlap; boundary hexes dissolve at their edges.
+            for (const { hex, verts } of projected) {
+              if (!hexTerrainLayers(hex).includes(terrain)) continue
+              if (edgeMode === 'whole' && hex.partial) continue
+              if (!hex.partial && !inMargin(verts)) continue
+              drawHexWithFade(tCtx, verts, R, terrainColor, _tr, _tg, _tb, featherRatio)
+            }
+          } else {
+            tCtx.fillStyle = terrainColor
+            tCtx.beginPath()
+            for (const poly of defaultPolys) {
+              if (poly.length < 3) continue
+              tCtx.moveTo(poly[0][0], poly[0][1])
+              for (let i = 1; i < poly.length; i++) tCtx.lineTo(poly[i][0], poly[i][1])
+              tCtx.closePath()
+            }
+            for (const patch of cutPatches) {
+              if (patch.points.length < 3) continue
+              const cPts = perturbPatch(patch.points, terrainBlobParams, R, patchSeed(patch.id))
+              tCtx.moveTo(cPts[0][0], cPts[0][1])
+              for (let i = 1; i < cPts.length; i++) tCtx.lineTo(cPts[i][0], cPts[i][1])
+              tCtx.closePath()
+            }
+            tCtx.fill('evenodd')
           }
-          for (const patch of cutPatches) {
-            if (patch.points.length < 3) continue
-            const cPts = perturbPatch(patch.points, terrainBlobParams, R, patchSeed(patch.id))
-            tCtx.moveTo(cPts[0][0], cPts[0][1])
-            for (let i = 1; i < cPts.length; i++) tCtx.lineTo(cPts[i][0], cPts[i][1])
-            tCtx.closePath()
-          }
-          tCtx.fill('evenodd')
         }
       }
 
@@ -477,17 +574,33 @@ export function drawTerrain(tCtx: Ctx, params: DrawTerrainParams): void {
         )
         const ovPolys = ovBlobs.find(b => b.terrain === terrain)?.polys ?? []
 
+        const ovFeatherRatio = override.feather ?? featherRatio
+        const ovColor = override.color ?? terrainColor
+
         if (!isColorMode) {
-          const ovColor = override.color ?? terrainColors[terrain] ?? '#cccccc'
-          tCtx.fillStyle = ovColor
-          tCtx.beginPath()
-          for (const poly of ovPolys) {
-            if (poly.length < 3) continue
-            tCtx.moveTo(poly[0][0], poly[0][1])
-            for (let i = 1; i < poly.length; i++) tCtx.lineTo(poly[i][0], poly[i][1])
-            tCtx.closePath()
+          if (ovFeatherRatio > 0) {
+            const ovR = parseInt(ovColor.slice(1, 3), 16) || 0
+            const ovG = parseInt(ovColor.slice(3, 5), 16) || 0
+            const ovB = parseInt(ovColor.slice(5, 7), 16) || 0
+            for (const { hex, verts } of projected) {
+              const k = `${hex.q},${hex.r}`
+              if (!componentKeySet.has(k)) continue
+              if (!hexTerrainLayers(hex).includes(terrain)) continue
+              if (edgeMode === 'whole' && hex.partial) continue
+              if (!hex.partial && !inMargin(verts)) continue
+              drawHexWithFade(tCtx, verts, R, ovColor, ovR, ovG, ovB, ovFeatherRatio)
+            }
+          } else {
+            tCtx.fillStyle = ovColor
+            tCtx.beginPath()
+            for (const poly of ovPolys) {
+              if (poly.length < 3) continue
+              tCtx.moveTo(poly[0][0], poly[0][1])
+              for (let i = 1; i < poly.length; i++) tCtx.lineTo(poly[i][0], poly[i][1])
+              tCtx.closePath()
+            }
+            tCtx.fill('evenodd')
           }
-          tCtx.fill('evenodd')
         }
 
         const ovTexScale = override.textureScale ?? (terrainTextureScales[terrain] ?? 3)
@@ -511,6 +624,27 @@ export function drawTerrain(tCtx: Ctx, params: DrawTerrainParams): void {
           tCtx.fill()
         }
         if (tex) applyTextureOverlay(tCtx, tex, [aPts], R, terrainTextureScales[terrain] ?? 3, 0, texBlend, texOpacity, texTint, texTintOpacity)
+      }
+
+      // e. Blob outline pass
+      const typeOutlineEnabled = params.terrainTypeBlobStyles[terrain]?.outlineEnabled
+      const typeOutlineColor   = params.terrainTypeBlobStyles[terrain]?.outlineColor
+      const typeOutlineWidth   = params.terrainTypeBlobStyles[terrain]?.outlineWidth
+      const effectiveOutline   = typeOutlineEnabled ?? terrainBlobOutlineEnabled
+      if (effectiveOutline && defaultPolys.length > 0) {
+        tCtx.save()
+        tCtx.strokeStyle = typeOutlineColor ?? terrainBlobOutlineColor
+        tCtx.lineWidth   = typeOutlineWidth ?? terrainBlobOutlineWidth
+        tCtx.lineJoin    = 'round'
+        tCtx.beginPath()
+        for (const poly of defaultPolys) {
+          if (poly.length < 3) continue
+          tCtx.moveTo(poly[0][0], poly[0][1])
+          for (let i = 1; i < poly.length; i++) tCtx.lineTo(poly[i][0], poly[i][1])
+          tCtx.closePath()
+        }
+        tCtx.stroke()
+        tCtx.restore()
       }
     }
 

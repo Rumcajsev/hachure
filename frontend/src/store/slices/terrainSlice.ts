@@ -32,6 +32,9 @@ export type TerrainSlice = {
   terrainBlobSatelliteChance: number
   terrainBlobPatchSize: number
   terrainBlobFeather: number
+  terrainBlobOutlineEnabled: boolean
+  terrainBlobOutlineColor: string
+  terrainBlobOutlineWidth: number
   realisticCoastline: boolean
   coastlineDebugRaw: boolean
   beachStrip: boolean
@@ -112,6 +115,9 @@ export type TerrainSlice = {
   setTerrainBlobSatelliteChance: (v: number) => void
   setTerrainBlobPatchSize: (v: number) => void
   setTerrainBlobFeather: (v: number) => void
+  setTerrainBlobOutlineEnabled: (v: boolean) => void
+  setTerrainBlobOutlineColor: (v: string) => void
+  setTerrainBlobOutlineWidth: (v: number) => void
   applyTerrainBlobPreset: (id: BlobPresetId) => void
   setRealisticCoastline: (v: boolean) => void
   setCoastlineDebugRaw: (v: boolean) => void
@@ -204,6 +210,9 @@ export const createTerrainSlice = (set: Set, get: () => MapStore): TerrainSlice 
   terrainBlobSatelliteChance: DEFAULT_TERRAIN_BLOB.satelliteChance,
   terrainBlobPatchSize: DEFAULT_TERRAIN_BLOB.patchSize,
   terrainBlobFeather: 0,
+  terrainBlobOutlineEnabled: false,
+  terrainBlobOutlineColor: '#000000',
+  terrainBlobOutlineWidth: 1,
   realisticCoastline: false,
   coastlineDebugRaw: false,
   beachStrip: false,
@@ -694,6 +703,9 @@ export const createTerrainSlice = (set: Set, get: () => MapStore): TerrainSlice 
   setTerrainBlobSatelliteChance: (v) => set({ terrainBlobSatelliteChance: v }),
   setTerrainBlobPatchSize: (v) => set({ terrainBlobPatchSize: v }),
   setTerrainBlobFeather: (v) => set({ terrainBlobFeather: v }),
+  setTerrainBlobOutlineEnabled: (v) => set({ terrainBlobOutlineEnabled: v }),
+  setTerrainBlobOutlineColor: (v) => set({ terrainBlobOutlineColor: v }),
+  setTerrainBlobOutlineWidth: (v) => set({ terrainBlobOutlineWidth: v }),
   applyTerrainBlobPreset: (id) => {
     const values = BLOB_PRESETS[id].values
     set({
