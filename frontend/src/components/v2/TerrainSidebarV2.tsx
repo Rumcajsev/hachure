@@ -739,7 +739,6 @@ export function TerrainSidebarV2() {
     terrainEdgePaintEnabled, setTerrainEdgePaintEnabled,
     terrainColors, customTerrains,
     mapStyle,
-    blobPatches, deleteBlobPatch,
   } = useMapStore()
 
   const [viewId, setViewId] = useState<ViewId>('list')
@@ -905,69 +904,6 @@ export function TerrainSidebarV2() {
             </div>
           </SidebarSection>
         )}
-
-        {/* Blob draw */}
-        <SidebarSection
-          label="Blob Edit"
-          action={
-            activeTool.type === 'blob-draw'
-              ? <button onClick={() => setActiveTool({ type: 'none' })} style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 0, fontFamily: TK.mono, fontSize: 9, color: TK.rust, letterSpacing: 0.3 }}>
-                  done
-                </button>
-              : null
-          }
-        >
-          <div style={{ display: 'flex', gap: 6, padding: '4px 14px 6px' }}>
-            <button
-              onClick={() => setActiveTool(activeTool.type === 'blob-draw' && activeTool.mode === 'add' ? { type: 'none' } : { type: 'blob-draw', mode: 'add' })}
-              style={{
-                flex: 1, padding: '5px 0', fontFamily: TK.mono, fontSize: 10, letterSpacing: 0.4,
-                border: `1px solid ${activeTool.type === 'blob-draw' && activeTool.mode === 'add' ? '#4a9a5a' : TK.line}`,
-                borderRadius: 4, cursor: 'pointer',
-                background: activeTool.type === 'blob-draw' && activeTool.mode === 'add' ? 'rgba(74,154,90,0.12)' : TK.surface,
-                color: activeTool.type === 'blob-draw' && activeTool.mode === 'add' ? '#4a9a5a' : TK.inkMute,
-              }}
-            >
-              + Add
-            </button>
-            <button
-              onClick={() => setActiveTool(activeTool.type === 'blob-draw' && activeTool.mode === 'cut' ? { type: 'none' } : { type: 'blob-draw', mode: 'cut' })}
-              style={{
-                flex: 1, padding: '5px 0', fontFamily: TK.mono, fontSize: 10, letterSpacing: 0.4,
-                border: `1px solid ${activeTool.type === 'blob-draw' && activeTool.mode === 'cut' ? '#c04040' : TK.line}`,
-                borderRadius: 4, cursor: 'pointer',
-                background: activeTool.type === 'blob-draw' && activeTool.mode === 'cut' ? 'rgba(192,64,64,0.12)' : TK.surface,
-                color: activeTool.type === 'blob-draw' && activeTool.mode === 'cut' ? '#c04040' : TK.inkMute,
-              }}
-            >
-              ✂ Cut
-            </button>
-          </div>
-          {activeTool.type === 'blob-draw' && (
-            <div style={{ padding: '0 14px 6px', fontFamily: TK.mono, fontSize: 9.5, color: TK.inkFaint, lineHeight: 1.5 }}>
-              Click on the map to place vertices. Close with Enter or click the first vertex. Escape cancels.
-            </div>
-          )}
-          {blobPatches.length > 0 && (
-            <div style={{ padding: '2px 14px 4px' }}>
-              {blobPatches.map(patch => (
-                <div key={patch.id} style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '3px 0', borderTop: `1px solid ${TK.line2}` }}>
-                  <div style={{ width: 8, height: 8, borderRadius: 2, background: terrainColors[patch.terrain] ?? TERRAIN_COLORS[patch.terrain] ?? '#888', flexShrink: 0 }} />
-                  <span style={{ fontFamily: TK.mono, fontSize: 9.5, color: TK.ink2, flex: 1 }}>
-                    {patch.mode === 'cut' ? '✂ ' : '+ '}{patch.terrain.replace(/_/g, ' ')}
-                  </span>
-                  <button
-                    onClick={() => deleteBlobPatch(patch.id)}
-                    style={{ background: 'none', border: 'none', cursor: 'pointer', padding: '0 2px', fontFamily: TK.mono, fontSize: 10, color: TK.inkFaint }}
-                    title="Delete patch"
-                  >
-                    ×
-                  </button>
-                </div>
-              ))}
-            </div>
-          )}
-        </SidebarSection>
 
         {/* Settings */}
         <SidebarSection label="Settings">

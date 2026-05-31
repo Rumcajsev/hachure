@@ -1,10 +1,10 @@
 /** Terrain layer rendering — hex fills, blob overlays, textures, lakes, coastline.
  *  Pure canvas operations — no React or store imports except types. */
 
-import type { GeneratedHex, BlobOverride, BlobPatch } from '../store/mapStore'
+import type { GeneratedHex, BlobOverride } from '../store/mapStore'
 import { buildTerrainBlobsV2, bleedPolygon } from './terrainBlobs'
 import { clipPolygonToConvex, pointInPolygon } from './geometry'
-import { makePermutation, perturbXY, perturbNormal } from './noise'
+import { makePermutation } from './noise'
 import { findEdgeChains, buildEdgeBlobPolys, type EdgeBlobChain, type EdgeBlobParams, parseEdgeBlobKey, sharedEdgeVertices } from './edgeBlobs'
 import { drawHistoricalIcons, type HistoricalIconTerrainParams } from './drawHistoricalIcons'
 
@@ -76,7 +76,6 @@ export type DrawTerrainParams = {
   contourCanvas: OffscreenCanvas | null
   contourDisabledTerrains: Set<string>
   contourDisabledElevClasses: Set<string>
-  blobPatches: BlobPatch[]
   terrainBlobFeather: number
   terrainBlobOutlineEnabled: boolean
   terrainBlobOutlineColor: string
@@ -85,23 +84,7 @@ export type DrawTerrainParams = {
 
 export type { EdgeBlobParams, EdgeBlobChain }
 
-function patchSeed(id: string): number {
-  let h = 0
-  for (let i = 0; i < id.length; i++) h = (Math.imul(h, 31) + id.charCodeAt(i)) | 0
-  return Math.abs(h)
-}
 
-function perturbPatch(pts: [number, number][], params: BlobParams, R: number, seed: number): [number, number][] {
-  const p1x = makePermutation(seed)
-  const p1y = makePermutation(seed + 31)
-  let p = perturbXY(pts, p1x, p1y, params.sweepFreq / R, params.bump * R * 0.5)
-  if (params.lobeAmp > 0) {
-    const p2a = makePermutation(seed + 67)
-    const p2b = makePermutation(seed + 113)
-    p = perturbNormal(p, p2a, p2b, params.lobeFreq / R, params.bump * params.lobeAmp * R * params.lobeDirection, params.lobeThreshold)
-  }
-  return p
-}
 
 /** Cache of pre-processed color-mode textures: key = `${tex.src}_${hexColor}` */
 const colorModeTextureCache = new Map<string, OffscreenCanvas>()
@@ -263,36 +246,37 @@ function drawElevationBlobsWithShading(
 }
 
 /**
- * Fill a single hex with a radial gradient: solid colour from centre out to
- * (1−featherRatio)×R, then a gradient to fully transparent at the hex edge R.
- * featherRatio=0.5 → outer 50% of the hex radius fades; centre stays solid.
+ * Draw blob fill to an offscreen, blur it, composite onto tCtx.
+ * The blur of a solid shape has full opacity at centre, fading at edges.
+ * Only used for the colour fill — textures are always drawn directly to tCtx.
  */
-function drawHexWithFade(
-  ctx: Ctx,
-  verts: [number, number][],
-  R: number,
-  color: string,
-  r: number, g: number, b: number,
-  featherRatio: number,
+function drawBlobWithFade(
+  tCtx: Ctx,
+  px: number, py: number,
+  pw: number, ph: number,
+  blurPx: number,
+  drawFn: (ctx: Ctx) => void,
 ): void {
-  let cx = 0, cy = 0
-  for (const [x, y] of verts) { cx += x; cy += y }
-  cx /= verts.length; cy /= verts.length
+  const dpr = typeof window !== 'undefined' ? (window.devicePixelRatio || 1) : 1
+  const offX = Math.floor(px - blurPx)
+  const offY = Math.floor(py - blurPx)
+  const w = Math.ceil(px + pw + blurPx) - offX
+  const h = Math.ceil(py + ph + blurPx) - offY
+  const wd = Math.round(w * dpr)
+  const hd = Math.round(h * dpr)
 
-  const innerR = R * (1 - featherRatio)
-  const grad = ctx.createRadialGradient(cx, cy, innerR, cx, cy, R)
-  grad.addColorStop(0, color)
-  grad.addColorStop(1, `rgba(${r},${g},${b},0)`)
+  const solid = new OffscreenCanvas(wd, hd)
+  const solidCtx = solid.getContext('2d')!
+  solidCtx.scale(dpr, dpr)
+  solidCtx.translate(-offX, -offY)
+  drawFn(solidCtx)
 
-  ctx.save()
-  ctx.beginPath()
-  ctx.moveTo(verts[0][0], verts[0][1])
-  for (let i = 1; i < verts.length; i++) ctx.lineTo(verts[i][0], verts[i][1])
-  ctx.closePath()
-  ctx.clip()
-  ctx.fillStyle = grad
-  ctx.fillRect(cx - R * 1.2, cy - R * 1.2, R * 2.4, R * 2.4)
-  ctx.restore()
+  const blurred = new OffscreenCanvas(wd, hd)
+  const blurCtx = blurred.getContext('2d')!
+  blurCtx.filter = `blur(${blurPx * dpr}px)`
+  blurCtx.drawImage(solid, 0, 0)
+
+  tCtx.drawImage(blurred, offX, offY, w, h)
 }
 
 function polyArea(pts: [number, number][]): number {
@@ -434,8 +418,9 @@ export function drawTerrain(tCtx: Ctx, params: DrawTerrainParams): void {
 
   // ── 3d. Background terrain blobs ─────────────────────────────────────────────
   // Drawn before primary blobs so primary terrain sits on top.
-  // The fringe effect appears where the primary blob's organic boundary
-  // doesn't fully cover the hex.
+  // The blob is computed from background+primary hexes for a seamless boundary,
+  // but we clip paint to background-terrain hexes only so primary terrain hexes
+  // aren't double-rendered (which made background-painted hexes look lighter).
   if (backgroundTerrainBlobs.length > 0) {
     for (const { terrain, polys } of backgroundTerrainBlobs) {
       if (polys.length === 0) continue
@@ -446,6 +431,20 @@ export function drawTerrain(tCtx: Ctx, params: DrawTerrainParams): void {
       const texOpacity = terrainTextureOpacities[terrain] ?? 0.6
       const texTint = isColorMode ? (terrainColors[terrain] ?? '') : (terrainTextureTintColors[terrain] ?? '')
       const texTintOpacity = isColorMode ? 1.0 : (terrainTextureTintOpacities[terrain] ?? 0.5)
+
+      // Clip to hexes whose backgroundTerrain matches — primary terrain hexes
+      // are included in the blob shape for a seamless boundary but must not
+      // be painted here (section 4 covers them at the correct density).
+      tCtx.save()
+      tCtx.beginPath()
+      for (const { hex, verts } of projected) {
+        if ((hex as GeneratedHex).backgroundTerrain !== terrain) continue
+        tCtx.moveTo(verts[0][0], verts[0][1])
+        for (let i = 1; i < verts.length; i++) tCtx.lineTo(verts[i][0], verts[i][1])
+        tCtx.closePath()
+      }
+      tCtx.clip('evenodd')
+
       if (!isColorMode) {
         tCtx.fillStyle = terrainColors[terrain] ?? '#cccccc'
         tCtx.beginPath()
@@ -459,6 +458,8 @@ export function drawTerrain(tCtx: Ctx, params: DrawTerrainParams): void {
       }
       const texScale = terrainTextureScales[terrain] ?? 3
       if (tex) applyTextureOverlay(tCtx, tex, polys, R, texScale, R * 0.12, texBlend, texOpacity, texTint, texTintOpacity, isColorMode)
+
+      tCtx.restore()
     }
   }
 
@@ -483,13 +484,11 @@ export function drawTerrain(tCtx: Ctx, params: DrawTerrainParams): void {
       overridesByTerrain.get(ovTerrain)!.push([canonicalKey, override])
     }
 
-    const addPatchTerrains = params.blobPatches.filter(p => p.mode === 'add').map(p => p.terrain)
-    const allTerrains = [...new Set([...defaultBlobMap.keys(), ...overridesByTerrain.keys(), ...addPatchTerrains])]
+    const allTerrains = [...new Set([...defaultBlobMap.keys(), ...overridesByTerrain.keys()])]
       .sort((a, b) => (BLOB_Z[a] ?? 5) - (BLOB_Z[b] ?? 5))
 
     for (const terrain of allTerrains) {
       const defaultPolys = defaultBlobMap.get(terrain) ?? []
-      const cutPatches = params.blobPatches.filter(p => p.terrain === terrain && p.mode === 'cut')
 
       const rawMode = terrainTextureBlendModes[terrain] ?? 'multiply'
       const isColorMode = rawMode === 'color' || rawMode === 'color-bg'
@@ -502,44 +501,31 @@ export function drawTerrain(tCtx: Ctx, params: DrawTerrainParams): void {
       const typeFeather = params.terrainTypeBlobStyles[terrain]?.feather
       const featherRatio = typeFeather ?? terrainBlobFeather
 
-      // Pre-parse colour RGB once for gradient transparent stop
       const terrainColor = terrainColors[terrain] ?? '#cccccc'
-      const _tr = parseInt(terrainColor.slice(1, 3), 16) || 0
-      const _tg = parseInt(terrainColor.slice(3, 5), 16) || 0
-      const _tb = parseInt(terrainColor.slice(5, 7), 16) || 0
 
       // a. Fill default polys
-      if (defaultPolys.length > 0) {
-        if (!isColorMode) {
-          if (featherRatio > 0) {
-            // Per-hex radial gradient: solid from centre to (1-ratio)×R, fades to
-            // transparent at the hex edge. Interior hexes look solid because adjacent
-            // gradients overlap; boundary hexes dissolve at their edges.
-            for (const { hex, verts } of projected) {
-              if (!hexTerrainLayers(hex).includes(terrain)) continue
-              if (edgeMode === 'whole' && hex.partial) continue
-              if (!hex.partial && !inMargin(verts)) continue
-              drawHexWithFade(tCtx, verts, R, terrainColor, _tr, _tg, _tb, featherRatio)
-            }
-          } else {
-            tCtx.fillStyle = terrainColor
-            tCtx.beginPath()
-            for (const poly of defaultPolys) {
-              if (poly.length < 3) continue
-              tCtx.moveTo(poly[0][0], poly[0][1])
-              for (let i = 1; i < poly.length; i++) tCtx.lineTo(poly[i][0], poly[i][1])
-              tCtx.closePath()
-            }
-            for (const patch of cutPatches) {
-              if (patch.points.length < 3) continue
-              const cPts = perturbPatch(patch.points, terrainBlobParams, R, patchSeed(patch.id))
-              tCtx.moveTo(cPts[0][0], cPts[0][1])
-              for (let i = 1; i < cPts.length; i++) tCtx.lineTo(cPts[i][0], cPts[i][1])
-              tCtx.closePath()
-            }
-            tCtx.fill('evenodd')
+      if (defaultPolys.length > 0 && !isColorMode) {
+        const fillBlob = (ctx: Ctx) => {
+          ctx.fillStyle = terrainColor
+          ctx.beginPath()
+          for (const poly of defaultPolys) {
+            if (poly.length < 3) continue
+            ctx.moveTo(poly[0][0], poly[0][1])
+            for (let i = 1; i < poly.length; i++) ctx.lineTo(poly[i][0], poly[i][1])
+            ctx.closePath()
           }
+          ctx.fill('evenodd')
         }
+        if (featherRatio > 0) {
+          drawBlobWithFade(tCtx, px, py, pw, ph, featherRatio * R, fillBlob)
+        } else {
+          fillBlob(tCtx)
+        }
+      }
+
+      // a2. Texture for default polys — always drawn directly (no fade)
+      if (tex && defaultPolys.length > 0) {
+        applyTextureOverlay(tCtx, tex, defaultPolys, R, terrainTextureScales[terrain] ?? 3, 0, texBlend, texOpacity, texTint, texTintOpacity, isColorMode)
       }
 
       // b. Override passes for this terrain
@@ -577,56 +563,29 @@ export function drawTerrain(tCtx: Ctx, params: DrawTerrainParams): void {
         const ovFeatherRatio = override.feather ?? featherRatio
         const ovColor = override.color ?? terrainColor
 
+        const ovTexScale = override.textureScale ?? (terrainTextureScales[terrain] ?? 3)
         if (!isColorMode) {
-          if (ovFeatherRatio > 0) {
-            const ovR = parseInt(ovColor.slice(1, 3), 16) || 0
-            const ovG = parseInt(ovColor.slice(3, 5), 16) || 0
-            const ovB = parseInt(ovColor.slice(5, 7), 16) || 0
-            for (const { hex, verts } of projected) {
-              const k = `${hex.q},${hex.r}`
-              if (!componentKeySet.has(k)) continue
-              if (!hexTerrainLayers(hex).includes(terrain)) continue
-              if (edgeMode === 'whole' && hex.partial) continue
-              if (!hex.partial && !inMargin(verts)) continue
-              drawHexWithFade(tCtx, verts, R, ovColor, ovR, ovG, ovB, ovFeatherRatio)
-            }
-          } else {
-            tCtx.fillStyle = ovColor
-            tCtx.beginPath()
+          const fillOvBlob = (ctx: Ctx) => {
+            ctx.fillStyle = ovColor
+            ctx.beginPath()
             for (const poly of ovPolys) {
               if (poly.length < 3) continue
-              tCtx.moveTo(poly[0][0], poly[0][1])
-              for (let i = 1; i < poly.length; i++) tCtx.lineTo(poly[i][0], poly[i][1])
-              tCtx.closePath()
+              ctx.moveTo(poly[0][0], poly[0][1])
+              for (let i = 1; i < poly.length; i++) ctx.lineTo(poly[i][0], poly[i][1])
+              ctx.closePath()
             }
-            tCtx.fill('evenodd')
+            ctx.fill('evenodd')
+          }
+          if (ovFeatherRatio > 0) {
+            drawBlobWithFade(tCtx, px, py, pw, ph, ovFeatherRatio * R, fillOvBlob)
+          } else {
+            fillOvBlob(tCtx)
           }
         }
-
-        const ovTexScale = override.textureScale ?? (terrainTextureScales[terrain] ?? 3)
         if (tex) applyTextureOverlay(tCtx, tex, ovPolys, R, ovTexScale, R * 0.12, texBlend, texOpacity, texTint, texTintOpacity, isColorMode)
       }
 
-      // c. Global texture for default polys (no bleed)
-      if (tex) applyTextureOverlay(tCtx, tex, defaultPolys, R, terrainTextureScales[terrain] ?? 3, 0, texBlend, texOpacity, texTint, texTintOpacity, isColorMode)
-
-      // d. Add patches — perturbed with same wobble as main blobs
-      const addPatches = params.blobPatches.filter(p => p.terrain === terrain && p.mode === 'add')
-      for (const patch of addPatches) {
-        if (patch.points.length < 3) continue
-        const aPts = perturbPatch(patch.points, terrainBlobParams, R, patchSeed(patch.id))
-        if (!isColorMode) {
-          tCtx.fillStyle = terrainColors[terrain] ?? '#cccccc'
-          tCtx.beginPath()
-          tCtx.moveTo(aPts[0][0], aPts[0][1])
-          for (let i = 1; i < aPts.length; i++) tCtx.lineTo(aPts[i][0], aPts[i][1])
-          tCtx.closePath()
-          tCtx.fill()
-        }
-        if (tex) applyTextureOverlay(tCtx, tex, [aPts], R, terrainTextureScales[terrain] ?? 3, 0, texBlend, texOpacity, texTint, texTintOpacity)
-      }
-
-      // e. Blob outline pass
+      // d. Blob outline pass
       const typeOutlineEnabled = params.terrainTypeBlobStyles[terrain]?.outlineEnabled
       const typeOutlineColor   = params.terrainTypeBlobStyles[terrain]?.outlineColor
       const typeOutlineWidth   = params.terrainTypeBlobStyles[terrain]?.outlineWidth
@@ -735,7 +694,11 @@ export function drawTerrain(tCtx: Ctx, params: DrawTerrainParams): void {
       const hexTerrainSet = chain.terrain === 'clear' ? undefined : terrainToHexes.get(chain.terrain)
       const polys = buildEdgeBlobPolys(chain, hexVertMap, chainParams, R, hexTerrainSet)
       if (polys.length === 0) continue
-      {
+      const texScale = override?.textureScale ?? (terrainTextureScales[chain.terrain] ?? 3)
+      const edgeRawMode = terrainTextureBlendModes[chain.terrain] ?? 'multiply'
+      const edgeIsColor = edgeRawMode === 'color' || edgeRawMode === 'color-bg'
+      const edgeTexBlend: GlobalCompositeOperation = edgeRawMode as GlobalCompositeOperation
+      if (!edgeIsColor) {
         const color = override?.color ?? terrainColors[chain.terrain] ?? '#cccccc'
         tCtx.fillStyle = color
         for (const poly of polys) {
@@ -747,10 +710,6 @@ export function drawTerrain(tCtx: Ctx, params: DrawTerrainParams): void {
           tCtx.fill()
         }
       }
-      const texScale = override?.textureScale ?? (terrainTextureScales[chain.terrain] ?? 3)
-      const edgeRawMode = terrainTextureBlendModes[chain.terrain] ?? 'multiply'
-      const edgeIsColor = edgeRawMode === 'color' || edgeRawMode === 'color-bg'
-      const edgeTexBlend: GlobalCompositeOperation = edgeIsColor ? 'source-over' : edgeRawMode as GlobalCompositeOperation
       const edgeTexOpacity = terrainTextureOpacities[chain.terrain] ?? 0.6
       const edgeTexTint = edgeIsColor ? (terrainColors[chain.terrain] ?? '') : (terrainTextureTintColors[chain.terrain] ?? '')
       const edgeTexTintOpacity = edgeIsColor ? 1.0 : (terrainTextureTintOpacities[chain.terrain] ?? 0.5)

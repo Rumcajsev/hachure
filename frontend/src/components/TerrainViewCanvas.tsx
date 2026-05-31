@@ -274,7 +274,6 @@ export const TerrainViewCanvas = forwardRef<TerrainViewCanvasHandle, { surroundC
     paintHexArea, eraseHexArea, addArea,
     mapImageDataUrl, mapImageTransform, mapImageOpacity, setMapImageTransform,
     dataSource,
-    blobPatches, addBlobPatch, deleteBlobPatch,
     blobSeeds, randomizeBlobSeed,
     labelOffsets, setLabelOffset, clearAllLabelOffsets,
   } = useMapStore()
@@ -510,13 +509,6 @@ export const TerrainViewCanvas = forwardRef<TerrainViewCanvasHandle, { surroundC
   // const fieldPersistenceRef = useRef(fieldPersistence)
   // const fieldWildnessRef = useRef(fieldWildness)
   // const fieldCanvasRef = useRef<OffscreenCanvas | null>(null)
-  // In-progress blob draw polygon (points in logical/canvas coords)
-  const [blobDrawState, setBlobDrawState] = useState<{
-    points: [number, number][]  // raw freehand stroke points while drawing, smoothed polygon after release
-    terrain: string
-    drawing: boolean            // true = actively dragging, false = showing smoothed preview before commit
-  } | null>(null)
-  const blobDrawStateRef = useRef(blobDrawState)
   const hexBuildingGeoCacheRef = useRef<Map<string, BuildingCmd[]>>(new Map())
   const lastBuildingCacheEpochRef = useRef<{ roadData: unknown; zoom: number; settlementStyles: unknown; urbanStyle: unknown } | null>(null)
   const settlementsRef = useRef(settlements)
@@ -546,9 +538,6 @@ export const TerrainViewCanvas = forwardRef<TerrainViewCanvasHandle, { surroundC
   const eraseHexAreaRef = useRef(eraseHexArea)
   const addAreaRef = useRef(addArea)
   const highlightLineEraserRef = useRef(highlightLineEraser)
-  const blobPatchesRef = useRef(blobPatches)
-  const addBlobPatchRef = useRef(addBlobPatch)
-  const deleteBlobPatchRef = useRef(deleteBlobPatch)
   const randomizeBlobSeedRef = useRef(randomizeBlobSeed)
   const activeToolRef = useRef(activeTool)
   const setHexHighlightRef = useRef(setHexHighlight)
@@ -665,9 +654,6 @@ export const TerrainViewCanvas = forwardRef<TerrainViewCanvasHandle, { surroundC
   addAreaRef.current = addArea
   highlightLineEraserRef.current = highlightLineEraser
   activeToolRef.current = activeTool
-  blobPatchesRef.current = blobPatches
-  addBlobPatchRef.current = addBlobPatch
-  deleteBlobPatchRef.current = deleteBlobPatch
   randomizeBlobSeedRef.current = randomizeBlobSeed
   setHexHighlightRef.current = setHexHighlight
   clearHexHighlightRef.current = clearHexHighlight
@@ -684,7 +670,6 @@ export const TerrainViewCanvas = forwardRef<TerrainViewCanvasHandle, { surroundC
   placeIconRef.current = placeIcon
   removeIconAtRef.current = removeIconAt
   editingLabelRef.current = editingLabel
-  blobDrawStateRef.current = blobDrawState
   labelOverlaysRef.current = labelOverlays
   placedLabelsRef.current = placedLabels
   activeLabelOverlayIdRef.current = activeLabelOverlayId
@@ -1305,6 +1290,8 @@ export const TerrainViewCanvas = forwardRef<TerrainViewCanvasHandle, { surroundC
     if (isTerrainPainting) return prevBackgroundBlobsRef.current
     // Group hexes by backgroundTerrain. Include adjacent primary hexes of the same
     // type so the background blob merges seamlessly with the primary blob at edges.
+    // Section 3d in drawTerrain clips the paint to background-terrain hexes only
+    // so primary terrain hexes aren't double-rendered (which made bg hexes look lighter).
     const bgTypeSet = new Set<string>()
     for (const p of projectedHexes) {
       const h = p.hex as GeneratedHex
@@ -1688,7 +1675,6 @@ export const TerrainViewCanvas = forwardRef<TerrainViewCanvasHandle, { surroundC
       contourCanvas: contourCanvasRef.current,
       contourDisabledTerrains: contourDisabledTerrainsSetRef.current,
       contourDisabledElevClasses: contourDisabledElevClassesSetRef.current,
-      blobPatches: blobPatchesRef.current,
     }
 
     // Build offscreen terrain layer when dirty (skipped for export — always renders inline).
@@ -2770,7 +2756,7 @@ export const TerrainViewCanvas = forwardRef<TerrainViewCanvasHandle, { surroundC
   //   forestTextureVersion, frameDims, draw])
 
   // Mark terrain layer dirty when terrain-affecting data changes
-  useEffect(() => { terrainDirtyRef.current = true }, [defaultTerrainBlobs, defaultLakeBlobs, defaultElevationBlobs, terrainColors, terrainTextureScales, terrainTextureBlendModes, terrainTextureOpacities, terrainTextureTintColors, terrainTextureTintOpacities, terrainTextureFile, terrainTextureEnabled, terrainBlobOverrides, terrainTypeBlobStyles, lakeOverrides, terrainRenderMode, hexEdgeMode, generatedHexes, realisticCoastline, coastlineDebugRaw, smoothedCoastlineBoundary, rawCoastlineBoundary, beachStrip, beachColor, beachWidth, hillsColor, mountainsColor, reliefShadingOpacity, coastlineDPEpsilon, coastlineChaikinPasses, edgeBlobPainted, edgeBlobOverrides, edgeBlobWidth, mapStyle, historicalIconParams, blobPatches, elevationTypeBlobStyles, terrainBlobFeather, terrainBlobOutlineEnabled, terrainBlobOutlineColor, terrainBlobOutlineWidth])
+  useEffect(() => { terrainDirtyRef.current = true }, [defaultTerrainBlobs, defaultLakeBlobs, defaultElevationBlobs, terrainColors, terrainTextureScales, terrainTextureBlendModes, terrainTextureOpacities, terrainTextureTintColors, terrainTextureTintOpacities, terrainTextureFile, terrainTextureEnabled, terrainBlobOverrides, terrainTypeBlobStyles, lakeOverrides, terrainRenderMode, hexEdgeMode, generatedHexes, realisticCoastline, coastlineDebugRaw, smoothedCoastlineBoundary, rawCoastlineBoundary, beachStrip, beachColor, beachWidth, hillsColor, mountainsColor, reliefShadingOpacity, coastlineDPEpsilon, coastlineChaikinPasses, edgeBlobPainted, edgeBlobOverrides, edgeBlobWidth, mapStyle, historicalIconParams, elevationTypeBlobStyles, terrainBlobFeather, terrainBlobOutlineEnabled, terrainBlobOutlineColor, terrainBlobOutlineWidth])
   useEffect(() => { terrainDirtyRef.current = true; draw() }, [hillshadeDisabledTerrains, hillshadeDisabledElevClasses, contourDisabledTerrains, contourDisabledElevClasses]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // Decode heightmap PNG → ImageData when URL changes, then recompute derived canvases
@@ -2876,67 +2862,6 @@ export const TerrainViewCanvas = forwardRef<TerrainViewCanvasHandle, { surroundC
   useEffect(() => { draw() }, [generatedHexes, hexBorderMode, hexEdgeMode, hexBorderOpacity, hexBorderColor, hexBorderDifference, hexNumbersEnabled, hexNumberEdge, hexNumberColor, hexNumberFontScale, hexNumberStartCorner, hexNumberMap, smoothedRoadData, smoothedRailData, showRawOsmRoads, roadNodeEditMode, riverNodeEditMode, riverChainOverrides, riverEdges, canalEdges, riverEditMode, canalEditMode, riverWidthScale, canalWidthScale, riverCurveSteps, riverWobble, riverDetail, riverWiggleFreq, riverWiggleAmp, riverSmoothing, riverPathSmoothing, showRiverLabels, riverLabelColor, riverSegmentProps, canalSegmentProps, riverSelectMode, canalSelectMode, selectedSegmentKeys, selectedCanalSegmentKeys, riverStyle, canalStyle, riverHopProps, selectedHopKey, defaultTerrainBlobs, defaultLakeBlobs, terrainColors, terrainTextureScales, terrainTextureBlendModes, terrainTextureOpacities, terrainTextureTintColors, terrainTextureTintOpacities, terrainTextureFile, terrainTextureEnabled, terrainBlobOverrides, terrainTypeBlobStyles, lakeOverrides, terrainRenderMode, settlements, settlementTierStyles, urbanHexes, urbanStyle, roadTierStyles, railStyle, highlights, highlightedHexes, highlightLines, highlightEdgePaths, iconOverlays, placedIcons, labelOverlays, placedLabels, realisticCoastline, coastlineDebugRaw, smoothedCoastlineBoundary, rawCoastlineBoundary, beachStrip, beachColor, beachWidth, coastlineDPEpsilon, coastlineChaikinPasses, edgeBlobPainted, edgeBlobOverrides, edgeBlobWidth, roadSegmentProps, roadHopProps, selectedRoadSegmentKeys, selectedRoadHopKey, roadSelectMode, railNodeEditMode, railControlOverrides, railSelectMode, railWiggleAmp, railWiggleFreq, railSmoothing, railSegmentProps, railHopProps, selectedRailSegmentKeys, selectedRailHopKey, mapBgColor, mapBorderEnabled, mapBorderColor, mapBorderWidth, clipToHexGrid, excludedHexKeys, disabledHexKeys, autoDisabledOceanHexKeys, megaHexEnabled, megaHexRadius, megaHexColor, megaHexOpacity, megaHexLineWidth, megaHexOriginQ, megaHexOriginR, areasMode, areas, areaHexes, areasStyle, bridgesEnabled, bridgeStyle, bridgeTiers, bridgeOverrides, showElevationDebug, mapStyle, labelOffsets, activeTool, draw])
 
   useEffect(() => { drawOsmHighlight() }, [osmHighlightTier, osmSpotlightMode, osmSpotlightTiers, osmRailHighlight, hoveredOsmRiverIdx, drawOsmHighlight])
-
-  // Blob draw freehand stroke overlay
-  useEffect(() => {
-    const overlayCanvas = osmOverlayCanvasRef.current
-    if (!overlayCanvas) return
-    const ctx = overlayCanvas.getContext('2d')
-    if (!ctx) return
-
-    if (!blobDrawState || blobDrawState.points.length === 0) {
-      drawOsmHighlightRef.current?.()
-      return
-    }
-
-    drawOsmHighlightRef.current?.()
-
-    const meta = metaRef.current
-    const { w: cssW, h: cssH } = frameDimsRef.current
-    if (!meta || cssW === 0) return
-    const dpr = window.devicePixelRatio || 1
-    const zoom = zoomRef.current, pan = panRef.current
-
-    ctx.save()
-    ctx.setTransform(dpr, 0, 0, dpr, 0, 0)
-    ctx.translate(cssW / 2 + pan.x, cssH / 2 + pan.y)
-    ctx.scale(zoom, zoom)
-    ctx.translate(-cssW / 2, -cssH / 2)
-
-    const pts = blobDrawState.points
-    const isCut = (activeToolRef.current as ActiveTool).type === 'blob-draw' &&
-      (activeToolRef.current as { type: 'blob-draw'; mode: string }).mode === 'cut'
-    const strokeColor = isCut ? 'rgba(220,50,50,0.9)' : 'rgba(40,160,80,0.9)'
-    const fillColor   = isCut ? 'rgba(220,50,50,0.13)' : 'rgba(40,160,80,0.11)'
-
-    if (blobDrawState.drawing) {
-      // While dragging: draw raw open stroke
-      ctx.beginPath()
-      ctx.moveTo(pts[0][0], pts[0][1])
-      for (let i = 1; i < pts.length; i++) ctx.lineTo(pts[i][0], pts[i][1])
-      ctx.strokeStyle = strokeColor
-      ctx.lineWidth = 2 / zoom
-      ctx.setLineDash([])
-      ctx.stroke()
-    } else {
-      // After release: show smoothed filled polygon
-      if (pts.length >= 3) {
-        ctx.beginPath()
-        ctx.moveTo(pts[0][0], pts[0][1])
-        for (let i = 1; i < pts.length; i++) ctx.lineTo(pts[i][0], pts[i][1])
-        ctx.closePath()
-        ctx.fillStyle = fillColor
-        ctx.fill()
-        ctx.strokeStyle = strokeColor
-        ctx.lineWidth = 1.5 / zoom
-        ctx.setLineDash([4 / zoom, 3 / zoom])
-        ctx.stroke()
-        ctx.setLineDash([])
-      }
-    }
-
-    ctx.restore()
-  }, [blobDrawState, drawOsmHighlight])
 
   useEffect(() => {
     if (!mapImageDataUrl) { mapImageElementRef.current = null; draw(); return }
@@ -3081,7 +3006,6 @@ export const TerrainViewCanvas = forwardRef<TerrainViewCanvasHandle, { surroundC
       if (e.button === 0 && (terrainPaintModeRef.current || elevationPaintModeRef.current || roadPaintModeRef.current || railPaintModeRef.current || riverEditModeRef.current || lakePaintModeRef.current || activeToolRef.current.type === 'hex-mask' || activeToolRef.current.type === 'mega-hex-origin' || activeToolRef.current.type === 'align-image')) return
       if (e.button === 0 && activePanelRef.current === 'highlights' && (highlightPaintModeRef.current || highlightLineEraserRef.current)) return
       if (e.button === 0 && activePanelRef.current === 'areas' && (activeToolRef.current.type === 'areas-draw' || activeToolRef.current.type === 'areas-erase')) return
-      if (e.button === 0 && activeToolRef.current.type === 'blob-draw') return
       if (e.button === 0 && draggingCpKeyRef.current) return
       e.preventDefault()
       isPanningRef.current = true
@@ -4192,143 +4116,6 @@ export const TerrainViewCanvas = forwardRef<TerrainViewCanvasHandle, { surroundC
       window.removeEventListener('mouseup', onUp)
     }
   }, [clientToLogical])
-
-  // Blob draw tool — freehand drag to draw, auto-detect terrain, simplify + smooth on release
-  useEffect(() => {
-    const el = containerRef.current
-    if (!el) return
-    const tool = activeToolRef.current
-    if (tool.type !== 'blob-draw') return
-
-    // Min distance between sampled points during drag (canvas-logical px)
-    const SAMPLE_DIST = 4
-    let rawPoints: [number, number][] = []
-    let isDown = false
-    let terrain = ''
-    let lastSampled: [number, number] | null = null
-
-    const detectTerrain = (lx: number, ly: number, meta: typeof metaRef.current, pw: number, ph: number, px: number, py: number): string => {
-      const mgPx = meta!.margin_mm * (pw / meta!.paper_mm[0])
-      const inMarginFn = (verts: [number, number][]) =>
-        verts.every(([x, y]) => x >= px + mgPx && x <= px + pw - mgPx && y >= py + mgPx && y <= py + ph - mgPx)
-      for (const hex of hexesRef.current) {
-        if (hexEdgeModeRef.current === 'whole' && hex.partial) continue
-        const verts = hex.vertices.map(([lon, lat]) => projectToCanvas(lon, lat, meta!, pw, ph, px, py))
-        if (!hex.partial && !inMarginFn(verts)) continue
-        if (pointInPolygon(lx, ly, verts) && hex.terrain !== 'sea' && hex.terrain !== 'clear') return hex.terrain
-      }
-      // Fallback: nearest non-sea/clear hex
-      let bestD = Infinity, best = ''
-      for (const hex of hexesRef.current) {
-        if (hex.terrain === 'sea' || hex.terrain === 'clear') continue
-        const cx = hex.vertices.reduce((s, v) => s + v[0], 0) / hex.vertices.length
-        const cy = hex.vertices.reduce((s, v) => s + v[1], 0) / hex.vertices.length
-        const [cx2, cy2] = projectToCanvas(cx, cy, meta!, pw, ph, px, py)
-        const d = Math.hypot(lx - cx2, ly - cy2)
-        if (d < bestD) { bestD = d; best = hex.terrain }
-      }
-      return best
-    }
-
-    const smoothAndCommit = (pts: [number, number][], terr: string) => {
-      if (pts.length < 3) { setBlobDrawState(null); return }
-      // Light denoise only — DP removes micro-jitter, 1 Chaikin pass rounds sharp corners
-      const simplified = douglasPeucker(pts, 3)
-      if (simplified.length < 3) { setBlobDrawState(null); return }
-      const smoothed = chaikin(simplified, 1, true)
-      setBlobDrawState({ points: smoothed, terrain: terr, drawing: false })
-    }
-
-    const onDown = (e: MouseEvent) => {
-      if (e.button !== 0) return
-      if ((activeToolRef.current as ActiveTool).type !== 'blob-draw') return
-      e.stopPropagation()
-      const meta = metaRef.current
-      if (!meta) return
-      const logical = clientToLogical(e.clientX, e.clientY)
-      if (!logical) return
-      const { lx, ly, cssW, cssH } = logical
-      const { pw, ph, px, py } = computePaper(cssW, cssH, meta)
-      const cur = blobDrawStateRef.current
-
-      // If there's a smoothed (non-drawing) preview, a click commits it
-      if (cur && !cur.drawing) {
-        const drawTool = activeToolRef.current as { type: 'blob-draw'; mode: 'add' | 'cut' }
-        addBlobPatchRef.current({
-          id: `bp-${Date.now()}-${Math.random().toString(36).slice(2)}`,
-          terrain: cur.terrain,
-          mode: drawTool.mode,
-          points: cur.points,
-        })
-        setBlobDrawState(null)
-        return
-      }
-
-      terrain = detectTerrain(lx, ly, meta, pw, ph, px, py)
-      if (!terrain) return
-      isDown = true
-      rawPoints = [[lx, ly]]
-      lastSampled = [lx, ly]
-      setBlobDrawState({ points: [[lx, ly]], terrain, drawing: true })
-    }
-
-    const onMove = (e: MouseEvent) => {
-      if (!isDown) return
-      const logical = clientToLogical(e.clientX, e.clientY)
-      if (!logical) return
-      const { lx, ly } = logical
-      const pt: [number, number] = [lx, ly]
-      if (lastSampled && Math.hypot(lx - lastSampled[0], ly - lastSampled[1]) < SAMPLE_DIST) return
-      rawPoints.push(pt)
-      lastSampled = pt
-      setBlobDrawState(prev => prev ? { ...prev, points: [...rawPoints] } : null)
-    }
-
-    const onUp = () => {
-      if (!isDown) return
-      isDown = false
-      smoothAndCommit(rawPoints, terrain)
-    }
-
-    const onKey = (e: KeyboardEvent) => {
-      if ((activeToolRef.current as ActiveTool).type !== 'blob-draw') return
-      if (e.key === 'Escape') {
-        e.preventDefault()
-        isDown = false
-        rawPoints = []
-        setBlobDrawState(null)
-      } else if (e.key === 'Enter') {
-        e.preventDefault()
-        const cur = blobDrawStateRef.current
-        if (!cur) return
-        if (cur.drawing) {
-          isDown = false
-          smoothAndCommit(rawPoints, terrain)
-        } else {
-          const drawTool = activeToolRef.current as { type: 'blob-draw'; mode: 'add' | 'cut' }
-          addBlobPatchRef.current({
-            id: `bp-${Date.now()}-${Math.random().toString(36).slice(2)}`,
-            terrain: cur.terrain,
-            mode: drawTool.mode,
-            points: cur.points,
-          })
-          setBlobDrawState(null)
-        }
-      }
-    }
-
-    el.addEventListener('mousedown', onDown, { capture: true })
-    window.addEventListener('mousemove', onMove)
-    window.addEventListener('mouseup', onUp)
-    window.addEventListener('keydown', onKey)
-    return () => {
-      el.removeEventListener('mousedown', onDown, { capture: true })
-      window.removeEventListener('mousemove', onMove)
-      window.removeEventListener('mouseup', onUp)
-      window.removeEventListener('keydown', onKey)
-      setBlobDrawState(null)
-    }
-  }, [activeTool, clientToLogical])
 
   // Context menu
   const [ctxMenu, setCtxMenu] = useState<{ x: number; y: number; items: CtxItem[] } | null>(null)

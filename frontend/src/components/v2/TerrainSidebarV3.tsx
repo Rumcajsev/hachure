@@ -37,7 +37,6 @@ type FlyoutId =
   | 'e-hillshade'
   | 'e-contours'
   | 't-terrain'
-  | 'blob-patches'
   | null
 
 // ── Flyout content: blob shape ──────────────────────────────────────────────
@@ -922,78 +921,6 @@ function TerrainCogFlyout({ terrain, onClose }: { terrain: string; onClose: () =
   )
 }
 
-// ── BlobEditFlyout ───────────────────────────────────────────────────────────
-
-function BlobEditFlyout({ onClose }: { onClose: () => void }) {
-  const t = useTheme()
-  const { blobPatches, deleteBlobPatch, terrainColors, activeTool, setActiveTool } = useMapStore()
-
-  return (
-    <FlyoutShell title="Blob Edit" onClose={onClose}>
-      <div style={{ padding: '6px 12px 4px', fontFamily: t.mono, fontSize: 9, color: t.inkFaint, lineHeight: 1.5 }}>
-        Draw freehand shapes to extend or cut terrain blobs.
-        {activeTool.type === 'blob-draw' && (
-          <span style={{ color: activeTool.mode === 'add' ? '#4a9a5a' : '#c04040' }}>
-            {' '}Click and drag to draw. Release to smooth — click or Enter to commit, Escape to cancel.
-          </span>
-        )}
-      </div>
-      <div style={{ display: 'flex', gap: 5, padding: '2px 12px 8px' }}>
-        <button
-          onClick={() => setActiveTool(activeTool.type === 'blob-draw' && activeTool.mode === 'add' ? { type: 'none' } : { type: 'blob-draw', mode: 'add' })}
-          style={{
-            flex: 1, padding: '5px 0', fontFamily: t.mono, fontSize: 9.5, letterSpacing: 0.3,
-            border: `1px solid ${activeTool.type === 'blob-draw' && activeTool.mode === 'add' ? '#4a9a5a' : t.line}`,
-            borderRadius: 4, cursor: 'pointer',
-            background: activeTool.type === 'blob-draw' && activeTool.mode === 'add' ? 'rgba(74,154,90,0.15)' : t.surface,
-            color: activeTool.type === 'blob-draw' && activeTool.mode === 'add' ? '#4a9a5a' : t.inkMute,
-          }}
-        >
-          + Add
-        </button>
-        <button
-          onClick={() => setActiveTool(activeTool.type === 'blob-draw' && activeTool.mode === 'cut' ? { type: 'none' } : { type: 'blob-draw', mode: 'cut' })}
-          style={{
-            flex: 1, padding: '5px 0', fontFamily: t.mono, fontSize: 9.5, letterSpacing: 0.3,
-            border: `1px solid ${activeTool.type === 'blob-draw' && activeTool.mode === 'cut' ? '#c04040' : t.line}`,
-            borderRadius: 4, cursor: 'pointer',
-            background: activeTool.type === 'blob-draw' && activeTool.mode === 'cut' ? 'rgba(192,64,64,0.15)' : t.surface,
-            color: activeTool.type === 'blob-draw' && activeTool.mode === 'cut' ? '#c04040' : t.inkMute,
-          }}
-        >
-          ✂ Cut
-        </button>
-      </div>
-      {blobPatches.length === 0 ? (
-        <div style={{ padding: '4px 12px 8px', fontFamily: t.mono, fontSize: 9, color: t.inkFaint }}>
-          No patches yet.
-        </div>
-      ) : (
-        <div style={{ padding: '0 12px 8px' }}>
-          {blobPatches.map(patch => (
-            <div key={patch.id} style={{
-              display: 'flex', alignItems: 'center', gap: 6, padding: '4px 0',
-              borderTop: `1px solid ${t.line2}`,
-            }}>
-              <div style={{ width: 8, height: 8, borderRadius: 2, background: terrainColors[patch.terrain] ?? TERRAIN_COLORS[patch.terrain] ?? '#888', flexShrink: 0 }} />
-              <span style={{ fontFamily: t.mono, fontSize: 9, color: t.ink2, flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                {patch.mode === 'cut' ? '✂ ' : '+ '}{patch.terrain.replace(/_/g, ' ')}
-              </span>
-              <button
-                onClick={() => deleteBlobPatch(patch.id)}
-                style={{ background: 'none', border: 'none', cursor: 'pointer', padding: '0 2px', fontFamily: t.mono, fontSize: 11, color: t.inkFaint, lineHeight: 1 }}
-                title="Delete"
-              >
-                ×
-              </button>
-            </div>
-          ))}
-        </div>
-      )}
-    </FlyoutShell>
-  )
-}
-
 // ── Flyout content: elevation class settings ────────────────────────────────
 
 function ElevationCogFlyout({ cls, defaultColor, onClose }: { cls: 'hills' | 'mountains'; defaultColor: string; onClose: () => void }) {
@@ -1209,7 +1136,6 @@ export function TerrainSidebarV3() {
     terrainTypeBlobStyles,
     elevationTypeBlobStyles,
     mapStyle,
-    blobPatches,
     heightmapUrl,
   } = useMapStore()
 
@@ -1369,13 +1295,6 @@ export function TerrainSidebarV3() {
           </>
         )}
 
-        <V2Divider label="Blob edit" />
-        <TriggerRow
-          label={`Edit blobs${blobPatches.length > 0 ? ` · ${blobPatches.length}` : ''}`}
-          active={flyout === 'blob-patches' || activeTool.type === 'blob-draw'}
-          onClick={() => toggleFlyout('blob-patches')}
-        />
-
         <div style={{ height: 8 }} />
       </StripShell>
 
@@ -1385,7 +1304,6 @@ export function TerrainSidebarV3() {
       {flyout === 'e-import'     && <ElevationFlyout      onClose={() => setFlyout(null)} />}
       {flyout === 'e-hillshade'  && <HilshadeFlyout       onClose={() => setFlyout(null)} />}
       {flyout === 'e-contours'   && <ContoursFlyout       onClose={() => setFlyout(null)} />}
-      {flyout === 'blob-patches' && <BlobEditFlyout       onClose={() => { setFlyout(null); setActiveTool({ type: 'none' }) }} />}
       {flyout === 't-terrain' && cogTerrain && (
         <TerrainCogFlyout terrain={cogTerrain} onClose={() => setFlyout(null)} />
       )}

@@ -1,6 +1,6 @@
 import type {
   MapStore, GeneratedHex, GridMetadata, GenerateProgress, BlobOverride,
-  ActiveTool, CustomTerrain, BlobPatch,
+  ActiveTool, CustomTerrain,
 } from '../mapStore'
 import {
   DEFAULT_THRESHOLDS,
@@ -89,8 +89,6 @@ export type TerrainSlice = {
   lakeBlobLobeThreshold: number
   lakeBlobLobeDirection: number
   lakeOverrides: Record<string, BlobOverride>
-  // Blob patches (manual draw-to-add / draw-to-cut)
-  blobPatches: BlobPatch[]
   // Actions
   resetToSetup: () => void
   generateMap: () => Promise<void>
@@ -165,8 +163,6 @@ export type TerrainSlice = {
   setLakeBlobLobeThreshold: (v: number) => void
   setLakeBlobLobeDirection: (v: number) => void
   setLakeOverride: (key: string, override: BlobOverride | null) => void
-  addBlobPatch: (patch: BlobPatch) => void
-  deleteBlobPatch: (id: string) => void
   blobSeeds: Record<string, number>
   randomizeBlobSeed: (terrain: string) => void
 }
@@ -270,7 +266,6 @@ export const createTerrainSlice = (set: Set, get: () => MapStore): TerrainSlice 
   lakeBlobLobeDirection: 1,
   lakeOverrides: {},
 
-  blobPatches: [],
   blobSeeds: {},
 
   resetToSetup: () => set({
@@ -346,7 +341,6 @@ export const createTerrainSlice = (set: Set, get: () => MapStore): TerrainSlice 
     railSegmentProps: {},
     railHopProps: {},
     bridgeOverrides: {},
-    blobPatches: [],
     areas: [],
     areaHexes: {},
     iconOverlays: [],
@@ -442,7 +436,6 @@ export const createTerrainSlice = (set: Set, get: () => MapStore): TerrainSlice 
       edgeBlobOverrides: {},
       terrainBlobOverrides: {},
       lakeOverrides: {},
-      blobPatches: [],
       bridgeOverrides: {},
       undoStack: [],
       redoStack: [],
@@ -843,7 +836,5 @@ export const createTerrainSlice = (set: Set, get: () => MapStore): TerrainSlice 
     return { lakeOverrides: { ...s.lakeOverrides, [key]: cleaned } }
   }),
 
-  addBlobPatch: (patch) => set((s) => ({ blobPatches: [...s.blobPatches, patch] })),
-  deleteBlobPatch: (id) => set((s) => ({ blobPatches: s.blobPatches.filter(p => p.id !== id) })),
   randomizeBlobSeed: (terrain) => set((s) => ({ blobSeeds: { ...s.blobSeeds, [terrain]: (Math.random() * 0x7fffffff) | 0 } })),
 })

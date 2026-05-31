@@ -116,13 +116,6 @@ export type Orientation = 'portrait' | 'landscape'
 export type HexOrientation = 'flat' | 'pointy'
 export type HexEdgeMode = 'whole' | 'half'
 
-export interface BlobPatch {
-  id: string
-  terrain: string
-  mode: 'add' | 'cut'
-  points: [number, number][]
-}
-
 export type ActiveTool =
   | { type: 'none' }
   | { type: 'terrain'; brush: string }
@@ -154,7 +147,6 @@ export type ActiveTool =
   | { type: 'areas-draw' }
   | { type: 'areas-erase' }
   | { type: 'align-image' }
-  | { type: 'blob-draw'; mode: 'add' | 'cut' }
   | { type: 'label-drag' }
 
 export type MapMode = 'single' | 'diptych'
