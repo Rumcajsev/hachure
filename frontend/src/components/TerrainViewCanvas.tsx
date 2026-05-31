@@ -6,7 +6,8 @@ import { BlobOverrideFlyout } from './BlobOverrideFlyout'
 import { hexAdjacent, catmullRom, offsetPolyline, pointInPolygon, distToSeg, douglasPeucker, chaikin } from '../lib/geometry'
 import { mulberry32, makePermutation } from '../lib/noise'
 import { projectToCanvas, unprojectFromCanvas, computePaper } from '../lib/projection'
-import { coastalBlobTerrains, bleedPolygon, buildTerrainBlobsV2, computeConnectedComponents } from '../lib/terrainBlobs'
+import { coastalBlobTerrains, bleedPolygon, buildTerrainBlobsV2, buildTerrainBlobTopology, shapeTerrainBlobs, computeConnectedComponents } from '../lib/terrainBlobs'
+import type { BlobTopologyEntry } from '../lib/terrainBlobs'
 import { findEdgeChains as findEdgeChainsSync } from '../lib/edgeBlobs'
 import { riverChainCache, buildRiverChains, buildRiverChainsV2 } from '../lib/riverChains'
 
@@ -1175,7 +1176,7 @@ export const TerrainViewCanvas = forwardRef<TerrainViewCanvasHandle, { surroundC
   smoothedCoastlineBoundaryRef.current = smoothedCoastlineBoundary
 
   const prevTerrainBlobsRef = useRef<{ terrain: string; polys: [number, number][][] }[]>([])
-  type TerrainBlobCacheEntry = { hexKey: string; styleKey: string; blobs: { terrain: string; polys: [number, number][][] }[] }
+  type TerrainBlobCacheEntry = { hexKey: string; rawPolys: [number, number][][]; hexCenters: [number, number][]; styleKey: string; blobs: { terrain: string; polys: [number, number][][] }[] }
   const perTerrainBlobCache = useRef(new Map<string, TerrainBlobCacheEntry>())
   const defaultTerrainBlobs = useMemo(() => {
     if (projectedHexes.length === 0 || hexRadius === 0) return []
@@ -1228,8 +1229,19 @@ export const TerrainViewCanvas = forwardRef<TerrainViewCanvasHandle, { surroundC
       const styleKey = `${smooth}|${offset}|${bump}|${sweepFreq}|${lobeFreq}|${lobeAmp}|${lobeThreshold}|${lobeDirection}|${clearingChance}|${satelliteChance}|${patchSize}|${hexRadius}`
       const cached = perTerrainBlobCache.current.get(terrain)
       if (cached?.hexKey === hexKey && cached?.styleKey === styleKey) return cached.blobs
-      const blobs = buildTerrainBlobsV2(terrainProjected, smooth, offset, bump, sweepFreq, lobeFreq, lobeAmp, lobeThreshold, lobeDirection, hexRadius, clearingChance, satelliteChance, patchSize)
-      perTerrainBlobCache.current.set(terrain, { hexKey, styleKey, blobs })
+      let rawPolys: [number, number][][]
+      let hexCenters: [number, number][]
+      if (cached?.hexKey === hexKey) {
+        rawPolys = cached.rawPolys
+        hexCenters = cached.hexCenters
+      } else {
+        const topo = buildTerrainBlobTopology(terrainProjected, hexRadius)
+        const entry = topo.find(e => e.terrain === terrain)
+        rawPolys = entry?.rawPolys ?? []
+        hexCenters = entry?.hexCenters ?? []
+      }
+      const blobs = shapeTerrainBlobs([{ terrain, rawPolys, hexCenters }], smooth, offset, bump, sweepFreq, lobeFreq, lobeAmp, lobeThreshold, lobeDirection, hexRadius, clearingChance, satelliteChance, patchSize)
+      perTerrainBlobCache.current.set(terrain, { hexKey, rawPolys, hexCenters, styleKey, blobs })
       return blobs
     })
     for (const t of perTerrainBlobCache.current.keys()) {
@@ -1275,7 +1287,7 @@ export const TerrainViewCanvas = forwardRef<TerrainViewCanvasHandle, { surroundC
   defaultBackgroundBlobsRef.current = defaultBackgroundBlobs
 
   const prevLakeBlobsRef = useRef<{ terrain: string; polys: [number, number][][] }[]>([])
-  const lakeBlobCache = useRef<{ hexKey: string; styleKey: string; blobs: { terrain: string; polys: [number, number][][] }[] } | null>(null)
+  const lakeBlobCache = useRef<{ hexKey: string; rawPolys: [number, number][][]; hexCenters: [number, number][]; styleKey: string; blobs: { terrain: string; polys: [number, number][][] }[] } | null>(null)
   const defaultLakeBlobs = useMemo(() => {
     if (projectedHexes.length === 0 || hexRadius === 0) return []
     if (isTerrainPainting) return prevLakeBlobsRef.current
@@ -1296,8 +1308,19 @@ export const TerrainViewCanvas = forwardRef<TerrainViewCanvasHandle, { surroundC
     if (lakeBlobCache.current?.hexKey === hexKey && lakeBlobCache.current?.styleKey === styleKey) {
       return lakeBlobCache.current.blobs
     }
-    const result = buildTerrainBlobsV2(defaultLakeProjected, lakeBlobSmooth, lakeBlobOffset, lakeBlobBump, lakeBlobSweepFreq, lakeBlobLobeFreq, lakeBlobLobeAmp, lakeBlobLobeThreshold, lakeBlobLobeDirection, hexRadius)
-    lakeBlobCache.current = { hexKey, styleKey, blobs: result }
+    let lakeRawPolys: [number, number][][]
+    let lakeHexCenters: [number, number][]
+    if (lakeBlobCache.current?.hexKey === hexKey) {
+      lakeRawPolys = lakeBlobCache.current.rawPolys
+      lakeHexCenters = lakeBlobCache.current.hexCenters
+    } else {
+      const topo = buildTerrainBlobTopology(defaultLakeProjected, hexRadius)
+      const entry = topo.find(e => e.terrain === 'lake')
+      lakeRawPolys = entry?.rawPolys ?? []
+      lakeHexCenters = entry?.hexCenters ?? []
+    }
+    const result = shapeTerrainBlobs([{ terrain: 'lake', rawPolys: lakeRawPolys, hexCenters: lakeHexCenters }], lakeBlobSmooth, lakeBlobOffset, lakeBlobBump, lakeBlobSweepFreq, lakeBlobLobeFreq, lakeBlobLobeAmp, lakeBlobLobeThreshold, lakeBlobLobeDirection, hexRadius)
+    lakeBlobCache.current = { hexKey, rawPolys: lakeRawPolys, hexCenters: lakeHexCenters, styleKey, blobs: result }
     prevLakeBlobsRef.current = result
     return result
   }, [isTerrainPainting, projectedHexes, blobComponents, lakeOverrides, lakeBlobSmooth, lakeBlobOffset, lakeBlobBump, lakeBlobSweepFreq, lakeBlobLobeFreq, lakeBlobLobeAmp, lakeBlobLobeThreshold, lakeBlobLobeDirection, hexRadius])
@@ -1305,26 +1328,34 @@ export const TerrainViewCanvas = forwardRef<TerrainViewCanvasHandle, { surroundC
   defaultLakeBlobsRef.current = defaultLakeBlobs
 
   const prevElevationBlobsRef = useRef<{ hills: [number, number][][]; mountains: [number, number][][] }>({ hills: [], mountains: [] })
-  const elevationBlobsCache = useRef<{ hexKey: string; blobs: { hills: [number, number][][]; mountains: [number, number][][] } } | null>(null)
+  const elevationBlobsCache = useRef<{ hexKey: string; topoHills: BlobTopologyEntry | null; topoMountains: BlobTopologyEntry | null; styleKey: string; blobs: { hills: [number, number][][]; mountains: [number, number][][] } } | null>(null)
   const defaultElevationBlobs = useMemo(() => {
     if (projectedHexes.length === 0 || hexRadius === 0) return prevElevationBlobsRef.current
     if (isTerrainPainting) return prevElevationBlobsRef.current
-    const hexKey = projectedHexes.map(p => `${p.hex.q},${p.hex.r}:${(p.hex as GeneratedHex).elevation_class ?? ''}`).join('|')
-    if (elevationBlobsCache.current?.hexKey === hexKey) return elevationBlobsCache.current.blobs
-    const makePolys = (cls: 'hills' | 'mountains') => {
-      const elevProjected = projectedHexes
-        .filter(p => (p.hex as GeneratedHex).elevation_class === cls)
-        .map(p => ({ ...p, hex: { ...p.hex, terrain: cls } }))
-      if (elevProjected.length === 0) return []
-      const blobs = buildTerrainBlobsV2(
-        elevProjected, terrainBlobSmooth, terrainBlobOffset, terrainBlobBump,
-        terrainBlobSweepFreq, terrainBlobLobeFreq, terrainBlobLobeAmp,
-        terrainBlobLobeThreshold, terrainBlobLobeDirection, hexRadius,
-      )
-      return blobs.find(b => b.terrain === cls)?.polys ?? []
+    const hexKey = projectedHexes.map(p => { const h = p.hex as GeneratedHex; return `${h.q},${h.r}:${h.elevation_class ?? ''}:${h.elevation_background ?? ''}` }).join('|')
+    const styleKey = `${terrainBlobSmooth}|${terrainBlobOffset}|${terrainBlobBump}|${terrainBlobSweepFreq}|${terrainBlobLobeFreq}|${terrainBlobLobeAmp}|${terrainBlobLobeThreshold}|${terrainBlobLobeDirection}|${hexRadius}`
+    if (elevationBlobsCache.current?.hexKey === hexKey && elevationBlobsCache.current?.styleKey === styleKey) {
+      return elevationBlobsCache.current.blobs
     }
-    const blobs = { hills: makePolys('hills'), mountains: makePolys('mountains') }
-    elevationBlobsCache.current = { hexKey, blobs }
+    const makePolys = (cls: 'hills' | 'mountains', cachedTopo: BlobTopologyEntry | null | undefined) => {
+      const elevProjected = projectedHexes
+        .filter(p => {
+          const h = p.hex as GeneratedHex
+          return h.elevation_class === cls || h.elevation_background === cls
+        })
+        .map(p => ({ ...p, hex: { ...p.hex, terrain: cls } }))
+      if (elevProjected.length === 0) return { topo: null, polys: [] as [number, number][][] }
+      const topoEntry = elevationBlobsCache.current?.hexKey === hexKey && cachedTopo
+        ? cachedTopo
+        : (buildTerrainBlobTopology(elevProjected, hexRadius).find(e => e.terrain === cls) ?? null)
+      if (!topoEntry) return { topo: null, polys: [] as [number, number][][] }
+      const shaped = shapeTerrainBlobs([topoEntry], terrainBlobSmooth, terrainBlobOffset, terrainBlobBump, terrainBlobSweepFreq, terrainBlobLobeFreq, terrainBlobLobeAmp, terrainBlobLobeThreshold, terrainBlobLobeDirection, hexRadius)
+      return { topo: topoEntry, polys: shaped.find(b => b.terrain === cls)?.polys ?? [] }
+    }
+    const hillsResult = makePolys('hills', elevationBlobsCache.current?.topoHills)
+    const mountainsResult = makePolys('mountains', elevationBlobsCache.current?.topoMountains)
+    const blobs = { hills: hillsResult.polys, mountains: mountainsResult.polys }
+    elevationBlobsCache.current = { hexKey, topoHills: hillsResult.topo, topoMountains: mountainsResult.topo, styleKey, blobs }
     prevElevationBlobsRef.current = blobs
     return blobs
   }, [isTerrainPainting, projectedHexes, terrainBlobSmooth, terrainBlobOffset, terrainBlobBump, terrainBlobSweepFreq, terrainBlobLobeFreq, terrainBlobLobeAmp, terrainBlobLobeThreshold, terrainBlobLobeDirection, hexRadius])

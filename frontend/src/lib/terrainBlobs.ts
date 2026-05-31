@@ -88,6 +88,12 @@ function makeOrganicPatch(
 
 // ── V2 blob pipeline ─────────────────────────────────────────────────────────
 
+export type BlobTopologyEntry = {
+  terrain: string
+  rawPolys: [number, number][][]
+  hexCenters: [number, number][]
+}
+
 export function preSmoothVar(pts: [number, number][], t: number): [number, number][] {
   if (t <= 0 || pts.length < 3) return pts
   const n = pts.length
@@ -117,22 +123,11 @@ export function resizeToHexAnchors(
   })
 }
 
-export function buildTerrainBlobsV2(
+export function buildTerrainBlobTopology(
   projected: { hex: { terrain: string; partial: boolean }; verts: [number, number][] }[],
-  smooth: number,
-  offsetFraction: number,
-  bumpFraction: number,
-  sweepFreq: number,
-  lobeFreq: number,
-  lobeAmp: number,
-  lobeThreshold: number,
-  lobeDirection: number,
   R: number,
-  clearingChance = 0,
-  satelliteChance = 0,
-  patchSize = 0.2,
-): { terrain: string; polys: [number, number][][] }[] {
-  const SNAP = 1
+): BlobTopologyEntry[] {
+  const SNAP = Math.max(2, R * 0.015)
   const vk = (p: [number, number]) => `${Math.round(p[0] / SNAP)},${Math.round(p[1] / SNAP)}`
   const vpos = new Map<string, [number, number]>()
   const edgeCount = new Map<string, Map<string, number>>()
@@ -165,7 +160,7 @@ export function buildTerrainBlobsV2(
     }
   }
 
-  const result: { terrain: string; polys: [number, number][][] }[] = []
+  const result: BlobTopologyEntry[] = []
 
   for (const [terrain, tc] of edgeCount) {
     const adj = new Map<string, string[]>()
@@ -180,7 +175,7 @@ export function buildTerrainBlobsV2(
 
     const visitedVerts = new Set<string>()
     const visitedEdges = new Set<string>()
-    const polys: [number, number][][] = []
+    const rawPolys: [number, number][][] = []
 
     for (const [startKey] of adj) {
       if (visitedVerts.has(startKey)) continue
@@ -198,15 +193,38 @@ export function buildTerrainBlobsV2(
         if (!next || next === startKey) break
         cur = next
       }
-      if (pts.length >= 3) polys.push(pts)
+      if (pts.length >= 3) rawPolys.push(pts)
     }
 
-    const hexCenters = hexCentersByTerrain.get(terrain) ?? []
+    result.push({ terrain, rawPolys, hexCenters: hexCentersByTerrain.get(terrain) ?? [] })
+  }
+
+  return result
+}
+
+export function shapeTerrainBlobs(
+  topology: BlobTopologyEntry[],
+  smooth: number,
+  offsetFraction: number,
+  bumpFraction: number,
+  sweepFreq: number,
+  lobeFreq: number,
+  lobeAmp: number,
+  lobeThreshold: number,
+  lobeDirection: number,
+  R: number,
+  clearingChance = 0,
+  satelliteChance = 0,
+  patchSize = 0.2,
+): { terrain: string; polys: [number, number][][] }[] {
+  const result: { terrain: string; polys: [number, number][][] }[] = []
+
+  for (const { terrain, rawPolys, hexCenters } of topology) {
     const resizeS = Math.max(0.1, 1 + offsetFraction)
     const p1Amp = bumpFraction * R
     const p2Amp = bumpFraction * lobeAmp * R * lobeDirection
 
-    const finalPolys = polys.map(poly => {
+    const finalPolys = rawPolys.map(poly => {
       const seed = Math.abs(Math.round(poly[0][0] * 73 + poly[0][1] * 97))
 
       let p: [number, number][] = poly
@@ -239,8 +257,6 @@ export function buildTerrainBlobsV2(
         const avgR = poly.reduce((s, p) => s + Math.hypot(p[0] - cx, p[1] - cy), 0) / poly.length
         const patchR = patchSize * R
 
-        // Clearing: a small hole punched inside the blob.
-        // evenodd fill makes any nested polygon a hole automatically.
         if (clearingChance > 0 && patchR < avgR * 0.45) {
           const cRng = mulberry32(seed + 400)
           if (cRng() < clearingChance) {
@@ -257,7 +273,6 @@ export function buildTerrainBlobsV2(
           }
         }
 
-        // Satellite: a small patch near but visibly outside the blob edge.
         if (satelliteChance > 0) {
           const sRng = mulberry32(seed + 500)
           if (sRng() < satelliteChance) {
@@ -265,7 +280,6 @@ export function buildTerrainBlobsV2(
             const v = poly[vi]
             const prev = poly[(vi - 1 + poly.length) % poly.length]
             const next = poly[(vi + 1) % poly.length]
-            // Outward normal at vertex: average of the two adjacent edge normals
             const n1x = -(v[1] - prev[1]), n1y = v[0] - prev[0]
             const n2x = -(next[1] - v[1]), n2y = next[0] - v[0]
             const nx = n1x + n2x, ny = n1y + n2y
@@ -274,7 +288,6 @@ export function buildTerrainBlobsV2(
               const gap = patchR * 1.7
               let satCx = v[0] + (nx / nl) * gap
               let satCy = v[1] + (ny / nl) * gap
-              // If normal pointed inward, flip it
               if (pointInPolygon(satCx, satCy, poly)) {
                 satCx = v[0] - (nx / nl) * gap
                 satCy = v[1] - (ny / nl) * gap
@@ -292,6 +305,29 @@ export function buildTerrainBlobsV2(
   }
 
   return result
+}
+
+export function buildTerrainBlobsV2(
+  projected: { hex: { terrain: string; partial: boolean }; verts: [number, number][] }[],
+  smooth: number,
+  offsetFraction: number,
+  bumpFraction: number,
+  sweepFreq: number,
+  lobeFreq: number,
+  lobeAmp: number,
+  lobeThreshold: number,
+  lobeDirection: number,
+  R: number,
+  clearingChance = 0,
+  satelliteChance = 0,
+  patchSize = 0.2,
+): { terrain: string; polys: [number, number][][] }[] {
+  return shapeTerrainBlobs(
+    buildTerrainBlobTopology(projected, R),
+    smooth, offsetFraction, bumpFraction,
+    sweepFreq, lobeFreq, lobeAmp, lobeThreshold, lobeDirection,
+    R, clearingChance, satelliteChance, patchSize,
+  )
 }
 
 // ── Connected components ─────────────────────────────────────────────────────
