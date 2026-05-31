@@ -204,9 +204,9 @@ function ShapeSettingsFlyout({ onClose }: { onClose: () => void }) {
       <div style={{ margin: '6px 12px 2px', borderTop: `1px solid ${t.line2}`, paddingTop: 8 }}>
         <span style={{ fontFamily: t.mono, fontSize: 9, letterSpacing: 0.8, color: t.inkFaint, textTransform: 'uppercase', fontWeight: 600 }}>Blob outline</span>
       </div>
-      <ToggleRow label="Outline" enabled={terrainBlobOutlineEnabled} onChange={setTerrainBlobOutlineEnabled} />
+      <ToggleRow label="Outline" checked={terrainBlobOutlineEnabled} onChange={setTerrainBlobOutlineEnabled} />
       {terrainBlobOutlineEnabled && <>
-        <BigColorSwatch value={terrainBlobOutlineColor} onChange={setTerrainBlobOutlineColor} />
+        <BigColorSwatch value={terrainBlobOutlineColor} onChange={setTerrainBlobOutlineColor} groups={PALETTE_TERRAIN_GROUPS} />
         <MiniSlider label="Width" display={`${terrainBlobOutlineWidth}px`} value={terrainBlobOutlineWidth} min={0.5} max={8} step={0.5} onChange={setTerrainBlobOutlineWidth} />
       </>}
       <div style={{ margin: '6px 12px 2px', borderTop: `1px solid ${t.line2}`, paddingTop: 8 }}>
@@ -902,12 +902,13 @@ function TerrainCogFlyout({ terrain, onClose }: { terrain: string; onClose: () =
         </div>
         <ToggleRow
           label="Outline"
-          enabled={typeStyle?.outlineEnabled ?? terrainBlobOutlineEnabled}
+          checked={typeStyle?.outlineEnabled ?? terrainBlobOutlineEnabled}
           onChange={v => setTerrainTypeBlobStyle(terrain, { outlineEnabled: v })}
         />
         <BigColorSwatch
           value={typeStyle?.outlineColor ?? terrainBlobOutlineColor}
           onChange={v => setTerrainTypeBlobStyle(terrain, { outlineColor: v })}
+          groups={PALETTE_TERRAIN_GROUPS}
         />
         <MiniSlider
           label="Width"
@@ -1170,12 +1171,13 @@ function ElevationCogFlyout({ cls, defaultColor, onClose }: { cls: 'hills' | 'mo
         </div>
         <ToggleRow
           label="Outline"
-          enabled={typeStyle?.outlineEnabled ?? terrainBlobOutlineEnabled}
+          checked={typeStyle?.outlineEnabled ?? terrainBlobOutlineEnabled}
           onChange={v => setElevationTypeBlobStyle(cls, { outlineEnabled: v })}
         />
         <BigColorSwatch
           value={typeStyle?.outlineColor ?? terrainBlobOutlineColor}
           onChange={v => setElevationTypeBlobStyle(cls, { outlineColor: v })}
+          groups={PALETTE_TERRAIN_GROUPS}
         />
         <MiniSlider
           label="Width"
