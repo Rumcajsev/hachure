@@ -59,7 +59,31 @@ const OSM_OVERLAY_STYLE: maplibregl.StyleSpecification = {
   layers: [{ id: 'osm', type: 'raster', source: 'osm' }],
 }
 
-type CtxItem = { label: string; action: () => void; danger?: boolean; color?: string; dim?: boolean }
+type CtxItem = { label: string; action: () => void; danger?: boolean; color?: string; dim?: boolean; icon?: 'edit' | 'dice' | 'erase'; highlightPolys?: [number,number][][] }
+
+function CtxIcon({ type, color }: { type: 'edit' | 'dice' | 'erase'; color: string }) {
+  const s: React.CSSProperties = { width: 12, height: 12, flexShrink: 0, display: 'block' }
+  if (type === 'edit') return (
+    <svg style={s} viewBox="0 0 12 12" fill="none" stroke={color} strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M8 1.5l2.5 2.5L3.5 11H1v-2.5L8 1.5z" />
+    </svg>
+  )
+  if (type === 'dice') return (
+    <svg style={s} viewBox="0 0 12 12" fill="none" stroke={color} strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round">
+      <rect x="1" y="1" width="10" height="10" rx="2" />
+      <circle cx="4" cy="4" r="0.9" fill={color} stroke="none" />
+      <circle cx="8" cy="4" r="0.9" fill={color} stroke="none" />
+      <circle cx="6" cy="6" r="0.9" fill={color} stroke="none" />
+      <circle cx="4" cy="8" r="0.9" fill={color} stroke="none" />
+      <circle cx="8" cy="8" r="0.9" fill={color} stroke="none" />
+    </svg>
+  )
+  return (
+    <svg style={s} viewBox="0 0 12 12" fill="none" stroke={color} strokeWidth="1.3" strokeLinecap="round">
+      <path d="M2 10L10 2M2 2l8 8" />
+    </svg>
+  )
+}
 
 export type TerrainViewCanvasHandle = {
   exportBlob: () => Promise<{ blob: Blob; paperMm: [number, number] } | null>
@@ -76,6 +100,7 @@ export const TerrainViewCanvas = forwardRef<TerrainViewCanvasHandle, { surroundC
   const containerRef = useRef<HTMLDivElement>(null)
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const osmOverlayCanvasRef = useRef<HTMLCanvasElement>(null)
+  const highlightCanvasRef = useRef<HTMLCanvasElement>(null)
   const textureCacheRef = useRef<Map<string, HTMLImageElement>>(new Map())
   const patternCacheRef = useRef<WeakMap<HTMLImageElement, CanvasPattern>>(new WeakMap())
   const historicalIconSetsRef = useRef<Record<string, HTMLImageElement[]>>({})
@@ -2698,6 +2723,13 @@ export const TerrainViewCanvas = forwardRef<TerrainViewCanvasHandle, { surroundC
       overlay.style.width = `${frameDims.w}px`
       overlay.style.height = `${frameDims.h}px`
     }
+    const hl = highlightCanvasRef.current
+    if (hl) {
+      hl.width = frameDims.w * dpr
+      hl.height = frameDims.h * dpr
+      hl.style.width = `${frameDims.w}px`
+      hl.style.height = `${frameDims.h}px`
+    }
     frameDimsRef.current = frameDims
     draw()
   }, [frameDims, draw])
@@ -4608,19 +4640,29 @@ export const TerrainViewCanvas = forwardRef<TerrainViewCanvasHandle, { surroundC
         if (hex.isLake ?? false) {
           const canonicalKey = blobComponentsRef.current.get(hexKey)
           if (canonicalKey) {
+            const lakePolys = defaultLakeBlobsRef.current.find(b => b.terrain === 'lake')?.polys ?? []
+            const logical3 = clientToLogicalRef.current(e.clientX, e.clientY)
+            const hitLakePoly = logical3 ? lakePolys.filter(p => pointInPolygon(logical3.lx, logical3.ly, p)) : []
             items.push({
               label: 'Edit lake…',
+              icon: 'edit' as const,
+              highlightPolys: hitLakePoly,
               action: () => setBlobFlyout({ type: 'lake', canonicalKey, x: e.clientX, y: e.clientY }),
             })
           }
         } else if (storedHexForBlob) {
           const editableLayers = hexTerrainLayers(storedHexForBlob).filter(t => t !== 'sea')
+          const logical3 = clientToLogicalRef.current(e.clientX, e.clientY)
           for (const t of editableLayers) {
             const componentMap = blobComponentsByTerrainRef.current.get(t)
             const canonicalKey = componentMap?.get(hexKey)
             if (!canonicalKey) continue
+            const terrainPolys = defaultTerrainBlobsRef.current.find(b => b.terrain === t)?.polys ?? []
+            const hitTerrainPoly = logical3 ? terrainPolys.filter(p => pointInPolygon(logical3.lx, logical3.ly, p)) : []
             items.push({
               label: `Edit ${t.replace(/_/g, ' ')} blob…`,
+              icon: 'edit' as const,
+              highlightPolys: hitTerrainPoly,
               action: () => setBlobFlyout({ type: 'terrain', canonicalKey, terrain: t, x: e.clientX, y: e.clientY }),
             })
           }
@@ -4668,10 +4710,12 @@ export const TerrainViewCanvas = forwardRef<TerrainViewCanvasHandle, { surroundC
               const chainKey3 = chain3?.chainKey ?? ek
               items.push({
                 label: `Edit edge ${terrain3?.replace(/_/g, ' ') ?? 'blob'}…`,
+                icon: 'edit' as const,
                 action: () => setBlobFlyout({ type: 'edge', canonicalKey: chainKey3, terrain: terrain3, x: e.clientX, y: e.clientY }),
               })
               items.push({
                 label: 'Erase edge blob',
+                icon: 'erase' as const,
                 action: () => eraseEdgeBlobRef.current(ek),
                 danger: true,
               })
@@ -4738,8 +4782,16 @@ export const TerrainViewCanvas = forwardRef<TerrainViewCanvasHandle, { surroundC
           }
           if (hitBlobKey) {
             const captured = hitBlobKey
+            const hitPoly = (() => {
+              for (const entry of allBlobs) {
+                for (let i = 0; i < entry.polys.length; i++) {
+                  if ((entry.blobKeys[i] ?? null) === captured) return [entry.polys[i]]
+                }
+              }
+              return []
+            })()
             if (items.length > 0) items.push({ label: '─', action: () => {} })
-            items.push({ label: 'Randomize blob', action: () => randomizeBlobSeedRef.current(captured) })
+            items.push({ label: 'Randomize blob', icon: 'dice' as const, highlightPolys: hitPoly, action: () => randomizeBlobSeedRef.current(captured) })
           }
         }
       }
@@ -5681,6 +5733,43 @@ export const TerrainViewCanvas = forwardRef<TerrainViewCanvasHandle, { surroundC
     }
   }, [])
 
+  const drawHighlightPolys = useCallback((polys: [number,number][][]) => {
+    const hlCanvas = highlightCanvasRef.current
+    if (!hlCanvas) return
+    const { w: cssW, h: cssH } = frameDimsRef.current
+    const dpr = window.devicePixelRatio || 1
+    const ctx = hlCanvas.getContext('2d')
+    if (!ctx) return
+    ctx.clearRect(0, 0, hlCanvas.width, hlCanvas.height)
+    const zoom = zoomRef.current, pan = panRef.current
+    ctx.save()
+    ctx.scale(dpr, dpr)
+    ctx.translate(cssW / 2 + pan.x, cssH / 2 + pan.y)
+    ctx.scale(zoom, zoom)
+    ctx.translate(-cssW / 2, -cssH / 2)
+    for (const poly of polys) {
+      if (poly.length < 2) continue
+      ctx.beginPath()
+      ctx.moveTo(poly[0][0], poly[0][1])
+      for (let i = 1; i < poly.length; i++) ctx.lineTo(poly[i][0], poly[i][1])
+      ctx.closePath()
+      ctx.fillStyle = 'rgba(255,255,255,0.12)'
+      ctx.fill()
+      ctx.strokeStyle = 'rgba(255,255,255,0.7)'
+      ctx.lineWidth = 1.5 / zoom
+      ctx.setLineDash([4 / zoom, 3 / zoom])
+      ctx.stroke()
+      ctx.setLineDash([])
+    }
+    ctx.restore()
+  }, [])
+
+  const clearHighlight = useCallback(() => {
+    const hlCanvas = highlightCanvasRef.current
+    if (!hlCanvas) return
+    hlCanvas.getContext('2d')?.clearRect(0, 0, hlCanvas.width, hlCanvas.height)
+  }, [])
+
   const menuItemStyle: CSSProperties = {
     padding: '5px 14px', cursor: 'pointer', whiteSpace: 'nowrap',
     fontFamily: t.mono, fontSize: 11,
@@ -5690,7 +5779,7 @@ export const TerrainViewCanvas = forwardRef<TerrainViewCanvasHandle, { surroundC
     <div
       ref={containerRef}
       style={{ flex: 1, overflow: 'hidden', background: '#1a1a2a', position: 'relative' }}
-      onClick={() => setCtxMenu(null)}
+      onClick={() => { setCtxMenu(null); clearHighlight() }}
     >
       {!meta && (
         <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#888', pointerEvents: 'none' }} />
@@ -5707,6 +5796,10 @@ export const TerrainViewCanvas = forwardRef<TerrainViewCanvasHandle, { surroundC
       <canvas
         ref={osmOverlayCanvasRef}
         style={{ position: 'absolute', top: 0, left: 0, pointerEvents: 'none', display: 'block' }}
+      />
+      <canvas
+        ref={highlightCanvasRef}
+        style={{ position: 'absolute', top: 0, left: 0, pointerEvents: 'none', display: 'block', zIndex: 5 }}
       />
       {/* OSM overlay — hidden in map_image mode (image overlay is drawn on canvas instead) */}
       <div
@@ -5810,16 +5903,23 @@ export const TerrainViewCanvas = forwardRef<TerrainViewCanvasHandle, { surroundC
           ) : (
             <div
               key={i}
-              onClick={() => { if (!item.dim) { item.action(); setCtxMenu(null) } }}
+              onClick={() => { if (!item.dim) { item.action(); setCtxMenu(null); clearHighlight() } }}
               style={{
                 ...menuItemStyle,
                 color: item.danger ? '#b05050' : item.dim ? t.inkFaint : t.ink2,
                 display: 'flex', alignItems: 'center', gap: 8,
                 cursor: item.dim ? 'default' : 'pointer',
               }}
-              onMouseEnter={e => { if (!item.dim) e.currentTarget.style.background = t.paper }}
-              onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}
+              onMouseEnter={e => {
+                if (!item.dim) e.currentTarget.style.background = t.paper
+                if (item.highlightPolys?.length) drawHighlightPolys(item.highlightPolys)
+              }}
+              onMouseLeave={e => {
+                e.currentTarget.style.background = 'transparent'
+                clearHighlight()
+              }}
             >
+              {item.icon && <CtxIcon type={item.icon} color={item.danger ? '#b05050' : t.inkMute} />}
               {item.color && (
                 <span style={{ width: 9, height: 9, borderRadius: 2, flexShrink: 0, background: item.color }} />
               )}
