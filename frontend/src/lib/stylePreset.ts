@@ -15,7 +15,6 @@ export const STYLE_PRESET_KEYS: string[] = [
   'hexNumberColor',
   'megaHexColor',
   // Terrain appearance
-  'terrainRules',
   'terrainColors', 'terrainTextureScales', 'terrainTextureOpacities', 'terrainTextureBlendModes',
   'terrainTextureFile', 'terrainTextureEnabled', 'terrainRenderMode',
   'terrainDisplacement', 'terrainNoiseFrequency', 'terrainNoiseSeed', 'terrainNoiseOctaves',
@@ -105,7 +104,6 @@ const URBAN_STYLE_DEFAULT = {
 
 function baseStructural(): StylePreset {
   return {
-    terrainRules: {},
     terrainTextureScales: { clear: 1.6, woods: 6, light_woods: 7, rough: 10, marsh: 4 },
     terrainTextureOpacities: { light_woods: 1, woods: 0.5, marsh: 0.6, clear: 0.1 },
     terrainTextureBlendModes: { light_woods: 'color', woods: 'multiply', rough: 'multiply', marsh: 'multiply', clear: 'multiply' },

@@ -30,8 +30,8 @@ PRIORITY = ["water", "marsh", "woods", "light_woods", "rough", "clear"]
 DEFAULT_TERRAIN_RULES: dict[str, list[dict]] = {
     "water":       [{"classCode": 80, "threshold": 0.5}, {"classCode": 0, "threshold": 0.5}],
     "marsh":       [{"classCode": 90, "threshold": 0.25}, {"classCode": 95, "threshold": 0.25}],
-    "woods":       [{"classCode": 10, "threshold": 0.4}],
-    "light_woods": [{"classCode": 10, "threshold": 0.2}, {"classCode": 20, "threshold": 0.2}],
+    "woods":       [{"classCode": 10, "threshold": 0.65}],
+    "light_woods": [{"classCode": 10, "threshold": 0.5}, {"classCode": 20, "threshold": 0.25}],
     "rough":       [{"classCode": 60, "threshold": 0.3}, {"classCode": 70, "threshold": 0.3}, {"classCode": 100, "threshold": 0.3}],
 }
 
