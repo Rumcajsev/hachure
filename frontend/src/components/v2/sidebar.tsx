@@ -155,7 +155,7 @@ export function TriggerRow({
       )}
       <span style={{
         flex: 1,
-        fontFamily: t.mono, fontSize: 8.5, letterSpacing: 0.4,
+        fontFamily: t.mono, fontSize: 9.5, letterSpacing: 0.4,
         color: active ? t.surface : hov ? t.ink2 : t.inkFaint,
         textAlign: 'left',
       }}>
@@ -316,7 +316,7 @@ export function BrushRow({ label, color, active, shortcut, showCog, cogOpen, cus
       {/* Label */}
       <span style={{
         fontFamily: t.sans,
-        fontSize: 12.5,
+        fontSize: 11,
         fontWeight: active ? 600 : 500,
         color: t.ink,
         textTransform: 'capitalize',
@@ -401,18 +401,18 @@ export function ElevBrushRow({ tier, label, color, active, shortcut, showCog, co
       onMouseLeave={() => setHovered(false)}
       style={{
         display: 'grid',
-        gridTemplateColumns: `36px 1fr ${showCog ? 'auto ' : ''}auto`,
+        gridTemplateColumns: `28px 1fr ${showCog ? 'auto ' : ''}auto`,
         alignItems: 'center',
-        gap: 10,
-        padding: '6px 12px 6px 10px',
+        gap: 8,
+        padding: '6px 10px 6px 10px',
         borderLeft: `2px solid ${active ? color : 'transparent'}`,
         background: active ? tintBg(color, 0.15) : 'transparent',
         cursor: 'pointer',
       }}
     >
       {/* SVG glyph */}
-      <div style={{ position: 'relative', width: 36, height: 20, flexShrink: 0 }}>
-        <svg width="36" height="20" viewBox="0 0 36 20">
+      <div style={{ position: 'relative', width: 28, height: 20, flexShrink: 0 }}>
+        <svg width="28" height="20" viewBox="0 0 36 20">
           {tier === 0 && <line x1="2" y1="10" x2="34" y2="10" stroke={color} strokeWidth="2" />}
           {tier === 1 && <path d="M2 16 Q8 5 14 9 T26 7 T34 13 L34 18 L2 18 Z" fill={color} stroke="rgba(0,0,0,0.2)" strokeWidth="0.6" />}
           {tier === 2 && <path d="M2 18 L10 4 L18 11 L24 5 L34 18 Z" fill={color} stroke="rgba(0,0,0,0.25)" strokeWidth="0.6" />}
@@ -427,7 +427,7 @@ export function ElevBrushRow({ tier, label, color, active, shortcut, showCog, co
         )}
       </div>
 
-      <span style={{ fontFamily: t.sans, fontSize: 12.5, fontWeight: active ? 600 : 500, color: t.ink, textTransform: 'capitalize' }}>
+      <span style={{ fontFamily: t.sans, fontSize: 11, fontWeight: active ? 600 : 500, color: t.ink, textTransform: 'capitalize' }}>
         {label}
       </span>
 
@@ -789,14 +789,17 @@ export function MiniSlider({
   }
 
   return (
-    <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '4px 14px', opacity: disabled ? 0.4 : 1 }}>
-      <span style={{ fontFamily: t.sans, fontSize: 11, color: t.ink2, flexShrink: 0, width: 96 }}>{label}</span>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 3, padding: '4px 14px', opacity: disabled ? 0.4 : 1 }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}>
+        <span style={{ fontFamily: t.sans, fontSize: 11, color: t.ink2 }}>{label}</span>
+        <span style={{ fontFamily: t.mono, fontSize: 10.5, color: t.inkMute }}>{display}</span>
+      </div>
       <div
         onPointerDown={e => { if (disabled) return; e.currentTarget.setPointerCapture(e.pointerId); onDragStart?.(); compute(e.clientX) }}
         onPointerMove={e => { if (disabled || e.buttons === 0) return; compute(e.clientX) }}
         onPointerUp={() => onDragEnd?.()}
         onPointerCancel={() => onDragEnd?.()}
-        style={{ flex: 1, padding: '6px 0', cursor: disabled ? 'default' : 'ew-resize', userSelect: 'none', touchAction: 'none' }}
+        style={{ padding: '6px 0', cursor: disabled ? 'default' : 'ew-resize', userSelect: 'none', touchAction: 'none' }}
       >
         <div ref={trackRef} style={{ position: 'relative', height: 2, background: t.line }}>
           <div style={{ position: 'absolute', top: 0, left: 0, height: '100%', width: `${pct * 100}%`, background: fillColor }} />
@@ -809,7 +812,6 @@ export function MiniSlider({
           }} />
         </div>
       </div>
-      <span style={{ fontFamily: t.mono, fontSize: 10.5, color: t.inkMute, flexShrink: 0, width: 34, textAlign: 'right' }}>{display}</span>
     </div>
   )
 }
