@@ -24,6 +24,17 @@ def compute_geo_bbox(config: GridConfig) -> tuple[float, float, float, float]:
 
 PRIORITY = ["water", "marsh", "woods", "light_woods", "rough", "clear"]
 
+# Default classification rules: terrain → list of (worldcover_class_code, threshold) pairs.
+# A hex qualifies for a terrain if ANY rule's class coverage meets its threshold.
+# Rules sent from the frontend override these defaults.
+DEFAULT_TERRAIN_RULES: dict[str, list[dict]] = {
+    "water":       [{"classCode": 80, "threshold": 0.5}, {"classCode": 0, "threshold": 0.5}],
+    "marsh":       [{"classCode": 90, "threshold": 0.25}, {"classCode": 95, "threshold": 0.25}],
+    "woods":       [{"classCode": 10, "threshold": 0.4}],
+    "light_woods": [{"classCode": 10, "threshold": 0.2}, {"classCode": 20, "threshold": 0.2}],
+    "rough":       [{"classCode": 60, "threshold": 0.3}, {"classCode": 70, "threshold": 0.3}, {"classCode": 100, "threshold": 0.3}],
+}
+
 
 def _compute_coverage(
     hex_poly: Polygon,
@@ -49,17 +60,18 @@ def _compute_coverage(
     return {k: min(v, 1.0) for k, v in coverage.items()}
 
 
-def classify_hex(coverage: dict[str, float], threshold: float) -> str:
-    """Classify terrain: first type in priority order that meets the coverage threshold wins.
-    threshold is a fraction 0.0–1.0 (e.g. 0.25 = must cover 25% of hex).
-    light_woods piggybacks on woods coverage at half the threshold.
-    Clear is always the fallback.
+def classify_hex(coverage: dict[int, float], rules: dict[str, list[dict]] | None = None) -> str:
+    """Classify terrain using per-terrain rules against raw WorldCover class coverage.
+
+    coverage: {worldcover_class_code: fraction} e.g. {10: 0.35, 20: 0.18}
+    rules: {terrain: [{classCode, threshold}, ...]} — first terrain in PRIORITY whose
+           any rule fires wins. Defaults to DEFAULT_TERRAIN_RULES.
     """
+    effective_rules = rules if rules is not None else DEFAULT_TERRAIN_RULES
     for terrain in PRIORITY[:-1]:
-        coverage_key = "woods" if terrain == "light_woods" else terrain
-        thr = threshold * 0.5 if terrain == "light_woods" else threshold
-        if coverage.get(coverage_key, 0) >= thr:
-            return terrain
+        for rule in effective_rules.get(terrain, []):
+            if coverage.get(rule["classCode"], 0) >= rule["threshold"]:
+                return terrain
     return "clear"
 
 
@@ -110,7 +122,7 @@ async def terrain_stream_generator(config: GridConfig) -> AsyncGenerator[str, No
     from shapely.ops import unary_union
     from services.worldcover import get_tile_extents, load_tile_window, compute_hex_coverage, extract_land_polygon
 
-    slider = config.slider
+    rules = config.terrain_rules if config.terrain_rules else None
 
     try:
         # Step 1: hex grid — emit positions immediately so frontend can show placeholder hexes
@@ -161,7 +173,7 @@ async def terrain_stream_generator(config: GridConfig) -> AsyncGenerator[str, No
             if tile_result is None:
                 for i in hex_indices:
                     hd = hexes[i]
-                    hd["coverage"] = {"water": 1.0}
+                    hd["coverage"] = {0: 1.0}
                     hd["terrain"] = "water"
                     batch.append(hd)
             else:
@@ -182,7 +194,7 @@ async def terrain_stream_generator(config: GridConfig) -> AsyncGenerator[str, No
                         continue
                     coverage = compute_hex_coverage(hex_poly, data_tile, transform_tile)
                     hd["coverage"] = coverage
-                    hd["terrain"] = classify_hex(coverage, slider)
+                    hd["terrain"] = classify_hex(coverage, rules)
                     hex_polys[i] = hex_poly
                     batch.append(hd)
 

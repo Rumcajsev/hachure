@@ -1,7 +1,8 @@
 import React, { useEffect, useRef, useState } from 'react'
+import { WorldCoverClassificationPanel } from '../WorldCoverClassificationPanel'
 import {
   useMapStore, TERRAIN_COLORS, TERRAIN_PRIORITY, MANUAL_ONLY_TERRAINS,
-  DEFAULT_THRESHOLDS, DEFAULT_TERRAIN_BLOB,
+  DEFAULT_TERRAIN_BLOB,
 } from '../../store/mapStore'
 import { BLOB_PRESETS, BLOB_PRESET_ORDER, type BlobPresetId, type BlobPresetValues } from '../../store/blobPresets'
 import { PALETTE_TERRAIN_GROUPS } from '../../palettes'
@@ -219,49 +220,7 @@ function ShapeSettingsFlyout({ onClose }: { onClose: () => void }) {
   )
 }
 
-// ── Flyout content: classification (import) ─────────────────────────────────
-
-function ClassificationFlyout({ onClose }: { onClose: () => void }) {
-  const t = useTheme()
-  const { thresholds, setTerrainThreshold, disabledTerrains, toggleTerrainDisabled, terrainColors } = useMapStore()
-
-  return (
-    <FlyoutShell title="OSM Classification" subtitle="Terrain type likelihoods" onClose={onClose}>
-      <div style={{ padding: '4px 0' }}>
-        {SLIDER_TERRAINS.map(terrain => {
-          const disabled = disabledTerrains.has(terrain)
-          const value = thresholds[terrain] ?? DEFAULT_THRESHOLDS[terrain] ?? 0.25
-          const color = terrainColors[terrain] ?? TERRAIN_COLORS[terrain] ?? '#888'
-          return (
-            <MiniSlider
-              key={terrain}
-              label={
-                <div style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
-                  <button
-                    onClick={e => { e.stopPropagation(); toggleTerrainDisabled(terrain) }}
-                    title={disabled ? 'Enable' : 'Disable'}
-                    style={{
-                      width: 10, height: 10, flexShrink: 0, cursor: 'pointer', padding: 0,
-                      background: disabled ? 'transparent' : color,
-                      border: `1px solid ${disabled ? t.line : color}`,
-                    }}
-                  />
-                  <span style={{ textTransform: 'capitalize' }}>{terrainLabel(terrain)}</span>
-                </div>
-              }
-              display={`${Math.round(value * 100)}%`}
-              value={Math.round(value * 100)}
-              min={0} max={100} step={1}
-              disabled={disabled}
-              accentColor={disabled ? undefined : color}
-              onChange={v => setTerrainThreshold(terrain, v / 100)}
-            />
-          )
-        })}
-      </div>
-    </FlyoutShell>
-  )
-}
+// ClassificationFlyout replaced by WorldCoverClassificationPanel (wider sidebar panel)
 
 // ── Flyout content: painting options ───────────────────────────────────────
 
@@ -1230,7 +1189,7 @@ export function TerrainSidebarV3() {
         />
         <TGap />
         <TriggerRow label="Default shape" active={flyout === 't-shape'} onClick={() => toggleFlyout('t-shape')} />
-        <TriggerRow label="Import / classify" active={flyout === 't-import'} onClick={() => toggleFlyout('t-import')} icon={IMPORT_ICON} />
+        <TriggerRow label="WorldCover rules" active={flyout === 't-import'} onClick={() => toggleFlyout('t-import')} icon={IMPORT_ICON} />
         <TriggerRow label="Painting options" active={flyout === 't-opts'} onClick={() => toggleFlyout('t-opts')} />
 
         <V2Divider label="Elevation" />
@@ -1275,7 +1234,7 @@ export function TerrainSidebarV3() {
       </StripShell>
 
       {flyout === 't-shape'      && <ShapeSettingsFlyout      onClose={() => setFlyout(null)} />}
-      {flyout === 't-import'     && <ClassificationFlyout onClose={() => setFlyout(null)} />}
+      {flyout === 't-import'     && <WorldCoverClassificationPanel onClose={() => setFlyout(null)} />}
       {flyout === 't-opts'       && <PaintingOptionsFlyout onClose={() => setFlyout(null)} />}
       {flyout === 'e-import'     && <ElevationFlyout      onClose={() => setFlyout(null)} />}
       {flyout === 'e-hillshade'  && <HilshadeFlyout       onClose={() => setFlyout(null)} />}

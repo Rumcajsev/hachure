@@ -119,37 +119,8 @@ def reclassify(req: ReclassifyRequest) -> dict:
     return {"hexes": req.hexes}
 
 
-@router.get("/terrain-stream")
-async def terrain_stream(
-    center_lon: float,
-    center_lat: float,
-    width_m: float,
-    height_m: float,
-    hex_size_mm: float,
-    paper_size: str,
-    orientation: str,
-    hex_orientation: str,
-    bearing: float = 0.0,
-    margin_mm: float = 0.0,
-    slider: float = 0.4,
-    paper_width_mm: Optional[float] = None,
-    paper_height_mm: Optional[float] = None,
-) -> StreamingResponse:
-    config = GridConfig(
-        center_lon=center_lon,
-        center_lat=center_lat,
-        bearing=bearing,
-        width_m=width_m,
-        height_m=height_m,
-        hex_size_mm=hex_size_mm,
-        paper_size=paper_size,
-        orientation=orientation,
-        hex_orientation=hex_orientation,
-        margin_mm=margin_mm,
-        slider=slider,
-        paper_width_mm=paper_width_mm,
-        paper_height_mm=paper_height_mm,
-    )
+@router.post("/terrain-stream")
+async def terrain_stream(config: GridConfig) -> StreamingResponse:
 
     return StreamingResponse(
         terrain_stream_generator(config),

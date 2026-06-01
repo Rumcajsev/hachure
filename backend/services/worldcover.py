@@ -10,19 +10,19 @@ from rasterio.merge import merge
 from rasterio import features as rio_features
 from shapely.geometry import Polygon, mapping
 
-WORLDCOVER_TERRAIN: dict[int, str] = {
-    10: "woods",   # Tree cover
-    20: "rough",   # Shrubland
-    30: "clear",   # Grassland
-    40: "clear",   # Cropland
-    50: "clear",   # Built-up (urban handled via settlements overlay)
-    60: "rough",   # Bare / sparse vegetation
-    70: "rough",   # Snow and ice
-    80: "water",   # Permanent water bodies (ocean, coastal water, lakes)
-    90: "marsh",   # Herbaceous wetland
-    95: "marsh",   # Mangroves
-    100: "rough",  # Moss and lichen
-    0: "water",    # No data = ocean (WorldCover only covers land; 0 over water)
+WORLDCOVER_CLASS_NAMES: dict[int, str] = {
+    10: "Tree cover",
+    20: "Shrubland",
+    30: "Grassland",
+    40: "Cropland",
+    50: "Built-up",
+    60: "Bare / sparse vegetation",
+    70: "Snow and ice",
+    80: "Permanent water",
+    90: "Herbaceous wetland",
+    95: "Mangroves",
+    100: "Moss and lichen",
+    0: "Ocean (no data)",
 }
 
 # ~100m resolution — plenty for hex classification, drastically cuts download size
@@ -180,10 +180,10 @@ def compute_hex_coverage(
     if len(pixels) == 0:
         return {}
 
-    terrain_counts: dict[str, int] = {}
+    class_counts: dict[int, int] = {}
     for val, count in zip(*np.unique(pixels, return_counts=True)):
-        terrain = WORLDCOVER_TERRAIN.get(int(val), "clear")
-        terrain_counts[terrain] = terrain_counts.get(terrain, 0) + int(count)
+        code = int(val)
+        class_counts[code] = class_counts.get(code, 0) + int(count)
 
-    total = sum(terrain_counts.values())
-    return {t: round(c / total, 3) for t, c in terrain_counts.items() if c / total > 0.001}
+    total = sum(class_counts.values())
+    return {code: round(c / total, 3) for code, c in class_counts.items() if c / total > 0.001}

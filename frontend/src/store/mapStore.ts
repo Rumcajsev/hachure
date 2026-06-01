@@ -145,7 +145,7 @@ export interface GeneratedHex {
   vertices: [number, number][]
   terrain: string
   terrains: string[]
-  coverage: Record<string, number>
+  coverage: Record<number, number>
   partial: boolean
   manual_override?: boolean
   backgroundTerrain?: string
@@ -307,14 +307,35 @@ export const TERRAIN_PRIORITY = ['clear', 'light_woods', 'woods', 'rough', 'mars
 /** Terrains that are manual-paint only — excluded from auto-classification sliders. */
 export const MANUAL_ONLY_TERRAINS = new Set(['beach'])
 
-export const DEFAULT_THRESHOLDS: Record<string, number> = {
-  sea: 0.4,
-  marsh: 0.2,
-  woods: 0.65,
-  light_woods: 0.5,
-  rough: 0.3,
-  clear: 0,
+export interface ClassRule {
+  classCode: number
+  threshold: number
 }
+
+/** terrain → list of WorldCover class rules. A hex qualifies if ANY rule fires. */
+export type TerrainRules = Record<string, ClassRule[]>
+
+export const DEFAULT_TERRAIN_RULES: TerrainRules = {
+  water:       [{ classCode: 80, threshold: 0.5 }, { classCode: 0, threshold: 0.5 }],
+  marsh:       [{ classCode: 90, threshold: 0.25 }, { classCode: 95, threshold: 0.25 }],
+  woods:       [{ classCode: 10, threshold: 0.4 }],
+  light_woods: [{ classCode: 10, threshold: 0.2 }, { classCode: 20, threshold: 0.2 }],
+  rough:       [{ classCode: 60, threshold: 0.3 }, { classCode: 70, threshold: 0.3 }, { classCode: 100, threshold: 0.3 }],
+}
+
+export const WORLDCOVER_CLASSES: { code: number; name: string; color: string }[] = [
+  { code: 10,  name: 'Tree cover',            color: '#2d6a2d' },
+  { code: 20,  name: 'Shrubland',             color: '#a3c46c' },
+  { code: 30,  name: 'Grassland',             color: '#d4e89a' },
+  { code: 40,  name: 'Cropland',              color: '#e8d87a' },
+  { code: 50,  name: 'Built-up',              color: '#c0a882' },
+  { code: 60,  name: 'Bare / sparse veg',     color: '#b8a882' },
+  { code: 70,  name: 'Snow and ice',          color: '#e8f0f8' },
+  { code: 80,  name: 'Permanent water',       color: '#3a6898' },
+  { code: 90,  name: 'Herbaceous wetland',    color: '#6b9e8a' },
+  { code: 95,  name: 'Mangroves',             color: '#4a8a6a' },
+  { code: 100, name: 'Moss and lichen',       color: '#9aaa7a' },
+]
 
 export type RoadDashStyle = 'solid' | 'dashed' | 'dotted'
 
@@ -686,7 +707,7 @@ export const useMapStore = create<MapStore>()(persist((set, get) => ({
     hexEdgeMode: s.hexEdgeMode,
     generatedHexes: s.generatedHexes,
     generatedMetadata: s.generatedMetadata,
-    thresholds: s.thresholds,
+    terrainRules: s.terrainRules,
     disabledTerrains: Array.from(s.disabledTerrains) as unknown as Set<string>,
     settlements: s.settlements,
     settlementsStatus: s.settlementsStatus,
@@ -854,7 +875,7 @@ export const useMapStore = create<MapStore>()(persist((set, get) => ({
     mapTitle: s.mapTitle,
     labelOffsets: s.labelOffsets,
   }),
-  version: 71,
+  version: 72,
   migrate: migratePersisted,
   merge: (persisted, current) => rehydrateState({ ...current, ...(persisted as Partial<MapStore>) }),
 }))

@@ -371,7 +371,7 @@ export const createUiSlice = (set: Set, get: () => MapStore): UiSlice => ({
         hexSizeMm: s.hexSizeMm, hexOrientation: s.hexOrientation,
         marginMm: s.marginMm, hexEdgeMode: s.hexEdgeMode,
         generatedHexes: s.generatedHexes, generatedMetadata: s.generatedMetadata,
-        thresholds: s.thresholds, disabledTerrains: Array.from(s.disabledTerrains),
+        terrainRules: s.terrainRules, disabledTerrains: Array.from(s.disabledTerrains),
         settlements: s.settlements, settlementsStatus: s.settlementsStatus,
         settlementsLimit: s.settlementsLimit, settlementsTypes: s.settlementsTypes,
         settlementTierThresholds: s.settlementTierThresholds, settlementsAutoPlace: s.settlementsAutoPlace,
@@ -894,6 +894,26 @@ if (fromVersion < 64) {
     delete s.autoLakesEnabled
     delete s.lakeSensitivity
     delete s.lakePaintMode
+  }
+  if (fromVersion < 72) {
+    // thresholds → terrainRules: migrate old per-terrain thresholds into new rules model
+    delete s.thresholds
+    if (!s.terrainRules) {
+      // Import done lazily to avoid circular TDZ at module init
+      const { DEFAULT_TERRAIN_RULES } = require('../mapStore')
+      s.terrainRules = { ...DEFAULT_TERRAIN_RULES }
+    }
+    // Coverage was string-keyed before; clear it so hexes reclassify on next load
+    const hexes = s.generatedHexes as Array<Record<string, unknown>> | undefined
+    if (hexes) {
+      for (const h of hexes) {
+        if (h.coverage && typeof h.coverage === 'object') {
+          const cov = h.coverage as Record<string, unknown>
+          const hasStringKeys = Object.keys(cov).some(k => isNaN(Number(k)))
+          if (hasStringKeys) h.coverage = {}
+        }
+      }
+    }
   }
   if (fromVersion < 69) {
     const cp = s.classificationParams as Record<string, unknown> | undefined
