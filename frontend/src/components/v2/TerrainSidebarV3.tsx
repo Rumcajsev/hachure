@@ -393,9 +393,9 @@ function ElevationFlyout({ onClose }: { onClose: () => void }) {
               <span style={{ fontFamily: t.mono, fontSize: 9, color: t.inkMute }}>enabled</span>
             </label>
           </div>
-          <MiniSlider label="Hills relief ≥" display={`${classificationParams.rangeHillsM}m`} value={classificationParams.rangeHillsM} min={10} max={500} step={10} onChange={v => setClassificationParam('rangeHillsM', v)} accentColor='#9a8a5a' onDragStart={showOverlay} onDragEnd={hideOverlay} />
+          <MiniSlider label="Hills Δ ≥" display={`${classificationParams.rangeHillsM}m`} value={classificationParams.rangeHillsM} min={10} max={500} step={10} onChange={v => setClassificationParam('rangeHillsM', v)} accentColor='#9a8a5a' onDragStart={showOverlay} onDragEnd={hideOverlay} />
           <MiniSlider label="Hills alt ≥" display={`${classificationParams.medianHillsM}m`} value={classificationParams.medianHillsM} min={0} max={2000} step={50} onChange={v => setClassificationParam('medianHillsM', v)} accentColor='#9a8a5a' onDragStart={showOverlay} onDragEnd={hideOverlay} />
-          <MiniSlider label="Mtns relief ≥" display={`${classificationParams.rangeMountainsM}m`} value={classificationParams.rangeMountainsM} min={50} max={1000} step={25} onChange={v => setClassificationParam('rangeMountainsM', v)} accentColor='#7a6a5a' onDragStart={showOverlay} onDragEnd={hideOverlay} />
+          <MiniSlider label="Mtns Δ ≥" display={`${classificationParams.rangeMountainsM}m`} value={classificationParams.rangeMountainsM} min={50} max={1000} step={25} onChange={v => setClassificationParam('rangeMountainsM', v)} accentColor='#7a6a5a' onDragStart={showOverlay} onDragEnd={hideOverlay} />
           <MiniSlider label="Mtns alt ≥" display={`${classificationParams.medianMountainsM}m`} value={classificationParams.medianMountainsM} min={100} max={4000} step={50} onChange={v => setClassificationParam('medianMountainsM', v)} accentColor='#7a6a5a' onDragStart={showOverlay} onDragEnd={hideOverlay} />
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 4, padding: '6px 12px 2px' }}>
             {[
