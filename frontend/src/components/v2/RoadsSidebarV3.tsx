@@ -930,6 +930,7 @@ export function RoadsSidebarV3() {
     selectedRoadSegmentKeys, setSelectedRoadSegmentKeys,
     selectedRailSegmentKeys, setSelectedRailSegmentKeys,
     dataSource,
+    bridgesEnabled,
   } = useMapStore()
 
   const [flyout, setFlyout] = useState<FlyoutId>(null)
@@ -1049,7 +1050,7 @@ export function RoadsSidebarV3() {
         )}
 
         <V2Divider label="Bridges" />
-        <TriggerRow label="Bridge settings" active={flyout === 'bridges'} onClick={() => toggleFlyout('bridges')} />
+        <TriggerRow label="Bridge settings" active={flyout === 'bridges'} onClick={() => toggleFlyout('bridges')} enabled={bridgesEnabled} />
 
         <div style={{ height: 8 }} />
       </StripShell>

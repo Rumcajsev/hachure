@@ -1111,6 +1111,9 @@ export function TerrainSidebarV3() {
     elevationTypeBlobStyles,
     mapStyle,
     heightmapUrl,
+    elevationStatus,
+    hillshadeIntensity,
+    contoursEnabled,
   } = useMapStore()
 
   const [flyout, setFlyout] = useState<FlyoutId>(null)
@@ -1252,10 +1255,10 @@ export function TerrainSidebarV3() {
         })}
         <TGap />
         <TriggerRow label="Import / classify" active={flyout === 'e-import'} onClick={() => toggleFlyout('e-import')} icon={IMPORT_ICON} />
-        {heightmapUrl && (
+        {(heightmapUrl || elevationStatus === 'done') && (
           <>
-            <TriggerRow label="Hillshade" active={flyout === 'e-hillshade'} onClick={() => toggleFlyout('e-hillshade')} />
-            <TriggerRow label="Contours"  active={flyout === 'e-contours'}  onClick={() => toggleFlyout('e-contours')} />
+            <TriggerRow label="Hillshade" active={flyout === 'e-hillshade'} onClick={() => toggleFlyout('e-hillshade')} enabled={hillshadeIntensity > 0} />
+            <TriggerRow label="Contours"  active={flyout === 'e-contours'}  onClick={() => toggleFlyout('e-contours')}  enabled={contoursEnabled} />
           </>
         )}
 

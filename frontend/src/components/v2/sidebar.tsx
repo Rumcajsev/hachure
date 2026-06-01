@@ -123,12 +123,13 @@ export function V2Divider({ label }: { label: string }) {
 // ── TriggerRow ────────────────────────────────────────────────────────────────
 
 export function TriggerRow({
-  label, icon, active, onClick,
+  label, icon, active, onClick, enabled,
 }: {
   label: string
   icon?: React.ReactNode
   active: boolean
   onClick: () => void
+  enabled?: boolean
 }) {
   const t = useTheme()
   const [hov, setHov] = useState(false)
@@ -160,6 +161,17 @@ export function TriggerRow({
       }}>
         {label}
       </span>
+      {enabled !== undefined && (
+        <span style={{
+          fontFamily: t.mono, fontSize: 7.5, letterSpacing: 0.3,
+          color: active
+            ? 'rgba(251,249,244,0.5)'
+            : enabled ? t.ink2 : t.inkFaint,
+          marginRight: 2,
+        }}>
+          {enabled ? 'on' : 'off'}
+        </span>
+      )}
       <svg width="6" height="6" viewBox="0 0 8 8" fill="none"
         stroke={active ? 'rgba(251,249,244,0.4)' : t.inkFaint}
         strokeWidth="1.4" strokeLinecap="round">
