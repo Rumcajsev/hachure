@@ -671,7 +671,10 @@ function TerrainCogFlyout({ terrain, onClose }: { terrain: string; onClose: () =
 
   const handleEnableToggle = (checked: boolean) => {
     if (checked) {
-      setTerrainTypeBlobStyle(terrain, {
+      const hasCustomValues = typeStyle != null && (
+        typeStyle.smooth != null || typeStyle.offset != null || typeStyle.bump != null
+      )
+      setTerrainTypeBlobStyle(terrain, hasCustomValues ? { enabled: true } : {
         enabled: true,
         smooth: terrainBlobSmooth, offset: terrainBlobOffset, bump: terrainBlobBump,
         sweepFreq: terrainBlobSweepFreq, lobeFreq: terrainBlobLobeFreq,
