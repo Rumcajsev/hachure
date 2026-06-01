@@ -34,21 +34,19 @@ export const createUndoSlice = (set: Set, get: () => MapStore): UndoSlice => ({
   redoStack: [],
 
   pushUndoSnapshot: () => {
-    const { generatedHexes, roadEdges, railEdges, riverEdges, settlements, areas, areaHexes, undoStack } = get()
+    const { generatedHexes, roadEdges, railEdges, riverEdges, settlements, undoStack } = get()
     const snap: UndoSnapshot = {
       terrainHexes: generatedHexes.map(snapHex),
       roadEdges: [...roadEdges],
       railEdges: [...railEdges],
       riverEdges: [...riverEdges],
       settlements: [...settlements],
-      areas: [...areas],
-      areaHexes: { ...areaHexes },
     }
     set({ undoStack: [...undoStack, snap].slice(-MAX_UNDO), redoStack: [] })
   },
 
   undo: () => {
-    const { undoStack, redoStack, generatedHexes, roadEdges, railEdges, riverEdges, settlements, areas, areaHexes } = get()
+    const { undoStack, redoStack, generatedHexes, roadEdges, railEdges, riverEdges, settlements } = get()
     if (undoStack.length === 0) return
     const prev = undoStack[undoStack.length - 1]
     const current: UndoSnapshot = {
@@ -57,8 +55,6 @@ export const createUndoSlice = (set: Set, get: () => MapStore): UndoSlice => ({
       railEdges: [...railEdges],
       riverEdges: [...riverEdges],
       settlements: [...settlements],
-      areas: [...areas],
-      areaHexes: { ...areaHexes },
     }
     const hexMap = new Map(prev.terrainHexes.map(h => [`${h.q},${h.r}`, h]))
     set({
@@ -72,13 +68,11 @@ export const createUndoSlice = (set: Set, get: () => MapStore): UndoSlice => ({
       railEdges: prev.railEdges ?? railEdges,
       riverEdges: prev.riverEdges ?? riverEdges,
       settlements: prev.settlements,
-      areas: prev.areas ?? areas,
-      areaHexes: prev.areaHexes ?? areaHexes,
     })
   },
 
   redo: () => {
-    const { undoStack, redoStack, generatedHexes, roadEdges, railEdges, riverEdges, settlements, areas, areaHexes } = get()
+    const { undoStack, redoStack, generatedHexes, roadEdges, railEdges, riverEdges, settlements } = get()
     if (redoStack.length === 0) return
     const next = redoStack[redoStack.length - 1]
     const current: UndoSnapshot = {
@@ -87,8 +81,6 @@ export const createUndoSlice = (set: Set, get: () => MapStore): UndoSlice => ({
       railEdges: [...railEdges],
       riverEdges: [...riverEdges],
       settlements: [...settlements],
-      areas: [...areas],
-      areaHexes: { ...areaHexes },
     }
     const hexMap = new Map(next.terrainHexes.map(h => [`${h.q},${h.r}`, h]))
     set({
@@ -102,8 +94,6 @@ export const createUndoSlice = (set: Set, get: () => MapStore): UndoSlice => ({
       railEdges: next.railEdges ?? railEdges,
       riverEdges: next.riverEdges ?? riverEdges,
       settlements: next.settlements,
-      areas: next.areas ?? areas,
-      areaHexes: next.areaHexes ?? areaHexes,
     })
   },
 })

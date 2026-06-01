@@ -31,7 +31,6 @@ const terrainLabel = (t: string) => t.replace(/_/g, ' ')
 
 type FlyoutId =
   | 't-shape'
-  | 't-cuts'
   | 't-import'
   | 't-opts'
   | 'e-import'
@@ -216,76 +215,6 @@ function ShapeSettingsFlyout({ onClose }: { onClose: () => void }) {
           </button>
         </div>
       )}
-    </FlyoutShell>
-  )
-}
-
-// ── Flyout content: road & river cuts ──────────────────────────────────────
-
-const CUT_TERRAINS = [
-  { key: 'woods',       label: 'Woods' },
-  { key: 'light_woods', label: 'Light woods' },
-  { key: 'marsh',       label: 'Marsh' },
-  { key: 'rough',       label: 'Rough' },
-  { key: 'clear',       label: 'Clear' },
-]
-
-const ROAD_TIER_LABELS: Record<string, string> = {
-  '0': 'Tier 0 — major',
-  '1': 'Tier 1',
-  '2': 'Tier 2 — minor',
-}
-
-function BlobCutsSettingsFlyout({ onClose }: { onClose: () => void }) {
-  const t = useTheme()
-  const {
-    blobCutsEnabled, setBlobCutsEnabled,
-    blobCutBuffer, setBlobCutBuffer,
-    blobCutRoadTiers, setBlobCutRoadTier,
-    blobCutRiverEnabled, setBlobCutRiverEnabled,
-    blobCutCanalEnabled, setBlobCutCanalEnabled,
-    blobCutTerrains, setBlobCutTerrains,
-  } = useMapStore()
-
-  const toggleTerrain = (key: string, on: boolean) => {
-    setBlobCutTerrains(on ? [...blobCutTerrains, key] : blobCutTerrains.filter(k => k !== key))
-  }
-
-  const disabled = !blobCutsEnabled
-
-  return (
-    <FlyoutShell title="Road & River Cuts" onClose={onClose}>
-      <ToggleRow label="Enable cuts" checked={blobCutsEnabled} onChange={setBlobCutsEnabled} />
-      <div style={{ opacity: disabled ? 0.4 : 1, pointerEvents: disabled ? 'none' : 'auto' }}>
-        <MiniSlider
-          label="Buffer"
-          display={`${Math.round(blobCutBuffer * 100)}%R`}
-          value={Math.round(blobCutBuffer * 100)}
-          min={0} max={80} step={1}
-          onChange={v => setBlobCutBuffer(v / 100)}
-        />
-        <V2Divider label="Roads" />
-        {(['0', '1', '2'] as const).map(tier => (
-          <ToggleRow
-            key={tier}
-            label={ROAD_TIER_LABELS[tier]}
-            checked={blobCutRoadTiers[tier] ?? false}
-            onChange={v => setBlobCutRoadTier(tier, v)}
-          />
-        ))}
-        <V2Divider label="Rivers & Canals" />
-        <ToggleRow label="Rivers"  checked={blobCutRiverEnabled} onChange={setBlobCutRiverEnabled} />
-        <ToggleRow label="Canals"  checked={blobCutCanalEnabled} onChange={setBlobCutCanalEnabled} />
-        <V2Divider label="Terrain types" />
-        {CUT_TERRAINS.map(({ key, label }) => (
-          <ToggleRow
-            key={key}
-            label={label}
-            checked={blobCutTerrains.includes(key)}
-            onChange={v => toggleTerrain(key, v)}
-          />
-        ))}
-      </div>
     </FlyoutShell>
   )
 }
@@ -1297,7 +1226,6 @@ export function TerrainSidebarV3() {
         />
         <TGap />
         <TriggerRow label="Default shape" active={flyout === 't-shape'} onClick={() => toggleFlyout('t-shape')} />
-        <TriggerRow label="Road & river cuts" active={flyout === 't-cuts'} onClick={() => toggleFlyout('t-cuts')} />
         <TriggerRow label="Import / classify" active={flyout === 't-import'} onClick={() => toggleFlyout('t-import')} icon={IMPORT_ICON} />
         <TriggerRow label="Painting options" active={flyout === 't-opts'} onClick={() => toggleFlyout('t-opts')} />
 
@@ -1343,7 +1271,6 @@ export function TerrainSidebarV3() {
       </StripShell>
 
       {flyout === 't-shape'      && <ShapeSettingsFlyout      onClose={() => setFlyout(null)} />}
-      {flyout === 't-cuts'       && <BlobCutsSettingsFlyout  onClose={() => setFlyout(null)} />}
       {flyout === 't-import'     && <ClassificationFlyout onClose={() => setFlyout(null)} />}
       {flyout === 't-opts'       && <PaintingOptionsFlyout onClose={() => setFlyout(null)} />}
       {flyout === 'e-import'     && <ElevationFlyout      onClose={() => setFlyout(null)} />}

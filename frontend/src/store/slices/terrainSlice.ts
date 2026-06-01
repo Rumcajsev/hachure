@@ -30,13 +30,6 @@ export type TerrainSlice = {
   terrainBlobLobeDirection: number
   terrainBlobFeather: number
   terrainBlobOutlineEnabled: boolean
-  // Blob cuts
-  blobCutsEnabled: boolean
-  blobCutBuffer: number
-  blobCutRoadTiers: Record<string, boolean>
-  blobCutRiverEnabled: boolean
-  blobCutCanalEnabled: boolean
-  blobCutTerrains: string[]
   terrainBlobOutlineColor: string
   terrainBlobOutlineWidth: number
   realisticCoastline: boolean
@@ -115,12 +108,6 @@ export type TerrainSlice = {
   setTerrainBlobLobeDirection: (v: number) => void
   setTerrainBlobFeather: (v: number) => void
   setTerrainBlobOutlineEnabled: (v: boolean) => void
-  setBlobCutsEnabled: (v: boolean) => void
-  setBlobCutBuffer: (v: number) => void
-  setBlobCutRoadTier: (tier: string, enabled: boolean) => void
-  setBlobCutRiverEnabled: (v: boolean) => void
-  setBlobCutCanalEnabled: (v: boolean) => void
-  setBlobCutTerrains: (v: string[]) => void
   setTerrainBlobOutlineColor: (v: string) => void
   setTerrainBlobOutlineWidth: (v: number) => void
   applyTerrainBlobPreset: (id: BlobPresetId) => void
@@ -211,12 +198,6 @@ export const createTerrainSlice = (set: Set, get: () => MapStore): TerrainSlice 
   terrainBlobLobeDirection: DEFAULT_TERRAIN_BLOB.lobeDirection,
   terrainBlobFeather: 0,
   terrainBlobOutlineEnabled: false,
-  blobCutsEnabled: false,
-  blobCutBuffer: 0.15,
-  blobCutRoadTiers: { '0': true, '1': true, '2': false },
-  blobCutRiverEnabled: true,
-  blobCutCanalEnabled: false,
-  blobCutTerrains: ['woods', 'light_woods', 'marsh', 'rough'],
   terrainBlobOutlineColor: '#000000',
   terrainBlobOutlineWidth: 1,
   realisticCoastline: false,
@@ -703,12 +684,6 @@ export const createTerrainSlice = (set: Set, get: () => MapStore): TerrainSlice 
   setTerrainBlobLobeThreshold: (v) => set({ terrainBlobLobeThreshold: v }),
   setTerrainBlobLobeDirection: (v) => set({ terrainBlobLobeDirection: v }),
   setTerrainBlobFeather: (v) => set({ terrainBlobFeather: v }),
-  setBlobCutsEnabled: (v) => set({ blobCutsEnabled: v }),
-  setBlobCutBuffer: (v) => set({ blobCutBuffer: v }),
-  setBlobCutRoadTier: (tier, enabled) => set(s => ({ blobCutRoadTiers: { ...s.blobCutRoadTiers, [tier]: enabled } })),
-  setBlobCutRiverEnabled: (v) => set({ blobCutRiverEnabled: v }),
-  setBlobCutCanalEnabled: (v) => set({ blobCutCanalEnabled: v }),
-  setBlobCutTerrains: (v) => set({ blobCutTerrains: v }),
   setTerrainBlobOutlineEnabled: (v) => set({ terrainBlobOutlineEnabled: v }),
   setTerrainBlobOutlineColor: (v) => set({ terrainBlobOutlineColor: v }),
   setTerrainBlobOutlineWidth: (v) => set({ terrainBlobOutlineWidth: v }),

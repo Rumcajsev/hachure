@@ -51,7 +51,7 @@ const IMPORT_ICON = (
 
 // ── FlyoutId ───────────────────────────────────────────────────────────────────
 
-type FlyoutId = 'road-style' | 'rail-style' | 'road-shape' | 'rail-shape' | 'road-import' | 'rail-import' | 'bridges' | 'segment' | null
+type FlyoutId = 'road-style' | 'rail-style' | 'road-shape' | 'rail-shape' | 'road-import' | 'rail-import' | 'bridges' | 'segment' | 'terrain-clearance' | null
 
 // ── HexPreview ─────────────────────────────────────────────────────────────────
 
@@ -878,12 +878,52 @@ function SegmentFlyout({ mode, onClose }: { mode: 'road' | 'rail'; onClose: () =
   )
 }
 
+// ── TerrainClearanceFlyout ─────────────────────────────────────────────────────
+
+const CLEARANCE_TERRAINS = [
+  { id: 'woods',       label: 'Woods' },
+  { id: 'light_woods', label: 'Light woods' },
+  { id: 'rough',       label: 'Rough' },
+  { id: 'marsh',       label: 'Marsh' },
+  { id: 'beach',       label: 'Beach' },
+]
+
+function TerrainClearanceFlyout({ onClose }: { onClose: () => void }) {
+  const t = useTheme()
+  const { roadClearanceTerrains, toggleRoadClearanceTerrain, terrainColors } = useMapStore()
+  return (
+    <FlyoutShell title="Terrain clearance" subtitle="Roads cut through selected terrain" onClose={onClose}>
+      <FSectionLabel label="Enable per terrain" />
+      <div style={{ padding: '2px 12px 8px' }}>
+        {CLEARANCE_TERRAINS.map(({ id, label }) => {
+          const active = roadClearanceTerrains.has(id)
+          const color = terrainColors[id] ?? '#888'
+          return (
+            <div
+              key={id}
+              onClick={() => toggleRoadClearanceTerrain(id)}
+              style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '3px 0', cursor: 'pointer', userSelect: 'none' }}
+            >
+              <div style={{ width: 12, height: 12, borderRadius: 2, background: color, flexShrink: 0, border: `1px solid ${t.inkFaint}` }} />
+              <span style={{ fontFamily: t.sans, fontSize: 11, color: active ? t.ink : t.inkMute, flex: 1 }}>{label}</span>
+              <div style={{ width: 14, height: 14, borderRadius: 2, border: `1px solid ${active ? t.rust : t.inkFaint}`, background: active ? t.rust : 'transparent', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                {active && <span style={{ color: '#fff', fontSize: 9, lineHeight: 1 }}>✓</span>}
+              </div>
+            </div>
+          )
+        })}
+      </div>
+    </FlyoutShell>
+  )
+}
+
 // ── Main component ─────────────────────────────────────────────────────────────
 
 export function RoadsSidebarV3() {
   const {
     roadPaintMode, roadPaintBrush, roadPaintEraser,
     railPaintMode, railPaintEraser,
+    roadNodeEditMode, railNodeEditMode,
     roadSelectMode,
     railSelectMode,
     setActiveTool,
@@ -957,6 +997,12 @@ export function RoadsSidebarV3() {
           shortcut="E"
           onSelect={selectRoadEraser}
         />
+        <BrushRow
+          label="Edit nodes"
+          color={roadNodeEditMode ? '#b07820' : t.inkFaint}
+          active={roadNodeEditMode}
+          onSelect={() => setActiveTool(roadNodeEditMode ? { type: 'none' } : { type: 'node-edit' })}
+        />
         {roadSelectMode && (
           <div style={{ padding: '1px 8px 4px', fontFamily: t.mono, fontSize: 8.5, color: t.inkMute, lineHeight: 1.4 }}>
             click road to select
@@ -964,6 +1010,7 @@ export function RoadsSidebarV3() {
         )}
         <TGap />
         <TriggerRow label="Road shape" active={flyout === 'road-shape'} onClick={() => toggleFlyout('road-shape')} />
+        <TriggerRow label="Terrain clearance" active={flyout === 'terrain-clearance'} onClick={() => toggleFlyout('terrain-clearance')} />
         {dataSource === 'osm' && (
           <TriggerRow label="Fetch from OSM" active={flyout === 'road-import'} icon={IMPORT_ICON} onClick={() => toggleFlyout('road-import')} />
         )}
@@ -983,6 +1030,12 @@ export function RoadsSidebarV3() {
           color={t.inkFaint}
           active={railPaintMode && railPaintEraser}
           onSelect={selectRailEraser}
+        />
+        <BrushRow
+          label="Edit nodes"
+          color={railNodeEditMode ? '#4a7a9a' : t.inkFaint}
+          active={railNodeEditMode}
+          onSelect={() => setActiveTool(railNodeEditMode ? { type: 'none' } : { type: 'rail-node-edit' })}
         />
         {railSelectMode && (
           <div style={{ padding: '1px 8px 4px', fontFamily: t.mono, fontSize: 8.5, color: t.inkMute, lineHeight: 1.4 }}>
@@ -1008,6 +1061,7 @@ export function RoadsSidebarV3() {
       {flyout === 'road-import' && <OsmRoadsFlyout onClose={() => setFlyout(null)} />}
       {flyout === 'rail-import' && <OsmRailsFlyout onClose={() => setFlyout(null)} />}
       {flyout === 'bridges' && <BridgesFlyout onClose={() => setFlyout(null)} />}
+      {flyout === 'terrain-clearance' && <TerrainClearanceFlyout onClose={() => setFlyout(null)} />}
       {flyout === 'segment' && (
         <SegmentFlyout
           mode={segmentMode}

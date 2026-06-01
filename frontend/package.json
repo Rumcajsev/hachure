@@ -12,6 +12,7 @@
   "dependencies": {
     "idb-keyval": "^6.2.4",
     "maplibre-gl": "^5.24.0",
+    "polygon-clipping": "^0.15.7",
     "react": "^19.2.5",
     "react-dom": "^19.2.5",
     "roughjs": "^4.6.6",

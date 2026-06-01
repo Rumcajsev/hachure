@@ -1,11 +1,9 @@
 import { useRef, useCallback, useState, useEffect } from 'react'
 import { set as idbSet } from 'idb-keyval'
 import { useMapStore } from './store/mapStore'
-import { TerrainSidebar } from './components/TerrainSidebar'
 import { RiversSidebarV3 } from './components/v2/RiversSidebarV3'
 import { DisplaySidebarV3 } from './components/v2/DisplaySidebarV3'
 import { SettlementsSidebarV3 } from './components/v2/SettlementsSidebarV3'
-import { AreasSidebar } from './components/AreasSidebar'
 import { TerrainViewCanvas, type TerrainViewCanvasHandle } from './components/TerrainViewCanvas'
 import { ImageAlignView } from './components/ImageAlignView'
 import { TK, TK_DARK } from './theme'
@@ -128,9 +126,7 @@ function AppV2Inner({ screen, setScreen, isDark, setIsDark }: {
     : activePanel === 'roads'       ? <RoadsSidebarV3 />
     : activePanel === 'rivers'      ? <RiversSidebarV3 />
     : activePanel === 'settlements' ? <SettlementsSidebarV3 />
-    : activePanel === 'highlights'  ? <OverlaysSidebarV3 />
-    : activePanel === 'areas'       ? <AreasSidebar />
-    : <TerrainSidebar />
+    : <OverlaysSidebarV3 />
 
   const surroundColor = isDark ? '#2a2420' : '#B7B0A6'
 

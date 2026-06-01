@@ -18,6 +18,7 @@ export type DrawSettlementsParams = {
   }
   roadChains: { chain: [number, number][] }[]
   railChains: { chain: [number, number][] }[]
+  roadJunctions?: { pos: [number, number] }[]
   project: (lon: number, lat: number) => [number, number]
   hexCenterOf: (q: number, r: number) => [number, number] | null
   hexRadiusPx: number
@@ -38,7 +39,7 @@ function closestPointOnSegment(
 }
 
 export function drawSettlements(sCtx: Ctx, {
-  settlements, tierStyles, labelSpecs, roadChains, railChains, project, hexCenterOf, hexRadiusPx,
+  settlements, tierStyles, labelSpecs, roadChains, railChains, roadJunctions, project, hexCenterOf, hexRadiusPx,
   labelOffsets, liveLabelOffset, labelBBoxOut,
 }: DrawSettlementsParams) {
   const placed = settlements.filter(s => s.included && s.hex_q !== null)
@@ -93,13 +94,24 @@ export function drawSettlements(sCtx: Ctx, {
     const [hx, hy] = center
 
     // Snap icon to closest road/rail point within the hex.
+    // Junction positions are preferred — check them first, then fall back to segment snap.
     let cx = hx, cy = hy
-    if (hexRadiusPx > 0 && allSegs.length > 0) {
+    if (hexRadiusPx > 0) {
       let bestDist = hexRadiusPx
-      for (const { ax, ay, bx, by } of allSegs) {
-        const [px, py] = closestPointOnSegment(ax, ay, bx, by, hx, hy)
-        const d = Math.hypot(px - hx, py - hy)
-        if (d < bestDist) { bestDist = d; cx = px; cy = py }
+      if (roadJunctions) {
+        for (const { pos } of roadJunctions) {
+          const [jx, jy] = project(pos[0], pos[1])
+          const d = Math.hypot(jx - hx, jy - hy)
+          if (d < bestDist) { bestDist = d; cx = jx; cy = jy }
+        }
+      }
+      // Only fall back to segment snap if no junction claimed the icon.
+      if (cx === hx && cy === hy) {
+        for (const { ax, ay, bx, by } of allSegs) {
+          const [px, py] = closestPointOnSegment(ax, ay, bx, by, hx, hy)
+          const d = Math.hypot(px - hx, py - hy)
+          if (d < bestDist) { bestDist = d; cx = px; cy = py }
+        }
       }
     }
     const tier = (s.tier ?? (s.type === 'city' ? 1 : s.type === 'town' ? 3 : 4)) as SettlementTier

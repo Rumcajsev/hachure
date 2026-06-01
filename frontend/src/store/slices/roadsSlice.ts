@@ -94,6 +94,8 @@ export type RoadsSlice = {
   fetchMotorwayHexes: () => Promise<void>
   applyMotorwayHexes: () => void
   clearMotorwayHexes: () => void
+  roadClearanceTerrains: Set<string>
+  toggleRoadClearanceTerrain: (terrain: string) => void
 }
 
 type Set = (partial: Partial<MapStore> | ((s: MapStore) => Partial<MapStore>)) => void
@@ -424,4 +426,10 @@ export const createRoadsSlice = (set: Set, get: () => MapStore): RoadsSlice => (
     }
     if (newEdges.length > 0) set(s => ({ roadEdges: [...s.roadEdges, ...newEdges] }))
   },
+  roadClearanceTerrains: new globalThis.Set<string>(),
+  toggleRoadClearanceTerrain: (terrain) => set(s => {
+    const next = new globalThis.Set(s.roadClearanceTerrains)
+    if (next.has(terrain)) next.delete(terrain); else next.add(terrain)
+    return { roadClearanceTerrains: next }
+  }),
 })

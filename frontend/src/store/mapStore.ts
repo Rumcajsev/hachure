@@ -16,7 +16,6 @@ import { type UndoSlice, createUndoSlice } from './slices/undoSlice'
 import { type UiSlice, createUiSlice, migratePersisted, rehydrateState } from './slices/uiSlice'
 import { type BridgesSlice, createBridgesSlice } from './slices/bridgesSlice'
 import { type MegaHexSlice, createMegaHexSlice } from './slices/megaHexSlice'
-import { type AreasSlice, createAreasSlice } from './slices/areasSlice'
 import { type PresetsSlice, createPresetsSlice } from './slices/presetsSlice'
 import { type MapImageSlice, createMapImageSlice } from './slices/mapImageSlice'
 import { type LabelOffsetsSlice, createLabelOffsetsSlice } from './slices/labelOffsetsSlice'
@@ -50,28 +49,6 @@ export const DEFAULT_ROAD_V3_TIER_GEOM: [RoadV3TierGeom, RoadV3TierGeom, RoadV3T
   { cornerRoundness: 0.6, pathStraightness: 0.5, segmentVariation: 0.06, variationCharacter: 1 },
   { cornerRoundness: 0.3, pathStraightness: 0.2, segmentVariation: 0.12, variationCharacter: 2 },
 ]
-
-export interface MapArea {
-  id: string
-  name: string
-  color: string
-  labelOffset?: [number, number]
-}
-
-export interface AreasStyle {
-  borderWidth: number
-  labelSize: number
-  borderColor: string
-}
-
-export interface AreasGenParams {
-  targetSize: number
-  riverWeight: number
-  terrainWeight: number
-}
-
-export const DEFAULT_AREAS_STYLE: AreasStyle = { borderWidth: 2.0, labelSize: 1.0, borderColor: '#2c1a00' }
-export const DEFAULT_AREAS_GEN_PARAMS: AreasGenParams = { targetSize: 8, riverWeight: 0.7, terrainWeight: 2.0 }
 
 export interface BlobOverride {
   terrain?: string
@@ -141,8 +118,6 @@ export type ActiveTool =
   | { type: 'hex-mask'; mode: 'exclude' | 'include' }
   | { type: 'hex-disable'; mode: 'disable' | 'enable' }
   | { type: 'mega-hex-origin' }
-  | { type: 'areas-draw' }
-  | { type: 'areas-erase' }
   | { type: 'align-image' }
   | { type: 'label-drag' }
 
@@ -651,8 +626,6 @@ export interface UndoSnapshot {
   railEdges: RailEdge[]
   riverEdges: { q1: number; r1: number; q2: number; r2: number }[]
   settlements: Settlement[]
-  areas?: MapArea[]
-  areaHexes?: Record<string, string>
 }
 
 export interface GenerateProgress {
@@ -676,7 +649,6 @@ export type MapStore =
   UiSlice &
   BridgesSlice &
   MegaHexSlice &
-  AreasSlice &
   PresetsSlice &
   MapImageSlice &
   LabelOffsetsSlice
@@ -696,7 +668,6 @@ export const useMapStore = create<MapStore>()(persist((set, get) => ({
   ...createUiSlice(set, get),
   ...createBridgesSlice(set, get),
   ...createMegaHexSlice(set),
-  ...createAreasSlice(set, get),
   ...createPresetsSlice(set, get),
   ...createMapImageSlice(set, get),
   ...createLabelOffsetsSlice(set),
@@ -781,6 +752,7 @@ export const useMapStore = create<MapStore>()(persist((set, get) => ({
     roadSegmentProps: s.roadSegmentProps,
     roadHopProps: s.roadHopProps,
     roadTierStyles: s.roadTierStyles,
+    roadClearanceTerrains: Array.from(s.roadClearanceTerrains) as unknown as Set<string>,
     roadChainOverrides: s.roadChainOverrides,
     roadControlOverrides: s.roadControlOverrides,
     roadSnapBindings: s.roadSnapBindings,
@@ -849,11 +821,6 @@ export const useMapStore = create<MapStore>()(persist((set, get) => ({
     highlightedHexes: s.highlightedHexes,
     highlightLines: s.highlightLines,
     highlightEdgePaths: s.highlightEdgePaths,
-    areasMode: s.areasMode,
-    areas: s.areas,
-    areaHexes: s.areaHexes,
-    areasStyle: s.areasStyle,
-    areasGenParams: s.areasGenParams,
     iconOverlays: s.iconOverlays,
     placedIcons: s.placedIcons,
     labelOverlays: s.labelOverlays,
@@ -891,7 +858,7 @@ export const useMapStore = create<MapStore>()(persist((set, get) => ({
     mapTitle: s.mapTitle,
     labelOffsets: s.labelOffsets,
   }),
-  version: 69,
+  version: 70,
   migrate: migratePersisted,
   merge: (persisted, current) => rehydrateState({ ...current, ...(persisted as Partial<MapStore>) }),
 }))

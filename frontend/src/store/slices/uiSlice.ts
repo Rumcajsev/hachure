@@ -3,7 +3,7 @@ import { DEFAULT_URBAN_STYLE } from '../mapStore'
 import { STYLE_PRESET_KEYS } from '../../lib/stylePreset'
 
 export type UiSlice = {
-  activePanel: 'terrain' | 'display' | 'roads' | 'settlements' | 'rivers' | 'style' | 'highlights' | 'areas' | 'elevation'
+  activePanel: 'terrain' | 'display' | 'roads' | 'settlements' | 'rivers' | 'style' | 'highlights' | 'elevation'
   activeTool: ActiveTool
   urbanHexes: Array<{ q: number; r: number }>
   urbanStyle: UrbanStyle
@@ -43,7 +43,7 @@ export type UiSlice = {
   excludedHexKeys: string[]
   disabledHexKeys: string[]
   autoDisabledOceanHexKeys: string[]
-  setActivePanel: (panel: 'terrain' | 'display' | 'roads' | 'settlements' | 'rivers' | 'style' | 'areas' | 'elevation') => void
+  setActivePanel: (panel: 'terrain' | 'display' | 'roads' | 'settlements' | 'rivers' | 'style' | 'elevation') => void
   setActiveTool: (tool: ActiveTool) => void
   toggleUrbanHex: (q: number, r: number) => void
   setUrbanStyle: (style: Partial<UrbanStyle>) => void
@@ -461,8 +461,6 @@ export const createUiSlice = (set: Set, get: () => MapStore): UiSlice => ({
         megaHexOriginR: s.megaHexOriginR,
         highlights: s.highlights, highlightedHexes: s.highlightedHexes,
         highlightLines: s.highlightLines, highlightEdgePaths: s.highlightEdgePaths,
-        areasMode: s.areasMode, areas: s.areas, areaHexes: s.areaHexes,
-        areasStyle: s.areasStyle, areasGenParams: s.areasGenParams,
         iconOverlays: s.iconOverlays, placedIcons: s.placedIcons,
         labelOverlays: s.labelOverlays, placedLabels: s.placedLabels,
         styleSnapshots: s.styleSnapshots,
@@ -665,12 +663,7 @@ export function migratePersisted(persisted: unknown, fromVersion: number): Recor
     if (s.terrainEdgePaintEnabled === undefined) s.terrainEdgePaintEnabled = false
   }
   if (fromVersion < 34) {
-    if (!s.areas) s.areas = []
-    if (!s.areaHexes) s.areaHexes = {}
-    if (s.areasMode === undefined) s.areasMode = false
-    if (!s.areasStyle) s.areasStyle = { borderWidth: 2.0, labelSize: 1.0, borderColor: '#2c1a00' }
-    if (!s.areasGenParams) s.areasGenParams = { targetSize: 8, riverWeight: 0.7, terrainWeight: 2.0 }
-    if (s.activeAreaId === undefined) s.activeAreaId = null
+    // areas state removed in v69
   }
   if (fromVersion < 36) {
     s.bridgeTiers = []
@@ -771,9 +764,7 @@ export function migratePersisted(persisted: unknown, fromVersion: number): Recor
       }
     }
   }
-  if (s.areasStyle && !(s.areasStyle as { borderColor?: string }).borderColor) {
-    (s.areasStyle as { borderColor?: string }).borderColor = '#2c1a00'
-  }
+
   if (s.hexBorderMode === 'dots') s.hexBorderMode = 'full'
   if (fromVersion < 47) {
     if (!s.styleSnapshots) s.styleSnapshots = {}
@@ -867,15 +858,7 @@ export function migratePersisted(persisted: unknown, fromVersion: number): Recor
   if (fromVersion < 67) {
     if (s.terrainBlobFeather === undefined) s.terrainBlobFeather = 0
   }
-  if (fromVersion < 68) {
-    if (s.blobCutsEnabled === undefined) s.blobCutsEnabled = false
-    if (s.blobCutBuffer === undefined) s.blobCutBuffer = 0.15
-    if (s.blobCutRoadTiers === undefined) s.blobCutRoadTiers = { '0': true, '1': true, '2': false }
-    if (s.blobCutRiverEnabled === undefined) s.blobCutRiverEnabled = true
-    if (s.blobCutCanalEnabled === undefined) s.blobCutCanalEnabled = false
-    if (s.blobCutTerrains === undefined) s.blobCutTerrains = ['woods', 'light_woods', 'marsh', 'rough']
-  }
-  if (fromVersion < 64) {
+if (fromVersion < 64) {
     if (s.roadCenterPull === undefined) s.roadCenterPull = 0
     if (Array.isArray(s.roadTierGeometry)) {
       for (const g of s.roadTierGeometry as Array<Record<string, unknown> | null>) {
@@ -902,6 +885,8 @@ export function migratePersisted(persisted: unknown, fromVersion: number): Recor
 export function rehydrateState(state: MapStore): MapStore {
   const dt = state.disabledTerrains
   state.disabledTerrains = dt instanceof Set ? dt : new Set(Array.isArray(dt) ? dt as string[] : [])
+  const rct = state.roadClearanceTerrains
+  state.roadClearanceTerrains = rct instanceof Set ? rct : new Set(Array.isArray(rct) ? rct as string[] : [])
   if (state.generateStatus === 'loading') state.generateStatus = 'idle'
   if (state.elevationStatus === 'loading') state.elevationStatus = 'idle'
   if (state.settlementsStatus === 'loading') state.settlementsStatus = 'idle'

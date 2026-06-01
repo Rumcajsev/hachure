@@ -11,6 +11,8 @@ function dashPattern(style: RoadDashStyle, w: number): number[] {
 
 type Ctx = CanvasRenderingContext2D | OffscreenCanvasRenderingContext2D
 
+export type TerrainBlobEntry = { terrain: string; polys: [number, number][][] }
+
 export type DrawRoadsRailsParams = {
   roadChains: { tier: 0 | 1 | 2; chain: [number, number][] }[]
   junctions: { pos: [number, number]; tier: 0 | 1 | 2 }[]
@@ -18,10 +20,12 @@ export type DrawRoadsRailsParams = {
   tierStyles: [RoadTierStyle, RoadTierStyle, RoadTierStyle]
   railStyle: RailStyle
   project: (lon: number, lat: number) => [number, number]
+  clearColor?: string
+  clearanceBlobs?: TerrainBlobEntry[]
 }
 
 export function drawRoadsAndRails(rCtx: Ctx, {
-  roadChains, junctions, railChains, tierStyles, railStyle, project,
+  roadChains, junctions, railChains, tierStyles, railStyle, project, clearColor, clearanceBlobs,
 }: DrawRoadsRailsParams) {
   rCtx.save()
   const drawChain = (chain: [number, number][]) => {
@@ -36,6 +40,37 @@ export function drawRoadsAndRails(rCtx: Ctx, {
   if (roadChains.length > 0) {
     const chainsByTier: [[number,number][][], [number,number][][], [number,number][][]] = [[], [], []]
     for (const { tier, chain } of roadChains) chainsByTier[tier].push(chain)
+
+    if (clearColor && clearanceBlobs && clearanceBlobs.length > 0) {
+      const allPolys = clearanceBlobs.flatMap(b => b.polys)
+      if (allPolys.length > 0) {
+        const EXPAND_PX = 0.5
+        rCtx.save()
+        rCtx.beginPath()
+        for (const poly of allPolys) {
+          if (poly.length < 3) continue
+          const cx = poly.reduce((s, p) => s + p[0], 0) / poly.length
+          const cy = poly.reduce((s, p) => s + p[1], 0) / poly.length
+          const exp = poly.map(([x, y]): [number, number] => {
+            const dx = x - cx, dy = y - cy, len = Math.hypot(dx, dy) || 1
+            return [x + dx / len * EXPAND_PX, y + dy / len * EXPAND_PX]
+          })
+          rCtx.moveTo(exp[0][0], exp[0][1])
+          for (let i = 1; i < exp.length; i++) rCtx.lineTo(exp[i][0], exp[i][1])
+          rCtx.closePath()
+        }
+        rCtx.clip()
+        rCtx.strokeStyle = clearColor
+        rCtx.lineJoin = 'round'
+        rCtx.lineCap = 'round'
+        rCtx.setLineDash([])
+        for (const tier of [2, 1, 0] as const) {
+          rCtx.lineWidth = tierStyles[tier].outerW * 2
+          for (const chain of chainsByTier[tier]) drawChain(chain)
+        }
+        rCtx.restore()
+      }
+    }
 
     rCtx.lineJoin = 'round'
     for (const tier of [2, 1, 0] as const) {

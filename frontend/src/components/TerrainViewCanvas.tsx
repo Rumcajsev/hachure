@@ -8,7 +8,6 @@ import { hexAdjacent, catmullRom, offsetPolyline, pointInPolygon, distToSeg, dou
 import { mulberry32, makePermutation } from '../lib/noise'
 import { projectToCanvas, unprojectFromCanvas, computePaper } from '../lib/projection'
 import { coastalBlobTerrains, bleedPolygon, buildTerrainBlobsV2, buildTerrainBlobTopology, shapeTerrainBlobs, computeConnectedComponents } from '../lib/terrainBlobs'
-import { applyBlobCuts, type CutLine } from '../lib/blobCuts'
 import type { BlobTopologyEntry } from '../lib/terrainBlobs'
 import { findEdgeChains as findEdgeChainsSync } from '../lib/edgeBlobs'
 import { riverChainCache, buildRiverChains, buildRiverChainsV2 } from '../lib/riverChains'
@@ -19,7 +18,6 @@ import { buildRoadChains, buildRailChains, spineSideCpKey, applyRoadWiggle, appl
 import { buildRoadChainsV2, applyRoadWiggleV2 } from '../lib/roadChainsV2'
 import { buildRoadChainsV3 } from '../lib/roadChainsV3'
 import { drawHighlights as _drawHighlights } from '../lib/drawHighlights'
-import { drawAreas as _drawAreas } from '../lib/drawAreas'
 import { drawIcons as _drawIcons } from '../lib/drawIcons'
 import { drawLabels as _drawLabels, getLabelBoxBounds } from '../lib/drawLabels'
 import { drawRoadsAndRails as _drawRoadsAndRails } from '../lib/drawRoadsRails'
@@ -122,11 +120,6 @@ export const TerrainViewCanvas = forwardRef<TerrainViewCanvasHandle, { surroundC
   const joinedHighlightsLayerPapWRef = useRef(0)
   const joinedHighlightsLayerPapHRef = useRef(0)
 
-  const areasLayerRef = useRef<OffscreenCanvas | null>(null)
-  const areasDirtyRef = useRef(true)
-  const areasLayerPapWRef = useRef(0)
-  const areasLayerPapHRef = useRef(0)
-
   const riversLayerRef = useRef<OffscreenCanvas | null>(null)
   const riversDirtyRef = useRef(true)
   const riversLayerPapWRef = useRef(0)
@@ -172,15 +165,14 @@ export const TerrainViewCanvas = forwardRef<TerrainViewCanvasHandle, { surroundC
     terrainBlobSweepFreq, terrainBlobLobeFreq, terrainBlobLobeAmp, terrainBlobLobeThreshold, terrainBlobLobeDirection,
     terrainBlobFeather,
     terrainBlobOutlineEnabled, terrainBlobOutlineColor, terrainBlobOutlineWidth,
-    blobCutsEnabled, blobCutBuffer, blobCutRoadTiers, blobCutRiverEnabled, blobCutCanalEnabled, blobCutTerrains,
-    terrainColors, terrainTextureScales, terrainTextureBlendModes, terrainTextureOpacities,
+terrainColors, terrainTextureScales, terrainTextureBlendModes, terrainTextureOpacities,
     terrainTextureTintColors, terrainTextureTintOpacities,
     terrainTextureFile, terrainTextureEnabled,
     terrainPaintMode, terrainPaintBrush, overrideHexTerrain, resetHexOverride,
     elevationPaintMode, elevationPaintBrush, overrideHexElevation,
     elevationTypeBlobStyles,
     terrainLayersEnabled,
-    roadEdges, railEdges, rawRoadWays, rawRailWays, roadTierStyles, railStyle,
+    roadEdges, railEdges, rawRoadWays, rawRailWays, roadTierStyles, railStyle, roadClearanceTerrains,
     showRawOsmRoads, osmHighlightTier, osmSpotlightMode, osmSpotlightRadius, osmSpotlightTiers,
     osmRailHexPaths, osmRailHighlight,
     osmRiverWays, hoveredOsmRiverIdx, appliedOsmRiverIndices,
@@ -275,8 +267,6 @@ export const TerrainViewCanvas = forwardRef<TerrainViewCanvasHandle, { surroundC
     bridgesEnabled, bridgeStyle, bridgeTiers, bridgeOverrides, setBridgeOverride, clearBridgeOverride,
     megaHexEnabled, megaHexRadius, megaHexColor, megaHexOpacity, megaHexLineWidth,
     megaHexOriginQ, megaHexOriginR, setMegaHexOrigin,
-    areasMode, areas, areaHexes, areasStyle, activeAreaId,
-    paintHexArea, eraseHexArea, addArea,
     mapImageDataUrl, mapImageTransform, mapImageOpacity, setMapImageTransform,
     dataSource,
     blobSeeds, randomizeBlobSeed,
@@ -338,6 +328,7 @@ export const TerrainViewCanvas = forwardRef<TerrainViewCanvasHandle, { surroundC
   const spotlightCursorRef = useRef<{ lx: number; ly: number } | null>(null)
   const spotlightRafRef = useRef<number | null>(null)
   const roadTierStylesRef = useRef(roadTierStyles)
+  const roadClearanceTerrainsRef = useRef(roadClearanceTerrains)
   const railStyleRef = useRef(railStyle)
   const bridgesEnabledRef = useRef(bridgesEnabled)
   const bridgeStyleRef = useRef(bridgeStyle)
@@ -444,8 +435,7 @@ export const TerrainViewCanvas = forwardRef<TerrainViewCanvasHandle, { surroundC
   const canalStyleRef = useRef(canalStyle)
   const computedRiverChainsRef = useRef<{ vertices: [number,number][]; segKey: string }[]>([])
   const computedCanalChainsRef = useRef<{ vertices: [number,number][]; segKey: string }[]>([])
-  const [blobCutLinesVersion, setBlobCutLinesVersion] = useState(0)
-  const lakePaintModeRef = useRef(lakePaintMode)
+const lakePaintModeRef = useRef(lakePaintMode)
   const overrideHexLakeRef = useRef(overrideHexLake)
   const lakeBlobSmoothRef = useRef(lakeBlobSmooth)
   const lakeBlobOffsetRef = useRef(lakeBlobOffset)
@@ -532,14 +522,6 @@ export const TerrainViewCanvas = forwardRef<TerrainViewCanvasHandle, { surroundC
   const highlightEdgePathsRef = useRef(highlightEdgePaths)
   const activeHighlightIdRef = useRef(activeHighlightId)
   const highlightPaintModeRef = useRef(highlightPaintMode)
-  const areasModeRef = useRef(areasMode)
-  const areasRef = useRef(areas)
-  const areaHexesRef = useRef(areaHexes)
-  const areasStyleRef = useRef(areasStyle)
-  const activeAreaIdRef = useRef(activeAreaId)
-  const paintHexAreaRef = useRef(paintHexArea)
-  const eraseHexAreaRef = useRef(eraseHexArea)
-  const addAreaRef = useRef(addArea)
   const highlightLineEraserRef = useRef(highlightLineEraser)
   const randomizeBlobSeedRef = useRef(randomizeBlobSeed)
   const activeToolRef = useRef(activeTool)
@@ -610,6 +592,7 @@ export const TerrainViewCanvas = forwardRef<TerrainViewCanvasHandle, { surroundC
   hoveredOsmRiverIdxRef.current = hoveredOsmRiverIdx
   labelOffsetsRef.current = labelOffsets
   roadTierStylesRef.current = roadTierStyles
+  roadClearanceTerrainsRef.current = roadClearanceTerrains
   railStyleRef.current = railStyle
   bridgesEnabledRef.current = bridgesEnabled
   bridgeStyleRef.current = bridgeStyle
@@ -647,14 +630,6 @@ export const TerrainViewCanvas = forwardRef<TerrainViewCanvasHandle, { surroundC
   highlightEdgePathsRef.current = highlightEdgePaths
   activeHighlightIdRef.current = activeHighlightId
   highlightPaintModeRef.current = highlightPaintMode
-  areasModeRef.current = areasMode
-  areasRef.current = areas
-  areaHexesRef.current = areaHexes
-  areasStyleRef.current = areasStyle
-  activeAreaIdRef.current = activeAreaId
-  paintHexAreaRef.current = paintHexArea
-  eraseHexAreaRef.current = eraseHexArea
-  addAreaRef.current = addArea
   highlightLineEraserRef.current = highlightLineEraser
   activeToolRef.current = activeTool
   randomizeBlobSeedRef.current = randomizeBlobSeed
@@ -1028,9 +1003,7 @@ export const TerrainViewCanvas = forwardRef<TerrainViewCanvasHandle, { surroundC
   )
   const roadDataV3Ref = useRef(roadDataV3)
   roadDataV3Ref.current = roadDataV3
-  // Bump blobCutLinesVersion whenever road chains change so the cuts useMemo re-runs
-  useEffect(() => { setBlobCutLinesVersion(v => v + 1) }, [smoothedRoadData, smoothedRoadDataV2, roadDataV3])
-  const roadV3TierGeomRef = useRef(roadV3TierGeom)
+const roadV3TierGeomRef = useRef(roadV3TierGeom)
   roadV3TierGeomRef.current = roadV3TierGeom
   const roadRenderVersionRef = useRef(roadRenderVersion)
   roadRenderVersionRef.current = roadRenderVersion
@@ -1281,48 +1254,8 @@ export const TerrainViewCanvas = forwardRef<TerrainViewCanvasHandle, { surroundC
     prevTerrainBlobsRef.current = result
     return result
   }, [isTerrainPainting, projectedHexes, blobComponentsByTerrain, terrainBlobOverrides, terrainTypeBlobStyles, terrainBlobSmooth, terrainBlobOffset, terrainBlobBump, terrainBlobSweepFreq, terrainBlobLobeFreq, terrainBlobLobeAmp, terrainBlobLobeThreshold, terrainBlobLobeDirection, hexRadius, realisticCoastline, blobSeeds, elevationOverridesTerrain])
-  // ── Blob cuts ────────────────────────────────────────────────────────────────
-  const cutTerrainBlobs = useMemo(() => {
-    if (!blobCutsEnabled) return defaultTerrainBlobs
-
-    const bufferPx = blobCutBuffer * hexRadius
-    const cutLines: CutLine[] = []
-
-    // Road chains
-    const roadChains = (smoothedRoadDataV2Ref.current ?? smoothedRoadDataRef.current)?.chains ?? []
-    for (const { tier, chain } of roadChains) {
-      const tierKey = String(tier)
-      if (!blobCutRoadTiers[tierKey]) continue
-      const tierStyle = roadTierStylesRef.current[tier as 0 | 1 | 2]
-      if (!tierStyle) continue
-      const halfWidth = tierStyle.outerW / 2 + bufferPx
-      cutLines.push({ pts: chain, halfWidth })
-    }
-
-    // River chains
-    if (blobCutRiverEnabled) {
-      for (const { vertices } of computedRiverChainsRef.current) {
-        const halfWidth = 1.4 * riverWidthScaleRef.current + bufferPx
-        cutLines.push({ pts: vertices, halfWidth })
-      }
-    }
-
-    // Canal chains
-    if (blobCutCanalEnabled) {
-      for (const { vertices } of computedCanalChainsRef.current) {
-        const halfWidth = 1.4 * canalWidthScaleRef.current + bufferPx
-        cutLines.push({ pts: vertices, halfWidth })
-      }
-    }
-
-    if (cutLines.length === 0) return defaultTerrainBlobs
-    const cuttable = new Set(blobCutTerrains)
-    return applyBlobCuts(defaultTerrainBlobs, cutLines, cuttable)
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [defaultTerrainBlobs, blobCutsEnabled, blobCutBuffer, blobCutRoadTiers, blobCutRiverEnabled, blobCutCanalEnabled, blobCutTerrains, hexRadius, roadTierStyles, riverWidthScale, canalWidthScale, blobCutLinesVersion])
-
-  const defaultTerrainBlobsRef = useRef(cutTerrainBlobs)
-  defaultTerrainBlobsRef.current = cutTerrainBlobs
+  const defaultTerrainBlobsRef = useRef(defaultTerrainBlobs)
+  defaultTerrainBlobsRef.current = defaultTerrainBlobs
 
   // ── Background terrain blobs ──────────────────────────────────────────────
   const prevBackgroundBlobsRef = useRef<{ terrain: string; polys: [number, number][][] }[]>([])
@@ -1828,9 +1761,9 @@ export const TerrainViewCanvas = forwardRef<TerrainViewCanvasHandle, { surroundC
       }
     }
 
-    // Hex borders — offscreen cached; suppressed in areas mode
+    // Hex borders — offscreen cached
     // Difference blend mode must draw directly onto main canvas so it composites against terrain.
-    if (borderMode !== 'none' && !areasModeRef.current) {
+    if (borderMode !== 'none') {
       if (!isExport && !hexBorderDifferenceRef.current) {
         const papW = Math.ceil(pw), papH = Math.ceil(ph)
         if (hexBorderDirtyRef.current || !hexBorderLayerRef.current ||
@@ -1951,30 +1884,6 @@ export const TerrainViewCanvas = forwardRef<TerrainViewCanvasHandle, { surroundC
       }
     }
 
-    // Areas — offscreen cached (when areas mode is on)
-    if (areasModeRef.current) {
-      if (!isExport) {
-        const papW = Math.ceil(pw), papH = Math.ceil(ph)
-        if (areasDirtyRef.current || !areasLayerRef.current ||
-            areasLayerPapWRef.current !== papW || areasLayerPapHRef.current !== papH) {
-          const offW = Math.ceil(pw * dpr * offZoom), offH = Math.ceil(ph * dpr * offZoom)
-          const offscreen = new OffscreenCanvas(offW, offH)
-          const oCtx = offscreen.getContext('2d')!
-          oCtx.scale(dpr * offZoom, dpr * offZoom)
-          oCtx.translate(-px, -py)
-          _drawAreas(oCtx, { areas: areasRef.current, areaHexes: areaHexesRef.current, projected, riverEdges: riverEdgesRef.current, canalEdges: canalEdgesRef.current, edgeMode, inMargin, R, style: areasStyleRef.current, terrainLabelSpec: resolvedLabelSpecsRef.current.terrain })
-          areasLayerRef.current = offscreen
-          areasDirtyRef.current = false
-          areasLayerPapWRef.current = papW
-          areasLayerPapHRef.current = papH
-        }
-        ctx.drawImage(areasLayerRef.current, px, py, pw, ph)
-      }
-      if (isExport) {
-        _drawAreas(ctx, { areas: areasRef.current, areaHexes: areaHexesRef.current, projected, riverEdges: riverEdgesRef.current, canalEdges: canalEdgesRef.current, edgeMode, inMargin, R, style: areasStyleRef.current, terrainLabelSpec: resolvedLabelSpecsRef.current.terrain, lineScale })
-      }
-    }
-
     // Rivers — offscreen cached
     const lakeProjCenters = projected
       .filter(({ hex }) => hex.isLake)
@@ -1997,8 +1906,6 @@ export const TerrainViewCanvas = forwardRef<TerrainViewCanvasHandle, { surroundC
     computedRiverChainsRef.current = riverChainData
     computedCanalChainsRef.current = canalChainData
     riverChainCache.chains = riverChainData
-    setBlobCutLinesVersion(v => v + 1)
-
     // Bridge detection — runs once per data-change (dirty flag), not every frame
     if (bridgesDirtyRef.current) {
       bridgesDirtyRef.current = false
@@ -2261,7 +2168,7 @@ export const TerrainViewCanvas = forwardRef<TerrainViewCanvasHandle, { surroundC
           ctx.beginPath()
           ctx.rect(px, py, pw, ph)
           ctx.clip()
-          _drawRoadsAndRails(ctx, { roadChains, junctions, railChains: liveRailData.chains, tierStyles, railStyle: railStyleRef.current, project })
+          _drawRoadsAndRails(ctx, { roadChains, junctions, railChains: liveRailData.chains, tierStyles, railStyle: railStyleRef.current, project, clearColor: terrainColorsRef.current['clear'] ?? TERRAIN_COLORS['clear'], clearanceBlobs: defaultTerrainBlobsRef.current.filter(b => roadClearanceTerrainsRef.current.has(b.terrain)) })
           ctx.restore()
         } else {
           const papW = Math.ceil(pw), papH = Math.ceil(ph)
@@ -2276,7 +2183,7 @@ export const TerrainViewCanvas = forwardRef<TerrainViewCanvasHandle, { surroundC
             oCtx.beginPath()
             oCtx.rect(px, py, pw, ph)
             oCtx.clip()
-            _drawRoadsAndRails(oCtx, { roadChains, junctions, railChains: liveRailData.chains, tierStyles, railStyle: railStyleRef.current, project })
+            _drawRoadsAndRails(oCtx, { roadChains, junctions, railChains: liveRailData.chains, tierStyles, railStyle: railStyleRef.current, project, clearColor: terrainColorsRef.current['clear'] ?? TERRAIN_COLORS['clear'], clearanceBlobs: defaultTerrainBlobsRef.current.filter(b => roadClearanceTerrainsRef.current.has(b.terrain)) })
             oCtx.restore()
             roadsLayerRef.current = offscreen
             roadsDirtyRef.current = false
@@ -2289,7 +2196,7 @@ export const TerrainViewCanvas = forwardRef<TerrainViewCanvasHandle, { surroundC
       if (isExport) {
         const scaledTierStyles = tierStyles.map(s => ({ ...s, outerW: s.outerW * lineScale })) as [RoadTierStyle, RoadTierStyle, RoadTierStyle]
         const scaledRailStyle = { ...railStyleRef.current, thickness: railStyleRef.current.thickness * lineScale }
-        _drawRoadsAndRails(ctx, { roadChains, junctions, railChains: liveRailData.chains, tierStyles: scaledTierStyles, railStyle: scaledRailStyle, project, mapStyle: mapStyleRef.current })
+        _drawRoadsAndRails(ctx, { roadChains, junctions, railChains: liveRailData.chains, tierStyles: scaledTierStyles, railStyle: scaledRailStyle, project, mapStyle: mapStyleRef.current, clearColor: terrainColorsRef.current['clear'] ?? TERRAIN_COLORS['clear'], clearanceBlobs: defaultTerrainBlobsRef.current.filter(b => roadClearanceTerrainsRef.current.has(b.terrain)) })
       }
 
       // Debug: raw OSM way overlay (screen-only, never exported)
@@ -2417,8 +2324,8 @@ export const TerrainViewCanvas = forwardRef<TerrainViewCanvasHandle, { surroundC
           oCtx.beginPath()
           oCtx.rect(px, py, pw, ph)
           oCtx.clip()
-          const activeRoadChainsS = smoothedRoadDataV2Ref.current ? smoothedRoadDataV2Ref.current.chains : smoothedRoadDataRef.current.chains
-          _drawSettlements(oCtx, { settlements: settlementsRef.current, tierStyles: settlementTierStylesRef.current, labelSpecs: resolvedLabelSpecsRef.current, roadChains: activeRoadChainsS, railChains: smoothedRailDataRef.current.chains, project, hexCenterOf: (q, r) => { const h = hexesRef.current.find(h => h.q === q && h.r === r); return h ? project(h.center[0], h.center[1]) : null }, hexRadiusPx: hexRadiusRef.current, labelOffsets: labelOffsetsRef.current, liveLabelOffset: liveLabelOffsetRef.current ?? undefined, labelBBoxOut: labelBBoxCacheRef.current })
+          const activeRoadDataS = smoothedRoadDataV2Ref.current ?? smoothedRoadDataRef.current
+          _drawSettlements(oCtx, { settlements: settlementsRef.current, tierStyles: settlementTierStylesRef.current, labelSpecs: resolvedLabelSpecsRef.current, roadChains: activeRoadDataS.chains, roadJunctions: activeRoadDataS.junctions, railChains: smoothedRailDataRef.current.chains, project, hexCenterOf: (q, r) => { const h = hexesRef.current.find(h => h.q === q && h.r === r); return h ? project(h.center[0], h.center[1]) : null }, hexRadiusPx: hexRadiusRef.current, labelOffsets: labelOffsetsRef.current, liveLabelOffset: liveLabelOffsetRef.current ?? undefined, labelBBoxOut: labelBBoxCacheRef.current })
           oCtx.restore()
           settlementsLayerRef.current = offscreen
           settlementsDirtyRef.current = false
@@ -2428,8 +2335,8 @@ export const TerrainViewCanvas = forwardRef<TerrainViewCanvasHandle, { surroundC
         ctx.drawImage(settlementsLayerRef.current, px, py, pw, ph)
       }
       if (isExport) {
-        const activeRoadChainsS = smoothedRoadDataV2Ref.current ? smoothedRoadDataV2Ref.current.chains : smoothedRoadDataRef.current.chains
-        _drawSettlements(ctx, { settlements: settlementsRef.current, tierStyles: settlementTierStylesRef.current, labelSpecs: resolvedLabelSpecsRef.current, roadChains: activeRoadChainsS, railChains: smoothedRailDataRef.current.chains, project, hexCenterOf: (q, r) => { const h = hexesRef.current.find(h => h.q === q && h.r === r); return h ? project(h.center[0], h.center[1]) : null }, hexRadiusPx: hexRadiusRef.current, labelOffsets: labelOffsetsRef.current })
+        const activeRoadDataS = smoothedRoadDataV2Ref.current ?? smoothedRoadDataRef.current
+        _drawSettlements(ctx, { settlements: settlementsRef.current, tierStyles: settlementTierStylesRef.current, labelSpecs: resolvedLabelSpecsRef.current, roadChains: activeRoadDataS.chains, roadJunctions: activeRoadDataS.junctions, railChains: smoothedRailDataRef.current.chains, project, hexCenterOf: (q, r) => { const h = hexesRef.current.find(h => h.q === q && h.r === r); return h ? project(h.center[0], h.center[1]) : null }, hexRadiusPx: hexRadiusRef.current, labelOffsets: labelOffsetsRef.current })
       }
     }
 
@@ -2800,7 +2707,7 @@ export const TerrainViewCanvas = forwardRef<TerrainViewCanvasHandle, { surroundC
   //   forestTextureVersion, frameDims, draw])
 
   // Mark terrain layer dirty when terrain-affecting data changes
-  useEffect(() => { terrainDirtyRef.current = true }, [cutTerrainBlobs, defaultLakeBlobs, defaultElevationBlobs, terrainColors, terrainTextureScales, terrainTextureBlendModes, terrainTextureOpacities, terrainTextureTintColors, terrainTextureTintOpacities, terrainTextureFile, terrainTextureEnabled, terrainBlobOverrides, terrainTypeBlobStyles, lakeOverrides, terrainRenderMode, hexEdgeMode, generatedHexes, realisticCoastline, coastlineDebugRaw, smoothedCoastlineBoundary, rawCoastlineBoundary, beachStrip, beachColor, beachWidth, hillsColor, mountainsColor, reliefShadingOpacity, coastlineDPEpsilon, coastlineChaikinPasses, edgeBlobPainted, edgeBlobOverrides, edgeBlobWidth, mapStyle, historicalIconParams, elevationTypeBlobStyles, terrainBlobFeather, terrainBlobOutlineEnabled, terrainBlobOutlineColor, terrainBlobOutlineWidth, elevationOverridesTerrain])
+  useEffect(() => { terrainDirtyRef.current = true }, [defaultTerrainBlobs, defaultLakeBlobs, defaultElevationBlobs, terrainColors, terrainTextureScales, terrainTextureBlendModes, terrainTextureOpacities, terrainTextureTintColors, terrainTextureTintOpacities, terrainTextureFile, terrainTextureEnabled, terrainBlobOverrides, terrainTypeBlobStyles, lakeOverrides, terrainRenderMode, hexEdgeMode, generatedHexes, realisticCoastline, coastlineDebugRaw, smoothedCoastlineBoundary, rawCoastlineBoundary, beachStrip, beachColor, beachWidth, hillsColor, mountainsColor, reliefShadingOpacity, coastlineDPEpsilon, coastlineChaikinPasses, edgeBlobPainted, edgeBlobOverrides, edgeBlobWidth, mapStyle, historicalIconParams, elevationTypeBlobStyles, terrainBlobFeather, terrainBlobOutlineEnabled, terrainBlobOutlineColor, terrainBlobOutlineWidth, elevationOverridesTerrain])
   useEffect(() => { terrainDirtyRef.current = true; draw() }, [hillshadeDisabledTerrains, hillshadeDisabledElevClasses, contourDisabledTerrains, contourDisabledElevClasses]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // Decode heightmap PNG → ImageData when URL changes, then recompute derived canvases
@@ -2892,7 +2799,7 @@ export const TerrainViewCanvas = forwardRef<TerrainViewCanvasHandle, { surroundC
   useEffect(() => { riversDirtyRef.current = true }, [riverEdges, canalEdges, riverWidthScale, canalWidthScale, riverCurveSteps, riverWobble, riverDetail, riverWiggleFreq, riverWiggleAmp, riverSmoothing, riverPathSmoothing, showRiverLabels, riverLabelColor, riverSegmentProps, canalSegmentProps, riverSelectMode, canalSelectMode, selectedSegmentKeys, selectedCanalSegmentKeys, riverStyle, canalStyle, riverHopProps, selectedHopKey, labelOffsets])
   useEffect(() => { buildingsDirtyRef.current = true }, [urbanHexes, urbanStyle, settlements, settlementTierStyles, roadBaseData])
   useEffect(() => { bridgesDirtyRef.current = true }, [bridgesEnabled, smoothedRoadData, smoothedRoadDataV2, smoothedRailData, riverEdges, canalEdges, generatedHexes])
-  useEffect(() => { roadsDirtyRef.current = true }, [smoothedRoadData, smoothedRailData, roadTierStyles, railStyle, roadSegmentProps, roadHopProps, selectedRoadSegmentKeys, selectedRoadHopKey, roadSelectMode, railControlOverrides, railWiggleAmp, railWiggleFreq, railSmoothing, railSegmentProps, railHopProps, selectedRailSegmentKeys, selectedRailHopKey, railSelectMode, showRawOsmRoads, mapStyle])
+  useEffect(() => { roadsDirtyRef.current = true }, [smoothedRoadData, smoothedRailData, roadTierStyles, railStyle, roadSegmentProps, roadHopProps, selectedRoadSegmentKeys, selectedRoadHopKey, roadSelectMode, railControlOverrides, railWiggleAmp, railWiggleFreq, railSmoothing, railSegmentProps, railHopProps, selectedRailSegmentKeys, selectedRailHopKey, railSelectMode, showRawOsmRoads, mapStyle, roadClearanceTerrains, defaultTerrainBlobs])
   useEffect(() => { settlementsDirtyRef.current = true }, [settlements, settlementTierStyles, labelPresetId, labelOverrides, smoothedRoadData, smoothedRailData, labelOffsets])
   // When entering label-drag mode, rebuild label layers so the bbox cache is populated for hit-testing
   useEffect(() => {
@@ -2903,7 +2810,7 @@ export const TerrainViewCanvas = forwardRef<TerrainViewCanvasHandle, { surroundC
   }, [activeTool.type])
 
   // Redraw when data changes
-  useEffect(() => { draw() }, [generatedHexes, hexBorderMode, hexEdgeMode, hexBorderOpacity, hexBorderColor, hexBorderDifference, hexNumbersEnabled, hexNumberEdge, hexNumberColor, hexNumberFontScale, hexNumberStartCorner, hexNumberMap, smoothedRoadData, smoothedRailData, showRawOsmRoads, roadNodeEditMode, riverNodeEditMode, riverChainOverrides, riverEdges, canalEdges, riverEditMode, canalEditMode, riverWidthScale, canalWidthScale, riverCurveSteps, riverWobble, riverDetail, riverWiggleFreq, riverWiggleAmp, riverSmoothing, riverPathSmoothing, showRiverLabels, riverLabelColor, riverSegmentProps, canalSegmentProps, riverSelectMode, canalSelectMode, selectedSegmentKeys, selectedCanalSegmentKeys, riverStyle, canalStyle, riverHopProps, selectedHopKey, cutTerrainBlobs, defaultLakeBlobs, terrainColors, terrainTextureScales, terrainTextureBlendModes, terrainTextureOpacities, terrainTextureTintColors, terrainTextureTintOpacities, terrainTextureFile, terrainTextureEnabled, terrainBlobOverrides, terrainTypeBlobStyles, lakeOverrides, terrainRenderMode, settlements, settlementTierStyles, urbanHexes, urbanStyle, roadTierStyles, railStyle, highlights, highlightedHexes, highlightLines, highlightEdgePaths, iconOverlays, placedIcons, labelOverlays, placedLabels, realisticCoastline, coastlineDebugRaw, smoothedCoastlineBoundary, rawCoastlineBoundary, beachStrip, beachColor, beachWidth, coastlineDPEpsilon, coastlineChaikinPasses, edgeBlobPainted, edgeBlobOverrides, edgeBlobWidth, roadSegmentProps, roadHopProps, selectedRoadSegmentKeys, selectedRoadHopKey, roadSelectMode, railNodeEditMode, railControlOverrides, railSelectMode, railWiggleAmp, railWiggleFreq, railSmoothing, railSegmentProps, railHopProps, selectedRailSegmentKeys, selectedRailHopKey, mapBgColor, mapBorderEnabled, mapBorderColor, mapBorderWidth, clipToHexGrid, excludedHexKeys, disabledHexKeys, autoDisabledOceanHexKeys, megaHexEnabled, megaHexRadius, megaHexColor, megaHexOpacity, megaHexLineWidth, megaHexOriginQ, megaHexOriginR, areasMode, areas, areaHexes, areasStyle, bridgesEnabled, bridgeStyle, bridgeTiers, bridgeOverrides, showElevationDebug, showElevationClassOverlay, mapStyle, labelOffsets, activeTool, draw])
+  useEffect(() => { draw() }, [generatedHexes, hexBorderMode, hexEdgeMode, hexBorderOpacity, hexBorderColor, hexBorderDifference, hexNumbersEnabled, hexNumberEdge, hexNumberColor, hexNumberFontScale, hexNumberStartCorner, hexNumberMap, smoothedRoadData, smoothedRailData, showRawOsmRoads, roadNodeEditMode, riverNodeEditMode, riverChainOverrides, riverEdges, canalEdges, riverEditMode, canalEditMode, riverWidthScale, canalWidthScale, riverCurveSteps, riverWobble, riverDetail, riverWiggleFreq, riverWiggleAmp, riverSmoothing, riverPathSmoothing, showRiverLabels, riverLabelColor, riverSegmentProps, canalSegmentProps, riverSelectMode, canalSelectMode, selectedSegmentKeys, selectedCanalSegmentKeys, riverStyle, canalStyle, riverHopProps, selectedHopKey, defaultTerrainBlobs, defaultLakeBlobs, terrainColors, terrainTextureScales, terrainTextureBlendModes, terrainTextureOpacities, terrainTextureTintColors, terrainTextureTintOpacities, terrainTextureFile, terrainTextureEnabled, terrainBlobOverrides, terrainTypeBlobStyles, lakeOverrides, terrainRenderMode, settlements, settlementTierStyles, urbanHexes, urbanStyle, roadTierStyles, railStyle, highlights, highlightedHexes, highlightLines, highlightEdgePaths, iconOverlays, placedIcons, labelOverlays, placedLabels, realisticCoastline, coastlineDebugRaw, smoothedCoastlineBoundary, rawCoastlineBoundary, beachStrip, beachColor, beachWidth, coastlineDPEpsilon, coastlineChaikinPasses, edgeBlobPainted, edgeBlobOverrides, edgeBlobWidth, roadSegmentProps, roadHopProps, selectedRoadSegmentKeys, selectedRoadHopKey, roadSelectMode, railNodeEditMode, railControlOverrides, railSelectMode, railWiggleAmp, railWiggleFreq, railSmoothing, railSegmentProps, railHopProps, selectedRailSegmentKeys, selectedRailHopKey, mapBgColor, mapBorderEnabled, mapBorderColor, mapBorderWidth, clipToHexGrid, excludedHexKeys, disabledHexKeys, autoDisabledOceanHexKeys, megaHexEnabled, megaHexRadius, megaHexColor, megaHexOpacity, megaHexLineWidth, megaHexOriginQ, megaHexOriginR, bridgesEnabled, bridgeStyle, bridgeTiers, bridgeOverrides, showElevationDebug, showElevationClassOverlay, mapStyle, labelOffsets, activeTool, roadClearanceTerrains, draw])
 
   useEffect(() => { drawOsmHighlight() }, [osmHighlightTier, osmSpotlightMode, osmSpotlightTiers, osmRailHighlight, hoveredOsmRiverIdx, drawOsmHighlight])
 
@@ -2963,7 +2870,6 @@ export const TerrainViewCanvas = forwardRef<TerrainViewCanvasHandle, { surroundC
 
   // Invalidate highlights offscreen layer whenever highlight data changes
   useEffect(() => { joinedHighlightsDirtyRef.current = true }, [highlights, highlightedHexes, highlightLines, highlightEdgePaths])
-  useEffect(() => { areasDirtyRef.current = true }, [areas, areaHexes, areasStyle, areasMode, riverEdges, canalEdges])
 
   // ResizeObserver — canvas fills the full container
   const meta = generatedMetadata
@@ -3049,7 +2955,6 @@ export const TerrainViewCanvas = forwardRef<TerrainViewCanvasHandle, { surroundC
       if (e.button === 0 && (e.target as HTMLElement).tagName !== 'CANVAS') return
       if (e.button === 0 && (terrainPaintModeRef.current || elevationPaintModeRef.current || roadPaintModeRef.current || railPaintModeRef.current || riverEditModeRef.current || lakePaintModeRef.current || activeToolRef.current.type === 'hex-mask' || activeToolRef.current.type === 'mega-hex-origin' || activeToolRef.current.type === 'align-image')) return
       if (e.button === 0 && activePanelRef.current === 'highlights' && (highlightPaintModeRef.current || highlightLineEraserRef.current)) return
-      if (e.button === 0 && activePanelRef.current === 'areas' && (activeToolRef.current.type === 'areas-draw' || activeToolRef.current.type === 'areas-erase')) return
       if (e.button === 0 && draggingCpKeyRef.current) return
       e.preventDefault()
       isPanningRef.current = true
@@ -4063,93 +3968,6 @@ export const TerrainViewCanvas = forwardRef<TerrainViewCanvasHandle, { surroundC
     }
 
     const onUp = () => { painting = false; prevHex = null; segmentStarted = false; lastPainted = null }
-
-    el.addEventListener('mousedown', onDown, { capture: true })
-    window.addEventListener('mousemove', onMove)
-    window.addEventListener('mouseup', onUp)
-    return () => {
-      el.removeEventListener('mousedown', onDown, { capture: true })
-      window.removeEventListener('mousemove', onMove)
-      window.removeEventListener('mouseup', onUp)
-    }
-  }, [clientToLogical])
-
-  // Area draw/erase drag — click empty hex to create new area, drag from existing to expand it
-  useEffect(() => {
-    const el = containerRef.current
-    if (!el) return
-    let painting = false
-    let dragAreaId: string | null = null
-    let eraseMode = false
-    let lastPainted: string | null = null
-
-    const AREA_COLORS = ['#5a3a1a', '#1a3a5a', '#1a5a3a', '#5a1a3a', '#3a5a1a', '#3a1a5a', '#5a4a3a', '#1a5a5a']
-    const TERRAIN_NAMES: Record<string, string> = {
-      woods: 'Woods', light_woods: 'Forest', rough: 'Hills', marsh: 'Marsh', sea: 'Sea', clear: 'Fields',
-    }
-
-    const hexAtClient = (clientX: number, clientY: number) => {
-      const meta = metaRef.current
-      if (!meta) return null
-      const logical = clientToLogical(clientX, clientY)
-      if (!logical) return null
-      const { lx, ly, cssW, cssH } = logical
-      const { pw, ph, px, py } = computePaper(cssW, cssH, meta)
-      for (const hex of hexesRef.current) {
-        if (hexEdgeModeRef.current === 'whole' && hex.partial) continue
-        const verts = hex.vertices.map(([lon, lat]) => projectToCanvas(lon, lat, meta, pw, ph, px, py))
-        if (pointInPolygon(lx, ly, verts)) return hex
-      }
-      return null
-    }
-
-    const onDown = (e: MouseEvent) => {
-      if (e.button !== 0) return
-      if ((e.target as HTMLElement).tagName !== 'CANVAS') return
-      if (activePanelRef.current !== 'areas') return
-      const tool = activeToolRef.current
-      if (tool.type !== 'areas-draw' && tool.type !== 'areas-erase') return
-      e.stopPropagation()
-      const hex = hexAtClient(e.clientX, e.clientY)
-      if (!hex) return
-      painting = true
-      eraseMode = tool.type === 'areas-erase'
-      const key = `${hex.q},${hex.r}`
-      lastPainted = key
-      if (eraseMode) {
-        eraseHexAreaRef.current(hex.q, hex.r)
-      } else {
-        const existingId = areaHexesRef.current[key]
-        if (existingId) {
-          dragAreaId = existingId
-          setActiveAreaIdRef.current(existingId)
-        } else {
-          const idx = areasRef.current.length
-          const color = AREA_COLORS[idx % AREA_COLORS.length]
-          const name = TERRAIN_NAMES[hex.terrain] ?? `Area ${idx + 1}`
-          const newId = addAreaRef.current(name, color)
-          paintHexAreaRef.current(hex.q, hex.r, newId)
-          dragAreaId = newId
-          setActiveAreaIdRef.current(newId)
-        }
-      }
-    }
-
-    const onMove = (e: MouseEvent) => {
-      if (!painting) return
-      const hex = hexAtClient(e.clientX, e.clientY)
-      if (!hex) return
-      const key = `${hex.q},${hex.r}`
-      if (key === lastPainted) return
-      lastPainted = key
-      if (eraseMode) {
-        eraseHexAreaRef.current(hex.q, hex.r)
-      } else if (dragAreaId) {
-        paintHexAreaRef.current(hex.q, hex.r, dragAreaId)
-      }
-    }
-
-    const onUp = () => { painting = false; dragAreaId = null; eraseMode = false; lastPainted = null }
 
     el.addEventListener('mousedown', onDown, { capture: true })
     window.addEventListener('mousemove', onMove)
