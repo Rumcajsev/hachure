@@ -190,14 +190,16 @@ function ShapeSettingsFlyout({ onClose }: { onClose: () => void }) {
         <span style={{ fontFamily: t.mono, fontSize: 9, letterSpacing: 0.8, color: t.inkFaint, textTransform: 'uppercase', fontWeight: 600 }}>Edge fade</span>
       </div>
       <MiniSlider label="Fade" display={terrainBlobFeather > 0 ? `${Math.round(terrainBlobFeather * 100)}%` : 'off'} value={Math.round(terrainBlobFeather * 100)} min={0} max={100} step={1} onChange={v => setTerrainBlobFeather(v / 100)} />
-      <div style={{ margin: '6px 12px 2px', borderTop: `1px solid ${t.line2}`, paddingTop: 8 }}>
-        <span style={{ fontFamily: t.mono, fontSize: 9, letterSpacing: 0.8, color: t.inkFaint, textTransform: 'uppercase', fontWeight: 600 }}>Blob outline</span>
+      <div style={{ borderTop: `1px solid ${t.line2}`, paddingTop: 4 }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '6px 12px 6px' }}>
+          <span style={{ fontFamily: t.mono, fontSize: 8.5, letterSpacing: 0.8, color: t.inkFaint, textTransform: 'uppercase', fontWeight: 600 }}>Blob outline</span>
+          <ToggleSwitch enabled={terrainBlobOutlineEnabled} onChange={setTerrainBlobOutlineEnabled} />
+        </div>
+        {terrainBlobOutlineEnabled && <>
+          <BigColorSwatch value={terrainBlobOutlineColor} onChange={setTerrainBlobOutlineColor} groups={PALETTE_TERRAIN_GROUPS} />
+          <MiniSlider label="Width" display={`${terrainBlobOutlineWidth}px`} value={terrainBlobOutlineWidth} min={0.5} max={8} step={0.5} onChange={setTerrainBlobOutlineWidth} />
+        </>}
       </div>
-      <ToggleRow label="Outline" checked={terrainBlobOutlineEnabled} onChange={setTerrainBlobOutlineEnabled} />
-      {terrainBlobOutlineEnabled && <>
-        <BigColorSwatch value={terrainBlobOutlineColor} onChange={setTerrainBlobOutlineColor} groups={PALETTE_TERRAIN_GROUPS} />
-        <MiniSlider label="Width" display={`${terrainBlobOutlineWidth}px`} value={terrainBlobOutlineWidth} min={0.5} max={8} step={0.5} onChange={setTerrainBlobOutlineWidth} />
-      </>}
       <div style={{ margin: '6px 12px 2px', borderTop: `1px solid ${t.line2}`, paddingTop: 8 }}>
         <span style={{ fontFamily: t.mono, fontSize: 9, letterSpacing: 0.8, color: t.inkFaint, textTransform: 'uppercase', fontWeight: 600 }}>Edge blob</span>
       </div>
@@ -829,26 +831,27 @@ function TerrainCogFlyout({ terrain, onClose }: { terrain: string; onClose: () =
 
       {/* Blob outline */}
       <div style={{ borderTop: `1px solid ${tk.line2}`, paddingTop: 4 }}>
-        <div style={{ padding: '6px 12px 4px', fontFamily: tk.mono, fontSize: 8.5, letterSpacing: 0.8, color: tk.inkFaint, textTransform: 'uppercase' as const, fontWeight: 600 }}>
-          Blob outline
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '6px 12px 6px' }}>
+          <span style={{ fontFamily: tk.mono, fontSize: 8.5, letterSpacing: 0.8, color: tk.inkFaint, textTransform: 'uppercase' as const, fontWeight: 600 }}>Blob outline</span>
+          <ToggleSwitch
+            enabled={typeStyle?.outlineEnabled ?? terrainBlobOutlineEnabled}
+            onChange={v => setTerrainTypeBlobStyle(terrain, { outlineEnabled: v })}
+          />
         </div>
-        <ToggleRow
-          label="Outline"
-          checked={typeStyle?.outlineEnabled ?? terrainBlobOutlineEnabled}
-          onChange={v => setTerrainTypeBlobStyle(terrain, { outlineEnabled: v })}
-        />
-        <BigColorSwatch
-          value={typeStyle?.outlineColor ?? terrainBlobOutlineColor}
-          onChange={v => setTerrainTypeBlobStyle(terrain, { outlineColor: v })}
-          groups={PALETTE_TERRAIN_GROUPS}
-        />
-        <MiniSlider
-          label="Width"
-          display={`${typeStyle?.outlineWidth ?? terrainBlobOutlineWidth}px`}
-          value={typeStyle?.outlineWidth ?? terrainBlobOutlineWidth}
-          min={0.5} max={8} step={0.5}
-          onChange={v => setTerrainTypeBlobStyle(terrain, { outlineWidth: v })}
-        />
+        {(typeStyle?.outlineEnabled ?? terrainBlobOutlineEnabled) && <>
+          <BigColorSwatch
+            value={typeStyle?.outlineColor ?? terrainBlobOutlineColor}
+            onChange={v => setTerrainTypeBlobStyle(terrain, { outlineColor: v })}
+            groups={PALETTE_TERRAIN_GROUPS}
+          />
+          <MiniSlider
+            label="Width"
+            display={`${typeStyle?.outlineWidth ?? terrainBlobOutlineWidth}px`}
+            value={typeStyle?.outlineWidth ?? terrainBlobOutlineWidth}
+            min={0.5} max={8} step={0.5}
+            onChange={v => setTerrainTypeBlobStyle(terrain, { outlineWidth: v })}
+          />
+        </>}
       </div>
     </FlyoutShell>
   )
@@ -1026,26 +1029,27 @@ function ElevationCogFlyout({ cls, defaultColor, onClose }: { cls: 'hills' | 'mo
 
       {/* Blob outline */}
       <div style={{ borderTop: `1px solid ${tk.line2}`, paddingTop: 4 }}>
-        <div style={{ padding: '6px 12px 4px', fontFamily: tk.mono, fontSize: 8.5, letterSpacing: 0.8, color: tk.inkFaint, textTransform: 'uppercase' as const, fontWeight: 600 }}>
-          Blob outline
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '6px 12px 6px' }}>
+          <span style={{ fontFamily: tk.mono, fontSize: 8.5, letterSpacing: 0.8, color: tk.inkFaint, textTransform: 'uppercase' as const, fontWeight: 600 }}>Blob outline</span>
+          <ToggleSwitch
+            enabled={typeStyle?.outlineEnabled ?? terrainBlobOutlineEnabled}
+            onChange={v => setElevationTypeBlobStyle(cls, { outlineEnabled: v })}
+          />
         </div>
-        <ToggleRow
-          label="Outline"
-          checked={typeStyle?.outlineEnabled ?? terrainBlobOutlineEnabled}
-          onChange={v => setElevationTypeBlobStyle(cls, { outlineEnabled: v })}
-        />
-        <BigColorSwatch
-          value={typeStyle?.outlineColor ?? terrainBlobOutlineColor}
-          onChange={v => setElevationTypeBlobStyle(cls, { outlineColor: v })}
-          groups={PALETTE_TERRAIN_GROUPS}
-        />
-        <MiniSlider
-          label="Width"
-          display={`${typeStyle?.outlineWidth ?? terrainBlobOutlineWidth}px`}
-          value={typeStyle?.outlineWidth ?? terrainBlobOutlineWidth}
-          min={0.5} max={8} step={0.5}
-          onChange={v => setElevationTypeBlobStyle(cls, { outlineWidth: v })}
-        />
+        {(typeStyle?.outlineEnabled ?? terrainBlobOutlineEnabled) && <>
+          <BigColorSwatch
+            value={typeStyle?.outlineColor ?? terrainBlobOutlineColor}
+            onChange={v => setElevationTypeBlobStyle(cls, { outlineColor: v })}
+            groups={PALETTE_TERRAIN_GROUPS}
+          />
+          <MiniSlider
+            label="Width"
+            display={`${typeStyle?.outlineWidth ?? terrainBlobOutlineWidth}px`}
+            value={typeStyle?.outlineWidth ?? terrainBlobOutlineWidth}
+            min={0.5} max={8} step={0.5}
+            onChange={v => setElevationTypeBlobStyle(cls, { outlineWidth: v })}
+          />
+        </>}
       </div>
     </FlyoutShell>
   )
@@ -1136,29 +1140,14 @@ export function TerrainSidebarV3() {
 
       <StripShell>
 
-        <V2Divider label="Terrain · imported" />
-        {OSM_TERRAINS.map((t, idx) => (
+        <V2Divider label="Terrain" />
+        {[...OSM_TERRAINS, ...MANUAL_TERRAINS].map((t, idx) => (
           <BrushRow
             key={t}
             label={terrainLabel(t)}
             color={colorFor(t)}
             active={terrainPaintMode && terrainPaintBrush === t}
             shortcut={String(idx + 1)}
-            showCog
-            cogOpen={flyout === 't-terrain' && cogTerrain === t}
-            customShape={terrainTypeBlobStyles[t]?.enabled === true}
-            onSelect={() => selectBrush(t)}
-            onCog={() => openCog(t)}
-          />
-        ))}
-        <V2Divider label="Terrain · manual" />
-        {MANUAL_TERRAINS.map((t, idx) => (
-          <BrushRow
-            key={t}
-            label={terrainLabel(t)}
-            color={colorFor(t)}
-            active={terrainPaintMode && terrainPaintBrush === t}
-            shortcut={String(OSM_TERRAINS.length + idx + 1)}
             showCog
             cogOpen={flyout === 't-terrain' && cogTerrain === t}
             customShape={terrainTypeBlobStyles[t]?.enabled === true}
