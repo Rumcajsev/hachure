@@ -95,7 +95,6 @@ export const createMapImageSlice = (set: Set, get: () => MapStore): MapImageSlic
       const placeholder: GeneratedHex[] = data.hexes.map((h: GeneratedHex) => ({
         ...h,
         terrain: 'clear', terrains: [], coverage: {},
-        isLake: false, lakeManualOverride: false,
         elevation_avg_m: null, elevation_median_m: null,
         elevation_max_m: null, elevation_min_m: null,
         elevation_range_m: null, elevation_class: null,
@@ -164,7 +163,7 @@ export const createMapImageSlice = (set: Set, get: () => MapStore): MapImageSlic
         edgeBlobPainted: {},
         edgeBlobOverrides: {},
         terrainBlobOverrides: {},
-        lakeOverrides: {},
+        waterOverrides: {},
         bridgeOverrides: {},
         undoStack: [],
         redoStack: [],

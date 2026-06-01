@@ -18,11 +18,11 @@ WORLDCOVER_TERRAIN: dict[int, str] = {
     50: "clear",   # Built-up (urban handled via settlements overlay)
     60: "rough",   # Bare / sparse vegetation
     70: "rough",   # Snow and ice
-    80: "sea",     # Permanent water bodies (ocean, coastal water, large lakes)
+    80: "water",   # Permanent water bodies (ocean, coastal water, lakes)
     90: "marsh",   # Herbaceous wetland
     95: "marsh",   # Mangroves
     100: "rough",  # Moss and lichen
-    0: "sea",      # No data = ocean (WorldCover only covers land; 0 over water)
+    0: "water",    # No data = ocean (WorldCover only covers land; 0 over water)
 }
 
 # ~100m resolution — plenty for hex classification, drastically cuts download size

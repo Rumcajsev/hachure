@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 import {
-  useMapStore, LAKE_COLOR, DEFAULT_RIVER_STYLE, DEFAULT_CANAL_STYLE,
+  useMapStore, DEFAULT_RIVER_STYLE, DEFAULT_CANAL_STYLE,
 } from '../../store/mapStore'
 import { riverChainCache, computeTaperRanges } from '../../lib/riverChains'
 import {
@@ -22,7 +22,7 @@ const RIVER_STROKE_GROUPS = [{ label: 'Dark', colors: [...PALETTE_RIVER_OUTLINE]
 const CANAL_FILL_GROUPS   = [{ label: 'Teal', colors: [...PALETTE_CANAL] }]
 const CANAL_STROKE_GROUPS = [{ label: 'Dark', colors: [...PALETTE_CANAL_OUTLINE] }]
 
-type FlyoutId = 'river' | 'canal' | 'lake' | 'osm' | 'auto-lakes' | 'segment' | 'river-labels' | null
+type FlyoutId = 'river' | 'canal' | 'osm' | 'segment' | 'river-labels' | null
 
 // ── SubLabel ──────────────────────────────────────────────────────────────────
 
@@ -155,45 +155,6 @@ function CanalStyleFlyout({ onClose }: { onClose: () => void }) {
   )
 }
 
-// ── LakeShapeFlyout ───────────────────────────────────────────────────────────
-
-function LakeShapeFlyout({ onClose }: { onClose: () => void }) {
-  const t = useTheme()
-  const {
-    lakeBlobSmooth, setLakeBlobSmooth,
-    lakeBlobOffset, setLakeBlobOffset,
-    lakeBlobBump, setLakeBlobBump,
-    lakeBlobSweepFreq, setLakeBlobSweepFreq,
-    lakeBlobLobeFreq, setLakeBlobLobeFreq,
-    lakeBlobLobeAmp, setLakeBlobLobeAmp,
-    lakeBlobLobeThreshold, setLakeBlobLobeThreshold,
-    lakeBlobLobeDirection, setLakeBlobLobeDirection,
-  } = useMapStore()
-
-  return (
-    <FlyoutShell title="Lake Shape" onClose={onClose}>
-      <SubLabel label="Shape" />
-      <MiniSlider label="Corner rounding" display={String(lakeBlobSmooth)}                                                            value={lakeBlobSmooth}                      min={0}   max={5}   step={1} onChange={setLakeBlobSmooth} />
-      <MiniSlider label="Waviness"        display={`${Math.round(lakeBlobBump * 100)}%`}                                              value={Math.round(lakeBlobBump * 100)}      min={0}   max={60}  step={1} onChange={v => setLakeBlobBump(v / 100)} />
-      <MiniSlider label="Inset"           display={`${lakeBlobOffset > 0 ? '+' : ''}${Math.round(lakeBlobOffset * 100)}%`}            value={Math.round(lakeBlobOffset * 100)}    min={-80} max={30}  step={1} onChange={v => setLakeBlobOffset(v / 100)} />
-      <MiniSlider label="Wave scale"      display={lakeBlobSweepFreq.toFixed(2)}                                                      value={Math.round(lakeBlobSweepFreq * 100)} min={40}  max={100} step={1} onChange={v => setLakeBlobSweepFreq(v / 100)} />
-
-      <div style={{ borderTop: `1px solid ${t.line2}` }}>
-        <SubLabel label="Fringe" />
-        <MiniSlider label="Scale"    display={lakeBlobLobeFreq.toFixed(1)}                    value={Math.round(lakeBlobLobeFreq * 10)}       min={20} max={50}  step={1} onChange={v => setLakeBlobLobeFreq(v / 10)} />
-        <MiniSlider label="Strength" display={`${Math.round(lakeBlobLobeAmp * 100)}%`}        value={Math.round(lakeBlobLobeAmp * 100)}       min={0}  max={100} step={1} onChange={v => setLakeBlobLobeAmp(v / 100)} />
-        <MiniSlider label="Sparsity" display={`${Math.round(lakeBlobLobeThreshold * 100)}%`}  value={Math.round(lakeBlobLobeThreshold * 100)} min={0}  max={40}  step={1} onChange={v => setLakeBlobLobeThreshold(v / 100)} />
-        <div style={{ padding: '4px 14px 8px' }}>
-          <SegmentedControl
-            options={[{ value: 'outward', label: 'Outward' }, { value: 'inward', label: 'Inward' }]}
-            value={lakeBlobLobeDirection >= 0 ? 'outward' : 'inward'}
-            onChange={v => setLakeBlobLobeDirection(v === 'outward' ? 1 : -1)}
-          />
-        </div>
-      </div>
-    </FlyoutShell>
-  )
-}
 
 // ── OsmRiversFlyout ───────────────────────────────────────────────────────────
 
@@ -301,27 +262,6 @@ function OsmRiversFlyout({ onClose }: { onClose: () => void }) {
   )
 }
 
-// ── AutoLakesFlyout ───────────────────────────────────────────────────────────
-
-function AutoLakesFlyout({ onClose }: { onClose: () => void }) {
-  const { autoLakesEnabled, setAutoLakesEnabled, lakeSensitivity, setLakeSensitivity } = useMapStore()
-  return (
-    <FlyoutShell title="Auto Lakes" onClose={onClose}>
-      <div style={{ padding: '2px 0 4px' }}>
-        <ToggleRow label="Detect automatically" checked={autoLakesEnabled} onChange={setAutoLakesEnabled} />
-      </div>
-      {autoLakesEnabled && (
-        <MiniSlider
-          label="Sensitivity"
-          display={`${Math.round(lakeSensitivity * 100)}%`}
-          value={Math.round(lakeSensitivity * 100)}
-          min={5} max={95} step={1}
-          onChange={v => setLakeSensitivity(v / 100)}
-        />
-      )}
-    </FlyoutShell>
-  )
-}
 
 // ── SegmentFlyout ─────────────────────────────────────────────────────────────
 
@@ -510,7 +450,7 @@ function RiverLabelFlyout({ onClose }: { onClose: () => void }) {
 export function RiversSidebarV3() {
   const t = useTheme()
   const {
-    riverEditMode, canalEditMode, lakePaintMode, riverNodeEditMode,
+    riverEditMode, canalEditMode, riverNodeEditMode,
     riverSelectMode, canalSelectMode,
     setActiveTool,
     selectedSegmentKeys, setSelectedSegmentKeys,
@@ -580,19 +520,6 @@ export function RiversSidebarV3() {
         <TGap />
 
         <BrushRow
-          label="Lake"
-          color={LAKE_COLOR}
-          active={lakePaintMode}
-          shortcut="3"
-          showCog
-          cogOpen={flyout === 'lake'}
-          onSelect={() => setActiveTool(lakePaintMode ? { type: 'none' } : { type: 'lake' })}
-          onCog={() => toggle('lake')}
-        />
-
-        <TGap />
-
-        <BrushRow
           label="Edit nodes"
           color={riverNodeEditMode ? '#8ab8d8' : t.inkFaint}
           active={riverNodeEditMode}
@@ -609,21 +536,15 @@ export function RiversSidebarV3() {
         )}
 
         <TGap />
-        <V2Divider label="Auto lakes" />
-        <TriggerRow label="Auto lakes" active={flyout === 'auto-lakes'} onClick={() => toggle('auto-lakes')} />
-
-        <TGap />
         <V2Divider label="Labels" />
         <TriggerRow label="Label Style" active={flyout === 'river-labels'} onClick={() => toggle('river-labels')} />
 
       </StripShell>
 
-      {flyout === 'river'      && <RiverStyleFlyout onClose={() => setFlyout(null)} />}
-      {flyout === 'canal'      && <CanalStyleFlyout onClose={() => setFlyout(null)} />}
-      {flyout === 'lake'       && <LakeShapeFlyout  onClose={() => setFlyout(null)} />}
-      {flyout === 'osm'        && <OsmRiversFlyout  onClose={() => setFlyout(null)} />}
-      {flyout === 'auto-lakes'   && <AutoLakesFlyout   onClose={() => setFlyout(null)} />}
-      {flyout === 'river-labels' && <RiverLabelFlyout  onClose={() => setFlyout(null)} />}
+      {flyout === 'river'        && <RiverStyleFlyout onClose={() => setFlyout(null)} />}
+      {flyout === 'canal'        && <CanalStyleFlyout onClose={() => setFlyout(null)} />}
+      {flyout === 'osm'          && <OsmRiversFlyout  onClose={() => setFlyout(null)} />}
+      {flyout === 'river-labels' && <RiverLabelFlyout onClose={() => setFlyout(null)} />}
       {flyout === 'segment'    && (
         <SegmentFlyout
           mode={segmentMode}

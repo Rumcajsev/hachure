@@ -12,10 +12,9 @@ export type UndoSlice = {
 
 type Set = (partial: Partial<MapStore> | ((s: MapStore) => Partial<MapStore>)) => void
 
-const snapHex = ({ q, r, terrain, manual_override, isLake, elevation_class, elevation_manual_override }: Parameters<typeof snapHex>[0]) => ({
+const snapHex = ({ q, r, terrain, manual_override, elevation_class, elevation_manual_override }: Parameters<typeof snapHex>[0]) => ({
   q, r, terrain,
   manual_override: manual_override ?? false,
-  isLake: isLake ?? false,
   elevation_class: elevation_class ?? null,
   elevation_manual_override: elevation_manual_override ?? false,
 })
@@ -24,7 +23,6 @@ const restoreHex = (h: ReturnType<typeof snapHex>, full: MapStore['generatedHexe
   ...full,
   terrain: h.terrain,
   manual_override: h.manual_override,
-  isLake: h.isLake,
   elevation_class: h.elevation_class,
   elevation_manual_override: h.elevation_manual_override,
 })

@@ -1,7 +1,7 @@
 import { useRef, useEffect, useCallback, useState, useMemo, forwardRef, useImperativeHandle, type CSSProperties } from 'react'
 import maplibregl from 'maplibre-gl'
 import 'maplibre-gl/dist/maplibre-gl.css'
-import { useMapStore, TERRAIN_COLORS, LAKE_COLOR, TERRAIN_PRIORITY, hexTerrainLayers, edgeBlobCanonicalKey, type GeneratedHex, type RoadTierStyle } from '../store/mapStore'
+import { useMapStore, TERRAIN_COLORS, WATER_COLOR, TERRAIN_PRIORITY, hexTerrainLayers, edgeBlobCanonicalKey, type GeneratedHex, type RoadTierStyle } from '../store/mapStore'
 import { BlobOverrideFlyout } from './BlobOverrideFlyout'
 import { useTheme } from '../context/ThemeContext'
 import { hexAdjacent, catmullRom, offsetPolyline, pointInPolygon, distToSeg, douglasPeucker, chaikin } from '../lib/geometry'
@@ -211,14 +211,13 @@ terrainColors, terrainTextureScales, terrainTextureBlendModes, terrainTextureOpa
     setSelectedSegmentKeys, toggleSegmentSelection,
     setSelectedCanalSegmentKeys, toggleCanalSegmentSelection,
     riverStyle, canalStyle,
-    lakePaintMode, overrideHexLake,
-    lakeBlobSmooth, lakeBlobOffset, lakeBlobBump,
-    lakeBlobSweepFreq, lakeBlobLobeFreq, lakeBlobLobeAmp, lakeBlobLobeThreshold, lakeBlobLobeDirection,
+    waterBlobSmooth, waterBlobOffset, waterBlobBump,
+    waterBlobSweepFreq, waterBlobLobeFreq, waterBlobLobeAmp, waterBlobLobeThreshold, waterBlobLobeDirection,
     riverWidthScale, canalWidthScale, riverCurveSteps, riverWobble, riverDetail,
     riverWiggleFreq, riverWiggleAmp, riverSmoothing, riverPathSmoothing,
     terrainBlobOverrides, setTerrainBlobOverride,
     terrainTypeBlobStyles,
-    lakeOverrides, setLakeOverride,
+    waterOverrides, setWaterOverride,
     edgeBlobPainted,
     paintEdgeBlob, eraseEdgeBlob,
     terrainEdgePaintEnabled,
@@ -435,16 +434,14 @@ terrainColors, terrainTextureScales, terrainTextureBlendModes, terrainTextureOpa
   const canalStyleRef = useRef(canalStyle)
   const computedRiverChainsRef = useRef<{ vertices: [number,number][]; segKey: string }[]>([])
   const computedCanalChainsRef = useRef<{ vertices: [number,number][]; segKey: string }[]>([])
-const lakePaintModeRef = useRef(lakePaintMode)
-  const overrideHexLakeRef = useRef(overrideHexLake)
-  const lakeBlobSmoothRef = useRef(lakeBlobSmooth)
-  const lakeBlobOffsetRef = useRef(lakeBlobOffset)
-  const lakeBlobBumpRef = useRef(lakeBlobBump)
-  const lakeBlobSweepFreqRef = useRef(lakeBlobSweepFreq)
-  const lakeBlobLobeFreqRef = useRef(lakeBlobLobeFreq)
-  const lakeBlobLobeAmpRef = useRef(lakeBlobLobeAmp)
-  const lakeBlobLobeThresholdRef = useRef(lakeBlobLobeThreshold)
-  const lakeBlobLobeDirectionRef = useRef(lakeBlobLobeDirection)
+const waterBlobSmoothRef = useRef(waterBlobSmooth)
+  const waterBlobOffsetRef = useRef(waterBlobOffset)
+  const waterBlobBumpRef = useRef(waterBlobBump)
+  const waterBlobSweepFreqRef = useRef(waterBlobSweepFreq)
+  const waterBlobLobeFreqRef = useRef(waterBlobLobeFreq)
+  const waterBlobLobeAmpRef = useRef(waterBlobLobeAmp)
+  const waterBlobLobeThresholdRef = useRef(waterBlobLobeThreshold)
+  const waterBlobLobeDirectionRef = useRef(waterBlobLobeDirection)
   const riverWidthScaleRef = useRef(riverWidthScale)
   const canalWidthScaleRef = useRef(canalWidthScale)
   const riverCurveStepsRef = useRef(riverCurveSteps)
@@ -493,7 +490,7 @@ const lakePaintModeRef = useRef(lakePaintMode)
   const terrainTextureEnabledRef = useRef(terrainTextureEnabled)
   const terrainBlobOverridesRef = useRef(terrainBlobOverrides)
   const terrainTypeBlobStylesRef = useRef(terrainTypeBlobStyles)
-  const lakeOverridesRef = useRef(lakeOverrides)
+  const waterOverridesRef = useRef(waterOverrides)
   const terrainRenderModeRef = useRef(terrainRenderMode)
   // Field mode refs — detached. Re-add when field render is reactivated.
   // const fieldFreqRef = useRef(fieldFreq)
@@ -699,16 +696,14 @@ const lakePaintModeRef = useRef(lakePaintMode)
   toggleCanalSegmentSelectionRef.current = toggleCanalSegmentSelection
   riverStyleRef.current = riverStyle
   canalStyleRef.current = canalStyle
-  lakePaintModeRef.current = lakePaintMode
-  overrideHexLakeRef.current = overrideHexLake
-  lakeBlobSmoothRef.current = lakeBlobSmooth
-  lakeBlobOffsetRef.current = lakeBlobOffset
-  lakeBlobBumpRef.current = lakeBlobBump
-  lakeBlobSweepFreqRef.current = lakeBlobSweepFreq
-  lakeBlobLobeFreqRef.current = lakeBlobLobeFreq
-  lakeBlobLobeAmpRef.current = lakeBlobLobeAmp
-  lakeBlobLobeThresholdRef.current = lakeBlobLobeThreshold
-  lakeBlobLobeDirectionRef.current = lakeBlobLobeDirection
+  waterBlobSmoothRef.current = waterBlobSmooth
+  waterBlobOffsetRef.current = waterBlobOffset
+  waterBlobBumpRef.current = waterBlobBump
+  waterBlobSweepFreqRef.current = waterBlobSweepFreq
+  waterBlobLobeFreqRef.current = waterBlobLobeFreq
+  waterBlobLobeAmpRef.current = waterBlobLobeAmp
+  waterBlobLobeThresholdRef.current = waterBlobLobeThreshold
+  waterBlobLobeDirectionRef.current = waterBlobLobeDirection
   riverWidthScaleRef.current = riverWidthScale
   canalWidthScaleRef.current = canalWidthScale
   riverCurveStepsRef.current = riverCurveSteps
@@ -836,7 +831,7 @@ const lakePaintModeRef = useRef(lakePaintMode)
   coastlineChaikinPassesRef.current = coastlineChaikinPasses
   terrainBlobOverridesRef.current = terrainBlobOverrides
   terrainTypeBlobStylesRef.current = terrainTypeBlobStyles
-  lakeOverridesRef.current = lakeOverrides
+  waterOverridesRef.current = waterOverrides
   terrainEdgePaintEnabledRef.current = terrainEdgePaintEnabled
   paintEdgeBlobRef.current = paintEdgeBlob
   eraseEdgeBlobRef.current = eraseEdgeBlob
@@ -874,7 +869,7 @@ const lakePaintModeRef = useRef(lakePaintMode)
   )
 
   const blobComponents = useMemo(
-    () => computeConnectedComponents(generatedHexes.map(h => ({ q: h.q, r: h.r, terrain: h.terrain, isLake: h.isLake ?? false }))),
+    () => computeConnectedComponents(generatedHexes.map(h => ({ q: h.q, r: h.r, terrain: h.terrain }))),
     [generatedHexes],
   )
   const blobComponentsRef = useRef(blobComponents)
@@ -889,7 +884,7 @@ const lakePaintModeRef = useRef(lakePaintMode)
     const terrainTypes = new Set<string>()
     for (const h of generatedHexes) {
       for (const t of hexTerrainLayers(h)) {
-        if (t !== 'clear' && t !== 'lake') terrainTypes.add(t)
+        if (t !== 'clear' && t !== 'water') terrainTypes.add(t)
       }
     }
     for (const t of terrainTypes) {
@@ -900,7 +895,7 @@ const lakePaintModeRef = useRef(lakePaintMode)
         result.set(t, cached.components)
       } else {
         const components = computeConnectedComponents(
-          hexesForType.map(h => ({ q: h.q, r: h.r, terrain: t, isLake: false as const }))
+          hexesForType.map(h => ({ q: h.q, r: h.r, terrain: t }))
         )
         perTerrainCompCache.current.set(t, { hexKey, components })
         result.set(t, components)
@@ -1122,39 +1117,39 @@ const roadV3TierGeomRef = useRef(roadV3TierGeom)
   // Ocean sea keys: pure-sea hexes (terrain='sea', no clip) that are reachable via
   // flood-fill from any pure-sea hex adjacent to a coastal hex (one with coastline_clip).
   // Inland water bodies form isolated islands with no path to the coast — excluded.
-  const oceanSeaKeys = useMemo(() => {
+  const oceanWaterKeys = useMemo(() => {
     if (!realisticCoastline) return new Set<string>()
     const hexByKey = new Map<string, GeneratedHex>()
     for (const h of generatedHexes) hexByKey.set(`${h.q},${h.r}`, h)
     const NEIGHBORS = [[1,0],[-1,0],[0,1],[0,-1],[1,-1],[-1,1]]
     const visited = new Set<string>()
     const queue: string[] = []
-    // Seed: pure-sea hexes adjacent to any hex with coastline_clip
+    // Seed: pure-water hexes adjacent to any hex with coastline_clip
     for (const h of generatedHexes) {
       if (!h.coastline_clip || h.coastline_clip.length === 0) continue
       for (const [dq, dr] of NEIGHBORS) {
         const nb = hexByKey.get(`${h.q + dq},${h.r + dr}`)
-        if (!nb || nb.terrain !== 'sea' || (nb.coastline_clip?.length ?? 0) > 0) continue
+        if (!nb || nb.terrain !== 'water' || (nb.coastline_clip?.length ?? 0) > 0) continue
         const nk = `${nb.q},${nb.r}`
         if (!visited.has(nk)) { visited.add(nk); queue.push(nk) }
       }
     }
-    // BFS through connected pure-sea hexes
+    // BFS through connected pure-water hexes
     while (queue.length > 0) {
       const k = queue.pop()!
       const parts = k.split(',')
       const q = parseInt(parts[0]), r = parseInt(parts[1])
       for (const [dq, dr] of NEIGHBORS) {
         const nb = hexByKey.get(`${q + dq},${r + dr}`)
-        if (!nb || nb.terrain !== 'sea' || (nb.coastline_clip?.length ?? 0) > 0) continue
+        if (!nb || nb.terrain !== 'water' || (nb.coastline_clip?.length ?? 0) > 0) continue
         const nk = `${nb.q},${nb.r}`
         if (!visited.has(nk)) { visited.add(nk); queue.push(nk) }
       }
     }
     return visited
   }, [generatedHexes, realisticCoastline])
-  const oceanSeaKeysRef = useRef(oceanSeaKeys)
-  oceanSeaKeysRef.current = oceanSeaKeys
+  const oceanWaterKeysRef = useRef(oceanWaterKeys)
+  oceanWaterKeysRef.current = oceanWaterKeys
 
   // Raw projected land polygon boundary — unsmoothed, for debug overlay and as V3 input.
   const rawCoastlineBoundary = useMemo((): [number, number][][] => {
@@ -1193,13 +1188,13 @@ const roadV3TierGeomRef = useRef(roadV3TierGeom)
     // Pure-sea: terrain=sea with no coastline_clip. When realistic coastline is on these
     // are excluded from blobs — section 6 handles their fill. When off, they enter the sea blob.
     const isPureSea = (h: GeneratedHex) =>
-      h.terrain === 'sea' && (!h.coastline_clip || h.coastline_clip.length === 0)
+      h.terrain === 'water' && (!h.coastline_clip || h.coastline_clip.length === 0)
     const terrainTypeSet = new Set<string>()
     for (const p of projectedHexes) {
       const h = p.hex as GeneratedHex
       if (realisticCoastline && isPureSea(h)) continue
       for (const t of coastalBlobTerrains(h, realisticCoastline)) {
-        if (t !== 'clear' && t !== 'lake') terrainTypeSet.add(t)
+        if (t !== 'clear' && t !== 'water') terrainTypeSet.add(t)
       }
     }
     const terrainTypes = [...terrainTypeSet]
@@ -1298,44 +1293,44 @@ const roadV3TierGeomRef = useRef(roadV3TierGeom)
 
   const prevLakeBlobsRef = useRef<{ terrain: string; polys: [number, number][][] }[]>([])
   const lakeBlobCache = useRef<{ hexKey: string; rawPolys: [number, number][][]; hexCenters: [number, number][]; styleKey: string; blobs: { terrain: string; polys: [number, number][][] }[] } | null>(null)
-  const defaultLakeBlobs = useMemo(() => {
+  const defaultWaterBlobs = useMemo(() => {
     if (projectedHexes.length === 0 || hexRadius === 0) return []
     if (isTerrainPainting) return prevLakeBlobsRef.current
-    const lakeOverriddenKeys = new Set(Object.keys(lakeOverrides))
-    const defaultLakeProjected = projectedHexes
+    const waterOverriddenKeys = new Set(Object.keys(waterOverrides))
+    const defaultWaterProjected = projectedHexes
       .filter(p => {
-        if (!(p.hex.isLake ?? false)) return false
+        if (p.hex.terrain !== 'water') return false
         const ck = blobComponents.get(`${p.hex.q},${p.hex.r}`)
-        return !ck || !lakeOverriddenKeys.has(ck)
+        return !ck || !waterOverriddenKeys.has(ck)
       })
-      .map(p => ({ hex: { ...p.hex, terrain: 'lake' }, verts: p.verts }))
-    if (defaultLakeProjected.length === 0) {
+      .map(p => ({ hex: { ...p.hex, terrain: 'water' }, verts: p.verts }))
+    if (defaultWaterProjected.length === 0) {
       lakeBlobCache.current = null
       return prevLakeBlobsRef.current
     }
-    const hexKey = defaultLakeProjected.map(p => `${p.hex.q},${p.hex.r}`).join('|')
-    const styleKey = `${lakeBlobSmooth}|${lakeBlobOffset}|${lakeBlobBump}|${lakeBlobSweepFreq}|${lakeBlobLobeFreq}|${lakeBlobLobeAmp}|${lakeBlobLobeThreshold}|${lakeBlobLobeDirection}|${hexRadius}`
+    const hexKey = defaultWaterProjected.map(p => `${p.hex.q},${p.hex.r}`).join('|')
+    const styleKey = `${waterBlobSmooth}|${waterBlobOffset}|${waterBlobBump}|${waterBlobSweepFreq}|${waterBlobLobeFreq}|${waterBlobLobeAmp}|${waterBlobLobeThreshold}|${waterBlobLobeDirection}|${hexRadius}`
     if (lakeBlobCache.current?.hexKey === hexKey && lakeBlobCache.current?.styleKey === styleKey) {
       return lakeBlobCache.current.blobs
     }
-    let lakeRawPolys: [number, number][][]
-    let lakeHexCenters: [number, number][]
+    let waterRawPolys: [number, number][][]
+    let waterHexCenters: [number, number][]
     if (lakeBlobCache.current?.hexKey === hexKey) {
-      lakeRawPolys = lakeBlobCache.current.rawPolys
-      lakeHexCenters = lakeBlobCache.current.hexCenters
+      waterRawPolys = lakeBlobCache.current.rawPolys
+      waterHexCenters = lakeBlobCache.current.hexCenters
     } else {
-      const topo = buildTerrainBlobTopology(defaultLakeProjected, hexRadius)
-      const entry = topo.find(e => e.terrain === 'lake')
-      lakeRawPolys = entry?.rawPolys ?? []
-      lakeHexCenters = entry?.hexCenters ?? []
+      const topo = buildTerrainBlobTopology(defaultWaterProjected, hexRadius)
+      const entry = topo.find(e => e.terrain === 'water')
+      waterRawPolys = entry?.rawPolys ?? []
+      waterHexCenters = entry?.hexCenters ?? []
     }
-    const result = shapeTerrainBlobs([{ terrain: 'lake', rawPolys: lakeRawPolys, hexCenters: lakeHexCenters }], lakeBlobSmooth, lakeBlobOffset, lakeBlobBump, lakeBlobSweepFreq, lakeBlobLobeFreq, lakeBlobLobeAmp, lakeBlobLobeThreshold, lakeBlobLobeDirection, hexRadius)
-    lakeBlobCache.current = { hexKey, rawPolys: lakeRawPolys, hexCenters: lakeHexCenters, styleKey, blobs: result }
+    const result = shapeTerrainBlobs([{ terrain: 'water', rawPolys: waterRawPolys, hexCenters: waterHexCenters }], waterBlobSmooth, waterBlobOffset, waterBlobBump, waterBlobSweepFreq, waterBlobLobeFreq, waterBlobLobeAmp, waterBlobLobeThreshold, waterBlobLobeDirection, hexRadius)
+    lakeBlobCache.current = { hexKey, rawPolys: waterRawPolys, hexCenters: waterHexCenters, styleKey, blobs: result }
     prevLakeBlobsRef.current = result
     return result
-  }, [isTerrainPainting, projectedHexes, blobComponents, lakeOverrides, lakeBlobSmooth, lakeBlobOffset, lakeBlobBump, lakeBlobSweepFreq, lakeBlobLobeFreq, lakeBlobLobeAmp, lakeBlobLobeThreshold, lakeBlobLobeDirection, hexRadius])
-  const defaultLakeBlobsRef = useRef(defaultLakeBlobs)
-  defaultLakeBlobsRef.current = defaultLakeBlobs
+  }, [isTerrainPainting, projectedHexes, blobComponents, waterOverrides, waterBlobSmooth, waterBlobOffset, waterBlobBump, waterBlobSweepFreq, waterBlobLobeFreq, waterBlobLobeAmp, waterBlobLobeThreshold, waterBlobLobeDirection, hexRadius])
+  const defaultWaterBlobsRef = useRef(defaultWaterBlobs)
+  defaultWaterBlobsRef.current = defaultWaterBlobs
 
   const prevElevationBlobsRef = useRef<{ hills: [number, number][][]; mountains: [number, number][][] }>({ hills: [], mountains: [] })
   const elevationBlobsCache = useRef<{ hexKey: string; topoHills: BlobTopologyEntry | null; topoMountains: BlobTopologyEntry | null; styleKey: string; blobs: { hills: [number, number][][]; mountains: [number, number][][] } } | null>(null)
@@ -1597,9 +1592,9 @@ const roadV3TierGeomRef = useRef(roadV3TierGeom)
       px, py, pw, ph,
       backgroundTerrainBlobs: defaultBackgroundBlobsRef.current,
       defaultTerrainBlobs: defaultTerrainBlobsRef.current,
-      defaultLakeBlobs: defaultLakeBlobsRef.current,
+      defaultWaterBlobs: defaultWaterBlobsRef.current,
       terrainBlobOverrides: terrainBlobOverridesRef.current,
-      lakeOverrides: lakeOverridesRef.current,
+      waterOverrides: waterOverridesRef.current,
       blobComponents: blobComponentsRef.current,
       blobComponentsByTerrain: blobComponentsByTerrainRef.current,
       terrainBlobParams: {
@@ -1612,18 +1607,18 @@ const roadV3TierGeomRef = useRef(roadV3TierGeom)
       terrainBlobOutlineEnabled: terrainBlobOutlineEnabledRef.current,
       terrainBlobOutlineColor: terrainBlobOutlineColorRef.current,
       terrainBlobOutlineWidth: terrainBlobOutlineWidthRef.current,
-      lakeBlobParams: {
-        smooth: lakeBlobSmoothRef.current, offset: lakeBlobOffsetRef.current,
-        bump: lakeBlobBumpRef.current, sweepFreq: lakeBlobSweepFreqRef.current,
-        lobeFreq: lakeBlobLobeFreqRef.current, lobeAmp: lakeBlobLobeAmpRef.current,
-        lobeThreshold: lakeBlobLobeThresholdRef.current, lobeDirection: lakeBlobLobeDirectionRef.current,
+      waterBlobParams: {
+        smooth: waterBlobSmoothRef.current, offset: waterBlobOffsetRef.current,
+        bump: waterBlobBumpRef.current, sweepFreq: waterBlobSweepFreqRef.current,
+        lobeFreq: waterBlobLobeFreqRef.current, lobeAmp: waterBlobLobeAmpRef.current,
+        lobeThreshold: waterBlobLobeThresholdRef.current, lobeDirection: waterBlobLobeDirectionRef.current,
       },
       hexes: hexesRef.current,
       hexTerrainLayers,
       R,
       realisticCoastline: realisticCoastlineRef.current,
       coastlineDebugRaw: coastlineDebugRawRef.current,
-      oceanSeaKeys: oceanSeaKeysRef.current,
+      oceanWaterKeys: oceanWaterKeysRef.current,
       beachStrip: beachStripRef.current,
       beachColor: beachColorRef.current,
       beachWidth: beachWidthRef.current,
@@ -1691,19 +1686,19 @@ const roadV3TierGeomRef = useRef(roadV3TierGeom)
     }
     if (isExport || !terrainLayerRef.current) {
       let exportTerrainBlobs = terrainParams.defaultTerrainBlobs
-      let exportLakeBlobs = terrainParams.defaultLakeBlobs
+      let exportWaterBlobs = terrainParams.defaultWaterBlobs
       if (isExport) {
         const overriddenKeys = new Set(Object.keys(terrainBlobOverridesRef.current))
         const components = blobComponentsRef.current
         const exportRealistic = realisticCoastlineRef.current
         const isPureSea = (h: GeneratedHex) =>
-          h.terrain === 'sea' && (!h.coastline_clip || h.coastline_clip.length === 0)
+          h.terrain === 'water' && (!h.coastline_clip || h.coastline_clip.length === 0)
         const terrainTypeSet = new Set<string>()
         for (const p of projected) {
           const h = p.hex as GeneratedHex
           if (exportRealistic && isPureSea(h)) continue
           for (const t of coastalBlobTerrains(h, exportRealistic)) {
-            if (t !== 'clear' && t !== 'lake') terrainTypeSet.add(t)
+            if (t !== 'clear' && t !== 'water') terrainTypeSet.add(t)
           }
         }
         exportTerrainBlobs = [...terrainTypeSet].flatMap(terrain => {
@@ -1733,19 +1728,19 @@ const roadV3TierGeomRef = useRef(roadV3TierGeom)
             R,
           )
         })
-        const lakeOverriddenKeys = new Set(Object.keys(lakeOverridesRef.current))
-        const defaultLakeProjected = projected
+        const waterOverriddenKeys = new Set(Object.keys(waterOverridesRef.current))
+        const defaultWaterProjected = projected
           .filter(p => {
-            if (!(p.hex.isLake ?? false)) return false
+            if (p.hex.terrain !== 'water') return false
             const ck = components.get(`${p.hex.q},${p.hex.r}`)
-            return !ck || !lakeOverriddenKeys.has(ck)
+            return !ck || !waterOverriddenKeys.has(ck)
           })
-          .map(p => ({ hex: { ...p.hex, terrain: 'lake' }, verts: p.verts }))
-        exportLakeBlobs = defaultLakeProjected.length > 0
-          ? buildTerrainBlobsV2(defaultLakeProjected, lakeBlobSmoothRef.current, lakeBlobOffsetRef.current, lakeBlobBumpRef.current, lakeBlobSweepFreqRef.current, lakeBlobLobeFreqRef.current, lakeBlobLobeAmpRef.current, lakeBlobLobeThresholdRef.current, lakeBlobLobeDirectionRef.current, R)
+          .map(p => ({ hex: { ...p.hex, terrain: 'water' }, verts: p.verts }))
+        exportWaterBlobs = defaultWaterProjected.length > 0
+          ? buildTerrainBlobsV2(defaultWaterProjected, waterBlobSmoothRef.current, waterBlobOffsetRef.current, waterBlobBumpRef.current, waterBlobSweepFreqRef.current, waterBlobLobeFreqRef.current, waterBlobLobeAmpRef.current, waterBlobLobeThresholdRef.current, waterBlobLobeDirectionRef.current, R)
           : []
       }
-      _drawTerrain(ctx, { ...terrainParams, backgroundTerrainBlobs: defaultBackgroundBlobsRef.current, defaultTerrainBlobs: exportTerrainBlobs, defaultLakeBlobs: exportLakeBlobs })
+      _drawTerrain(ctx, { ...terrainParams, backgroundTerrainBlobs: defaultBackgroundBlobsRef.current, defaultTerrainBlobs: exportTerrainBlobs, defaultWaterBlobs: exportWaterBlobs })
     }
 
     // Historical map image overlay — screen only, drawn after terrain so hex borders render on top
@@ -1888,7 +1883,7 @@ const roadV3TierGeomRef = useRef(roadV3TierGeom)
 
     // Rivers — offscreen cached
     const lakeProjCenters = projected
-      .filter(({ hex }) => hex.isLake)
+      .filter(({ hex }) => hex.terrain === 'water')
       .map(({ verts }) => ({
         px: verts.reduce((s, v) => s + v[0], 0) / 6,
         py: verts.reduce((s, v) => s + v[1], 0) / 6,
@@ -2709,7 +2704,7 @@ const roadV3TierGeomRef = useRef(roadV3TierGeom)
   //   forestTextureVersion, frameDims, draw])
 
   // Mark terrain layer dirty when terrain-affecting data changes
-  useEffect(() => { terrainDirtyRef.current = true }, [defaultTerrainBlobs, defaultLakeBlobs, defaultElevationBlobs, terrainColors, terrainTextureScales, terrainTextureBlendModes, terrainTextureOpacities, terrainTextureTintColors, terrainTextureTintOpacities, terrainTextureFile, terrainTextureEnabled, terrainBlobOverrides, terrainTypeBlobStyles, lakeOverrides, terrainRenderMode, hexEdgeMode, generatedHexes, realisticCoastline, coastlineDebugRaw, smoothedCoastlineBoundary, rawCoastlineBoundary, beachStrip, beachColor, beachWidth, hillsColor, mountainsColor, reliefShadingOpacity, coastlineDPEpsilon, coastlineChaikinPasses, edgeBlobPainted, edgeBlobOverrides, edgeBlobWidth, mapStyle, historicalIconParams, elevationTypeBlobStyles, terrainBlobFeather, terrainBlobOutlineEnabled, terrainBlobOutlineColor, terrainBlobOutlineWidth, elevationOverridesTerrain])
+  useEffect(() => { terrainDirtyRef.current = true }, [defaultTerrainBlobs, defaultWaterBlobs, defaultElevationBlobs, terrainColors, terrainTextureScales, terrainTextureBlendModes, terrainTextureOpacities, terrainTextureTintColors, terrainTextureTintOpacities, terrainTextureFile, terrainTextureEnabled, terrainBlobOverrides, terrainTypeBlobStyles, waterOverrides, terrainRenderMode, hexEdgeMode, generatedHexes, realisticCoastline, coastlineDebugRaw, smoothedCoastlineBoundary, rawCoastlineBoundary, beachStrip, beachColor, beachWidth, hillsColor, mountainsColor, reliefShadingOpacity, coastlineDPEpsilon, coastlineChaikinPasses, edgeBlobPainted, edgeBlobOverrides, edgeBlobWidth, mapStyle, historicalIconParams, elevationTypeBlobStyles, terrainBlobFeather, terrainBlobOutlineEnabled, terrainBlobOutlineColor, terrainBlobOutlineWidth, elevationOverridesTerrain])
   useEffect(() => { terrainDirtyRef.current = true; draw() }, [hillshadeDisabledTerrains, hillshadeDisabledElevClasses, contourDisabledTerrains, contourDisabledElevClasses]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // Decode heightmap PNG → ImageData when URL changes, then recompute derived canvases
@@ -2814,7 +2809,7 @@ const roadV3TierGeomRef = useRef(roadV3TierGeom)
   }, [activeTool.type])
 
   // Redraw when data changes
-  useEffect(() => { draw() }, [generatedHexes, hexBorderMode, hexEdgeMode, hexBorderOpacity, hexBorderColor, hexBorderDifference, hexNumbersEnabled, hexNumberEdge, hexNumberColor, hexNumberFontScale, hexNumberStartCorner, hexNumberMap, smoothedRoadData, smoothedRailData, showRawOsmRoads, roadNodeEditMode, riverNodeEditMode, riverChainOverrides, riverEdges, canalEdges, riverEditMode, canalEditMode, riverWidthScale, canalWidthScale, riverCurveSteps, riverWobble, riverDetail, riverWiggleFreq, riverWiggleAmp, riverSmoothing, riverPathSmoothing, showRiverLabels, riverLabelColor, riverSegmentProps, canalSegmentProps, riverSelectMode, canalSelectMode, selectedSegmentKeys, selectedCanalSegmentKeys, riverStyle, canalStyle, riverHopProps, selectedHopKey, defaultTerrainBlobs, defaultLakeBlobs, terrainColors, terrainTextureScales, terrainTextureBlendModes, terrainTextureOpacities, terrainTextureTintColors, terrainTextureTintOpacities, terrainTextureFile, terrainTextureEnabled, terrainBlobOverrides, terrainTypeBlobStyles, lakeOverrides, terrainRenderMode, settlements, settlementTierStyles, urbanHexes, urbanStyle, roadTierStyles, railStyle, highlights, highlightedHexes, highlightLines, highlightEdgePaths, iconOverlays, placedIcons, labelOverlays, placedLabels, realisticCoastline, coastlineDebugRaw, smoothedCoastlineBoundary, rawCoastlineBoundary, beachStrip, beachColor, beachWidth, coastlineDPEpsilon, coastlineChaikinPasses, edgeBlobPainted, edgeBlobOverrides, edgeBlobWidth, roadSegmentProps, roadHopProps, selectedRoadSegmentKeys, selectedRoadHopKey, roadSelectMode, railNodeEditMode, railControlOverrides, railSelectMode, railWiggleAmp, railWiggleFreq, railSmoothing, railSegmentProps, railHopProps, selectedRailSegmentKeys, selectedRailHopKey, mapBgColor, mapBorderEnabled, mapBorderColor, mapBorderWidth, clipToHexGrid, excludedHexKeys, disabledHexKeys, autoDisabledOceanHexKeys, megaHexEnabled, megaHexRadius, megaHexColor, megaHexOpacity, megaHexLineWidth, megaHexOriginQ, megaHexOriginR, bridgesEnabled, bridgeStyle, bridgeTiers, bridgeOverrides, showElevationDebug, showElevationClassOverlay, mapStyle, labelOffsets, activeTool, roadClearanceTerrains, draw])
+  useEffect(() => { draw() }, [generatedHexes, hexBorderMode, hexEdgeMode, hexBorderOpacity, hexBorderColor, hexBorderDifference, hexNumbersEnabled, hexNumberEdge, hexNumberColor, hexNumberFontScale, hexNumberStartCorner, hexNumberMap, smoothedRoadData, smoothedRailData, showRawOsmRoads, roadNodeEditMode, riverNodeEditMode, riverChainOverrides, riverEdges, canalEdges, riverEditMode, canalEditMode, riverWidthScale, canalWidthScale, riverCurveSteps, riverWobble, riverDetail, riverWiggleFreq, riverWiggleAmp, riverSmoothing, riverPathSmoothing, showRiverLabels, riverLabelColor, riverSegmentProps, canalSegmentProps, riverSelectMode, canalSelectMode, selectedSegmentKeys, selectedCanalSegmentKeys, riverStyle, canalStyle, riverHopProps, selectedHopKey, defaultTerrainBlobs, defaultWaterBlobs, terrainColors, terrainTextureScales, terrainTextureBlendModes, terrainTextureOpacities, terrainTextureTintColors, terrainTextureTintOpacities, terrainTextureFile, terrainTextureEnabled, terrainBlobOverrides, terrainTypeBlobStyles, waterOverrides, terrainRenderMode, settlements, settlementTierStyles, urbanHexes, urbanStyle, roadTierStyles, railStyle, highlights, highlightedHexes, highlightLines, highlightEdgePaths, iconOverlays, placedIcons, labelOverlays, placedLabels, realisticCoastline, coastlineDebugRaw, smoothedCoastlineBoundary, rawCoastlineBoundary, beachStrip, beachColor, beachWidth, coastlineDPEpsilon, coastlineChaikinPasses, edgeBlobPainted, edgeBlobOverrides, edgeBlobWidth, roadSegmentProps, roadHopProps, selectedRoadSegmentKeys, selectedRoadHopKey, roadSelectMode, railNodeEditMode, railControlOverrides, railSelectMode, railWiggleAmp, railWiggleFreq, railSmoothing, railSegmentProps, railHopProps, selectedRailSegmentKeys, selectedRailHopKey, mapBgColor, mapBorderEnabled, mapBorderColor, mapBorderWidth, clipToHexGrid, excludedHexKeys, disabledHexKeys, autoDisabledOceanHexKeys, megaHexEnabled, megaHexRadius, megaHexColor, megaHexOpacity, megaHexLineWidth, megaHexOriginQ, megaHexOriginR, bridgesEnabled, bridgeStyle, bridgeTiers, bridgeOverrides, showElevationDebug, showElevationClassOverlay, mapStyle, labelOffsets, activeTool, roadClearanceTerrains, draw])
 
   useEffect(() => { drawOsmHighlight() }, [osmHighlightTier, osmSpotlightMode, osmSpotlightTiers, osmRailHighlight, hoveredOsmRiverIdx, drawOsmHighlight])
 
@@ -2957,7 +2952,7 @@ const roadV3TierGeomRef = useRef(roadV3TierGeom)
     const onDown = (e: MouseEvent) => {
       if (e.button !== 1 && e.button !== 0) return
       if (e.button === 0 && (e.target as HTMLElement).tagName !== 'CANVAS') return
-      if (e.button === 0 && (terrainPaintModeRef.current || elevationPaintModeRef.current || roadPaintModeRef.current || railPaintModeRef.current || riverEditModeRef.current || lakePaintModeRef.current || activeToolRef.current.type === 'hex-mask' || activeToolRef.current.type === 'mega-hex-origin' || activeToolRef.current.type === 'align-image')) return
+      if (e.button === 0 && (terrainPaintModeRef.current || elevationPaintModeRef.current || roadPaintModeRef.current || railPaintModeRef.current || riverEditModeRef.current || activeToolRef.current.type === 'hex-mask' || activeToolRef.current.type === 'mega-hex-origin' || activeToolRef.current.type === 'align-image')) return
       if (e.button === 0 && activePanelRef.current === 'highlights' && (highlightPaintModeRef.current || highlightLineEraserRef.current)) return
       if (e.button === 0 && draggingCpKeyRef.current) return
       e.preventDefault()
@@ -3349,10 +3344,10 @@ const roadV3TierGeomRef = useRef(roadV3TierGeom)
     const hexByKey = new Map(hexes.map(h => [`${h.q},${h.r}`, h]))
     const keys: string[] = []
     for (const h of hexes) {
-      if (h.terrain !== 'sea') continue
+      if (h.terrain !== 'water') continue
       const touchesLand = NEIGHBORS.some(([dq, dr]) => {
         const nb = hexByKey.get(`${h.q + dq},${h.r + dr}`)
-        return nb && nb.terrain !== 'sea'
+        return nb && nb.terrain !== 'water'
       })
       if (!touchesLand) keys.push(`${h.q},${h.r}`)
     }
@@ -3813,63 +3808,6 @@ const roadV3TierGeomRef = useRef(roadV3TierGeom)
     }
   }, [draw, clientToLogical])
 
-  // Lake paint mode — click/drag to mark or unmark hexes as lakes
-  useEffect(() => {
-    const el = containerRef.current
-    if (!el) return
-    let painting = false
-    let addMode: boolean | null = null
-    let lastPainted: string | null = null
-
-    const hexAtClient = (clientX: number, clientY: number) => {
-      const meta = metaRef.current
-      if (!meta) return null
-      const logical = clientToLogical(clientX, clientY)
-      if (!logical) return null
-      const { lx, ly, cssW, cssH } = logical
-      const { pw, ph, px, py } = computePaper(cssW, cssH, meta)
-      for (const hex of hexesRef.current) {
-        if (hexEdgeModeRef.current === 'whole' && hex.partial) continue
-        const verts = hex.vertices.map(([lon, lat]) => projectToCanvas(lon, lat, meta, pw, ph, px, py))
-        if (pointInPolygon(lx, ly, verts)) return hex
-      }
-      return null
-    }
-
-    const onDown = (e: MouseEvent) => {
-      if (!lakePaintModeRef.current) return
-      if ((e.target as HTMLElement).tagName !== 'CANVAS') return
-      e.stopPropagation()
-      const hex = hexAtClient(e.clientX, e.clientY)
-      if (!hex) return
-      painting = true
-      addMode = !hex.isLake
-      lastPainted = `${hex.q},${hex.r}`
-      overrideHexLakeRef.current(hex.q, hex.r, addMode)
-    }
-
-    const onMove = (e: MouseEvent) => {
-      if (!painting || addMode === null) return
-      const hex = hexAtClient(e.clientX, e.clientY)
-      if (!hex) return
-      const key = `${hex.q},${hex.r}`
-      if (key === lastPainted) return
-      lastPainted = key
-      if (addMode && !hex.isLake) overrideHexLakeRef.current(hex.q, hex.r, true)
-      if (!addMode && hex.isLake) overrideHexLakeRef.current(hex.q, hex.r, false)
-    }
-
-    const onUp = () => { painting = false; addMode = null; lastPainted = null }
-
-    el.addEventListener('mousedown', onDown, { capture: true })
-    window.addEventListener('mousemove', onMove)
-    window.addEventListener('mouseup', onUp)
-    return () => {
-      el.removeEventListener('mousedown', onDown, { capture: true })
-      window.removeEventListener('mousemove', onMove)
-      window.removeEventListener('mouseup', onUp)
-    }
-  }, [draw, clientToLogical])
 
   // Highlight line drag-paint — road-like: segment only created on first hex-to-hex move,
   // single clicks store nothing; backtrack-to-erase within current stroke; no global uniqueness.
@@ -3986,7 +3924,7 @@ const roadV3TierGeomRef = useRef(roadV3TierGeom)
   // Context menu
   const [ctxMenu, setCtxMenu] = useState<{ x: number; y: number; items: CtxItem[] } | null>(null)
   const [blobFlyout, setBlobFlyout] = useState<{
-    type: 'terrain' | 'lake' | 'edge'
+    type: 'terrain' | 'water' | 'edge'
     canonicalKey: string
     terrain?: string
     x: number
@@ -4351,21 +4289,21 @@ const roadV3TierGeomRef = useRef(roadV3TierGeom)
       if (hex) {
         const hexKey = `${hex.q},${hex.r}`
         const storedHexForBlob = hexesRef.current.find(h => h.q === hex.q && h.r === hex.r)
-        if (hex.isLake ?? false) {
+        if (hex.terrain === 'water') {
           const canonicalKey = blobComponentsRef.current.get(hexKey)
           if (canonicalKey) {
-            const lakePolys = defaultLakeBlobsRef.current.find(b => b.terrain === 'lake')?.polys ?? []
+            const waterPolys = defaultWaterBlobsRef.current.find(b => b.terrain === 'water')?.polys ?? []
             const logical3 = clientToLogicalRef.current(e.clientX, e.clientY)
-            const hitLakePoly = logical3 ? lakePolys.filter(p => pointInPolygon(logical3.lx, logical3.ly, p)) : []
+            const hitWaterPoly = logical3 ? waterPolys.filter(p => pointInPolygon(logical3.lx, logical3.ly, p)) : []
             items.push({
-              label: 'Edit lake…',
+              label: 'Edit water…',
               icon: 'edit' as const,
-              highlightPolys: hitLakePoly,
-              action: () => setBlobFlyout({ type: 'lake', canonicalKey, x: e.clientX, y: e.clientY }),
+              highlightPolys: hitWaterPoly,
+              action: () => setBlobFlyout({ type: 'water', canonicalKey, x: e.clientX, y: e.clientY }),
             })
           }
         } else if (storedHexForBlob) {
-          const editableLayers = hexTerrainLayers(storedHexForBlob).filter(t => t !== 'sea')
+          const editableLayers = hexTerrainLayers(storedHexForBlob).filter(t => t !== 'water')
           const logical3 = clientToLogicalRef.current(e.clientX, e.clientY)
           for (const t of editableLayers) {
             const componentMap = blobComponentsByTerrainRef.current.get(t)

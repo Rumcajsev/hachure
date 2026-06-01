@@ -173,8 +173,6 @@ export const createUiSlice = (set: Set, get: () => MapStore): UiSlice => ({
     updates.elevationPaintMode = tool.type === 'elevation'
     if (tool.type === 'elevation') updates.elevationPaintBrush = tool.brush
 
-    updates.lakePaintMode = tool.type === 'lake'
-
     updates.roadPaintMode = tool.type === 'road'
     if (tool.type === 'road') {
       updates.roadPaintBrush = tool.tier
@@ -318,10 +316,10 @@ export const createUiSlice = (set: Set, get: () => MapStore): UiSlice => ({
     const hexByKey = new Map(hexes.map(h => [`${h.q},${h.r}`, h]))
     const keys: string[] = []
     for (const h of hexes) {
-      if (h.terrain !== 'sea') continue
+      if (h.terrain !== 'water') continue
       const touchesLand = NEIGHBORS.some(([dq, dr]) => {
         const nb = hexByKey.get(`${h.q + dq},${h.r + dr}`)
-        return nb && nb.terrain !== 'sea'
+        return nb && nb.terrain !== 'water'
       })
       if (!touchesLand) keys.push(`${h.q},${h.r}`)
     }
@@ -441,12 +439,11 @@ export const createUiSlice = (set: Set, get: () => MapStore): UiSlice => ({
         terrainRenderMode: s.terrainRenderMode,
         fieldFreq: s.fieldFreq, fieldAmp: s.fieldAmp, fieldOctaves: s.fieldOctaves,
         fieldPersistence: s.fieldPersistence, fieldWildness: s.fieldWildness,
-        autoLakesEnabled: s.autoLakesEnabled, lakeSensitivity: s.lakeSensitivity,
-        lakeBlobSmooth: s.lakeBlobSmooth, lakeBlobOffset: s.lakeBlobOffset,
-        lakeBlobBump: s.lakeBlobBump, lakeBlobSweepFreq: s.lakeBlobSweepFreq,
-        lakeBlobLobeFreq: s.lakeBlobLobeFreq, lakeBlobLobeAmp: s.lakeBlobLobeAmp,
-        lakeBlobLobeThreshold: s.lakeBlobLobeThreshold, lakeBlobLobeDirection: s.lakeBlobLobeDirection,
-        lakeOverrides: s.lakeOverrides,
+        waterBlobSmooth: s.waterBlobSmooth, waterBlobOffset: s.waterBlobOffset,
+        waterBlobBump: s.waterBlobBump, waterBlobSweepFreq: s.waterBlobSweepFreq,
+        waterBlobLobeFreq: s.waterBlobLobeFreq, waterBlobLobeAmp: s.waterBlobLobeAmp,
+        waterBlobLobeThreshold: s.waterBlobLobeThreshold, waterBlobLobeDirection: s.waterBlobLobeDirection,
+        waterOverrides: s.waterOverrides,
         showPaperTexture: s.showPaperTexture, paperTextureOpacity: s.paperTextureOpacity,
         showPaperVignette: s.showPaperVignette,
         mapBgColor: s.mapBgColor, mapBorderEnabled: s.mapBorderEnabled,
@@ -868,6 +865,35 @@ if (fromVersion < 64) {
   }
   if (fromVersion < 70) {
     if (s.hillshadeMode === undefined) s.hillshadeMode = 'smooth'
+  }
+  if (fromVersion < 71) {
+    // Unified sea + lake → water terrain type
+    const tc = s.terrainColors as Record<string, unknown> | undefined
+    if (tc && tc.sea !== undefined && tc.water === undefined) {
+      tc.water = tc.sea
+      delete tc.sea
+    }
+    const hexes = s.generatedHexes as Array<Record<string, unknown>> | undefined
+    if (hexes) {
+      for (const h of hexes) {
+        if (h.terrain === 'sea' || h.isLake) h.terrain = 'water'
+        delete h.isLake
+        delete h.lakeManualOverride
+      }
+    }
+    // Rename lakeBlob* → waterBlob*
+    if (s.lakeBlobSmooth !== undefined) { s.waterBlobSmooth = s.lakeBlobSmooth; delete s.lakeBlobSmooth }
+    if (s.lakeBlobOffset !== undefined) { s.waterBlobOffset = s.lakeBlobOffset; delete s.lakeBlobOffset }
+    if (s.lakeBlobBump !== undefined) { s.waterBlobBump = s.lakeBlobBump; delete s.lakeBlobBump }
+    if (s.lakeBlobSweepFreq !== undefined) { s.waterBlobSweepFreq = s.lakeBlobSweepFreq; delete s.lakeBlobSweepFreq }
+    if (s.lakeBlobLobeFreq !== undefined) { s.waterBlobLobeFreq = s.lakeBlobLobeFreq; delete s.lakeBlobLobeFreq }
+    if (s.lakeBlobLobeAmp !== undefined) { s.waterBlobLobeAmp = s.lakeBlobLobeAmp; delete s.lakeBlobLobeAmp }
+    if (s.lakeBlobLobeThreshold !== undefined) { s.waterBlobLobeThreshold = s.lakeBlobLobeThreshold; delete s.lakeBlobLobeThreshold }
+    if (s.lakeBlobLobeDirection !== undefined) { s.waterBlobLobeDirection = s.lakeBlobLobeDirection; delete s.lakeBlobLobeDirection }
+    if (s.lakeOverrides !== undefined) { s.waterOverrides = s.lakeOverrides; delete s.lakeOverrides }
+    delete s.autoLakesEnabled
+    delete s.lakeSensitivity
+    delete s.lakePaintMode
   }
   if (fromVersion < 69) {
     const cp = s.classificationParams as Record<string, unknown> | undefined

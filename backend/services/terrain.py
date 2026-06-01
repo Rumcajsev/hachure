@@ -22,7 +22,7 @@ def compute_geo_bbox(config: GridConfig) -> tuple[float, float, float, float]:
     )
 
 
-PRIORITY = ["sea", "marsh", "woods", "light_woods", "rough", "clear"]
+PRIORITY = ["water", "marsh", "woods", "light_woods", "rough", "clear"]
 
 
 def _compute_coverage(
@@ -161,9 +161,8 @@ async def terrain_stream_generator(config: GridConfig) -> AsyncGenerator[str, No
             if tile_result is None:
                 for i in hex_indices:
                     hd = hexes[i]
-                    hd["coverage"] = {"sea": 1.0}
-                    hd["is_lake"] = False
-                    hd["terrain"] = "sea"
+                    hd["coverage"] = {"water": 1.0}
+                    hd["terrain"] = "water"
                     batch.append(hd)
             else:
                 data_tile, transform_tile = tile_result
@@ -183,7 +182,6 @@ async def terrain_stream_generator(config: GridConfig) -> AsyncGenerator[str, No
                         continue
                     coverage = compute_hex_coverage(hex_poly, data_tile, transform_tile)
                     hd["coverage"] = coverage
-                    hd["is_lake"] = coverage.get("lake", 0) >= slider
                     hd["terrain"] = classify_hex(coverage, slider)
                     hex_polys[i] = hex_poly
                     batch.append(hd)

@@ -1,7 +1,7 @@
 /** Pure terrain classification helpers. No store or React imports. */
 
 // Keep in sync with TERRAIN_PRIORITY in mapStore.ts
-const TERRAIN_PRIORITY = ['sea', 'marsh', 'woods', 'light_woods', 'rough', 'clear'] as const
+const TERRAIN_PRIORITY = ['water', 'marsh', 'woods', 'light_woods', 'rough', 'clear'] as const
 
 export function classifyHex(
   coverage: Record<string, number>,

@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react'
 import { TK, TK_DARK } from '../../theme'
-import { useMapStore } from '../../store/mapStore'
+import { useMapStore, mapResolutionMpx, pageGridTotalMm } from '../../store/mapStore'
 import type { PaperSize, Orientation, HexOrientation } from '../../store/mapStore'
 import { MapView } from '../MapView'
 import { TerrainViewCanvas } from '../TerrainViewCanvas'
@@ -307,7 +307,7 @@ function PaperAreaStep({ onBack, onGenerate, showMap = true, generateLabel, t }:
   const {
     paperSize, orientation, pageGrid,
     hexSizeMm, hexOrientation, marginMm, hexEdgeMode,
-    zoom, framePixelWidth,
+    zoom, framePixelWidth, center,
     setPaperSize, setOrientation,
     setHexSizeMm, setHexOrientation, setMarginMm, setHexEdgeMode,
     flyTo, setBlankMap, generateMap,
@@ -342,6 +342,15 @@ function PaperAreaStep({ onBack, onGenerate, showMap = true, generateLabel, t }:
   }
 
   const zoomDisplay = `Z${Math.round(zoom)}`
+
+  const [cwMm, chMm] = pageGridTotalMm(pageGrid)
+  const terrainWidthKm = framePixelWidth > 0
+    ? (framePixelWidth * mapResolutionMpx(center[1], zoom)) / 1000
+    : null
+  const terrainHeightKm = terrainWidthKm !== null ? terrainWidthKm * (chMm / cwMm) : null
+  const hexKm = terrainWidthKm !== null
+    ? (hexSizeMm / cwMm) * (terrainWidthKm * 1000) / 1000
+    : null
 
   return (
     <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
@@ -381,6 +390,11 @@ function PaperAreaStep({ onBack, onGenerate, showMap = true, generateLabel, t }:
                   <span style={{ fontFamily: t.serif, fontSize: 40, lineHeight: 1, color: t.ink }}>{hexSizeMm}</span>
                   <span style={{ fontFamily: t.mono, fontSize: 11, color: t.inkMute }}>mm</span>
                 </div>
+                {hexKm !== null && (
+                  <div style={{ fontFamily: t.mono, fontSize: 10, color: t.inkFaint, marginTop: 2 }}>
+                    ≈ {hexKm.toFixed(1)} km
+                  </div>
+                )}
               </div>
               <div style={{ flex: 1, marginBottom: 6 }}>
                 <span style={{ fontFamily: t.mono, fontSize: 9, color: t.inkFaint }}>5–50 mm</span>
@@ -463,7 +477,9 @@ function PaperAreaStep({ onBack, onGenerate, showMap = true, generateLabel, t }:
                   fontFamily: t.mono, fontSize: 9, color: t.inkFaint,
                   letterSpacing: 0.5,
                 }}>
-                  {zoomDisplay}
+                  {terrainWidthKm !== null && terrainHeightKm !== null
+                    ? `${terrainWidthKm.toFixed(0)} × ${terrainHeightKm.toFixed(0)} km`
+                    : zoomDisplay}
                 </span>
               </div>
             </PanelSection>

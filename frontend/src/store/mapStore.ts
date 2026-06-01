@@ -94,7 +94,7 @@ export type ActiveTool =
   | { type: 'none' }
   | { type: 'terrain'; brush: string }
   | { type: 'elevation'; brush: 'flat' | 'hills' | 'mountains' }
-  | { type: 'lake' }
+  | { type: 'water' }
   | { type: 'road'; tier: 0 | 1 | 2; erasing: boolean }
   | { type: 'rail'; erasing: boolean }
   | { type: 'node-edit' }
@@ -149,8 +149,6 @@ export interface GeneratedHex {
   partial: boolean
   manual_override?: boolean
   backgroundTerrain?: string
-  isLake?: boolean
-  lakeManualOverride?: boolean
   elevation_avg_m: number | null
   elevation_median_m: number | null
   elevation_max_m: number | null
@@ -195,7 +193,7 @@ export const TERRAIN_COLORS: Record<string, string> = {
   light_woods: '#8aaa6a',
   rough: '#9e8c6a',
   marsh: '#6b9e8a',
-  sea: '#3a6898',
+  water: '#3a6898',
   river: '#7ab0c8',
   beach: '#dfd0a0',
 }
@@ -207,7 +205,7 @@ export interface CustomTerrain {
   textureId: string | null
 }
 
-export const LAKE_COLOR = '#5888b0'
+export const WATER_COLOR = '#3a6898'
 
 export interface RiverStyleConfig {
   color: string
@@ -217,7 +215,7 @@ export interface RiverStyleConfig {
 }
 
 export const DEFAULT_RIVER_STYLE: RiverStyleConfig = {
-  color: LAKE_COLOR,
+  color: WATER_COLOR,
   strokeEnabled: false,
   strokeColor: '#2a4a6a',
   strokeWidth: 0.4,
@@ -304,7 +302,7 @@ export function mapResolutionMpx(lat: number, zoom: number): number {
   return (78271.516 * Math.cos((lat * Math.PI) / 180)) / Math.pow(2, zoom)
 }
 
-export const TERRAIN_PRIORITY = ['clear', 'light_woods', 'woods', 'rough', 'marsh', 'sea', 'beach'] as const
+export const TERRAIN_PRIORITY = ['clear', 'light_woods', 'woods', 'rough', 'marsh', 'water', 'beach'] as const
 
 /** Terrains that are manual-paint only — excluded from auto-classification sliders. */
 export const MANUAL_ONLY_TERRAINS = new Set(['beach'])
@@ -312,9 +310,9 @@ export const MANUAL_ONLY_TERRAINS = new Set(['beach'])
 export const DEFAULT_THRESHOLDS: Record<string, number> = {
   sea: 0.4,
   marsh: 0.2,
-  woods: 0.3,
-  light_woods: 0.15,
-  rough: 0.25,
+  woods: 0.65,
+  light_woods: 0.5,
+  rough: 0.3,
   clear: 0,
 }
 
@@ -621,7 +619,7 @@ export function railEdgeCanonicalKey(q1: number, r1: number, q2: number, r2: num
 }
 
 export interface UndoSnapshot {
-  terrainHexes: Array<{ q: number; r: number; terrain: string; manual_override: boolean; isLake: boolean; elevation_class: 'flat' | 'hills' | 'mountains' | null; elevation_manual_override: boolean }>
+  terrainHexes: Array<{ q: number; r: number; terrain: string; manual_override: boolean; elevation_class: 'flat' | 'hills' | 'mountains' | null; elevation_manual_override: boolean }>
   roadEdges: RoadEdge[]
   railEdges: RailEdge[]
   riverEdges: { q1: number; r1: number; q2: number; r2: number }[]
@@ -806,17 +804,15 @@ export const useMapStore = create<MapStore>()(persist((set, get) => ({
     terrainColors: s.terrainColors,
     terrainTextureScales: s.terrainTextureScales,
     terrainRenderMode: s.terrainRenderMode,
-    autoLakesEnabled: s.autoLakesEnabled,
-    lakeSensitivity: s.lakeSensitivity,
-    lakeBlobSmooth: s.lakeBlobSmooth,
-    lakeBlobOffset: s.lakeBlobOffset,
-    lakeBlobBump: s.lakeBlobBump,
-    lakeBlobSweepFreq: s.lakeBlobSweepFreq,
-    lakeBlobLobeFreq: s.lakeBlobLobeFreq,
-    lakeBlobLobeAmp: s.lakeBlobLobeAmp,
-    lakeBlobLobeThreshold: s.lakeBlobLobeThreshold,
-    lakeBlobLobeDirection: s.lakeBlobLobeDirection,
-    lakeOverrides: s.lakeOverrides,
+    waterBlobSmooth: s.waterBlobSmooth,
+    waterBlobOffset: s.waterBlobOffset,
+    waterBlobBump: s.waterBlobBump,
+    waterBlobSweepFreq: s.waterBlobSweepFreq,
+    waterBlobLobeFreq: s.waterBlobLobeFreq,
+    waterBlobLobeAmp: s.waterBlobLobeAmp,
+    waterBlobLobeThreshold: s.waterBlobLobeThreshold,
+    waterBlobLobeDirection: s.waterBlobLobeDirection,
+    waterOverrides: s.waterOverrides,
     highlights: s.highlights,
     highlightedHexes: s.highlightedHexes,
     highlightLines: s.highlightLines,
@@ -858,7 +854,7 @@ export const useMapStore = create<MapStore>()(persist((set, get) => ({
     mapTitle: s.mapTitle,
     labelOffsets: s.labelOffsets,
   }),
-  version: 70,
+  version: 71,
   migrate: migratePersisted,
   merge: (persisted, current) => rehydrateState({ ...current, ...(persisted as Partial<MapStore>) }),
 }))

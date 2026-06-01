@@ -40,7 +40,8 @@ function AppV2Inner({ screen, setScreen, isDark, setIsDark }: {
   isDark: boolean
   setIsDark: (v: boolean) => void
 }) {
-  const { step, activePanel, undo, redo, generateStatus, generateProgress, uiScale } = useMapStore()
+  const { step, activePanel, undo, redo, generateStatus, generateProgress, uiScale,
+          elevationStatus, heightmapUrl, fetchElevation } = useMapStore()
   const canvasHandleRef = useRef<TerrainViewCanvasHandle>(null)
 
   // If the store resets step to 'setup' while in the editor (e.g. mid-generation SSE flow),
@@ -53,6 +54,14 @@ function AppV2Inner({ screen, setScreen, isDark, setIsDark }: {
       if (dataUrl) idbSet('hachure-thumb', dataUrl).catch(() => {})
     }, 800)
     return () => clearTimeout(timer)
+  }, [])
+
+  // Re-fetch elevation on load when it was previously done but heightmap isn't in memory
+  useEffect(() => {
+    if (elevationStatus === 'done' && !heightmapUrl) {
+      fetchElevation()
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
   useEffect(() => {

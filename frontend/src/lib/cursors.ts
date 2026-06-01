@@ -100,7 +100,7 @@ export function getToolCursor(
       return terrainBrushCursor(opts.terrainColors[activeTool.brush] ?? '#888')
     case 'elevation':
       return elevationBrushCursor(activeTool.brush)
-    case 'lake':
+    case 'water':
       return lakeBrushCursor()
     case 'road':
       return activeTool.erasing ? eraserCursor('#9e5a5a') : roadBrushCursor(activeTool.tier)

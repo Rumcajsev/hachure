@@ -1,8 +1,8 @@
 import { useEffect } from 'react'
-import { useMapStore, LAKE_COLOR, type BlobOverride } from '../store/mapStore'
+import { useMapStore, WATER_COLOR, type BlobOverride } from '../store/mapStore'
 
 interface Props {
-  type: 'terrain' | 'lake' | 'edge'
+  type: 'terrain' | 'water' | 'edge'
   canonicalKey: string
   terrain?: string
   x: number
@@ -13,11 +13,11 @@ interface Props {
 export function BlobOverrideFlyout({ type, canonicalKey, terrain, x, y, onClose }: Props) {
   const {
     terrainBlobOverrides, setTerrainBlobOverride,
-    lakeOverrides, setLakeOverride,
+    waterOverrides, setWaterOverride,
     edgeBlobOverrides, setEdgeBlobOverride,
     terrainColors,
-    lakeBlobSmooth, lakeBlobOffset, lakeBlobBump,
-    lakeBlobSweepFreq, lakeBlobLobeFreq, lakeBlobLobeAmp, lakeBlobLobeThreshold, lakeBlobLobeDirection,
+    waterBlobSmooth, waterBlobOffset, waterBlobBump,
+    waterBlobSweepFreq, waterBlobLobeFreq, waterBlobLobeAmp, waterBlobLobeThreshold, waterBlobLobeDirection,
     terrainBlobSmooth, terrainBlobOffset, terrainBlobBump,
     terrainBlobSweepFreq, terrainBlobLobeFreq, terrainBlobLobeAmp, terrainBlobLobeThreshold, terrainBlobLobeDirection,
     edgeBlobWidth,
@@ -25,8 +25,8 @@ export function BlobOverrideFlyout({ type, canonicalKey, terrain, x, y, onClose 
 
   const hasOverride = type === 'terrain'
     ? !!terrainBlobOverrides[canonicalKey]
-    : type === 'lake'
-      ? !!lakeOverrides[canonicalKey]
+    : type === 'water'
+      ? !!waterOverrides[canonicalKey]
       : !!edgeBlobOverrides[canonicalKey]
 
   useEffect(() => {
@@ -44,19 +44,19 @@ export function BlobOverrideFlyout({ type, canonicalKey, terrain, x, y, onClose 
 
   const override: BlobOverride = type === 'terrain'
     ? (terrainBlobOverrides[canonicalKey] ?? {})
-    : type === 'lake'
-      ? (lakeOverrides[canonicalKey] ?? {})
+    : type === 'water'
+      ? (waterOverrides[canonicalKey] ?? {})
       : (edgeBlobOverrides[canonicalKey] ?? {})
 
   // Edge blobs inherit shape from terrain blob global params; only width is edge-specific.
-  const globalSmooth        = type === 'lake' ? lakeBlobSmooth        : terrainBlobSmooth
-  const globalOffset        = type === 'lake' ? lakeBlobOffset        : terrainBlobOffset
-  const globalBump          = type === 'lake' ? lakeBlobBump          : terrainBlobBump
-  const globalSweepFreq     = type === 'lake' ? lakeBlobSweepFreq     : terrainBlobSweepFreq
-  const globalLobeFreq      = type === 'lake' ? lakeBlobLobeFreq      : terrainBlobLobeFreq
-  const globalLobeAmp       = type === 'lake' ? lakeBlobLobeAmp       : terrainBlobLobeAmp
-  const globalLobeThreshold = type === 'lake' ? lakeBlobLobeThreshold : terrainBlobLobeThreshold
-  const globalLobeDirection = type === 'lake' ? lakeBlobLobeDirection : terrainBlobLobeDirection
+  const globalSmooth        = type === 'water' ? waterBlobSmooth        : terrainBlobSmooth
+  const globalOffset        = type === 'water' ? waterBlobOffset        : terrainBlobOffset
+  const globalBump          = type === 'water' ? waterBlobBump          : terrainBlobBump
+  const globalSweepFreq     = type === 'water' ? waterBlobSweepFreq     : terrainBlobSweepFreq
+  const globalLobeFreq      = type === 'water' ? waterBlobLobeFreq      : terrainBlobLobeFreq
+  const globalLobeAmp       = type === 'water' ? waterBlobLobeAmp       : terrainBlobLobeAmp
+  const globalLobeThreshold = type === 'water' ? waterBlobLobeThreshold : terrainBlobLobeThreshold
+  const globalLobeDirection = type === 'water' ? waterBlobLobeDirection : terrainBlobLobeDirection
   const globalWidth         = edgeBlobWidth
 
   const currentSmooth        = override.smooth        ?? globalSmooth
@@ -71,7 +71,7 @@ export function BlobOverrideFlyout({ type, canonicalKey, terrain, x, y, onClose 
 
   const setOverride = (patch: BlobOverride) => {
     if (type === 'terrain') setTerrainBlobOverride(canonicalKey, { terrain, ...patch })
-    else if (type === 'lake') setLakeOverride(canonicalKey, patch)
+    else if (type === 'water') setWaterOverride(canonicalKey, patch)
     else setEdgeBlobOverride(canonicalKey, patch)
   }
 
@@ -80,21 +80,21 @@ export function BlobOverrideFlyout({ type, canonicalKey, terrain, x, y, onClose 
 
   const reset = () => {
     if (type === 'terrain') setTerrainBlobOverride(canonicalKey, null)
-    else if (type === 'lake') setLakeOverride(canonicalKey, null)
+    else if (type === 'water') setWaterOverride(canonicalKey, null)
     else setEdgeBlobOverride(canonicalKey, null)
     onClose()
   }
 
   const accentColor = type === 'terrain'
     ? (terrainColors[terrain!] ?? '#7a9e7a')
-    : type === 'lake'
-      ? (terrainColors['lake'] ?? LAKE_COLOR)
+    : type === 'water'
+      ? (terrainColors['water'] ?? WATER_COLOR)
       : (terrainColors[terrain!] ?? '#7a9e7a')
 
   const title = type === 'terrain'
     ? (terrain?.replace(/_/g, ' ') ?? 'blob')
-    : type === 'lake'
-      ? 'lake'
+    : type === 'water'
+      ? 'water'
       : `edge · ${terrain?.replace(/_/g, ' ') ?? 'blob'}`
 
   return (

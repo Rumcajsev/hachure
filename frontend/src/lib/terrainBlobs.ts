@@ -13,7 +13,7 @@ import type { GridMetadata, GeneratedHex } from '../store/mapStore'
  *  Ignores sea fraction so the hex participates in the correct terrain blob group. */
 function effectiveLandTerrain(hex: GeneratedHex): string {
   if (hex.manual_override) {
-    if (hex.terrain && hex.terrain !== 'sea') return hex.terrain
+    if (hex.terrain && hex.terrain !== 'water') return hex.terrain
     if (hex.terrains) {
       for (const t of ['marsh', 'woods', 'light_woods', 'rough', 'clear'] as const) {
         if (hex.terrains.includes(t)) return t
@@ -37,7 +37,7 @@ export function coastalBlobTerrains(hex: GeneratedHex, realisticCoastline: boole
   if (!hex.coastline_clip || hex.coastline_clip.length === 0) return hexTerrainLayers(hex)
   const land = effectiveLandTerrain(hex)
   const base = realisticCoastline
-    ? hexTerrainLayers(hex).filter(t => t !== 'sea')
+    ? hexTerrainLayers(hex).filter(t => t !== 'water')
     : hexTerrainLayers(hex)
   if (land === 'clear') return base
   const merged = new Set(base)
@@ -261,7 +261,7 @@ export function buildTerrainBlobsV2(
 
 // ── Connected components ─────────────────────────────────────────────────────
 
-export function computeConnectedComponents(hexes: { q: number; r: number; terrain: string; isLake: boolean }[]): Map<string, string> {
+export function computeConnectedComponents(hexes: { q: number; r: number; terrain: string }[]): Map<string, string> {
   const hexByKey = new Map<string, typeof hexes[0]>()
   for (const h of hexes) hexByKey.set(`${h.q},${h.r}`, h)
   const visited = new Set<string>()
@@ -282,8 +282,7 @@ export function computeConnectedComponents(hexes: { q: number; r: number; terrai
         const nk = `${h.q + dq},${h.r + dr}`
         const nh = hexByKey.get(nk)
         if (!nh || visited.has(nk)) continue
-        const sameGroup = hex.isLake ? nh.isLake : (!nh.isLake && nh.terrain === hex.terrain)
-        if (sameGroup) queue.push(nh)
+        if (nh.terrain === hex.terrain) queue.push(nh)
       }
     }
     let minQ = hex.q, minR = hex.r

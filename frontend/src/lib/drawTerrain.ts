@@ -31,19 +31,19 @@ export type DrawTerrainParams = {
   px: number; py: number; pw: number; ph: number
   backgroundTerrainBlobs: { terrain: string; polys: [number, number][][] }[]
   defaultTerrainBlobs: { terrain: string; polys: [number, number][][] }[]
-  defaultLakeBlobs: { terrain: string; polys: [number, number][][] }[]
+  defaultWaterBlobs: { terrain: string; polys: [number, number][][] }[]
   terrainBlobOverrides: Record<string, BlobOverride>
-  lakeOverrides: Record<string, BlobOverride>
+  waterOverrides: Record<string, BlobOverride>
   blobComponents: Map<string, string>
   blobComponentsByTerrain: Map<string, Map<string, string>>
   terrainBlobParams: BlobParams
-  lakeBlobParams: BlobParams
+  waterBlobParams: BlobParams
   hexes: GeneratedHex[]
   hexTerrainLayers: (hex: GeneratedHex) => string[]
   R: number
   realisticCoastline: boolean
   coastlineDebugRaw: boolean
-  oceanSeaKeys: Set<string>
+  oceanWaterKeys: Set<string>
   beachStrip: boolean
   beachColor: string
   beachWidth: number
@@ -293,10 +293,10 @@ export function drawTerrain(tCtx: Ctx, params: DrawTerrainParams): void {
     terrainColors, terrainTextureScales, terrainTextureBlendModes, terrainTextureOpacities,
     terrainTextureTintColors, terrainTextureTintOpacities, terrainTextures,
     px, py, pw, ph,
-    backgroundTerrainBlobs, defaultTerrainBlobs, defaultLakeBlobs,
-    terrainBlobOverrides, lakeOverrides,
+    backgroundTerrainBlobs, defaultTerrainBlobs, defaultWaterBlobs,
+    terrainBlobOverrides, waterOverrides,
     blobComponents, blobComponentsByTerrain,
-    terrainBlobParams, lakeBlobParams,
+    terrainBlobParams, waterBlobParams,
     hexes, hexTerrainLayers, R,
     realisticCoastline, coastlineDebugRaw,
     oceanSeaKeys,
@@ -469,16 +469,16 @@ export function drawTerrain(tCtx: Ctx, params: DrawTerrainParams): void {
     // Build defaultBlobMap excluding lakes
     const defaultBlobMap = new Map<string, [number, number][][]>()
     for (const { terrain, polys } of defaultTerrainBlobs) {
-      if (terrain !== 'lake') defaultBlobMap.set(terrain, polys)
+      if (terrain !== 'water') defaultBlobMap.set(terrain, polys)
     }
 
     // Group overrides by their target terrain
     const overridesByTerrain = new Map<string, Array<[string, BlobOverride]>>()
     for (const [canonicalKey, override] of Object.entries(terrainBlobOverrides)) {
       const canonicalHex = hexes.find(h => `${h.q},${h.r}` === canonicalKey)
-      if (!canonicalHex || (canonicalHex.isLake ?? false)) continue
+      if (!canonicalHex || canonicalHex.terrain === 'water') continue
       const ovTerrain = override.terrain ?? canonicalHex.terrain
-      if (ovTerrain === 'clear' || ovTerrain === 'lake') continue
+      if (ovTerrain === 'clear' || ovTerrain === 'water') continue
       if (!overridesByTerrain.has(ovTerrain)) overridesByTerrain.set(ovTerrain, [])
       overridesByTerrain.get(ovTerrain)!.push([canonicalKey, override])
     }
@@ -601,10 +601,10 @@ export function drawTerrain(tCtx: Ctx, params: DrawTerrainParams): void {
       }
     }
 
-    // ── 5. Lakes ──────────────────────────────────────────────────────────────
-    const lakeColor = terrainColors['lake'] ?? '#5888b0'
+    // ── 5. Water blobs ────────────────────────────────────────────────────────
+    const waterColor = terrainColors['water'] ?? '#3a6898'
 
-    const drawLakePolys = (polys: [number, number][][], fillColor: string) => {
+    const drawWaterPolys = (polys: [number, number][][], fillColor: string) => {
       tCtx.fillStyle = fillColor
       for (const poly of polys) {
         if (poly.length < 3) continue
@@ -616,35 +616,35 @@ export function drawTerrain(tCtx: Ctx, params: DrawTerrainParams): void {
       }
     }
 
-    // Default lake pass
-    const lakeBlobPolys = defaultLakeBlobs.find(b => b.terrain === 'lake')?.polys ?? []
-    if (lakeBlobPolys.length > 0) drawLakePolys(lakeBlobPolys, lakeColor)
+    // Default water pass
+    const waterBlobPolys = defaultWaterBlobs.find(b => b.terrain === 'water')?.polys ?? []
+    if (waterBlobPolys.length > 0) drawWaterPolys(waterBlobPolys, waterColor)
 
-    // Override lake passes
-    for (const [canonicalKey, override] of Object.entries(lakeOverrides)) {
+    // Override water passes
+    for (const [canonicalKey, override] of Object.entries(waterOverrides)) {
       const componentKeySet = new Set<string>()
       for (const [k, ck] of blobComponents) { if (ck === canonicalKey) componentKeySet.add(k) }
 
-      const ovLakeProjected = projected
-        .filter(p => (p.hex.isLake ?? false) && componentKeySet.has(`${p.hex.q},${p.hex.r}`))
-        .map(p => ({ hex: { ...p.hex, terrain: 'lake' }, verts: p.verts }))
-      if (ovLakeProjected.length === 0) continue
+      const ovWaterProjected = projected
+        .filter(p => p.hex.terrain === 'water' && componentKeySet.has(`${p.hex.q},${p.hex.r}`))
+        .map(p => ({ hex: { ...p.hex, terrain: 'water' }, verts: p.verts }))
+      if (ovWaterProjected.length === 0) continue
 
-      const ovSmooth          = override.smooth          ?? lakeBlobParams.smooth
-      const ovOffset          = override.offset          ?? lakeBlobParams.offset
-      const ovNoise           = override.bump            ?? lakeBlobParams.bump
-      const ovSweepFreq       = override.sweepFreq       ?? lakeBlobParams.sweepFreq
-      const ovLobeFreq        = override.lobeFreq        ?? lakeBlobParams.lobeFreq
-      const ovLobeAmp         = override.lobeAmp         ?? lakeBlobParams.lobeAmp
-      const ovLobeThreshold   = override.lobeThreshold   ?? lakeBlobParams.lobeThreshold
-      const ovLobeDirection   = override.lobeDirection   ?? lakeBlobParams.lobeDirection
+      const ovSmooth          = override.smooth          ?? waterBlobParams.smooth
+      const ovOffset          = override.offset          ?? waterBlobParams.offset
+      const ovNoise           = override.bump            ?? waterBlobParams.bump
+      const ovSweepFreq       = override.sweepFreq       ?? waterBlobParams.sweepFreq
+      const ovLobeFreq        = override.lobeFreq        ?? waterBlobParams.lobeFreq
+      const ovLobeAmp         = override.lobeAmp         ?? waterBlobParams.lobeAmp
+      const ovLobeThreshold   = override.lobeThreshold   ?? waterBlobParams.lobeThreshold
+      const ovLobeDirection   = override.lobeDirection   ?? waterBlobParams.lobeDirection
 
       const ovBlobs = buildTerrainBlobsV2(
-        ovLakeProjected, ovSmooth, ovOffset, ovNoise,
+        ovWaterProjected, ovSmooth, ovOffset, ovNoise,
         ovSweepFreq, ovLobeFreq, ovLobeAmp, ovLobeThreshold, ovLobeDirection, R,
       )
-      const ovPolys = ovBlobs.find(b => b.terrain === 'lake')?.polys ?? []
-      drawLakePolys(ovPolys, override.color ?? lakeColor)
+      const ovPolys = ovBlobs.find(b => b.terrain === 'water')?.polys ?? []
+      drawWaterPolys(ovPolys, override.color ?? waterColor)
     }
   } // end blob mode
 
@@ -725,7 +725,7 @@ export function drawTerrain(tCtx: Ctx, params: DrawTerrainParams): void {
 
   // ── 6. Coastline ────────────────────────────────────────────────────────────
   if (realisticCoastline && coastlineBoundaryRings.length > 0) {
-    const seaColor = terrainColors['sea'] ?? '#3a6898'
+    const seaColor = terrainColors['water'] ?? '#3a6898'
 
     // Ocean hexes — solid sea fill.  Skip hexes the user has manually painted
     // with non-sea terrain so their paint isn't erased by the sea fill.
@@ -733,9 +733,9 @@ export function drawTerrain(tCtx: Ctx, params: DrawTerrainParams): void {
     tCtx.beginPath()
     for (const { hex, verts } of projected) {
       const key = `${hex.q},${hex.r}`
-      if (!oceanSeaKeys.has(key)) continue
+      if (!oceanWaterKeys.has(key)) continue
       if (!inMargin(verts) && !hex.partial) continue
-      if (hex.manual_override && hexTerrainLayers(hex).some(t => t !== 'sea')) continue
+      if (hex.manual_override && hexTerrainLayers(hex).some(t => t !== 'water')) continue
       tCtx.moveTo(verts[0][0], verts[0][1])
       for (let i = 1; i < verts.length; i++) tCtx.lineTo(verts[i][0], verts[i][1])
       tCtx.closePath()
@@ -791,7 +791,7 @@ export function drawTerrain(tCtx: Ctx, params: DrawTerrainParams): void {
 
       // No ring intersected but backend flagged as coastal — smoothing voted it ocean.
       if (!hasAnyClip && hex.coastline_clip && hex.coastline_clip.length > 0
-          && !(hex.manual_override && hexTerrainLayers(hex).some(t => t !== 'sea'))) {
+          && !(hex.manual_override && hexTerrainLayers(hex).some(t => t !== 'water'))) {
         tCtx.moveTo(verts[0][0], verts[0][1])
         for (let i = 1; i < verts.length; i++) tCtx.lineTo(verts[i][0], verts[i][1])
         tCtx.closePath()

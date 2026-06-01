@@ -27,10 +27,9 @@ export const STYLE_PRESET_KEYS: string[] = [
   'terrainBlobLobeThreshold', 'terrainBlobLobeDirection',
   'terrainEdgePaintEnabled',
   'edgeBlobWidth',
-  'autoLakesEnabled', 'lakeSensitivity',
-  'lakeBlobSmooth', 'lakeBlobOffset', 'lakeBlobBump',
-  'lakeBlobSweepFreq', 'lakeBlobLobeFreq', 'lakeBlobLobeAmp',
-  'lakeBlobLobeThreshold', 'lakeBlobLobeDirection',
+  'waterBlobSmooth', 'waterBlobOffset', 'waterBlobBump',
+  'waterBlobSweepFreq', 'waterBlobLobeFreq', 'waterBlobLobeAmp',
+  'waterBlobLobeThreshold', 'waterBlobLobeDirection',
   // Settlements
   'settlementTierStyles', 'settlementTierThresholds', 'settlementsAutoPlace',
   'settlementsLimit', 'settlementsTypes',
@@ -93,9 +92,9 @@ const SETTLEMENT_TIERS_DEFAULT = {
 }
 
 const ROAD_TIERS_DEFAULT = [
-  { outer: '#ffe8a8', inner: '#b07820', outerW: 4.5, caseDash: 'solid', fillDash: 'solid', roughness: 0.3, bowing: 0.5 },
-  { outer: '#f0e0b8', inner: '#8a5c2a', outerW: 3.0, caseDash: 'solid', fillDash: 'solid', roughness: 0.3, bowing: 0.5 },
-  { outer: '#d8d8c0', inner: '#606060', outerW: 2.0, caseDash: 'solid', fillDash: 'solid', roughness: 0.3, bowing: 0.5 },
+  { outer: '#ede8d5', inner: '#a02020', outerW: 3.0, caseDash: 'solid', fillDash: 'solid', roughness: 0.3, bowing: 0.5 },
+  { outer: '#ede8d5', inner: '#6b6b6b', outerW: 2.0, caseDash: 'solid', fillDash: 'solid', roughness: 0.3, bowing: 0.5 },
+  { outer: '#606060', inner: '#ede8d5', outerW: 1.5, caseDash: 'dashed', fillDash: 'solid', roughness: 0.3, bowing: 0.5 },
 ]
 
 const URBAN_STYLE_DEFAULT = {
@@ -106,7 +105,7 @@ const URBAN_STYLE_DEFAULT = {
 
 function baseStructural(): StylePreset {
   return {
-    thresholds: { sea: 0.4, marsh: 0.2, woods: 0.3, light_woods: 0.15, rough: 0.25, clear: 0 },
+    thresholds: { sea: 0.4, marsh: 0.2, woods: 0.65, light_woods: 0.5, rough: 0.3, clear: 0 },
     terrainTextureScales: { clear: 1.6, woods: 6, light_woods: 7, rough: 10, marsh: 4 },
     terrainTextureOpacities: { light_woods: 1, woods: 0.5, marsh: 0.6, clear: 0.1 },
     terrainTextureBlendModes: { light_woods: 'color', woods: 'multiply', rough: 'multiply', marsh: 'multiply', clear: 'multiply' },
@@ -139,16 +138,14 @@ function baseStructural(): StylePreset {
     blobCount: 7,
     terrainEdgePaintEnabled: false,
     edgeBlobWidth: 0.25,
-    autoLakesEnabled: false,
-    lakeSensitivity: 0.4,
-    lakeBlobSmooth: 2,
-    lakeBlobOffset: -0.15,
-    lakeBlobBump: 0.15,
-    lakeBlobSweepFreq: 0.6,
-    lakeBlobLobeFreq: 2.8,
-    lakeBlobLobeAmp: 0.4,
-    lakeBlobLobeThreshold: 0.20,
-    lakeBlobLobeDirection: 1,
+    waterBlobSmooth: 2,
+    waterBlobOffset: -0.15,
+    waterBlobBump: 0.15,
+    waterBlobSweepFreq: 0.6,
+    waterBlobLobeFreq: 2.8,
+    waterBlobLobeAmp: 0.4,
+    waterBlobLobeThreshold: 0.20,
+    waterBlobLobeDirection: 1,
     settlementTierStyles: SETTLEMENT_TIERS_DEFAULT,
     settlementTierThresholds: [50000, 10000, 2000],
     settlementsAutoPlace: 5,
@@ -211,7 +208,7 @@ function baseStructural(): StylePreset {
     mapStyle: 'standard',
     areasStyle: { borderWidth: 2.0, labelSize: 1.0, borderColor: '#2c1a00' },
     // Colours
-    terrainColors: { clear: '#ede8d5', woods: '#8aaa6a', light_woods: '#b8cc88', rough: '#9e8c6a', marsh: '#7ab0a0', sea: '#3a6898', river: '#7ab0c8', beach: '#dfd0a0' },
+    terrainColors: { clear: '#ede8d5', woods: '#8aaa6a', light_woods: '#b8cc88', rough: '#9e8c6a', marsh: '#7ab0a0', water: '#3a6898', river: '#7ab0c8', beach: '#dfd0a0' },
     beachColor: '#e4d5a0',
     mapBgColor: '#ffffff',
     mapBorderColor: '#000000',
@@ -238,12 +235,17 @@ export const BUILTIN_PRESETS: BuiltinPreset[] = [
     swatches: ['#fafafa', '#5b8b5e', '#3a6898', '#9e8c6a'],
     data: {
       ...baseStructural(),
-      terrainColors: { clear: '#fafafa', woods: '#5b8b5e', light_woods: '#8aaa6a', rough: '#9e8c6a', marsh: '#7ab0a0', sea: '#3a6898', river: '#7ab0c8', beach: '#dfd0a0' },
+      terrainColors: { clear: '#fafafa', woods: '#5b8b5e', light_woods: '#8aaa6a', rough: '#9e8c6a', marsh: '#7ab0a0', water: '#3a6898', river: '#7ab0c8', beach: '#dfd0a0' },
       terrainTextureScales: { clear: 10, woods: 6, light_woods: 7.5, rough: 10, marsh: 4 },
       terrainTextureOpacities: { light_woods: 0.6, woods: 0.5, marsh: 0.6, clear: 0.59 },
       terrainTextureBlendModes: { light_woods: 'color', woods: 'multiply', rough: 'multiply', marsh: 'multiply', clear: 'overlay' },
       terrainTextureFile: { rough: 'rough', clear: 'lightforest' },
       terrainTextureEnabled: { rough: false, clear: true },
+      roadTierStyles: [
+        { outer: '#fdfdfd', inner: '#a02020', outerW: 3.0, caseDash: 'solid', fillDash: 'solid', roughness: 0.3, bowing: 0.5 },
+        { outer: '#fdfdfd', inner: '#6b6b6b', outerW: 2.0, caseDash: 'solid', fillDash: 'solid', roughness: 0.3, bowing: 0.5 },
+        { outer: '#606060', inner: '#fafafa', outerW: 1.5, caseDash: 'dashed', fillDash: 'solid', roughness: 0.3, bowing: 0.5 },
+      ],
     },
   },
 ]

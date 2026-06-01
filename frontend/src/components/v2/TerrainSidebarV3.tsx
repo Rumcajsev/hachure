@@ -1281,7 +1281,7 @@ export function TerrainSidebarV3() {
       {flyout === 'e-hillshade'  && <HilshadeFlyout       onClose={() => setFlyout(null)} />}
       {flyout === 'e-contours'   && <ContoursFlyout       onClose={() => setFlyout(null)} />}
       {flyout === 't-terrain' && cogTerrain && (
-        <TerrainCogFlyout terrain={cogTerrain} onClose={() => setFlyout(null)} />
+        <TerrainCogFlyout key={cogTerrain} terrain={cogTerrain} onClose={() => setFlyout(null)} />
       )}
       {flyout === 'e-terrain' && cogElevBrush && (
         <ElevationCogFlyout

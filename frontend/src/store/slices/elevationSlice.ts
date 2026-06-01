@@ -179,7 +179,7 @@ export const createElevationSlice = (set: Set, get: () => MapStore): ElevationSl
 
   setElevationPaintMode: (v) => set({
     elevationPaintMode: v,
-    ...(v ? { terrainPaintMode: false, roadPaintMode: false, railPaintMode: false, lakePaintMode: false } : {}),
+    ...(v ? { terrainPaintMode: false, roadPaintMode: false, railPaintMode: false } : {}),
   }),
 
   setElevationPaintBrush: (v) => set({ elevationPaintBrush: v }),

@@ -73,19 +73,16 @@ export type TerrainSlice = {
   // Blank map
   blankMap: boolean
   setBlankMap: (v: boolean) => void
-  // Lake state
-  autoLakesEnabled: boolean
-  lakeSensitivity: number
-  lakePaintMode: boolean
-  lakeBlobSmooth: number
-  lakeBlobOffset: number
-  lakeBlobBump: number
-  lakeBlobSweepFreq: number
-  lakeBlobLobeFreq: number
-  lakeBlobLobeAmp: number
-  lakeBlobLobeThreshold: number
-  lakeBlobLobeDirection: number
-  lakeOverrides: Record<string, BlobOverride>
+  // Water blob state
+  waterBlobSmooth: number
+  waterBlobOffset: number
+  waterBlobBump: number
+  waterBlobSweepFreq: number
+  waterBlobLobeFreq: number
+  waterBlobLobeAmp: number
+  waterBlobLobeThreshold: number
+  waterBlobLobeDirection: number
+  waterOverrides: Record<string, BlobOverride>
   // Actions
   resetToSetup: () => void
   generateMap: () => Promise<void>
@@ -144,19 +141,15 @@ export type TerrainSlice = {
   eraseEdgeBlob: (edgeKey: string) => void
   setEdgeBlobWidth: (v: number) => void
   setEdgeBlobOverride: (key: string, override: BlobOverride | null) => void
-  setAutoLakesEnabled: (v: boolean) => void
-  setLakeSensitivity: (v: number) => void
-  setLakePaintMode: (v: boolean) => void
-  overrideHexLake: (q: number, r: number, isLake: boolean) => void
-  setLakeBlobSmooth: (v: number) => void
-  setLakeBlobOffset: (v: number) => void
-  setLakeBlobBump: (v: number) => void
-  setLakeBlobSweepFreq: (v: number) => void
-  setLakeBlobLobeFreq: (v: number) => void
-  setLakeBlobLobeAmp: (v: number) => void
-  setLakeBlobLobeThreshold: (v: number) => void
-  setLakeBlobLobeDirection: (v: number) => void
-  setLakeOverride: (key: string, override: BlobOverride | null) => void
+  setWaterBlobSmooth: (v: number) => void
+  setWaterBlobOffset: (v: number) => void
+  setWaterBlobBump: (v: number) => void
+  setWaterBlobSweepFreq: (v: number) => void
+  setWaterBlobLobeFreq: (v: number) => void
+  setWaterBlobLobeAmp: (v: number) => void
+  setWaterBlobLobeThreshold: (v: number) => void
+  setWaterBlobLobeDirection: (v: number) => void
+  setWaterOverride: (key: string, override: BlobOverride | null) => void
   blobSeeds: Record<string, number>
   randomizeBlobSeed: (terrain: string) => void
 }
@@ -244,18 +237,15 @@ export const createTerrainSlice = (set: Set, get: () => MapStore): TerrainSlice 
 
   setBlankMap: (v) => set({ blankMap: v }),
 
-  autoLakesEnabled: false,
-  lakeSensitivity: 0.4,
-  lakePaintMode: false,
-  lakeBlobSmooth: 2,
-  lakeBlobOffset: -0.15,
-  lakeBlobBump: 0.15,
-  lakeBlobSweepFreq: 0.6,
-  lakeBlobLobeFreq: 2.8,
-  lakeBlobLobeAmp: 0.4,
-  lakeBlobLobeThreshold: 0.20,
-  lakeBlobLobeDirection: 1,
-  lakeOverrides: {},
+  waterBlobSmooth: 2,
+  waterBlobOffset: -0.15,
+  waterBlobBump: 0.15,
+  waterBlobSweepFreq: 0.6,
+  waterBlobLobeFreq: 2.8,
+  waterBlobLobeAmp: 0.4,
+  waterBlobLobeThreshold: 0.20,
+  waterBlobLobeDirection: 1,
+  waterOverrides: {},
 
   blobSeeds: {},
 
@@ -299,7 +289,6 @@ export const createTerrainSlice = (set: Set, get: () => MapStore): TerrainSlice 
     elevationError: null,
     elevationProgress: null,
     terrainPaintMode: false,
-    lakePaintMode: false,
     roadPaintMode: false,
     roadPaintEraser: false,
     highlightedHexes: {},
@@ -311,7 +300,7 @@ export const createTerrainSlice = (set: Set, get: () => MapStore): TerrainSlice 
     edgeBlobPainted: {},
     edgeBlobOverrides: {},
     terrainBlobOverrides: {},
-    lakeOverrides: {},
+    waterOverrides: {},
     urbanHexes: [],
     excludedHexKeys: [],
     disabledHexKeys: [],
@@ -426,7 +415,7 @@ export const createTerrainSlice = (set: Set, get: () => MapStore): TerrainSlice 
       edgeBlobPainted: {},
       edgeBlobOverrides: {},
       terrainBlobOverrides: {},
-      lakeOverrides: {},
+      waterOverrides: {},
       bridgeOverrides: {},
       undoStack: [],
       redoStack: [],
@@ -482,19 +471,12 @@ export const createTerrainSlice = (set: Set, get: () => MapStore): TerrainSlice 
           const progress = event.progress as number
 
           if (step === 'done') {
-            const { thresholds, disabledTerrains, autoLakesEnabled, lakeSensitivity } = get()
-            const rawHexes = event.hexes as (GeneratedHex & { is_lake?: boolean })[]
+            const { thresholds, disabledTerrains } = get()
+            const rawHexes = event.hexes as GeneratedHex[]
             const reclassified = rawHexes.map((h) => {
               const terrain = classifyHex(h.coverage ?? {}, thresholds, disabledTerrains)
               const { terrains, backgroundTerrain } = classifyWithBackground(terrain, classifyHexLayers(h.coverage ?? {}, thresholds, disabledTerrains))
-              return {
-                ...h,
-                lakeManualOverride: false,
-                isLake: autoLakesEnabled && (h.coverage?.lake ?? 0) >= lakeSensitivity,
-                terrain,
-                terrains,
-                backgroundTerrain,
-              }
+              return { ...h, terrain, terrains, backgroundTerrain }
             })
             set({
               step: 'terrain',
@@ -515,8 +497,6 @@ export const createTerrainSlice = (set: Set, get: () => MapStore): TerrainSlice 
               terrain: 'clear',
               terrains: [],
               coverage: {},
-              isLake: false,
-              lakeManualOverride: false,
               elevation_avg_m: null,
               elevation_median_m: null,
               elevation_max_m: null,
@@ -554,19 +534,12 @@ export const createTerrainSlice = (set: Set, get: () => MapStore): TerrainSlice 
               highlightPaintMode: false,
             })
           } else if (step === 'classify' && Array.isArray(event.hexes)) {
-            const { thresholds, disabledTerrains, autoLakesEnabled, lakeSensitivity, generatedHexes: prev } = get()
-            const rawHexes = event.hexes as (GeneratedHex & { is_lake?: boolean })[]
+            const { thresholds, disabledTerrains, generatedHexes: prev } = get()
+            const rawHexes = event.hexes as GeneratedHex[]
             const updates = new Map(rawHexes.map((h) => {
               const terrain = classifyHex(h.coverage ?? {}, thresholds, disabledTerrains)
               const { terrains, backgroundTerrain } = classifyWithBackground(terrain, classifyHexLayers(h.coverage ?? {}, thresholds, disabledTerrains))
-              return [`${h.q},${h.r}`, {
-                ...h,
-                lakeManualOverride: false,
-                isLake: autoLakesEnabled && (h.coverage?.lake ?? 0) >= lakeSensitivity,
-                terrain,
-                terrains,
-                backgroundTerrain,
-              }]
+              return [`${h.q},${h.r}`, { ...h, terrain, terrains, backgroundTerrain }]
             }))
             set({
               generateProgress: { step, message, progress },
@@ -744,7 +717,7 @@ export const createTerrainSlice = (set: Set, get: () => MapStore): TerrainSlice 
   setTerrainRenderMode: (v) => set({ terrainRenderMode: v }),
   // setFieldFreq / setFieldAmp / setFieldOctaves / setFieldPersistence / setFieldWildness — detached
 
-  setTerrainPaintMode: (v) => set({ terrainPaintMode: v, ...(v ? { roadPaintMode: false, railPaintMode: false, lakePaintMode: false, elevationPaintMode: false } : {}) }),
+  setTerrainPaintMode: (v) => set({ terrainPaintMode: v, ...(v ? { roadPaintMode: false, railPaintMode: false, elevationPaintMode: false } : {}) }),
   setTerrainPaintBrush: (v) => set({ terrainPaintBrush: v }),
   setTerrainEdgePaintEnabled: (v) => set({ terrainEdgePaintEnabled: v }),
   setTerrainBackgroundPaintEnabled: (v) => set({ terrainBackgroundPaintEnabled: v }),
@@ -778,47 +751,26 @@ export const createTerrainSlice = (set: Set, get: () => MapStore): TerrainSlice 
     return { edgeBlobOverrides: { ...s.edgeBlobOverrides, [key]: cleaned } }
   }),
 
-  setLakePaintMode: (v) => set({ lakePaintMode: v, ...(v ? { terrainPaintMode: false, roadPaintMode: false, railPaintMode: false, elevationPaintMode: false } : {}) }),
-  setAutoLakesEnabled: (v) => {
-    const { generatedHexes, lakeSensitivity } = get()
-    const updated = generatedHexes.map((h) =>
-      h.lakeManualOverride ? h : { ...h, isLake: v && (h.coverage?.lake ?? 0) >= lakeSensitivity }
-    )
-    set({ autoLakesEnabled: v, generatedHexes: updated })
-  },
-  setLakeSensitivity: (v) => {
-    const { generatedHexes, autoLakesEnabled } = get()
-    const updated = generatedHexes.map((h) =>
-      h.lakeManualOverride ? h : { ...h, isLake: autoLakesEnabled && (h.coverage?.lake ?? 0) >= v }
-    )
-    set({ lakeSensitivity: v, generatedHexes: updated })
-  },
-  overrideHexLake: (q, r, isLake) => {
-    get().pushUndoSnapshot()
-    const { generatedHexes } = get()
-    const updated = generatedHexes.map((h) => h.q === q && h.r === r ? { ...h, isLake, lakeManualOverride: isLake } : h)
-    set({ generatedHexes: updated })
-  },
-  setLakeBlobSmooth: (v) => set({ lakeBlobSmooth: v }),
-  setLakeBlobOffset: (v) => set({ lakeBlobOffset: v }),
-  setLakeBlobBump: (v) => set({ lakeBlobBump: v }),
-  setLakeBlobSweepFreq: (v) => set({ lakeBlobSweepFreq: v }),
-  setLakeBlobLobeFreq: (v) => set({ lakeBlobLobeFreq: v }),
-  setLakeBlobLobeAmp: (v) => set({ lakeBlobLobeAmp: v }),
-  setLakeBlobLobeThreshold: (v) => set({ lakeBlobLobeThreshold: v }),
-  setLakeBlobLobeDirection: (v) => set({ lakeBlobLobeDirection: v }),
-  setLakeOverride: (key, override) => set((s) => {
+  setWaterBlobSmooth: (v) => set({ waterBlobSmooth: v }),
+  setWaterBlobOffset: (v) => set({ waterBlobOffset: v }),
+  setWaterBlobBump: (v) => set({ waterBlobBump: v }),
+  setWaterBlobSweepFreq: (v) => set({ waterBlobSweepFreq: v }),
+  setWaterBlobLobeFreq: (v) => set({ waterBlobLobeFreq: v }),
+  setWaterBlobLobeAmp: (v) => set({ waterBlobLobeAmp: v }),
+  setWaterBlobLobeThreshold: (v) => set({ waterBlobLobeThreshold: v }),
+  setWaterBlobLobeDirection: (v) => set({ waterBlobLobeDirection: v }),
+  setWaterOverride: (key, override) => set((s) => {
     if (override === null) {
-      const { [key]: _, ...rest } = s.lakeOverrides
-      return { lakeOverrides: rest }
+      const { [key]: _, ...rest } = s.waterOverrides
+      return { waterOverrides: rest }
     }
-    const merged = { ...s.lakeOverrides[key], ...override }
+    const merged = { ...s.waterOverrides[key], ...override }
     const cleaned = Object.fromEntries(Object.entries(merged).filter(([, v]) => v !== undefined)) as BlobOverride
     if (Object.keys(cleaned).length === 0) {
-      const { [key]: _, ...rest } = s.lakeOverrides
-      return { lakeOverrides: rest }
+      const { [key]: _, ...rest } = s.waterOverrides
+      return { waterOverrides: rest }
     }
-    return { lakeOverrides: { ...s.lakeOverrides, [key]: cleaned } }
+    return { waterOverrides: { ...s.waterOverrides, [key]: cleaned } }
   }),
 
   randomizeBlobSeed: (terrain) => set((s) => ({ blobSeeds: { ...s.blobSeeds, [terrain]: (Math.random() * 0x7fffffff) | 0 } })),

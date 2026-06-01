@@ -10,7 +10,7 @@ export function classifyElevation(
   return hexes.map(h => {
     if (h.elevation_manual_override) return h
     if (
-      h.terrain === 'sea' || h.isLake
+      h.terrain === 'water'
       || h.elevation_range_m == null
       || h.elevation_median_m == null
     ) {
