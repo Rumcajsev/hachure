@@ -7,6 +7,7 @@ export type HillshadeParams = {
   azimuth: number   // degrees clockwise from north (0–360)
   altitude: number  // degrees above horizon (5–85)
   intensity: number // contrast exaggeration (0–1)
+  mode: 'smooth' | 'hard'
 }
 
 export function computeHillshade(
@@ -75,8 +76,14 @@ export function computeHillshade(
         ? shade * shadowScale
         : 128 + (shade - flatShade) * highlightScale
 
-      // Blend toward 128 (neutral) by (1 - intensity)
-      const gray = Math.round(128 + (raw128 - 128) * t)
+      let gray: number
+      if (params.mode === 'hard') {
+        // Shadow side → flat dark; lit side → neutral (no highlight)
+        gray = raw128 < 128 ? Math.round(128 * (1 - t)) : 128
+      } else {
+        // Blend toward 128 (neutral) by (1 - intensity)
+        gray = Math.round(128 + (raw128 - 128) * t)
+      }
 
       od[idx * 4]     = gray
       od[idx * 4 + 1] = gray

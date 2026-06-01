@@ -486,8 +486,8 @@ function TerrainVisibilityFilter({
 
 function HilshadeFlyout({ onClose }: { onClose: () => void }) {
   const {
-    hillshadeAzimuth, hillshadeAltitude, hillshadeIntensity,
-    setHillshadeAzimuth, setHillshadeAltitude, setHillshadeIntensity,
+    hillshadeAzimuth, hillshadeAltitude, hillshadeIntensity, hillshadeMode,
+    setHillshadeAzimuth, setHillshadeAltitude, setHillshadeIntensity, setHillshadeMode,
     hillshadeDisabledTerrains, hillshadeDisabledElevClasses,
     setHillshadeDisabledTerrains, setHillshadeDisabledElevClasses,
     customTerrains,
@@ -495,6 +495,7 @@ function HilshadeFlyout({ onClose }: { onClose: () => void }) {
 
   return (
     <FlyoutShell title="Hillshade" onClose={onClose}>
+      <ToggleRow label="Hard shadows" checked={hillshadeMode === 'hard'} onChange={v => setHillshadeMode(v ? 'hard' : 'smooth')} />
       <MiniSlider label="Sun azimuth"  display={`${hillshadeAzimuth}°`}        value={hillshadeAzimuth}  min={0} max={360} step={5}    onChange={setHillshadeAzimuth} />
       <MiniSlider label="Sun altitude" display={`${hillshadeAltitude}°`}       value={hillshadeAltitude} min={5} max={85}  step={5}    onChange={setHillshadeAltitude} />
       <MiniSlider label="Intensity"    display={hillshadeIntensity.toFixed(2)} value={hillshadeIntensity} min={0} max={1} step={0.05} onChange={setHillshadeIntensity} />

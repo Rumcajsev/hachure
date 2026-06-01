@@ -229,7 +229,7 @@ terrainColors, terrainTextureScales, terrainTextureBlendModes, terrainTextureOpa
     beachStrip, beachColor, beachWidth,
     hillsColor, mountainsColor, reliefShadingOpacity,
     heightmapUrl, heightmapMeta,
-    hillshadeAzimuth, hillshadeAltitude, hillshadeIntensity,
+    hillshadeAzimuth, hillshadeAltitude, hillshadeIntensity, hillshadeMode,
     hillshadeDisabledTerrains, hillshadeDisabledElevClasses,
     setHillshadeAzimuth, setHillshadeAltitude, setHillshadeIntensity,
     contoursEnabled, contourInterval, contourBaseElevation, contourSmoothPasses, contourLineWidth,
@@ -805,6 +805,8 @@ const lakePaintModeRef = useRef(lakePaintMode)
   hillshadeAltitudeRef.current = hillshadeAltitude
   const hillshadeIntensityRef = useRef(hillshadeIntensity)
   hillshadeIntensityRef.current = hillshadeIntensity
+  const hillshadeModeRef = useRef(hillshadeMode)
+  hillshadeModeRef.current = hillshadeMode
   const heightmapMetaRef = useRef(heightmapMeta)
   heightmapMetaRef.current = heightmapMeta
   const hillshadeCanvasRef = useRef<OffscreenCanvas | null>(null)
@@ -2732,6 +2734,7 @@ const roadV3TierGeomRef = useRef(roadV3TierGeom)
           azimuth: hillshadeAzimuthRef.current,
           altitude: hillshadeAltitudeRef.current,
           intensity: hillshadeIntensityRef.current,
+          mode: hillshadeModeRef.current,
         })
         if (contoursEnabledRef.current) {
           const { pw, ph } = computePaper(frameDimsRef.current.w, frameDimsRef.current.h, metaRef.current!)
@@ -2763,11 +2766,12 @@ const roadV3TierGeomRef = useRef(roadV3TierGeom)
       azimuth: hillshadeAzimuth,
       altitude: hillshadeAltitude,
       intensity: hillshadeIntensity,
+      mode: hillshadeMode,
     })
     terrainDirtyRef.current = true
     draw()
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [hillshadeAzimuth, hillshadeAltitude, hillshadeIntensity])
+  }, [hillshadeAzimuth, hillshadeAltitude, hillshadeIntensity, hillshadeMode])
 
   // Recompute contours when params change
   useEffect(() => {

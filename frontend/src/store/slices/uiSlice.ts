@@ -866,6 +866,9 @@ if (fromVersion < 64) {
       }
     }
   }
+  if (fromVersion < 70) {
+    if (s.hillshadeMode === undefined) s.hillshadeMode = 'smooth'
+  }
   if (fromVersion < 69) {
     const cp = s.classificationParams as Record<string, unknown> | undefined
     if (cp) {

@@ -22,6 +22,7 @@ export type ElevationSlice = {
   hillshadeAzimuth: number
   hillshadeAltitude: number
   hillshadeIntensity: number
+  hillshadeMode: 'smooth' | 'hard'
   hillshadeDisabledTerrains: string[]
   hillshadeDisabledElevClasses: string[]
   contoursEnabled: boolean
@@ -48,6 +49,7 @@ export type ElevationSlice = {
   setHillshadeAzimuth: (v: number) => void
   setHillshadeAltitude: (v: number) => void
   setHillshadeIntensity: (v: number) => void
+  setHillshadeMode: (v: 'smooth' | 'hard') => void
   setHillshadeDisabledTerrains: (v: string[]) => void
   setHillshadeDisabledElevClasses: (v: string[]) => void
   setContoursEnabled: (v: boolean) => void
@@ -76,6 +78,7 @@ export const createElevationSlice = (set: Set, get: () => MapStore): ElevationSl
   hillshadeAzimuth: 315,
   hillshadeAltitude: 45,
   hillshadeIntensity: 0.6,
+  hillshadeMode: 'smooth' as const,
   hillshadeDisabledTerrains: [],
   hillshadeDisabledElevClasses: [],
   contoursEnabled: false,
@@ -200,6 +203,7 @@ export const createElevationSlice = (set: Set, get: () => MapStore): ElevationSl
   setHillshadeAzimuth: (v) => set({ hillshadeAzimuth: v }),
   setHillshadeAltitude: (v) => set({ hillshadeAltitude: v }),
   setHillshadeIntensity: (v) => set({ hillshadeIntensity: v }),
+  setHillshadeMode: (v) => set({ hillshadeMode: v }),
   setHillshadeDisabledTerrains: (v) => set({ hillshadeDisabledTerrains: v }),
   setHillshadeDisabledElevClasses: (v) => set({ hillshadeDisabledElevClasses: v }),
   setContoursEnabled: (v) => set({ contoursEnabled: v }),
