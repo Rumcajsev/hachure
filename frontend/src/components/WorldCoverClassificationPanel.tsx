@@ -1,9 +1,9 @@
 import { useState, useRef } from 'react'
 import { useTheme } from '../context/ThemeContext'
 import { useMapStore, WORLDCOVER_CLASSES, DEFAULT_TERRAIN_RULES, TERRAIN_COLORS, type ClassRule } from '../store/mapStore'
-import { STRIP_W } from './v2/sidebar'
+import { STRIP_W, MiniSlider } from './v2/sidebar'
 
-const PANEL_W = 440
+const PANEL_W = 520
 
 const CLASSIFY_TERRAINS = ['water', 'marsh', 'woods', 'light_woods', 'rough']
 
@@ -63,30 +63,31 @@ function AssignedRule({
   if (!cls) return null
   return (
     <div style={{
-      display: 'flex', alignItems: 'center', gap: 6,
-      padding: '3px 6px 3px 8px',
       background: t.surfaceAlt,
       border: `1px solid ${t.line}`,
       borderLeft: `3px solid ${cls.color}`,
       borderRadius: 3,
       marginBottom: 3,
+      position: 'relative',
     }}>
-      <span style={{ fontSize: 10, color: t.inkMute, fontFamily: t.mono, minWidth: 22 }}>{code}</span>
-      <span style={{ fontSize: 11, color: t.ink, flex: 1, fontFamily: t.mono }}>{cls.name}</span>
-      <span style={{ fontSize: 10, color: t.inkMute, minWidth: 30, textAlign: 'right', fontFamily: t.mono }}>
-        {Math.round(threshold * 100)}%
-      </span>
-      <input
-        type="range"
-        min={1} max={100} step={1}
-        value={Math.round(threshold * 100)}
-        onChange={e => onThresholdChange(Number(e.target.value) / 100)}
-        style={{ width: 70, cursor: 'pointer' }}
-      />
+      <div style={{ display: 'flex', alignItems: 'center', paddingRight: 24 }}>
+        <div style={{ flex: 1 }}>
+          <MiniSlider
+            label={<><span style={{ color: t.inkMute, marginRight: 6 }}>{code}</span>{cls.name}</>}
+            display={`${Math.round(threshold * 100)}%`}
+            value={Math.round(threshold * 100)}
+            min={1} max={100} step={1}
+            accentColor={cls.color}
+            onChange={v => onThresholdChange(v / 100)}
+          />
+        </div>
+      </div>
       <button
         onClick={onRemove}
         title="Remove"
         style={{
+          position: 'absolute', top: '50%', right: 6,
+          transform: 'translateY(-50%)',
           background: 'none', border: 'none', cursor: 'pointer',
           color: t.inkMute, fontSize: 14, lineHeight: 1, padding: '0 2px',
         }}
@@ -209,7 +210,7 @@ export function WorldCoverClassificationPanel({ onClose }: { onClose: () => void
             WorldCover Classification
           </div>
           <div style={{ fontSize: 10, color: t.inkMute, fontFamily: t.mono }}>
-            Drag classes onto terrain types · live reclassification
+            Drag classes onto terrain types
           </div>
         </div>
         <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
@@ -221,7 +222,7 @@ export function WorldCoverClassificationPanel({ onClose }: { onClose: () => void
               background: 'none', border: `1px solid ${t.line}`,
               borderRadius: 3, padding: '2px 6px', cursor: 'pointer',
             }}
-          >reset</button>
+          >reset to default</button>
           <button
             onClick={onClose}
             style={{
