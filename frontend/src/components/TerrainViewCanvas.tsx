@@ -6,7 +6,7 @@ import { BlobOverrideFlyout } from './BlobOverrideFlyout'
 import { useTheme } from '../context/ThemeContext'
 import { hexAdjacent, catmullRom, offsetPolyline, pointInPolygon, distToSeg, douglasPeucker, chaikin } from '../lib/geometry'
 import { mulberry32, makePermutation } from '../lib/noise'
-import { projectToCanvas, unprojectFromCanvas, computePaper } from '../lib/projection'
+import { projectToCanvas, unprojectFromCanvas, computePaper, computeWorldcoverBbox } from '../lib/projection'
 import { coastalBlobTerrains, bleedPolygon, buildTerrainBlobsV2, buildTerrainBlobTopology, shapeTerrainBlobs, computeConnectedComponents } from '../lib/terrainBlobs'
 import type { BlobTopologyEntry } from '../lib/terrainBlobs'
 import { findEdgeChains as findEdgeChainsSync } from '../lib/edgeBlobs'
@@ -1729,13 +1729,30 @@ const roadV3TierGeomRef = useRef(roadV3TierGeom)
       _drawTerrain(ctx, { ...terrainParams, backgroundTerrainBlobs: defaultBackgroundBlobsRef.current, defaultTerrainBlobs: exportTerrainBlobs, defaultWaterBlobs: exportWaterBlobs })
     }
 
-    // WorldCover raw overlay — screen only, semi-transparent, never exported
+    // WorldCover raw overlay — screen only, semi-transparent, never exported.
+    // The raster covers a buffered (10%) axis-aligned lat/lon bbox; we project
+    // its four geographic corners to canvas space and use setTransform so the
+    // image aligns correctly even when the map has a non-zero bearing.
     if (!isExport && showWorldcoverOverlayRef.current && worldcoverImageElementRef.current && meta) {
       const img = worldcoverImageElementRef.current
-      ctx.save()
-      ctx.globalAlpha = 0.55
-      ctx.drawImage(img, px, py, pw, ph)
-      ctx.restore()
+      const wcBbox = computeWorldcoverBbox(meta)
+      if (wcBbox) {
+        const { minLon, minLat, maxLon, maxLat } = wcBbox
+        // image (0,0) = top-left = (minLon, maxLat); image (W,0) = (maxLon, maxLat); image (0,H) = (minLon, minLat)
+        const tl = projectToCanvas(minLon, maxLat, meta, pw, ph, px, py)
+        const tr = projectToCanvas(maxLon, maxLat, meta, pw, ph, px, py)
+        const bl = projectToCanvas(minLon, minLat, meta, pw, ph, px, py)
+        const iw = img.naturalWidth, ih = img.naturalHeight
+        ctx.save()
+        ctx.globalAlpha = 0.55
+        ctx.setTransform(
+          (tr[0] - tl[0]) / iw, (tr[1] - tl[1]) / iw,
+          (bl[0] - tl[0]) / ih, (bl[1] - tl[1]) / ih,
+          tl[0], tl[1],
+        )
+        ctx.drawImage(img, 0, 0, iw, ih)
+        ctx.restore()
+      }
     }
 
     // Historical map image overlay — screen only, drawn after terrain so hex borders render on top
@@ -4637,27 +4654,32 @@ const roadV3TierGeomRef = useRef(roadV3TierGeom)
       setMapImageTransformRef.current({ translateX: drag.startTX + dx, translateY: drag.startTY + dy })
       return
     }
-    // WorldCover pixel hover — reads from the offscreen canvas, no network call
+    // WorldCover pixel hover — unproject cursor to geo coords, map into image space, read pixel
     if (showWorldcoverOverlayRef.current && worldcoverOffscreenRef.current) {
       const logical = clientToLogical(e.clientX, e.clientY)
       const meta = metaRef.current
       if (logical && meta) {
         const { lx, ly, cssW, cssH } = logical
         const { pw, ph, px, py } = computePaper(cssW, cssH, meta)
-        const fracX = (lx - px) / pw
-        const fracY = (ly - py) / ph
-        if (fracX >= 0 && fracX <= 1 && fracY >= 0 && fracY <= 1) {
-          const off = worldcoverOffscreenRef.current
-          const px2 = Math.floor(fracX * off.width)
-          const py2 = Math.floor(fracY * off.height)
-          const octx = off.getContext('2d')!
-          const [r, g, b] = octx.getImageData(px2, py2, 1, 1).data
-          const hex = `#${r.toString(16).padStart(2, '0')}${g.toString(16).padStart(2, '0')}${b.toString(16).padStart(2, '0')}`
-          const cls = WORLDCOVER_CLASSES.find(c => c.color.toLowerCase() === hex.toLowerCase())
-          const label = cls ? `${cls.code} — ${cls.name}` : '0 — Ocean / no data'
-          setWcTooltip({ x: e.clientX, y: e.clientY, label })
-        } else {
-          setWcTooltip(null)
+        const [lon, lat] = unprojectFromCanvas(lx, ly, meta, pw, ph, px, py)
+        const bbox = computeWorldcoverBbox(meta)
+        if (bbox) {
+          const { minLon, maxLon, minLat, maxLat } = bbox
+          const fracX = (lon - minLon) / (maxLon - minLon)
+          const fracY = (maxLat - lat) / (maxLat - minLat)
+          if (fracX >= 0 && fracX <= 1 && fracY >= 0 && fracY <= 1) {
+            const off = worldcoverOffscreenRef.current
+            const ipx = Math.floor(fracX * off.width)
+            const ipy = Math.floor(fracY * off.height)
+            const octx = off.getContext('2d')!
+            const [r, g, b] = octx.getImageData(ipx, ipy, 1, 1).data
+            const hex = `#${r.toString(16).padStart(2, '0')}${g.toString(16).padStart(2, '0')}${b.toString(16).padStart(2, '0')}`
+            const cls = WORLDCOVER_CLASSES.find(c => c.color.toLowerCase() === hex.toLowerCase())
+            const label = cls ? `${cls.code} — ${cls.name}` : '0 — Ocean / no data'
+            setWcTooltip({ x: e.clientX, y: e.clientY, label })
+          } else {
+            setWcTooltip(null)
+          }
         }
       } else {
         setWcTooltip(null)

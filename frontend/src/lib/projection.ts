@@ -43,6 +43,31 @@ export function unprojectFromCanvas(
   return [meta.center[0] + E_m / (cosLat * MPDEG), meta.center[1] + N_m / MPDEG]
 }
 
+/** Compute the axis-aligned lat/lon bbox used when fetching the WorldCover raster.
+ *  Replicates backend compute_bbox(buffer=0.10) exactly. */
+export function computeWorldcoverBbox(meta: GridMetadata): { minLat: number; minLon: number; maxLat: number; maxLon: number } | null {
+  if (!meta) return null
+  const MPDEG = 111319
+  const [wMm, hMm] = meta.paper_mm
+  const width_m = wMm * meta.scale_m_per_mm
+  const height_m = hMm * meta.scale_m_per_mm
+  const buffer = 0.10
+  const β = (meta.bearing * Math.PI) / 180
+  const cosB = Math.cos(β), sinB = Math.sin(β)
+  const cosLat = Math.cos((meta.center[1] * Math.PI) / 180)
+  const hw = (width_m / 2) * (1 + buffer)
+  const hh = (height_m / 2) * (1 + buffer)
+  const corners: [number, number][] = [[-hw, -hh], [hw, -hh], [hw, hh], [-hw, hh]]
+  const lats: number[] = [], lons: number[] = []
+  for (const [px, py] of corners) {
+    const E_m = px * cosB + py * sinB
+    const N_m = -px * sinB + py * cosB
+    lats.push(meta.center[1] + N_m / MPDEG)
+    lons.push(meta.center[0] + E_m / (cosLat * MPDEG))
+  }
+  return { minLat: Math.min(...lats), minLon: Math.min(...lons), maxLat: Math.max(...lats), maxLon: Math.max(...lons) }
+}
+
 /** Fits the paper rect (with FRAME_MARGIN) into a CSS canvas of cssW×cssH. */
 export function computePaper(cssW: number, cssH: number, meta: GridMetadata) {
   const [pwMm, phMm] = meta.paper_mm
