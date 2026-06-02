@@ -1,6 +1,6 @@
 from typing import Optional
 from fastapi import APIRouter, HTTPException
-from fastapi.responses import StreamingResponse
+from fastapi.responses import StreamingResponse, Response
 from models import GridConfig, ReclassifyRequest, SettlementsConfig, RoadsConfig, RailsConfig, RiversConfig, ElevationConfig, HexLookupConfig, SettlementRoadsConfig, MotorwayHexesConfig, MapImageClassifyConfig
 from services.hex_grid import generate_hex_grid
 from services.terrain import generate_terrain, classify_hex, terrain_stream_generator
@@ -127,3 +127,45 @@ async def terrain_stream(config: GridConfig) -> StreamingResponse:
         media_type="text/event-stream",
         headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
     )
+
+
+# ESA WorldCover class code → RGBA (matches WORLDCOVER_CLASSES in mapStore.ts)
+_WC_PALETTE: dict[int, tuple[int, int, int]] = {
+    10:  (0x2d, 0x6a, 0x2d),  # Tree cover
+    20:  (0xa3, 0xc4, 0x6c),  # Shrubland
+    30:  (0xd4, 0xe8, 0x9a),  # Grassland
+    40:  (0xe8, 0xd8, 0x7a),  # Cropland
+    50:  (0xc0, 0xa8, 0x82),  # Built-up
+    60:  (0xb8, 0xa8, 0x82),  # Bare / sparse veg
+    70:  (0xe8, 0xf0, 0xf8),  # Snow and ice
+    80:  (0x3a, 0x68, 0x98),  # Permanent water
+    90:  (0x6b, 0x9e, 0x8a),  # Herbaceous wetland
+    95:  (0x4a, 0x8a, 0x6a),  # Mangroves
+    100: (0x9a, 0xaa, 0x7a),  # Moss and lichen
+    0:   (0x3a, 0x68, 0x98),  # No data / ocean → same as water
+}
+_WC_DEFAULT_RGB = (0xdd, 0xdd, 0xdd)
+
+
+@router.post("/worldcover-image")
+async def worldcover_image(config: GridConfig) -> Response:
+    """Return a PNG of the raw ESA WorldCover raster for the map bbox, colored by class."""
+    import io
+    import numpy as np
+    from PIL import Image
+    from services.worldcover import load_worldcover_window
+    from services.terrain import compute_geo_bbox
+
+    min_lat, min_lon, max_lat, max_lon = compute_geo_bbox(config)
+    data, _transform = await load_worldcover_window(min_lat, min_lon, max_lat, max_lon)
+
+    h, w = data.shape
+    rgb = np.full((h, w, 3), _WC_DEFAULT_RGB, dtype=np.uint8)
+    for code, color in _WC_PALETTE.items():
+        mask = data == code
+        rgb[mask] = color
+
+    img = Image.fromarray(rgb, mode="RGB")
+    buf = io.BytesIO()
+    img.save(buf, format="PNG", optimize=False)
+    return Response(content=buf.getvalue(), media_type="image/png")

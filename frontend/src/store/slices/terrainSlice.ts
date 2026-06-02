@@ -153,6 +153,10 @@ export type TerrainSlice = {
   setWaterOverride: (key: string, override: BlobOverride | null) => void
   blobSeeds: Record<string, number>
   randomizeBlobSeed: (terrain: string) => void
+  // WorldCover raw overlay
+  worldcoverImageUrl: string | null
+  showWorldcoverOverlay: boolean
+  setShowWorldcoverOverlay: (v: boolean) => void
 }
 
 import { TERRAIN_COLORS } from '../mapStore'
@@ -249,6 +253,9 @@ export const createTerrainSlice = (set: Set, get: () => MapStore): TerrainSlice 
   waterOverrides: {},
 
   blobSeeds: {},
+  worldcoverImageUrl: null,
+  showWorldcoverOverlay: false,
+  setShowWorldcoverOverlay: (v) => set({ showWorldcoverOverlay: v }),
 
   resetToSetup: () => set({
     step: 'setup',
@@ -423,6 +430,8 @@ export const createTerrainSlice = (set: Set, get: () => MapStore): TerrainSlice 
       mapTitle: '',
       activeTool: { type: 'none' } as ActiveTool,
       activePanel: 'terrain',
+      worldcoverImageUrl: null,
+      showWorldcoverOverlay: false,
     })
 
     const { terrainRules: currentRules } = get()
@@ -496,6 +505,17 @@ export const createTerrainSlice = (set: Set, get: () => MapStore): TerrainSlice 
               highlightEdgePaths: {},
               highlightPaintMode: false,
             })
+            // Fetch the WorldCover PNG in the background — revoke any previous blob URL
+            fetch('/api/generate/worldcover-image', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify(requestBody),
+            }).then(r => r.ok ? r.blob() : null).then(blob => {
+              if (!blob) return
+              const prev = get().worldcoverImageUrl
+              if (prev) URL.revokeObjectURL(prev)
+              set({ worldcoverImageUrl: URL.createObjectURL(blob) })
+            }).catch(() => { /* non-critical */ })
           } else if (step === 'grid' && Array.isArray(event.hexes)) {
             const raw = event.hexes as Array<{ q: number; r: number; center: [number, number]; vertices: [number, number][]; partial: boolean }>
             const placeholder: GeneratedHex[] = raw.map((h) => ({

@@ -1,7 +1,7 @@
 import { useRef, useEffect, useCallback, useState, useMemo, forwardRef, useImperativeHandle, type CSSProperties } from 'react'
 import maplibregl from 'maplibre-gl'
 import 'maplibre-gl/dist/maplibre-gl.css'
-import { useMapStore, TERRAIN_COLORS, WATER_COLOR, TERRAIN_PRIORITY, hexTerrainLayers, edgeBlobCanonicalKey, type GeneratedHex, type RoadTierStyle } from '../store/mapStore'
+import { useMapStore, TERRAIN_COLORS, WATER_COLOR, TERRAIN_PRIORITY, hexTerrainLayers, edgeBlobCanonicalKey, WORLDCOVER_CLASSES, type GeneratedHex, type RoadTierStyle } from '../store/mapStore'
 import { BlobOverrideFlyout } from './BlobOverrideFlyout'
 import { useTheme } from '../context/ThemeContext'
 import { hexAdjacent, catmullRom, offsetPolyline, pointInPolygon, distToSeg, douglasPeucker, chaikin } from '../lib/geometry'
@@ -151,6 +151,8 @@ export const TerrainViewCanvas = forwardRef<TerrainViewCanvasHandle, { surroundC
 
   const [isRoadPainting, setIsRoadPainting] = useState(false)
   const [isTerrainPainting, setIsTerrainPainting] = useState(false)
+  const [wcTooltip, setWcTooltip] = useState<{ x: number; y: number; label: string } | null>(null)
+
   const [mapOverlay, setMapOverlay] = useState(false)
   const mapOverlayRef = useRef(false)
   mapOverlayRef.current = mapOverlay
@@ -270,6 +272,7 @@ terrainColors, terrainTextureScales, terrainTextureBlendModes, terrainTextureOpa
     dataSource,
     blobSeeds, randomizeBlobSeed,
     labelOffsets, setLabelOffset, clearAllLabelOffsets,
+    worldcoverImageUrl, showWorldcoverOverlay,
   } = useMapStore()
   // dev-only: expose store for dry-run console injection
   useEffect(() => { (window as any).__mapStore = useMapStore }, [])
@@ -1069,6 +1072,13 @@ const roadV3TierGeomRef = useRef(roadV3TierGeom)
   const setAutoDisabledOceanHexKeysRef = useRef(setAutoDisabledOceanHexKeys)
   setAutoDisabledOceanHexKeysRef.current = setAutoDisabledOceanHexKeys
 
+  const worldcoverImageElementRef = useRef<HTMLImageElement | null>(null)
+  const worldcoverOffscreenRef = useRef<OffscreenCanvas | null>(null)
+  const worldcoverImageUrlRef = useRef(worldcoverImageUrl)
+  worldcoverImageUrlRef.current = worldcoverImageUrl
+  const showWorldcoverOverlayRef = useRef(showWorldcoverOverlay)
+  showWorldcoverOverlayRef.current = showWorldcoverOverlay
+
   const mapImageElementRef = useRef<HTMLImageElement | null>(null)
   const mapImageDataUrlRef = useRef(mapImageDataUrl)
   mapImageDataUrlRef.current = mapImageDataUrl
@@ -1741,6 +1751,15 @@ const roadV3TierGeomRef = useRef(roadV3TierGeom)
           : []
       }
       _drawTerrain(ctx, { ...terrainParams, backgroundTerrainBlobs: defaultBackgroundBlobsRef.current, defaultTerrainBlobs: exportTerrainBlobs, defaultWaterBlobs: exportWaterBlobs })
+    }
+
+    // WorldCover raw overlay — screen only, semi-transparent, never exported
+    if (!isExport && showWorldcoverOverlayRef.current && worldcoverImageElementRef.current && meta) {
+      const img = worldcoverImageElementRef.current
+      ctx.save()
+      ctx.globalAlpha = 0.55
+      ctx.drawImage(img, px, py, pw, ph)
+      ctx.restore()
     }
 
     // Historical map image overlay — screen only, drawn after terrain so hex borders render on top
@@ -2821,6 +2840,27 @@ const roadV3TierGeomRef = useRef(roadV3TierGeom)
   }, [mapImageDataUrl, draw])
 
   useEffect(() => { draw() }, [mapImageTransform, mapImageOpacity, draw])
+
+  useEffect(() => {
+    if (!worldcoverImageUrl) {
+      worldcoverImageElementRef.current = null
+      worldcoverOffscreenRef.current = null
+      draw()
+      return
+    }
+    const img = new Image()
+    img.onload = () => {
+      worldcoverImageElementRef.current = img
+      const off = new OffscreenCanvas(img.naturalWidth, img.naturalHeight)
+      const octx = off.getContext('2d')!
+      octx.drawImage(img, 0, 0)
+      worldcoverOffscreenRef.current = off
+      draw()
+    }
+    img.src = worldcoverImageUrl
+  }, [worldcoverImageUrl, draw])
+
+  useEffect(() => { draw() }, [showWorldcoverOverlay, draw])
   useEffect(() => { if (dataSource === 'map_image') draw() }, [mapOverlay, dataSource, draw])
 
   // Load all terrain textures into a shared cache
@@ -4621,6 +4661,35 @@ const roadV3TierGeomRef = useRef(roadV3TierGeom)
       setMapImageTransformRef.current({ translateX: drag.startTX + dx, translateY: drag.startTY + dy })
       return
     }
+    // WorldCover pixel hover — reads from the offscreen canvas, no network call
+    if (showWorldcoverOverlayRef.current && worldcoverOffscreenRef.current) {
+      const logical = clientToLogical(e.clientX, e.clientY)
+      const meta = metaRef.current
+      if (logical && meta) {
+        const { lx, ly, cssW, cssH } = logical
+        const { pw, ph, px, py } = computePaper(cssW, cssH, meta)
+        const fracX = (lx - px) / pw
+        const fracY = (ly - py) / ph
+        if (fracX >= 0 && fracX <= 1 && fracY >= 0 && fracY <= 1) {
+          const off = worldcoverOffscreenRef.current
+          const px2 = Math.floor(fracX * off.width)
+          const py2 = Math.floor(fracY * off.height)
+          const octx = off.getContext('2d')!
+          const [r, g, b] = octx.getImageData(px2, py2, 1, 1).data
+          const hex = `#${r.toString(16).padStart(2, '0')}${g.toString(16).padStart(2, '0')}${b.toString(16).padStart(2, '0')}`
+          const cls = WORLDCOVER_CLASSES.find(c => c.color.toLowerCase() === hex.toLowerCase())
+          const label = cls ? `${cls.code} — ${cls.name}` : '0 — Ocean / no data'
+          setWcTooltip({ x: e.clientX, y: e.clientY, label })
+        } else {
+          setWcTooltip(null)
+        }
+      } else {
+        setWcTooltip(null)
+      }
+    } else if (wcTooltip) {
+      setWcTooltip(null)
+    }
+
     if (osmSpotlightModeRef.current) {
       const logical = clientToLogical(e.clientX, e.clientY)
       if (logical) {
@@ -4742,6 +4811,7 @@ const roadV3TierGeomRef = useRef(roadV3TierGeom)
   }, [isEdgePaintActive, paintEdge, draw, clientToLogical])
 
   const onMouseLeave = useCallback(() => {
+    setWcTooltip(null)
     if (osmSpotlightModeRef.current) {
       spotlightCursorRef.current = null
       drawOsmHighlightRef.current?.()
@@ -5540,6 +5610,26 @@ const roadV3TierGeomRef = useRef(roadV3TierGeom)
           y={blobFlyout.y}
           onClose={() => setBlobFlyout(null)}
         />
+      )}
+      {wcTooltip && (
+        <div
+          style={{
+            position: 'fixed',
+            left: wcTooltip.x + 14,
+            top: wcTooltip.y - 10,
+            background: 'rgba(20,20,30,0.88)',
+            color: '#f0ece4',
+            fontSize: 11,
+            fontFamily: 'monospace',
+            padding: '3px 8px',
+            borderRadius: 4,
+            pointerEvents: 'none',
+            zIndex: 300,
+            whiteSpace: 'nowrap',
+          }}
+        >
+          {wcTooltip.label}
+        </div>
       )}
       {ctxMenu && (
         <div

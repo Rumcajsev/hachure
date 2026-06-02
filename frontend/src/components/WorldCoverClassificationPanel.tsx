@@ -151,7 +151,7 @@ function TerrainDropZone({
 
 export function WorldCoverClassificationPanel({ onClose }: { onClose: () => void }) {
   const t = useTheme()
-  const { terrainRules, terrainColors, setClassRule, setTerrainRules } = useMapStore()
+  const { terrainRules, terrainColors, setClassRule, setTerrainRules, worldcoverImageUrl, showWorldcoverOverlay, setShowWorldcoverOverlay } = useMapStore()
   const draggingCode = useRef<number | null>(null)
 
   const assignedCodes = new Set(
@@ -258,6 +258,27 @@ export function WorldCoverClassificationPanel({ onClose }: { onClose: () => void
           ))}
           <div style={{ fontSize: 9, fontFamily: t.mono, color: t.inkMute, marginTop: 4, lineHeight: 1.4 }}>
             Dimmed = already assigned.<br />Drag to assign to multiple terrains.
+          </div>
+          <div style={{ marginTop: 10, borderTop: `1px solid ${t.line}`, paddingTop: 8 }}>
+            <label style={{
+              display: 'flex', alignItems: 'center', gap: 6, cursor: worldcoverImageUrl ? 'pointer' : 'default',
+              opacity: worldcoverImageUrl ? 1 : 0.4,
+              fontSize: 10, fontFamily: t.mono, color: t.ink,
+            }}>
+              <input
+                type="checkbox"
+                checked={showWorldcoverOverlay}
+                disabled={!worldcoverImageUrl}
+                onChange={e => setShowWorldcoverOverlay(e.target.checked)}
+                style={{ accentColor: t.ink, cursor: worldcoverImageUrl ? 'pointer' : 'default' }}
+              />
+              Show raw overlay
+            </label>
+            {!worldcoverImageUrl && (
+              <div style={{ fontSize: 9, fontFamily: t.mono, color: t.inkMute, marginTop: 3 }}>
+                Generate terrain first
+              </div>
+            )}
           </div>
         </div>
 
