@@ -37,7 +37,6 @@ export type DrawTerrainParams = {
   blobComponents: Map<string, string>
   blobComponentsByTerrain: Map<string, Map<string, string>>
   terrainBlobParams: BlobParams
-  waterBlobParams: BlobParams
   hexes: GeneratedHex[]
   hexTerrainLayers: (hex: GeneratedHex) => string[]
   R: number
@@ -296,7 +295,7 @@ export function drawTerrain(tCtx: Ctx, params: DrawTerrainParams): void {
     backgroundTerrainBlobs, defaultTerrainBlobs, defaultWaterBlobs,
     terrainBlobOverrides, waterOverrides,
     blobComponents, blobComponentsByTerrain,
-    terrainBlobParams, waterBlobParams,
+    terrainBlobParams,
     hexes, hexTerrainLayers, R,
     realisticCoastline, coastlineDebugRaw,
     oceanSeaKeys,
@@ -700,14 +699,14 @@ export function drawTerrain(tCtx: Ctx, params: DrawTerrainParams): void {
         .map(p => ({ hex: { ...p.hex, terrain: 'water' }, verts: p.verts }))
       if (ovWaterProjected.length === 0) continue
 
-      const ovSmooth        = override.smooth        ?? waterBlobParams.smooth
-      const ovOffset        = override.offset        ?? waterBlobParams.offset
-      const ovNoise         = override.bump          ?? waterBlobParams.bump
-      const ovSweepFreq     = override.sweepFreq     ?? waterBlobParams.sweepFreq
-      const ovLobeFreq      = override.lobeFreq      ?? waterBlobParams.lobeFreq
-      const ovLobeAmp       = override.lobeAmp       ?? waterBlobParams.lobeAmp
-      const ovLobeThreshold = override.lobeThreshold ?? waterBlobParams.lobeThreshold
-      const ovLobeDirection = override.lobeDirection ?? waterBlobParams.lobeDirection
+      const ovSmooth        = override.smooth        ?? terrainBlobParams.smooth
+      const ovOffset        = override.offset        ?? terrainBlobParams.offset
+      const ovNoise         = override.bump          ?? terrainBlobParams.bump
+      const ovSweepFreq     = override.sweepFreq     ?? terrainBlobParams.sweepFreq
+      const ovLobeFreq      = override.lobeFreq      ?? terrainBlobParams.lobeFreq
+      const ovLobeAmp       = override.lobeAmp       ?? terrainBlobParams.lobeAmp
+      const ovLobeThreshold = override.lobeThreshold ?? terrainBlobParams.lobeThreshold
+      const ovLobeDirection = override.lobeDirection ?? terrainBlobParams.lobeDirection
 
       const ovBlobs = buildTerrainBlobsV2(
         ovWaterProjected, ovSmooth, ovOffset, ovNoise,

@@ -16,8 +16,6 @@ export function BlobOverrideFlyout({ type, canonicalKey, terrain, x, y, onClose 
     waterOverrides, setWaterOverride,
     edgeBlobOverrides, setEdgeBlobOverride,
     terrainColors,
-    waterBlobSmooth, waterBlobOffset, waterBlobBump,
-    waterBlobSweepFreq, waterBlobLobeFreq, waterBlobLobeAmp, waterBlobLobeThreshold, waterBlobLobeDirection,
     terrainBlobSmooth, terrainBlobOffset, terrainBlobBump,
     terrainBlobSweepFreq, terrainBlobLobeFreq, terrainBlobLobeAmp, terrainBlobLobeThreshold, terrainBlobLobeDirection,
     edgeBlobWidth,
@@ -49,14 +47,14 @@ export function BlobOverrideFlyout({ type, canonicalKey, terrain, x, y, onClose 
       : (edgeBlobOverrides[canonicalKey] ?? {})
 
   // Edge blobs inherit shape from terrain blob global params; only width is edge-specific.
-  const globalSmooth        = type === 'water' ? waterBlobSmooth        : terrainBlobSmooth
-  const globalOffset        = type === 'water' ? waterBlobOffset        : terrainBlobOffset
-  const globalBump          = type === 'water' ? waterBlobBump          : terrainBlobBump
-  const globalSweepFreq     = type === 'water' ? waterBlobSweepFreq     : terrainBlobSweepFreq
-  const globalLobeFreq      = type === 'water' ? waterBlobLobeFreq      : terrainBlobLobeFreq
-  const globalLobeAmp       = type === 'water' ? waterBlobLobeAmp       : terrainBlobLobeAmp
-  const globalLobeThreshold = type === 'water' ? waterBlobLobeThreshold : terrainBlobLobeThreshold
-  const globalLobeDirection = type === 'water' ? waterBlobLobeDirection : terrainBlobLobeDirection
+  const globalSmooth        = terrainBlobSmooth
+  const globalOffset        = terrainBlobOffset
+  const globalBump          = terrainBlobBump
+  const globalSweepFreq     = terrainBlobSweepFreq
+  const globalLobeFreq      = terrainBlobLobeFreq
+  const globalLobeAmp       = terrainBlobLobeAmp
+  const globalLobeThreshold = terrainBlobLobeThreshold
+  const globalLobeDirection = terrainBlobLobeDirection
   const globalWidth         = edgeBlobWidth
 
   const currentSmooth        = override.smooth        ?? globalSmooth

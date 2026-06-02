@@ -73,15 +73,6 @@ export type TerrainSlice = {
   // Blank map
   blankMap: boolean
   setBlankMap: (v: boolean) => void
-  // Water blob state
-  waterBlobSmooth: number
-  waterBlobOffset: number
-  waterBlobBump: number
-  waterBlobSweepFreq: number
-  waterBlobLobeFreq: number
-  waterBlobLobeAmp: number
-  waterBlobLobeThreshold: number
-  waterBlobLobeDirection: number
   waterOverrides: Record<string, BlobOverride>
   // Actions
   resetToSetup: () => void
@@ -142,14 +133,6 @@ export type TerrainSlice = {
   eraseEdgeBlob: (edgeKey: string) => void
   setEdgeBlobWidth: (v: number) => void
   setEdgeBlobOverride: (key: string, override: BlobOverride | null) => void
-  setWaterBlobSmooth: (v: number) => void
-  setWaterBlobOffset: (v: number) => void
-  setWaterBlobBump: (v: number) => void
-  setWaterBlobSweepFreq: (v: number) => void
-  setWaterBlobLobeFreq: (v: number) => void
-  setWaterBlobLobeAmp: (v: number) => void
-  setWaterBlobLobeThreshold: (v: number) => void
-  setWaterBlobLobeDirection: (v: number) => void
   setWaterOverride: (key: string, override: BlobOverride | null) => void
   blobSeeds: Record<string, number>
   randomizeBlobSeed: (terrain: string) => void
@@ -242,14 +225,6 @@ export const createTerrainSlice = (set: Set, get: () => MapStore): TerrainSlice 
 
   setBlankMap: (v) => set({ blankMap: v }),
 
-  waterBlobSmooth: 2,
-  waterBlobOffset: -0.15,
-  waterBlobBump: 0.15,
-  waterBlobSweepFreq: 0.6,
-  waterBlobLobeFreq: 2.8,
-  waterBlobLobeAmp: 0.4,
-  waterBlobLobeThreshold: 0.20,
-  waterBlobLobeDirection: 1,
   waterOverrides: {},
 
   blobSeeds: {},
@@ -796,14 +771,6 @@ export const createTerrainSlice = (set: Set, get: () => MapStore): TerrainSlice 
     return { edgeBlobOverrides: { ...s.edgeBlobOverrides, [key]: cleaned } }
   }),
 
-  setWaterBlobSmooth: (v) => set({ waterBlobSmooth: v }),
-  setWaterBlobOffset: (v) => set({ waterBlobOffset: v }),
-  setWaterBlobBump: (v) => set({ waterBlobBump: v }),
-  setWaterBlobSweepFreq: (v) => set({ waterBlobSweepFreq: v }),
-  setWaterBlobLobeFreq: (v) => set({ waterBlobLobeFreq: v }),
-  setWaterBlobLobeAmp: (v) => set({ waterBlobLobeAmp: v }),
-  setWaterBlobLobeThreshold: (v) => set({ waterBlobLobeThreshold: v }),
-  setWaterBlobLobeDirection: (v) => set({ waterBlobLobeDirection: v }),
   setWaterOverride: (key, override) => set((s) => {
     if (override === null) {
       const { [key]: _, ...rest } = s.waterOverrides

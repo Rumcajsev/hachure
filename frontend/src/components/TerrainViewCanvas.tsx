@@ -213,8 +213,6 @@ terrainColors, terrainTextureScales, terrainTextureBlendModes, terrainTextureOpa
     setSelectedSegmentKeys, toggleSegmentSelection,
     setSelectedCanalSegmentKeys, toggleCanalSegmentSelection,
     riverStyle, canalStyle,
-    waterBlobSmooth, waterBlobOffset, waterBlobBump,
-    waterBlobSweepFreq, waterBlobLobeFreq, waterBlobLobeAmp, waterBlobLobeThreshold, waterBlobLobeDirection,
     riverWidthScale, canalWidthScale, riverCurveSteps, riverWobble, riverDetail,
     riverWiggleFreq, riverWiggleAmp, riverSmoothing, riverPathSmoothing,
     terrainBlobOverrides, setTerrainBlobOverride,
@@ -437,14 +435,6 @@ terrainColors, terrainTextureScales, terrainTextureBlendModes, terrainTextureOpa
   const canalStyleRef = useRef(canalStyle)
   const computedRiverChainsRef = useRef<{ vertices: [number,number][]; segKey: string }[]>([])
   const computedCanalChainsRef = useRef<{ vertices: [number,number][]; segKey: string }[]>([])
-const waterBlobSmoothRef = useRef(waterBlobSmooth)
-  const waterBlobOffsetRef = useRef(waterBlobOffset)
-  const waterBlobBumpRef = useRef(waterBlobBump)
-  const waterBlobSweepFreqRef = useRef(waterBlobSweepFreq)
-  const waterBlobLobeFreqRef = useRef(waterBlobLobeFreq)
-  const waterBlobLobeAmpRef = useRef(waterBlobLobeAmp)
-  const waterBlobLobeThresholdRef = useRef(waterBlobLobeThreshold)
-  const waterBlobLobeDirectionRef = useRef(waterBlobLobeDirection)
   const riverWidthScaleRef = useRef(riverWidthScale)
   const canalWidthScaleRef = useRef(canalWidthScale)
   const riverCurveStepsRef = useRef(riverCurveSteps)
@@ -699,14 +689,6 @@ const waterBlobSmoothRef = useRef(waterBlobSmooth)
   toggleCanalSegmentSelectionRef.current = toggleCanalSegmentSelection
   riverStyleRef.current = riverStyle
   canalStyleRef.current = canalStyle
-  waterBlobSmoothRef.current = waterBlobSmooth
-  waterBlobOffsetRef.current = waterBlobOffset
-  waterBlobBumpRef.current = waterBlobBump
-  waterBlobSweepFreqRef.current = waterBlobSweepFreq
-  waterBlobLobeFreqRef.current = waterBlobLobeFreq
-  waterBlobLobeAmpRef.current = waterBlobLobeAmp
-  waterBlobLobeThresholdRef.current = waterBlobLobeThreshold
-  waterBlobLobeDirectionRef.current = waterBlobLobeDirection
   riverWidthScaleRef.current = riverWidthScale
   canalWidthScaleRef.current = canalWidthScale
   riverCurveStepsRef.current = riverCurveSteps
@@ -1319,7 +1301,7 @@ const roadV3TierGeomRef = useRef(roadV3TierGeom)
       return prevLakeBlobsRef.current
     }
     const hexKey = defaultWaterProjected.map(p => `${p.hex.q},${p.hex.r}`).join('|')
-    const styleKey = `${waterBlobSmooth}|${waterBlobOffset}|${waterBlobBump}|${waterBlobSweepFreq}|${waterBlobLobeFreq}|${waterBlobLobeAmp}|${waterBlobLobeThreshold}|${waterBlobLobeDirection}|${hexRadius}`
+    const styleKey = `${terrainBlobSmooth}|${terrainBlobOffset}|${terrainBlobBump}|${terrainBlobSweepFreq}|${terrainBlobLobeFreq}|${terrainBlobLobeAmp}|${terrainBlobLobeThreshold}|${terrainBlobLobeDirection}|${hexRadius}`
     if (lakeBlobCache.current?.hexKey === hexKey && lakeBlobCache.current?.styleKey === styleKey) {
       return lakeBlobCache.current.blobs
     }
@@ -1334,11 +1316,11 @@ const roadV3TierGeomRef = useRef(roadV3TierGeom)
       waterRawPolys = entry?.rawPolys ?? []
       waterHexCenters = entry?.hexCenters ?? []
     }
-    const result = shapeTerrainBlobs([{ terrain: 'water', rawPolys: waterRawPolys, hexCenters: waterHexCenters }], waterBlobSmooth, waterBlobOffset, waterBlobBump, waterBlobSweepFreq, waterBlobLobeFreq, waterBlobLobeAmp, waterBlobLobeThreshold, waterBlobLobeDirection, hexRadius)
+    const result = shapeTerrainBlobs([{ terrain: 'water', rawPolys: waterRawPolys, hexCenters: waterHexCenters }], terrainBlobSmooth, terrainBlobOffset, terrainBlobBump, terrainBlobSweepFreq, terrainBlobLobeFreq, terrainBlobLobeAmp, terrainBlobLobeThreshold, terrainBlobLobeDirection, hexRadius)
     lakeBlobCache.current = { hexKey, rawPolys: waterRawPolys, hexCenters: waterHexCenters, styleKey, blobs: result }
     prevLakeBlobsRef.current = result
     return result
-  }, [isTerrainPainting, projectedHexes, blobComponents, waterOverrides, waterBlobSmooth, waterBlobOffset, waterBlobBump, waterBlobSweepFreq, waterBlobLobeFreq, waterBlobLobeAmp, waterBlobLobeThreshold, waterBlobLobeDirection, hexRadius])
+  }, [isTerrainPainting, projectedHexes, blobComponents, waterOverrides, terrainBlobSmooth, terrainBlobOffset, terrainBlobBump, terrainBlobSweepFreq, terrainBlobLobeFreq, terrainBlobLobeAmp, terrainBlobLobeThreshold, terrainBlobLobeDirection, hexRadius])
   const defaultWaterBlobsRef = useRef(defaultWaterBlobs)
   defaultWaterBlobsRef.current = defaultWaterBlobs
 
@@ -1617,12 +1599,6 @@ const roadV3TierGeomRef = useRef(roadV3TierGeom)
       terrainBlobOutlineEnabled: terrainBlobOutlineEnabledRef.current,
       terrainBlobOutlineColor: terrainBlobOutlineColorRef.current,
       terrainBlobOutlineWidth: terrainBlobOutlineWidthRef.current,
-      waterBlobParams: {
-        smooth: waterBlobSmoothRef.current, offset: waterBlobOffsetRef.current,
-        bump: waterBlobBumpRef.current, sweepFreq: waterBlobSweepFreqRef.current,
-        lobeFreq: waterBlobLobeFreqRef.current, lobeAmp: waterBlobLobeAmpRef.current,
-        lobeThreshold: waterBlobLobeThresholdRef.current, lobeDirection: waterBlobLobeDirectionRef.current,
-      },
       hexes: hexesRef.current,
       hexTerrainLayers,
       R,
@@ -1747,7 +1723,7 @@ const roadV3TierGeomRef = useRef(roadV3TierGeom)
           })
           .map(p => ({ hex: { ...p.hex, terrain: 'water' }, verts: p.verts }))
         exportWaterBlobs = defaultWaterProjected.length > 0
-          ? buildTerrainBlobsV2(defaultWaterProjected, waterBlobSmoothRef.current, waterBlobOffsetRef.current, waterBlobBumpRef.current, waterBlobSweepFreqRef.current, waterBlobLobeFreqRef.current, waterBlobLobeAmpRef.current, waterBlobLobeThresholdRef.current, waterBlobLobeDirectionRef.current, R)
+          ? buildTerrainBlobsV2(defaultWaterProjected, terrainBlobSmoothRef.current, terrainBlobOffsetRef.current, terrainBlobBumpRef.current, terrainBlobSweepFreqRef.current, terrainBlobLobeFreqRef.current, terrainBlobLobeAmpRef.current, terrainBlobLobeThresholdRef.current, terrainBlobLobeDirectionRef.current, R)
           : []
       }
       _drawTerrain(ctx, { ...terrainParams, backgroundTerrainBlobs: defaultBackgroundBlobsRef.current, defaultTerrainBlobs: exportTerrainBlobs, defaultWaterBlobs: exportWaterBlobs })

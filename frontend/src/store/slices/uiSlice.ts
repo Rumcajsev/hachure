@@ -915,6 +915,11 @@ if (fromVersion < 64) {
       }
     }
   }
+  if (fromVersion < 73) {
+    delete s.waterBlobSmooth; delete s.waterBlobOffset; delete s.waterBlobBump
+    delete s.waterBlobSweepFreq; delete s.waterBlobLobeFreq; delete s.waterBlobLobeAmp
+    delete s.waterBlobLobeThreshold; delete s.waterBlobLobeDirection
+  }
   if (fromVersion < 69) {
     const cp = s.classificationParams as Record<string, unknown> | undefined
     if (cp) {
