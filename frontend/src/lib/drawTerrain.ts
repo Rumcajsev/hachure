@@ -298,7 +298,7 @@ export function drawTerrain(tCtx: Ctx, params: DrawTerrainParams): void {
     terrainBlobParams,
     hexes, hexTerrainLayers, R,
     realisticCoastline, coastlineDebugRaw,
-    oceanSeaKeys,
+    oceanWaterKeys,
     beachStrip, beachColor, beachWidth,
     coastlineBoundaryRings, coastlineRawBoundaryRings,
     // edge blobs destructured inline below where used
