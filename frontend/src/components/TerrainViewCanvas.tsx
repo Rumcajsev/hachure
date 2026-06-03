@@ -157,6 +157,8 @@ export const TerrainViewCanvas = forwardRef<TerrainViewCanvasHandle, { surroundC
   const mapOverlayRef = useRef(false)
   mapOverlayRef.current = mapOverlay
   const [overlayRect, setOverlayRect] = useState<{ left: number; top: number; width: number; height: number } | null>(null)
+  // Screen-space paper rect for expand mode overlay (accounts for zoom/pan)
+  const [expandPaperRect, setExpandPaperRect] = useState<{ px: number; py: number; pw: number; ph: number } | null>(null)
   const overlayContainerRef = useRef<HTMLDivElement>(null)
   const overlayMapRef = useRef<maplibregl.Map | null>(null)
 
@@ -2983,10 +2985,25 @@ const roadV3TierGeomRef = useRef(roadV3TierGeom)
   useEffect(() => {
     if (expandMode) {
       zoomToPhysical()
+      // zoomToPhysical sets zoomRef/panRef synchronously — compute screen rect now
+      const meta = metaRef.current
+      const { w: cssW, h: cssH } = frameDimsRef.current
+      if (meta && cssW > 0) {
+        const { px, py, pw, ph } = computePaper(cssW, cssH, meta)
+        const z = zoomRef.current
+        // Apply the same transform the canvas uses: translate(cssW/2, cssH/2), scale(z), translate(-cssW/2, -cssH/2)
+        setExpandPaperRect({
+          px: cssW / 2 + (px - cssW / 2) * z,
+          py: cssH / 2 + (py - cssH / 2) * z,
+          pw: pw * z,
+          ph: ph * z,
+        })
+      }
       snapOverlay()
       setMapOverlay(true)
     } else {
       setMapOverlay(false)
+      setExpandPaperRect(null)
     }
   }, [expandMode, zoomToPhysical, snapOverlay])
 
@@ -5565,8 +5582,8 @@ const roadV3TierGeomRef = useRef(roadV3TierGeom)
         }}
       />
       {/* Expand mode overlay — edge pill buttons for adding sheets */}
-      {expandMode && paperDims && (() => {
-        const { px, py, pw, ph } = paperDims
+      {expandMode && expandPaperRect && (() => {
+        const { px, py, pw, ph } = expandPaperRect
         const GAP = 36
         const edges = ['left', 'right', 'top', 'bottom'] as const
         type Edge = typeof edges[number]
