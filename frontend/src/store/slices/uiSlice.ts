@@ -483,7 +483,16 @@ export const createUiSlice = (set: Set, get: () => MapStore): UiSlice => ({
       const raw = { ...(parsed.state ?? (parsed as Record<string, unknown>)) }
       const migrated = migratePersisted(raw, fromVersion) as unknown as MapStore
       rehydrateState(migrated)
-      set({ ...(migrated as Partial<MapStore>), undoStack: [], redoStack: [] })
+      set({
+        ...(migrated as Partial<MapStore>),
+        undoStack: [], redoStack: [],
+        // These are not saved — always reset so old map state doesn't bleed in
+        disabledHexKeys: [],
+        autoDisabledOceanHexKeys: [],
+        worldcoverImageUrl: null,
+        showWorldcoverOverlay: false,
+        expandMode: false,
+      })
     } catch (e) {
       console.error('Failed to restore project:', e)
     }

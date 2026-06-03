@@ -2981,31 +2981,27 @@ const roadV3TierGeomRef = useRef(roadV3TierGeom)
     }
   }, [draw, snapOverlay])
 
-  // Expand mode: zoom to fit + show slippy map overlay so the user can see where to add a sheet
+  // Expand mode: fit paper to screen (zoom=1, pan=0) + show slippy map overlay
   useEffect(() => {
     if (expandMode) {
-      zoomToPhysical()
-      // zoomToPhysical sets zoomRef/panRef synchronously — compute screen rect now
       const meta = metaRef.current
       const { w: cssW, h: cssH } = frameDimsRef.current
-      if (meta && cssW > 0) {
-        const { px, py, pw, ph } = computePaper(cssW, cssH, meta)
-        const z = zoomRef.current
-        // Apply the same transform the canvas uses: translate(cssW/2, cssH/2), scale(z), translate(-cssW/2, -cssH/2)
-        setExpandPaperRect({
-          px: cssW / 2 + (px - cssW / 2) * z,
-          py: cssH / 2 + (py - cssH / 2) * z,
-          pw: pw * z,
-          ph: ph * z,
-        })
-      }
+      if (!meta || cssW === 0) return
+      // Reset to fit-to-screen so the full paper is visible and button positions
+      // equal the unzoomed paperDims coords (zoom=1 → no transform needed)
+      zoomRef.current = 1
+      panRef.current = { x: 0, y: 0 }
+      terrainDirtyRef.current = true
+      draw()
+      const { px, py, pw, ph } = computePaper(cssW, cssH, meta)
+      setExpandPaperRect({ px, py, pw, ph })
       snapOverlay()
       setMapOverlay(true)
     } else {
       setMapOverlay(false)
       setExpandPaperRect(null)
     }
-  }, [expandMode, zoomToPhysical, snapOverlay])
+  }, [expandMode, draw, snapOverlay])
 
   // Drag pan (left-click drag or middle-mouse — left is suppressed in paint mode)
   useEffect(() => {
