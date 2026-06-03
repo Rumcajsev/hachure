@@ -562,14 +562,18 @@ export const createTerrainSlice = (set: Set, get: () => MapStore): TerrainSlice 
   setGenerateProgress: (p) => set({ generateProgress: p }),
 
   expandMap: async (edge, newMm) => {
-    const { generatedHexes, generatedMetadata, pageGrid, hexOrientation, marginMm, terrainRules, disabledTerrains } = get()
-    if (!generatedMetadata) return
+    const { generatedHexes, generatedMetadata, pageGrid, paperSize, orientation, hexSizeMm, hexOrientation, marginMm, center, zoom, framePixelWidth, terrainRules, disabledTerrains } = get()
+    if (!generatedMetadata || framePixelWidth === 0) return
 
-    const scale = generatedMetadata.scale_m_per_mm
+    // Derive scale the same way generateMap does — from live viewport, not rounded metadata
+    const oldCwMm = pageGrid.colWidths.reduce((a, b) => a + b, 0)
+    const oldChMm = pageGrid.rowHeights.reduce((a, b) => a + b, 0)
+    const oldWidthM = framePixelWidth * mapResolutionMpx(center[1], zoom)
+    const scale = oldWidthM / oldCwMm  // metres per mm, exact
 
     // Build new pageGrid with the new column/row added
     let newPageGrid: typeof pageGrid
-    if (edge === 'left')   newPageGrid = { ...pageGrid, colWidths: [newMm, ...pageGrid.colWidths] }
+    if (edge === 'left')        newPageGrid = { ...pageGrid, colWidths: [newMm, ...pageGrid.colWidths] }
     else if (edge === 'right')  newPageGrid = { ...pageGrid, colWidths: [...pageGrid.colWidths, newMm] }
     else if (edge === 'top')    newPageGrid = { ...pageGrid, rowHeights: [newMm, ...pageGrid.rowHeights] }
     else                        newPageGrid = { ...pageGrid, rowHeights: [...pageGrid.rowHeights, newMm] }
@@ -590,9 +594,9 @@ export const createTerrainSlice = (set: Set, get: () => MapStore): TerrainSlice 
       bearing: generatedMetadata.bearing,
       width_m: newWidthM,
       height_m: newHeightM,
-      hex_size_mm: generatedMetadata.hex_size_km * 1000 / scale,
-      paper_size: 'A3',
-      orientation: 'landscape',
+      hex_size_mm: hexSizeMm,
+      paper_size: paperSize,
+      orientation,
       hex_orientation: hexOrientation,
       margin_mm: marginMm,
       paper_width_mm: newCwMm,
