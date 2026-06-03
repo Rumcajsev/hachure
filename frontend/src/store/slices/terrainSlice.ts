@@ -563,13 +563,14 @@ export const createTerrainSlice = (set: Set, get: () => MapStore): TerrainSlice 
 
   expandMap: async (edge, newMm) => {
     const { generatedHexes, generatedMetadata, pageGrid, paperSize, orientation, hexSizeMm, hexOrientation, marginMm, center, zoom, framePixelWidth, terrainRules, disabledTerrains } = get()
-    if (!generatedMetadata || framePixelWidth === 0) return
+    if (!generatedMetadata) return
 
-    // Derive scale the same way generateMap does — from live viewport, not rounded metadata
+    // Derive scale from the live viewport when available (more accurate than rounded metadata),
+    // otherwise fall back to the stored scale from metadata (e.g. when file was loaded directly)
     const oldCwMm = pageGrid.colWidths.reduce((a, b) => a + b, 0)
-    const oldChMm = pageGrid.rowHeights.reduce((a, b) => a + b, 0)
-    const oldWidthM = framePixelWidth * mapResolutionMpx(center[1], zoom)
-    const scale = oldWidthM / oldCwMm  // metres per mm, exact
+    const scale = framePixelWidth > 0
+      ? (framePixelWidth * mapResolutionMpx(center[1], zoom)) / oldCwMm
+      : generatedMetadata.scale_m_per_mm
 
     // Build new pageGrid with the new column/row added
     let newPageGrid: typeof pageGrid
