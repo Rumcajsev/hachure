@@ -1,4 +1,4 @@
-import { useMapStore, TERRAIN_COLORS } from '../../store/mapStore'
+import { useMapStore, TERRAIN_COLORS, pageGridTotalMm } from '../../store/mapStore'
 import { useState } from 'react'
 import { useTheme } from '../../context/ThemeContext'
 import {
@@ -24,7 +24,7 @@ const POINTY_EDGE_LABELS = ['SE', 'S', 'SW', 'NW', 'N', 'NE', 'C'] as const
 
 const terrainLabel = (k: string) => k.replace(/_/g, ' ')
 
-type FlyoutId = 'hex-borders' | 'hex-numbers' | 'map-shape' | 'impassable' | 'map-frame' | 'mega-hex' | 'terrain-legend' | 'ui-scale' | null
+type FlyoutId = 'hex-borders' | 'hex-numbers' | 'map-shape' | 'impassable' | 'map-frame' | 'mega-hex' | 'terrain-legend' | 'ui-scale' | 'document' | null
 
 // ── SubLabel ──────────────────────────────────────────────────────────────────
 
@@ -532,6 +532,50 @@ function UiScaleFlyout({ onClose }: { onClose: () => void }) {
   )
 }
 
+// ── DocumentFlyout ────────────────────────────────────────────────────────────
+
+function DocumentFlyout({ onClose }: { onClose: () => void }) {
+  const t = useTheme()
+  const { pageGrid, generatedMetadata, setExpandMode } = useMapStore()
+  const [cwMm, chMm] = pageGridTotalMm(pageGrid)
+  const cols = pageGrid.colWidths.length
+  const rows = pageGrid.rowHeights.length
+  const scale = generatedMetadata?.scale_m_per_mm ?? null
+
+  const row = (label: string, value: string) => (
+    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', padding: '3px 0' }}>
+      <span style={{ fontFamily: t.mono, fontSize: 10, color: t.inkFaint, letterSpacing: 0.5 }}>{label}</span>
+      <span style={{ fontFamily: t.mono, fontSize: 11, color: t.ink }}>{value}</span>
+    </div>
+  )
+
+  return (
+    <FlyoutShell title="Document" onClose={onClose}>
+      <div style={{ padding: '8px 14px 14px' }}>
+        <div style={{ marginBottom: 12 }}>
+          {row('SHEETS', `${cols} × ${rows}`)}
+          {row('SIZE', `${cwMm.toFixed(0)} × ${chMm.toFixed(0)} mm`)}
+          {scale !== null && row('SCALE', `1 : ${Math.round(scale * 1000)}`)}
+        </div>
+        <button
+          onClick={() => { onClose(); setExpandMode(true) }}
+          style={{
+            width: '100%', padding: '7px 0',
+            background: 'transparent', border: `1px solid ${t.line2}`,
+            borderRadius: 2, cursor: 'pointer',
+            fontFamily: t.mono, fontSize: 11, letterSpacing: 0.8,
+            color: t.inkMute, textTransform: 'uppercase' as const,
+          }}
+          onMouseEnter={e => { (e.currentTarget as HTMLElement).style.color = t.ink; (e.currentTarget as HTMLElement).style.borderColor = t.line }}
+          onMouseLeave={e => { (e.currentTarget as HTMLElement).style.color = t.inkMute; (e.currentTarget as HTMLElement).style.borderColor = t.line2 }}
+        >
+          Expand map…
+        </button>
+      </div>
+    </FlyoutShell>
+  )
+}
+
 // ── DisplaySidebarV3 ──────────────────────────────────────────────────────────
 
 export function DisplaySidebarV3() {
@@ -561,6 +605,10 @@ export function DisplaySidebarV3() {
         <TriggerRow label="Terrain Legend" active={flyout === 'terrain-legend'} onClick={() => toggle('terrain-legend')} />
 
         <TGap />
+        <V2Divider label="Document" />
+        <TriggerRow label="Document"        active={flyout === 'document'}       onClick={() => toggle('document')} />
+
+        <TGap />
         <V2Divider label="App" />
         <TriggerRow label="UI Scale"        active={flyout === 'ui-scale'}       onClick={() => toggle('ui-scale')} />
 
@@ -574,6 +622,7 @@ export function DisplaySidebarV3() {
       {flyout === 'mega-hex'       && <MegaHexFlyout       onClose={() => setFlyout(null)} />}
       {flyout === 'terrain-legend' && <TerrainLegendFlyout onClose={() => setFlyout(null)} />}
       {flyout === 'ui-scale'       && <UiScaleFlyout       onClose={() => setFlyout(null)} />}
+      {flyout === 'document'       && <DocumentFlyout      onClose={() => setFlyout(null)} />}
 
     </div>
   )

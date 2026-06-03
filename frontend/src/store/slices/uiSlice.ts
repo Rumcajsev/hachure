@@ -88,6 +88,8 @@ export type UiSlice = {
   setAutoDisabledOceanHexKeys: (keys: string[]) => void
   uiScale: 0.8 | 1.0 | 1.25
   setUiScale: (v: 0.8 | 1.0 | 1.25) => void
+  expandMode: boolean
+  setExpandMode: (v: boolean) => void
   mapTitle: string
   setMapTitle: (v: string) => void
   mapStyle: 'standard' | 'historical_simple'
@@ -118,6 +120,8 @@ export const createUiSlice = (set: Set, get: () => MapStore): UiSlice => ({
   urbanPaintMode: null,
   uiScale: 1.0,
   setUiScale: (v) => set({ uiScale: v }),
+  expandMode: false,
+  setExpandMode: (v) => set({ expandMode: v }),
   mapTitle: '',
   setMapTitle: (v) => set({ mapTitle: v }),
   mapStyle: 'standard',

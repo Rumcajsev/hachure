@@ -1,7 +1,7 @@
 import { useRef, useEffect, useCallback, useState, useMemo, forwardRef, useImperativeHandle, type CSSProperties } from 'react'
 import maplibregl from 'maplibre-gl'
 import 'maplibre-gl/dist/maplibre-gl.css'
-import { useMapStore, TERRAIN_COLORS, WATER_COLOR, TERRAIN_PRIORITY, hexTerrainLayers, edgeBlobCanonicalKey, WORLDCOVER_CLASSES, type GeneratedHex, type RoadTierStyle } from '../store/mapStore'
+import { useMapStore, TERRAIN_COLORS, WATER_COLOR, TERRAIN_PRIORITY, hexTerrainLayers, edgeBlobCanonicalKey, WORLDCOVER_CLASSES, validColWidthsForRows, validRowHeightsForCols, cellPaperInfo, type GeneratedHex, type RoadTierStyle } from '../store/mapStore'
 import { BlobOverrideFlyout } from './BlobOverrideFlyout'
 import { useTheme } from '../context/ThemeContext'
 import { hexAdjacent, catmullRom, offsetPolyline, pointInPolygon, distToSeg, douglasPeucker, chaikin } from '../lib/geometry'
@@ -271,6 +271,7 @@ terrainColors, terrainTextureScales, terrainTextureBlendModes, terrainTextureOpa
     blobSeeds, randomizeBlobSeed,
     labelOffsets, setLabelOffset, clearAllLabelOffsets,
     worldcoverImageUrl, showWorldcoverOverlay,
+    expandMode, setExpandMode, expandMap,
   } = useMapStore()
   // dev-only: expose store for dry-run console injection
   useEffect(() => { (window as any).__mapStore = useMapStore }, [])
@@ -2978,6 +2979,17 @@ const roadV3TierGeomRef = useRef(roadV3TierGeom)
     }
   }, [draw, snapOverlay])
 
+  // Expand mode: zoom to fit + show slippy map overlay so the user can see where to add a sheet
+  useEffect(() => {
+    if (expandMode) {
+      zoomToPhysical()
+      snapOverlay()
+      setMapOverlay(true)
+    } else {
+      setMapOverlay(false)
+    }
+  }, [expandMode, zoomToPhysical, snapOverlay])
+
   // Drag pan (left-click drag or middle-mouse — left is suppressed in paint mode)
   useEffect(() => {
     const el = containerRef.current
@@ -5383,22 +5395,30 @@ const roadV3TierGeomRef = useRef(roadV3TierGeom)
       full.height = fullH
       draw({ canvas: full, pw: fullW, ph: fullH })
 
+      // Each seam bleeds by margin_mm on each side so adjacent sheets overlap
+      // when physically assembled. Outer edges do not bleed.
+      const bleedMm = meta.margin_mm
+
       const results: { blob: Blob; paperMm: [number, number] }[] = []
       let pending = colWidths.length * rowHeights.length
 
       let yOffMm = 0
       for (let row = 0; row < rowHeights.length; row++) {
         const cellHMm = rowHeights[row]
+        const bleedTop    = row > 0                        ? bleedMm : 0
+        const bleedBottom = row < rowHeights.length - 1    ? bleedMm : 0
         let xOffMm = 0
         for (let col = 0; col < colWidths.length; col++) {
           const cellWMm = colWidths[col]
           const cellIdx = row * colWidths.length + col
+          const bleedLeft  = col > 0                       ? bleedMm : 0
+          const bleedRight = col < colWidths.length - 1    ? bleedMm : 0
 
-          // Pixel bounds for this cell within the full render
-          const srcX = Math.round(xOffMm * PX_PER_MM)
-          const srcY = Math.round(yOffMm * PX_PER_MM)
-          const srcW = Math.round(cellWMm * PX_PER_MM)
-          const srcH = Math.round(cellHMm * PX_PER_MM)
+          // Source rect in the full render, extended by bleed into neighbours
+          const srcX = Math.round((xOffMm - bleedLeft)  * PX_PER_MM)
+          const srcY = Math.round((yOffMm - bleedTop)    * PX_PER_MM)
+          const srcW = Math.round((cellWMm + bleedLeft + bleedRight)  * PX_PER_MM)
+          const srcH = Math.round((cellHMm + bleedTop  + bleedBottom) * PX_PER_MM)
 
           const sheet = document.createElement('canvas')
           sheet.width = srcW
@@ -5406,8 +5426,9 @@ const roadV3TierGeomRef = useRef(roadV3TierGeom)
           const sCtx = sheet.getContext('2d')!
           sCtx.drawImage(full, srcX, srcY, srcW, srcH, 0, 0, srcW, srcH)
 
+          const sheetMm: [number, number] = [cellWMm + bleedLeft + bleedRight, cellHMm + bleedTop + bleedBottom]
           sheet.toBlob(blob => {
-            if (blob) results[cellIdx] = { blob, paperMm: [cellWMm, cellHMm] }
+            if (blob) results[cellIdx] = { blob, paperMm: sheetMm }
             if (--pending === 0) resolve(results.filter(Boolean).length === colWidths.length * rowHeights.length ? results : null)
           }, 'image/png')
 
@@ -5543,6 +5564,82 @@ const roadV3TierGeomRef = useRef(roadV3TierGeom)
           overflow: 'hidden',
         }}
       />
+      {/* Expand mode overlay — edge pill buttons for adding sheets */}
+      {expandMode && paperDims && (() => {
+        const { px, py, pw, ph } = paperDims
+        const GAP = 36
+        const edges = ['left', 'right', 'top', 'bottom'] as const
+        type Edge = typeof edges[number]
+        const isCol = (e: Edge) => e === 'left' || e === 'right'
+        const btnCenter: Record<Edge, { x: number; y: number }> = {
+          left:   { x: px - GAP,      y: py + ph / 2 },
+          right:  { x: px + pw + GAP, y: py + ph / 2 },
+          top:    { x: px + pw / 2,   y: py - GAP },
+          bottom: { x: px + pw / 2,   y: py + ph + GAP },
+        }
+        const pillStyle: CSSProperties = {
+          position: 'absolute', transform: 'translate(-50%, -50%)',
+          background: 'rgba(14,13,11,0.92)', border: '1px solid rgba(180,172,160,0.6)',
+          borderRadius: 3, color: '#ddd8d0', fontFamily: 'ui-monospace,monospace',
+          fontSize: 11, letterSpacing: 0.5, padding: '5px 11px',
+          cursor: 'pointer', userSelect: 'none', pointerEvents: 'auto',
+          whiteSpace: 'nowrap',
+        }
+        return (
+          <div style={{ position: 'absolute', inset: 0, zIndex: 20, pointerEvents: 'none' }}>
+            {/* Dim overlay to focus attention */}
+            <div style={{ position: 'absolute', inset: 0, background: 'rgba(0,0,0,0.35)', pointerEvents: 'none' }} />
+            {/* Paper outline */}
+            <div style={{
+              position: 'absolute', left: px, top: py, width: pw, height: ph,
+              boxShadow: '0 0 0 2px rgba(220,210,190,0.7)',
+              pointerEvents: 'none',
+            }} />
+            {/* Edge + buttons */}
+            {edges.map(edge => {
+              const opts = isCol(edge)
+                ? validColWidthsForRows(pageGrid.rowHeights)
+                : validRowHeightsForCols(pageGrid.colWidths)
+              if (opts.length === 0) return null
+              const { x, y } = btnCenter[edge]
+              const label = opts.length === 1
+                ? (() => {
+                    const info = isCol(edge)
+                      ? cellPaperInfo(opts[0], pageGrid.rowHeights[0])
+                      : cellPaperInfo(pageGrid.colWidths[0], opts[0])
+                    return info ? `+ ${info.size} ${info.orientation === 'landscape' ? '↔' : '↕'}` : `+ ${opts[0]}mm`
+                  })()
+                : `+ ${isCol(edge) ? 'COL' : 'ROW'}`
+              return (
+                <button
+                  key={edge}
+                  style={{ ...pillStyle, left: x, top: y, pointerEvents: 'auto' }}
+                  onClick={async (e) => {
+                    e.stopPropagation()
+                    setExpandMode(false)
+                    await expandMap(edge, opts[0])
+                  }}
+                >
+                  {label}
+                </button>
+              )
+            })}
+            {/* Done button */}
+            <button
+              style={{
+                ...pillStyle, pointerEvents: 'auto',
+                position: 'absolute', bottom: 24, left: '50%', transform: 'translateX(-50%)',
+                background: 'rgba(14,13,11,0.94)', border: '1px solid rgba(100,95,88,0.5)',
+                color: '#888078',
+              }}
+              onClick={() => setExpandMode(false)}
+            >
+              Cancel
+            </button>
+          </div>
+        )
+      })()}
+
       {editingLabel && (() => {
         const overlay = labelOverlays.find(o => o.id === editingLabel.overlayId)
         const commit = () => {

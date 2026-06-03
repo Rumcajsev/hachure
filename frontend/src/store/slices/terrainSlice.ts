@@ -77,6 +77,7 @@ export type TerrainSlice = {
   // Actions
   resetToSetup: () => void
   generateMap: () => Promise<void>
+  expandMap: (edge: 'left' | 'right' | 'top' | 'bottom', newMm: number) => Promise<void>
   setClassRule: (terrain: string, classCode: number, rule: ClassRule | null) => void
   setTerrainRules: (rules: TerrainRules) => void
   setGenerateProgress: (p: GenerateProgress | null) => void
@@ -559,6 +560,121 @@ export const createTerrainSlice = (set: Set, get: () => MapStore): TerrainSlice 
   },
 
   setGenerateProgress: (p) => set({ generateProgress: p }),
+
+  expandMap: async (edge, newMm) => {
+    const { generatedHexes, generatedMetadata, pageGrid, hexOrientation, marginMm, terrainRules, disabledTerrains } = get()
+    if (!generatedMetadata) return
+
+    const scale = generatedMetadata.scale_m_per_mm
+
+    // Build new pageGrid with the new column/row added
+    let newPageGrid: typeof pageGrid
+    if (edge === 'left')   newPageGrid = { ...pageGrid, colWidths: [newMm, ...pageGrid.colWidths] }
+    else if (edge === 'right')  newPageGrid = { ...pageGrid, colWidths: [...pageGrid.colWidths, newMm] }
+    else if (edge === 'top')    newPageGrid = { ...pageGrid, rowHeights: [newMm, ...pageGrid.rowHeights] }
+    else                        newPageGrid = { ...pageGrid, rowHeights: [...pageGrid.rowHeights, newMm] }
+
+    const newCwMm = newPageGrid.colWidths.reduce((a, b) => a + b, 0)
+    const newChMm = newPageGrid.rowHeights.reduce((a, b) => a + b, 0)
+    const newWidthM  = newCwMm * scale
+    const newHeightM = newChMm * scale
+
+    set({ generateStatus: 'loading', generateError: null, generateProgress: null, pageGrid: newPageGrid })
+
+    // Existing hexes keyed by "q,r" — preserved as-is
+    const existingByKey = new Map(generatedHexes.map(h => [`${h.q},${h.r}`, h]))
+
+    const requestBody = {
+      center_lon: generatedMetadata.center[0],
+      center_lat: generatedMetadata.center[1],
+      bearing: generatedMetadata.bearing,
+      width_m: newWidthM,
+      height_m: newHeightM,
+      hex_size_mm: generatedMetadata.hex_size_km * 1000 / scale,
+      paper_size: 'A3',
+      orientation: 'landscape',
+      hex_orientation: hexOrientation,
+      margin_mm: marginMm,
+      paper_width_mm: newCwMm,
+      paper_height_mm: newChMm,
+      terrain_rules: terrainRules,
+    }
+
+    try {
+      const resp = await fetch('/api/generate/terrain-stream', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(requestBody),
+      })
+      if (!resp.ok) throw new Error(await resp.text())
+      if (!resp.body) throw new Error('No response body')
+
+      const reader = resp.body.getReader()
+      const decoder = new TextDecoder()
+      let buffer = ''
+
+      while (true) {
+        const { done, value } = await reader.read()
+        if (done) break
+        buffer += decoder.decode(value, { stream: true })
+        const lines = buffer.split('\n')
+        buffer = lines.pop() ?? ''
+
+        for (const line of lines) {
+          if (!line.startsWith('data: ')) continue
+          const jsonStr = line.slice(6).trim()
+          if (!jsonStr) continue
+          let event: Record<string, unknown>
+          try { event = JSON.parse(jsonStr) } catch { continue }
+
+          if (event.step === 'progress') {
+            set({ generateProgress: { message: event.message as string, progress: event.progress as number } })
+          } else if (event.step === 'grid' && Array.isArray(event.hexes)) {
+            // Show placeholder hexes for new area only
+            const raw = event.hexes as Array<{ q: number; r: number; center: [number, number]; vertices: [number, number][]; partial: boolean }>
+            const newPlaceholders = raw
+              .filter(h => !existingByKey.has(`${h.q},${h.r}`))
+              .map(h => ({
+                ...h, terrain: 'clear', terrains: [], coverage: {},
+                elevation_avg_m: null, elevation_median_m: null, elevation_max_m: null,
+                elevation_min_m: null, elevation_range_m: null, elevation_class: null,
+                elevation_manual_override: false, coastline_clip: null,
+              } as GeneratedHex))
+            // Update partial flags on existing edge hexes that are now interior
+            const updatedExisting = generatedHexes.map(h => {
+              const match = raw.find(rh => rh.q === h.q && rh.r === h.r)
+              return match ? { ...h, partial: match.partial } : h
+            })
+            set({ generatedHexes: [...updatedExisting, ...newPlaceholders], generatedMetadata: event.metadata as GridMetadata })
+          } else if (event.step === 'done') {
+            const rawHexes = event.hexes as GeneratedHex[]
+            const merged = new Map(existingByKey)
+            for (const h of rawHexes) {
+              const key = `${h.q},${h.r}`
+              if (!merged.has(key)) {
+                const terrain = classifyHex(h.coverage ?? {}, terrainRules, disabledTerrains)
+                const { terrains, backgroundTerrain } = classifyWithBackground(terrain, classifyHexLayers(h.coverage ?? {}, terrainRules, disabledTerrains))
+                merged.set(key, { ...h, terrain, terrains, backgroundTerrain })
+              } else {
+                // Update partial flag for previously-edge hexes now interior
+                const existing = merged.get(key)!
+                merged.set(key, { ...existing, partial: h.partial })
+              }
+            }
+            const newMeta = event.metadata as GridMetadata
+            set({ generateStatus: 'done', generatedHexes: [...merged.values()], generatedMetadata: newMeta, generateProgress: null })
+
+            // Re-fetch roads, rivers, settlements for the full expanded area
+            get().fetchRoads()
+            get().fetchRivers()
+            get().fetchSettlements()
+          }
+        }
+      }
+    } catch (e) {
+      set({ generateStatus: 'error', generateError: String(e), generateProgress: null })
+    }
+  },
 
   setClassRule: (terrain, classCode, rule) => {
     const { terrainRules, generatedHexes, disabledTerrains } = get()
