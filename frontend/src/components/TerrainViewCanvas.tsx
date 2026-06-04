@@ -1296,7 +1296,41 @@ const roadV3TierGeomRef = useRef(roadV3TierGeom)
         const topo = buildTerrainBlobTopology(terrainProjected, hexRadius)
         rawPolys = topo.find(e => e.terrain === terrain)?.rawPolys ?? []
       }
-      const blobs = shapeTerrainBlobs([{ terrain, rawPolys, hexCenters: modifiedHexCenters }], smooth, offset, bump, sweepFreq, lobeFreq, lobeAmp, lobeThreshold, lobeDirection, hexRadius, blobSeeds)
+      const shapedBlobs = shapeTerrainBlobs([{ terrain, rawPolys, hexCenters: modifiedHexCenters }], smooth, offset, bump, sweepFreq, lobeFreq, lobeAmp, lobeThreshold, lobeDirection, hexRadius, blobSeeds)
+
+      // Post-generation warp: directly displace polygon vertices toward nudged handles.
+      // Each vertex is pulled by the weighted sum of all handle offsets for this terrain,
+      // with influence falling off as a Gaussian (sigma = 1.5 * R).
+      const warpHandles: { cx: number; cy: number; dx: number; dy: number }[] = []
+      for (const [ck, hd] of newHandleGroups) {
+        const offsets = blobHandleOverrides[ck]
+        if (!offsets) continue
+        for (const { hexKey: hk, cx, cy } of hd.handles) {
+          const off = offsets[hk]
+          if (!off || (off[0] === 0 && off[1] === 0)) continue
+          // Convert R-unit offset back to canvas px for the original (un-offset) center
+          const origCenter = hexOrigCenterByKey.get(hk)
+          if (!origCenter) continue
+          warpHandles.push({ cx: origCenter[0], cy: origCenter[1], dx: off[0] * hexRadius, dy: off[1] * hexRadius })
+        }
+      }
+
+      const blobs = warpHandles.length === 0 ? shapedBlobs : shapedBlobs.map(b => ({
+        ...b,
+        polys: b.polys.map(poly => {
+          const sigma2 = (hexRadius * 1.5) ** 2
+          return poly.map(([x, y]) => {
+            let wx = 0, wy = 0
+            for (const { cx, cy, dx, dy } of warpHandles) {
+              const w = Math.exp(-((x - cx) ** 2 + (y - cy) ** 2) / sigma2)
+              wx += dx * w
+              wy += dy * w
+            }
+            return [x + wx, y + wy] as [number, number]
+          })
+        }),
+      }))
+
       perTerrainBlobCache.current.set(terrain, { hexKey, rawPolys, hexCenters: [...hexOrigCenterByKey.values()], styleKey, blobs, handleGroups: newHandleGroups })
       return blobs
     })
@@ -1454,9 +1488,21 @@ const roadV3TierGeomRef = useRef(roadV3TierGeom)
     setOverlayRect({ left: screenX, top: screenY, width: screenW, height: screenH })
 
     // MapLibre zoom: screenW pixels should span the paper's real-world width.
-    // MapLibre GL uses 512px world tiles → constant 78271.516 (same as mapResolutionMpx).
     const paperWidthM = meta.paper_mm[0] * meta.scale_m_per_mm
     const mlZoom = Math.log2(78271.516 * Math.cos(meta.center[1] * Math.PI / 180) * screenW / paperWidthM)
+
+    // The MapLibre centre should be the paper's visual centre, not the geographic centre.
+    // paper_offset_mm shifts the paper relative to the geographic centre.
+    const [ox, oy] = meta.paper_offset_mm ?? [0, 0]
+    const MPDEG = 111319
+    const β = (meta.bearing * Math.PI) / 180
+    const cosLat = Math.cos((meta.center[1] * Math.PI) / 180)
+    const offE = (ox * Math.cos(β) - oy * Math.sin(β)) * meta.scale_m_per_mm
+    const offN = (ox * Math.sin(β) + oy * Math.cos(β)) * meta.scale_m_per_mm
+    const overlayCenter: [number, number] = [
+      meta.center[0] + offE / (cosLat * MPDEG),
+      meta.center[1] + offN / MPDEG,
+    ]
 
     requestAnimationFrame(() => {
       const el = overlayContainerRef.current
@@ -1465,7 +1511,7 @@ const roadV3TierGeomRef = useRef(roadV3TierGeom)
         overlayMapRef.current = new maplibregl.Map({
           container: el,
           style: OSM_OVERLAY_STYLE,
-          center: meta.center,
+          center: overlayCenter,
           zoom: mlZoom,
           bearing: meta.bearing,
           interactive: false,
@@ -1473,7 +1519,7 @@ const roadV3TierGeomRef = useRef(roadV3TierGeom)
         })
       } else {
         overlayMapRef.current.resize()
-        overlayMapRef.current.jumpTo({ center: meta.center, zoom: mlZoom, bearing: meta.bearing })
+        overlayMapRef.current.jumpTo({ center: overlayCenter, zoom: mlZoom, bearing: meta.bearing })
       }
     })
   }, [])
