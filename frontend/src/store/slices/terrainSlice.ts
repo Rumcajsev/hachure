@@ -635,20 +635,25 @@ export const createTerrainSlice = (set: Set, get: () => MapStore): TerrainSlice 
 
     set({ generateStatus: 'loading', generateError: null, generateProgress: null, pageGrid: newPageGrid })
 
+    // The paper is asymmetric around the fixed geographic centre (paper_offset_mm accounts for it).
+    // The backend generates hexes symmetrically, so request enough to cover the furthest edge.
+    // reqW/H are the symmetric dimensions needed; actual paper_mm is still newCwMm × newChMm.
+    const reqWMm = 2 * (newCwMm / 2 + Math.abs(newOffset[0]))
+    const reqHMm = 2 * (newChMm / 2 + Math.abs(newOffset[1]))
+
     const requestBody = {
       center_lon: generatedMetadata.center[0],
       center_lat: generatedMetadata.center[1],
       bearing: generatedMetadata.bearing,
-      // Request the FULL symmetric combined area so the backend generates all needed hexes
-      width_m: newCwMm * scale,
-      height_m: newChMm * scale,
+      width_m: reqWMm * scale,
+      height_m: reqHMm * scale,
       hex_size_mm: hexSizeMm,
       paper_size: paperSize,
       orientation,
       hex_orientation: hexOrientation,
       margin_mm: marginMm,
-      paper_width_mm: newCwMm,
-      paper_height_mm: newChMm,
+      paper_width_mm: reqWMm,
+      paper_height_mm: reqHMm,
       terrain_rules: terrainRules,
     }
 
@@ -700,7 +705,8 @@ export const createTerrainSlice = (set: Set, get: () => MapStore): TerrainSlice 
             const backendMeta = event.metadata as GridMetadata
             set({
               generatedHexes: [...updatedExisting, ...newPlaceholders],
-              generatedMetadata: { ...backendMeta, paper_offset_mm: newOffset },
+              // Override paper_mm with actual combined dims (backend got the oversized request)
+              generatedMetadata: { ...backendMeta, paper_mm: [newCwMm, newChMm], paper_offset_mm: newOffset },
             })
           } else if (event.step === 'done') {
             const rawHexes = event.hexes as GeneratedHex[]
@@ -724,8 +730,8 @@ export const createTerrainSlice = (set: Set, get: () => MapStore): TerrainSlice 
             set({
               generateStatus: 'done',
               generatedHexes: [...merged.values()],
-              // Inject paper_offset_mm — backend doesn't know about it
-              generatedMetadata: { ...backendMeta, paper_offset_mm: newOffset },
+              // Override paper_mm with actual combined dims; inject paper_offset_mm
+              generatedMetadata: { ...backendMeta, paper_mm: [newCwMm, newChMm], paper_offset_mm: newOffset },
               generateProgress: null,
               // Clear stale state
               undoStack: [],

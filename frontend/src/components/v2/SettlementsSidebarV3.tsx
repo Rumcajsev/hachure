@@ -32,7 +32,7 @@ const TIER_LABELS: Record<SettlementTier, string> = {
   1: 'Tier I', 2: 'Tier II', 3: 'Tier III', 4: 'Tier IV',
 }
 
-function TierIcon({ shape, size, fill, stroke, strokeWidth }: {
+export function TierIcon({ shape, size, fill, stroke, strokeWidth }: {
   shape: 'circle' | 'square'; size: number; fill: string; stroke: string; strokeWidth: number
 }) {
   const s = 14
@@ -78,7 +78,7 @@ const TIER_PREVIEW_TEXT: Record<SettlementTier, string> = {
   1: 'Berlin', 2: 'Leipzig', 3: 'Goslar', 4: 'Wesel',
 }
 
-function TierStyleFlyout({ tier, onClose }: { tier: SettlementTier; onClose: () => void }) {
+export function TierStyleFlyout({ tier, onClose }: { tier: SettlementTier; onClose: () => void }) {
   const t = useTheme()
   const {
     settlementTierStyles, setSettlementTierStyle,
@@ -207,7 +207,7 @@ function TierStyleFlyout({ tier, onClose }: { tier: SettlementTier; onClose: () 
 
 // ── UrbanStyleFlyout ──────────────────────────────────────────────────────────
 
-function UrbanStyleFlyout({ onClose }: { onClose: () => void }) {
+export function UrbanStyleFlyout({ onClose }: { onClose: () => void }) {
   const t = useTheme()
   const { urbanStyle, setUrbanStyle } = useMapStore()
   const s = urbanStyle
@@ -251,7 +251,7 @@ function UrbanStyleFlyout({ onClose }: { onClose: () => void }) {
 
 // ── OsmSettlementsFlyout ──────────────────────────────────────────────────────
 
-function OsmSettlementsFlyout({ onClose }: { onClose: () => void }) {
+export function OsmSettlementsFlyout({ onClose }: { onClose: () => void }) {
   const t = useTheme()
   const {
     settlements, settlementTierStyles,
@@ -370,7 +370,7 @@ function OsmSettlementsFlyout({ onClose }: { onClose: () => void }) {
 
 // ── SettlementsSidebarV3 ──────────────────────────────────────────────────────
 
-function SettlementLabelFlyout({ index, onClose }: { index: number; onClose: () => void }) {
+export function SettlementLabelFlyout({ index, onClose }: { index: number; onClose: () => void }) {
   const { settlements, updateSettlement, labelPresetId, labelOverrides } = useMapStore()
   const s = settlements[index]
   if (!s) return null

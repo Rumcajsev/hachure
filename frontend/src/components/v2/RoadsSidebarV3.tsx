@@ -240,7 +240,7 @@ function FSectionDivider() {
 
 // ── RoadShapeFlyout ────────────────────────────────────────────────────────────
 
-function RoadShapeFlyout({ onClose }: { onClose: () => void }) {
+export function RoadShapeFlyout({ onClose }: { onClose: () => void }) {
   const t = useTheme()
   const {
     roadWiggleAmp, setRoadWiggleAmp,
@@ -306,7 +306,7 @@ function RoadShapeFlyout({ onClose }: { onClose: () => void }) {
 
 // ── RailShapeFlyout ────────────────────────────────────────────────────────────
 
-function RailShapeFlyout({ onClose }: { onClose: () => void }) {
+export function RailShapeFlyout({ onClose }: { onClose: () => void }) {
   const t = useTheme()
   const {
     railWiggleAmp, setRailWiggleAmp,
@@ -356,7 +356,7 @@ const DASH_OPTIONS: { value: RoadDashStyle; label: string }[] = [
   { value: 'dotted', label: 'Dotted' },
 ]
 
-function RoadStyleFlyout({ tier, onClose }: { tier: 0 | 1 | 2; onClose: () => void }) {
+export function RoadStyleFlyout({ tier, onClose }: { tier: 0 | 1 | 2; onClose: () => void }) {
   const t = useTheme()
   const {
     mapStyle,
@@ -475,7 +475,7 @@ function RoadStyleFlyout({ tier, onClose }: { tier: 0 | 1 | 2; onClose: () => vo
 
 // ── RailStyleFlyout ────────────────────────────────────────────────────────────
 
-function RailStyleFlyout({ onClose }: { onClose: () => void }) {
+export function RailStyleFlyout({ onClose }: { onClose: () => void }) {
   const t = useTheme()
   const {
     railStyle, setRailStyle,
@@ -559,7 +559,7 @@ function RailStyleFlyout({ onClose }: { onClose: () => void }) {
 
 // ── OsmRoadsFlyout ─────────────────────────────────────────────────────────────
 
-function OsmRoadsFlyout({ onClose }: { onClose: () => void }) {
+export function OsmRoadsFlyout({ onClose }: { onClose: () => void }) {
   const t = useTheme()
   const {
     roadsStatus, fetchRoads, clearRoads,
@@ -630,7 +630,7 @@ function OsmRoadsFlyout({ onClose }: { onClose: () => void }) {
 
 // ── OsmRailsFlyout ─────────────────────────────────────────────────────────────
 
-function OsmRailsFlyout({ onClose }: { onClose: () => void }) {
+export function OsmRailsFlyout({ onClose }: { onClose: () => void }) {
   const t = useTheme()
   const {
     railsStatus, fetchRails, clearRails,
@@ -690,7 +690,7 @@ function OsmRailsFlyout({ onClose }: { onClose: () => void }) {
 
 // ── BridgesFlyout ──────────────────────────────────────────────────────────────
 
-function BridgesFlyout({ onClose }: { onClose: () => void }) {
+export function BridgesFlyout({ onClose }: { onClose: () => void }) {
   const t = useTheme()
   const {
     bridgesEnabled, setBridgesEnabled,
@@ -762,7 +762,7 @@ function BridgesFlyout({ onClose }: { onClose: () => void }) {
 
 // ── SegmentFlyout ──────────────────────────────────────────────────────────────
 
-function SegmentFlyout({ mode, onClose }: { mode: 'road' | 'rail'; onClose: () => void }) {
+export function RoadSegmentFlyout({ mode, onClose }: { mode: 'road' | 'rail'; onClose: () => void }) {
   const t = useTheme()
   const {
     roadWiggleAmp, roadWiggleFreq,
@@ -888,7 +888,7 @@ const CLEARANCE_TERRAINS = [
   { id: 'beach',       label: 'Beach' },
 ]
 
-function TerrainClearanceFlyout({ onClose }: { onClose: () => void }) {
+export function TerrainClearanceFlyout({ onClose }: { onClose: () => void }) {
   const t = useTheme()
   const { roadClearanceTerrains, toggleRoadClearanceTerrain, terrainColors } = useMapStore()
   return (
@@ -1064,7 +1064,7 @@ export function RoadsSidebarV3() {
       {flyout === 'bridges' && <BridgesFlyout onClose={() => setFlyout(null)} />}
       {flyout === 'terrain-clearance' && <TerrainClearanceFlyout onClose={() => setFlyout(null)} />}
       {flyout === 'segment' && (
-        <SegmentFlyout
+        <RoadSegmentFlyout
           mode={segmentMode}
           onClose={() => {
             if (segmentMode === 'road') setSelectedRoadSegmentKeys([])

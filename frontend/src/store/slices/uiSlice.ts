@@ -3,7 +3,7 @@ import { DEFAULT_URBAN_STYLE } from '../mapStore'
 import { STYLE_PRESET_KEYS } from '../../lib/stylePreset'
 
 export type UiSlice = {
-  activePanel: 'terrain' | 'display' | 'roads' | 'settlements' | 'rivers' | 'style' | 'highlights' | 'elevation'
+  activePanel: 'terrain' | 'display' | 'features' | 'style' | 'highlights' | 'elevation'
   activeTool: ActiveTool
   urbanHexes: Array<{ q: number; r: number }>
   urbanStyle: UrbanStyle
@@ -43,7 +43,7 @@ export type UiSlice = {
   excludedHexKeys: string[]
   disabledHexKeys: string[]
   autoDisabledOceanHexKeys: string[]
-  setActivePanel: (panel: 'terrain' | 'display' | 'roads' | 'settlements' | 'rivers' | 'style' | 'elevation') => void
+  setActivePanel: (panel: 'terrain' | 'display' | 'features' | 'style' | 'elevation') => void
   setActiveTool: (tool: ActiveTool) => void
   toggleUrbanHex: (q: number, r: number) => void
   setUrbanStyle: (style: Partial<UrbanStyle>) => void

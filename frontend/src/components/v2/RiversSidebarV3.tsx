@@ -37,7 +37,7 @@ function SubLabel({ label }: { label: string }) {
 
 // ── RiverStyleFlyout ──────────────────────────────────────────────────────────
 
-function RiverStyleFlyout({ onClose }: { onClose: () => void }) {
+export function RiverStyleFlyout({ onClose }: { onClose: () => void }) {
   const t = useTheme()
   const {
     riverStyle, setRiverStyle,
@@ -105,7 +105,7 @@ function RiverStyleFlyout({ onClose }: { onClose: () => void }) {
 
 // ── CanalStyleFlyout ──────────────────────────────────────────────────────────
 
-function CanalStyleFlyout({ onClose }: { onClose: () => void }) {
+export function CanalStyleFlyout({ onClose }: { onClose: () => void }) {
   const t = useTheme()
   const {
     canalStyle, setCanalStyle,
@@ -158,7 +158,7 @@ function CanalStyleFlyout({ onClose }: { onClose: () => void }) {
 
 // ── OsmRiversFlyout ───────────────────────────────────────────────────────────
 
-function OsmRiversFlyout({ onClose }: { onClose: () => void }) {
+export function OsmRiversFlyout({ onClose }: { onClose: () => void }) {
   const t = useTheme()
   const {
     osmRiverWays, riversOsmStatus, riversOsmError,
@@ -265,7 +265,7 @@ function OsmRiversFlyout({ onClose }: { onClose: () => void }) {
 
 // ── SegmentFlyout ─────────────────────────────────────────────────────────────
 
-function SegmentFlyout({ mode, onClose }: { mode: 'river' | 'canal'; onClose: () => void }) {
+export function RiverSegmentFlyout({ mode, onClose }: { mode: 'river' | 'canal'; onClose: () => void }) {
   const t = useTheme()
   const {
     riverWidthScale, canalWidthScale,
@@ -403,7 +403,7 @@ function SegmentFlyout({ mode, onClose }: { mode: 'river' | 'canal'; onClose: ()
 
 // ── RiverLabelFlyout ──────────────────────────────────────────────────────────
 
-function RiverLabelFlyout({ onClose }: { onClose: () => void }) {
+export function RiverLabelFlyout({ onClose }: { onClose: () => void }) {
   const t = useTheme()
   const {
     showRiverLabels, setShowRiverLabels,
@@ -546,7 +546,7 @@ export function RiversSidebarV3() {
       {flyout === 'osm'          && <OsmRiversFlyout  onClose={() => setFlyout(null)} />}
       {flyout === 'river-labels' && <RiverLabelFlyout onClose={() => setFlyout(null)} />}
       {flyout === 'segment'    && (
-        <SegmentFlyout
+        <RiverSegmentFlyout
           mode={segmentMode}
           onClose={() => {
             if (segmentMode === 'river') setSelectedSegmentKeys([])

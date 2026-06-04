@@ -707,6 +707,7 @@ export const useMapStore = create<MapStore>()(persist((set, get) => ({
     step: s.step,
     paperSize: s.paperSize,
     orientation: s.orientation,
+    pageGrid: s.pageGrid,
     hexSizeMm: s.hexSizeMm,
     hexOrientation: s.hexOrientation,
     marginMm: s.marginMm,

@@ -1,16 +1,14 @@
 import { useRef, useCallback, useState, useEffect } from 'react'
 import { set as idbSet } from 'idb-keyval'
 import { useMapStore } from './store/mapStore'
-import { RiversSidebarV3 } from './components/v2/RiversSidebarV3'
+import { FeaturesSidebarV3 } from './components/v2/FeaturesSidebarV3'
 import { DisplaySidebarV3 } from './components/v2/DisplaySidebarV3'
-import { SettlementsSidebarV3 } from './components/v2/SettlementsSidebarV3'
 import { TerrainViewCanvas, type TerrainViewCanvasHandle } from './components/TerrainViewCanvas'
 import { ImageAlignView } from './components/ImageAlignView'
 import { TK, TK_DARK } from './theme'
 import { ThemeContext } from './context/ThemeContext'
 import { EditorTopBar } from './components/v2/EditorTopBar'
 import { TerrainSidebarV3 } from './components/v2/TerrainSidebarV3'
-import { RoadsSidebarV3 } from './components/v2/RoadsSidebarV3'
 import { OverlaysSidebarV3 } from './components/v2/OverlaysSidebarV3'
 import { BottomDock } from './components/v2/BottomDock'
 import { CanvasToolbar } from './components/v2/CanvasToolbar'
@@ -74,10 +72,7 @@ function AppV2Inner({ screen, setScreen, isDark, setIsDark }: {
     return () => window.removeEventListener('keydown', onKey)
   }, [undo, redo])
 
-  const handleExportPDF = useCallback(async () => {
-    const sheets = await canvasHandleRef.current?.exportSheets()
-    if (!sheets) return
-
+  const handleExportPDF = useCallback(async (mode: 'sheets' | 'combined') => {
     const toB64 = (blob: Blob): Promise<string> => new Promise((res, rej) => {
       const r = new FileReader()
       r.onload = () => res((r.result as string).split(',')[1])
@@ -85,10 +80,20 @@ function AppV2Inner({ screen, setScreen, isDark, setIsDark }: {
       r.readAsDataURL(blob)
     })
 
-    const sheetPayloads = await Promise.all(sheets.map(async s => ({
-      image_b64: await toB64(s.blob),
-      paper_mm: s.paperMm,
-    })))
+    let sheetPayloads: { image_b64: string; paper_mm: [number, number] }[]
+
+    if (mode === 'combined') {
+      const result = await canvasHandleRef.current?.exportBlob()
+      if (!result) return
+      sheetPayloads = [{ image_b64: await toB64(result.blob), paper_mm: result.paperMm }]
+    } else {
+      const sheets = await canvasHandleRef.current?.exportSheets()
+      if (!sheets) return
+      sheetPayloads = await Promise.all(sheets.map(async s => ({
+        image_b64: await toB64(s.blob),
+        paper_mm: s.paperMm,
+      })))
+    }
 
     const res = await fetch('/api/export/sheets-pdf', {
       method: 'POST',
@@ -130,11 +135,9 @@ function AppV2Inner({ screen, setScreen, isDark, setIsDark }: {
   if (step === 'image-align') return <ImageAlignView />
 
   const t = isDark ? TK_DARK : TK
-  const sidebar = activePanel === 'terrain'     ? <TerrainSidebarV3 />
-    : activePanel === 'display'     ? <DisplaySidebarV3 />
-    : activePanel === 'roads'       ? <RoadsSidebarV3 />
-    : activePanel === 'rivers'      ? <RiversSidebarV3 />
-    : activePanel === 'settlements' ? <SettlementsSidebarV3 />
+  const sidebar = activePanel === 'terrain'  ? <TerrainSidebarV3 />
+    : activePanel === 'display'   ? <DisplaySidebarV3 />
+    : activePanel === 'features'  ? <FeaturesSidebarV3 />
     : <OverlaysSidebarV3 />
 
   const surroundColor = isDark ? '#2a2420' : '#B7B0A6'
