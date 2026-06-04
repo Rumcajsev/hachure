@@ -175,6 +175,11 @@ export interface GridMetadata {
   bearing: number
   paper_mm: [number, number]
   margin_mm: number
+  /** How far the paper's visual centre is offset from the geographic centre, in mm.
+   *  [+x, +y] = paper centre is x mm to the right and y mm up of the geographic centre.
+   *  Absent (or [0,0]) means the paper is centred on the geographic centre (normal case).
+   *  Accumulated across multiple expand operations. */
+  paper_offset_mm?: [number, number]
   /** Exterior ring(s) of the full WorldCover land polygon, [[lon, lat], …].
    *  Sent before hex clipping so the frontend can smooth it globally. */
   coastline_boundary?: [number, number][][]

@@ -579,32 +579,20 @@ export const createTerrainSlice = (set: Set, get: () => MapStore): TerrainSlice 
   setGenerateProgress: (p) => set({ generateProgress: p }),
 
   expandMap: async (edge, newMm) => {
-    const { generatedHexes, generatedMetadata, pageGrid, paperSize, orientation, hexSizeMm, hexOrientation, marginMm, terrainRules, disabledTerrains, highlightedHexes, disabledHexKeys, autoDisabledOceanHexKeys, urbanHexes, roadEdges, railEdges, riverEdges, canalEdges } = get()
+    const { generatedHexes, generatedMetadata, pageGrid, paperSize, orientation, hexSizeMm, hexOrientation, marginMm, terrainRules, disabledTerrains } = get()
     if (!generatedMetadata) return
 
-    const MPDEG = 111319
     const scale = generatedMetadata.scale_m_per_mm
-    const β = (generatedMetadata.bearing * Math.PI) / 180
-    const cosLat = Math.cos((generatedMetadata.center[1] * Math.PI) / 180)
-
-    // Shift center so existing content stays on its side, new content on the other
-    const shiftM = (newMm / 2) * scale
-    let dE = 0, dN = 0
-    if (edge === 'right')  { dE =  shiftM * Math.cos(β); dN = -shiftM * Math.sin(β) }
-    if (edge === 'left')   { dE = -shiftM * Math.cos(β); dN =  shiftM * Math.sin(β) }
-    if (edge === 'top')    { dE =  shiftM * Math.sin(β); dN =  shiftM * Math.cos(β) }
-    if (edge === 'bottom') { dE = -shiftM * Math.sin(β); dN = -shiftM * Math.cos(β) }
-    const newCenterLon = generatedMetadata.center[0] + dE / (cosLat * MPDEG)
-    const newCenterLat = generatedMetadata.center[1] + dN / MPDEG
-
-    // For single-sheet maps, pageGrid may be stale/mismatched with actual render dimensions.
-    // Always trust generatedMetadata.paper_mm as the ground truth for current paper size.
+    const R_m = generatedMetadata.outer_radius_m
+    const flatTop = hexOrientation === 'flat'
+    const [ox, oy] = generatedMetadata.paper_offset_mm ?? [0, 0]
     const [metaPwMm, metaPhMm] = generatedMetadata.paper_mm
+
+    // For single-sheet maps, pageGrid may be stale — always trust generatedMetadata.paper_mm
     const baseGrid = (pageGrid.colWidths.length === 1 && pageGrid.rowHeights.length === 1)
       ? { colWidths: [metaPwMm], rowHeights: [metaPhMm] }
       : pageGrid
 
-    // Build new pageGrid with the new column/row added
     let newPageGrid: typeof pageGrid
     if (edge === 'left')        newPageGrid = { ...baseGrid, colWidths: [newMm, ...baseGrid.colWidths] }
     else if (edge === 'right')  newPageGrid = { ...baseGrid, colWidths: [...baseGrid.colWidths, newMm] }
@@ -613,22 +601,47 @@ export const createTerrainSlice = (set: Set, get: () => MapStore): TerrainSlice 
 
     const newCwMm = newPageGrid.colWidths.reduce((a, b) => a + b, 0)
     const newChMm = newPageGrid.rowHeights.reduce((a, b) => a + b, 0)
-    const newWidthM  = newCwMm * scale
-    const newHeightM = newChMm * scale
+
+    // Center stays FIXED. paper_offset_mm accumulates to keep original content on its side.
+    const newOffset: [number, number] = [
+      ox + (edge === 'right' ? newMm / 2 : edge === 'left' ? -newMm / 2 : 0),
+      oy + (edge === 'top'   ? newMm / 2 : edge === 'bottom' ? -newMm / 2 : 0),
+    ]
+
+    // Current paper edges in paper-x/y metres from geographic centre (using current offset)
+    // right/top edges = where existing territory ends; new hexes beyond this are kept
+    const curRightM  = (metaPwMm / 2 + ox) * scale
+    const curLeftM   = (-metaPwMm / 2 + ox) * scale
+    const curTopM    = (metaPhMm / 2 + oy) * scale
+    const curBottomM = (-metaPhMm / 2 + oy) * scale
+
+    // Axial hex centre in paper-space metres (replicates backend axial_to_paper_m)
+    const axialToPaperM = (q: number, r: number): [number, number] =>
+      flatTop
+        ? [1.5 * R_m * q, R_m * Math.sqrt(3) * (r + q / 2)]
+        : [R_m * Math.sqrt(3) * (q + r / 2), 1.5 * R_m * r]
+
+    // Is this hex in the correct new-territory zone? (beyond existing edge, within tolerance)
+    const isNewTerritory = (q: number, r: number): boolean => {
+      const [px, py] = axialToPaperM(q, r)
+      if (edge === 'right')  return px > curRightM  - R_m
+      if (edge === 'left')   return px < curLeftM   + R_m
+      if (edge === 'top')    return py > curTopM    - R_m
+      return                        py < curBottomM + R_m  // bottom
+    }
+
+    // Old hexes keyed by q,r — unchanged (centre is fixed, coordinate system is stable)
+    const existingByKey = new Map(generatedHexes.map(h => [`${h.q},${h.r}`, h]))
 
     set({ generateStatus: 'loading', generateError: null, generateProgress: null, pageGrid: newPageGrid })
 
-    // Key existing hexes by geographic center (rounded to 5dp) for remapping after center shift
-    const geoKey = (lon: number, lat: number) =>
-      `${lon.toFixed(5)},${lat.toFixed(5)}`
-    const existingByGeo = new Map(generatedHexes.map(h => [geoKey(h.center[0], h.center[1]), h]))
-
     const requestBody = {
-      center_lon: newCenterLon,
-      center_lat: newCenterLat,
+      center_lon: generatedMetadata.center[0],
+      center_lat: generatedMetadata.center[1],
       bearing: generatedMetadata.bearing,
-      width_m: newWidthM,
-      height_m: newHeightM,
+      // Request the FULL symmetric combined area so the backend generates all needed hexes
+      width_m: newCwMm * scale,
+      height_m: newChMm * scale,
       hex_size_mm: hexSizeMm,
       paper_size: paperSize,
       orientation,
@@ -669,142 +682,69 @@ export const createTerrainSlice = (set: Set, get: () => MapStore): TerrainSlice 
           if (event.step === 'progress') {
             set({ generateProgress: { message: event.message as string, progress: event.progress as number } })
           } else if (event.step === 'grid' && Array.isArray(event.hexes)) {
+            // Show placeholder hexes for the new territory while streaming
             const raw = event.hexes as Array<{ q: number; r: number; center: [number, number]; vertices: [number, number][]; partial: boolean }>
             const newPlaceholders = raw
-              .filter(h => !existingByGeo.has(geoKey(h.center[0], h.center[1])))
+              .filter(h => !existingByKey.has(`${h.q},${h.r}`) && isNewTerritory(h.q, h.r))
               .map(h => ({
                 ...h, terrain: 'clear', terrains: [], coverage: {},
                 elevation_avg_m: null, elevation_median_m: null, elevation_max_m: null,
                 elevation_min_m: null, elevation_range_m: null, elevation_class: null,
                 elevation_manual_override: false, coastline_clip: null,
               } as GeneratedHex))
-            const remappedExisting = raw
-              .filter(rh => existingByGeo.has(geoKey(rh.center[0], rh.center[1])))
-              .map(rh => {
-                const old = existingByGeo.get(geoKey(rh.center[0], rh.center[1]))!
-                return { ...old, q: rh.q, r: rh.r, vertices: rh.vertices, center: rh.center, partial: rh.partial }
-              })
-            set({ generatedHexes: [...remappedExisting, ...newPlaceholders], generatedMetadata: event.metadata as GridMetadata })
+            // Update partial flags on old border hexes that are now interior
+            const updatedExisting = generatedHexes.map(h => {
+              const match = raw.find(rh => rh.q === h.q && rh.r === h.r)
+              return match ? { ...h, partial: match.partial } : h
+            })
+            const backendMeta = event.metadata as GridMetadata
+            set({
+              generatedHexes: [...updatedExisting, ...newPlaceholders],
+              generatedMetadata: { ...backendMeta, paper_offset_mm: newOffset },
+            })
           } else if (event.step === 'done') {
             const rawHexes = event.hexes as GeneratedHex[]
-            // Build old→new q,r mapping for remapping downstream keyed data
-            const qrRemap = new Map<string, string>() // "oldQ,oldR" → "newQ,newR"
-            const merged = new Map<string, GeneratedHex>()
-            let matchCount = 0, missCount = 0
+            const merged = new Map(existingByKey)
+
             for (const h of rawHexes) {
-              const key = geoKey(h.center[0], h.center[1])
-              const oldHex = existingByGeo.get(key)
-              if (oldHex) {
-                matchCount++
-                const oldKey = `${oldHex.q},${oldHex.r}`
-                const newKey = `${h.q},${h.r}`
-                qrRemap.set(oldKey, newKey)
-                merged.set(newKey, { ...oldHex, q: h.q, r: h.r, vertices: h.vertices, center: h.center, partial: h.partial })
-              } else {
-                missCount++
+              const key = `${h.q},${h.r}`
+              if (existingByKey.has(key)) {
+                // Existing hex: preserve all terrain/elevation data, just update partial flag
+                merged.set(key, { ...existingByKey.get(key)!, partial: h.partial })
+              } else if (isNewTerritory(h.q, h.r)) {
+                // New hex in correct zone: classify and add
                 const terrain = classifyHex(h.coverage ?? {}, terrainRules, disabledTerrains)
                 const { terrains, backgroundTerrain } = classifyWithBackground(terrain, classifyHexLayers(h.coverage ?? {}, terrainRules, disabledTerrains))
-                merged.set(`${h.q},${h.r}`, { ...h, terrain, terrains, backgroundTerrain })
+                merged.set(key, { ...h, terrain, terrains, backgroundTerrain })
               }
+              // Hexes on the wrong side of the original paper are discarded
             }
 
-            console.log(`[expandMap] geo-match: ${matchCount} matched, ${missCount} new, existingByGeo size=${existingByGeo.size}, qrRemap size=${qrRemap.size}`)
-            if (qrRemap.size === 0 && existingByGeo.size > 0) {
-              // Sample mismatch: show a few keys from each side
-              const sampleOld = [...existingByGeo.keys()].slice(0, 3)
-              const sampleNew = rawHexes.slice(0, 3).map(h => geoKey(h.center[0], h.center[1]))
-              console.warn('[expandMap] ALL geo-matches FAILED. Old sample:', sampleOld, 'New sample:', sampleNew)
-            }
-
-            // Remap q,r-keyed downstream state
-            const remapRecord = (rec: Record<string, string>) => {
-              const out: Record<string, string> = {}
-              for (const [k, v] of Object.entries(rec)) out[qrRemap.get(k) ?? k] = v
-              return out
-            }
-            const remapKeys = (keys: string[]) => keys.map(k => qrRemap.get(k) ?? k)
-            const remapQR = (arr: Array<{ q: number; r: number }>) =>
-              arr.map(({ q, r }) => {
-                const mapped = qrRemap.get(`${q},${r}`)
-                if (!mapped) return { q, r }
-                const [nq, nr] = mapped.split(',').map(Number)
-                return { q: nq, r: nr }
-              })
-            const remapEdges = <T extends { q1: number; r1: number; q2: number; r2: number }>(arr: T[]): T[] =>
-              arr.map(e => {
-                const k1 = qrRemap.get(`${e.q1},${e.r1}`), k2 = qrRemap.get(`${e.q2},${e.r2}`)
-                const [nq1, nr1] = k1 ? k1.split(',').map(Number) : [e.q1, e.r1]
-                const [nq2, nr2] = k2 ? k2.split(',').map(Number) : [e.q2, e.r2]
-                return { ...e, q1: nq1, r1: nr1, q2: nq2, r2: nr2 }
-              })
-
-            const newMeta = event.metadata as GridMetadata
+            const backendMeta = event.metadata as GridMetadata
             set({
-              // Core hex data
               generateStatus: 'done',
               generatedHexes: [...merged.values()],
-              generatedMetadata: newMeta,
+              // Inject paper_offset_mm — backend doesn't know about it
+              generatedMetadata: { ...backendMeta, paper_offset_mm: newOffset },
               generateProgress: null,
-
-              // q,r-keyed data — remapped to new coordinate system
-              highlightedHexes: remapRecord(highlightedHexes),
-              disabledHexKeys: remapKeys(disabledHexKeys),
-              autoDisabledOceanHexKeys: remapKeys(autoDisabledOceanHexKeys),
-              urbanHexes: remapQR(urbanHexes),
-              roadEdges: remapEdges(roadEdges),
-              railEdges: remapEdges(railEdges),
-              riverEdges: remapEdges(riverEdges),
-              canalEdges: remapEdges(canalEdges),
-
-              // Undo/redo: snapshots carry pre-expansion q,r — would corrupt state if restored
+              // Clear stale state
               undoStack: [],
               redoStack: [],
-
-              // WorldCover raster was generated for the old bbox
               worldcoverImageUrl: null,
               showWorldcoverOverlay: false,
-
-              // appliedOsmRiverIndices are indices into osmRiverWays — re-fetch replaces that array
               appliedOsmRiverIndices: [],
-
-              // motorwayHexes holds [q,r] pairs — stale after q,r remap
               motorwayHexes: [],
               motorwayHexesStatus: 'idle',
-
-              // settlementLabelOverrides keyed by index in settlements[] — re-fetch reorders
               settlementLabelOverrides: {},
-
-              // Chain/control overrides use q,r-derived keys — stale after remap,
-              // and the re-fetches rebuild the underlying chains anyway
-              railChainOverrides: {},
-              railControlOverrides: {},
-              riverChainOverrides: {},
-              roadControlOverrides: {},
-
-              // Hop/segment props and bridge overrides are keyed by canvas pixel coordinates —
-              // positions shift after center change, all keys become stale
-              roadHopProps: {},
-              roadSegmentProps: {},
-              railHopProps: {},
-              railSegmentProps: {},
-              riverHopProps: {},
-              riverSegmentProps: {},
-              canalSegmentProps: {},
-              bridgeOverrides: {},
             })
 
-            // Re-fetch all layers for the full expanded area with step-by-step progress
+            // Re-fetch all layers for the expanded area
             const { setExpandFetchStep, clearExpandFetchSteps } = get()
-            const steps = { terrain: 'done', elevation: 'loading', roads: 'loading', rivers: 'loading', settlements: 'loading', rails: 'loading' } as const
-            set({ expandFetchSteps: steps } as Parameters<typeof set>[0])
+            set({ expandFetchSteps: { terrain: 'done', elevation: 'loading', roads: 'loading', rivers: 'loading', settlements: 'loading', rails: 'loading' } } as Parameters<typeof set>[0])
 
             const run = async (key: string, fn: () => Promise<void>) => {
-              try {
-                await fn()
-                setExpandFetchStep(key, 'done')
-              } catch {
-                setExpandFetchStep(key, 'error')
-              }
+              try { await fn(); setExpandFetchStep(key, 'done') }
+              catch { setExpandFetchStep(key, 'error') }
             }
 
             Promise.all([
@@ -813,9 +753,7 @@ export const createTerrainSlice = (set: Set, get: () => MapStore): TerrainSlice 
               run('rivers',      () => get().fetchRivers()),
               run('settlements', () => get().fetchSettlements()),
               run('rails',       () => get().fetchRails()),
-            ]).then(() => {
-              setTimeout(() => clearExpandFetchSteps(), 1200)
-            })
+            ]).then(() => { setTimeout(() => clearExpandFetchSteps(), 1200) })
           }
         }
       }
