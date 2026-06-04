@@ -1302,10 +1302,10 @@ const roadV3TierGeomRef = useRef(roadV3TierGeom)
       // Each vertex is pulled by the weighted sum of all handle offsets for this terrain,
       // with influence falling off as a Gaussian (sigma = 1.5 * R).
       const warpHandles: { cx: number; cy: number; dx: number; dy: number }[] = []
-      for (const [ck, hd] of newHandleGroups) {
+      for (const [ck, hdArr] of newHandleGroups) {
         const offsets = blobHandleOverrides[ck]
         if (!offsets) continue
-        for (const { hexKey: hk, cx, cy } of hd.handles) {
+        for (const { hexKey: hk, cx, cy } of hdArr) {
           const off = offsets[hk]
           if (!off || (off[0] === 0 && off[1] === 0)) continue
           // Convert R-unit offset back to canvas px for the original (un-offset) center
