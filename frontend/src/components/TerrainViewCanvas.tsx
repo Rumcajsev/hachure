@@ -525,8 +525,8 @@ terrainColors, terrainTextureScales, terrainTextureBlendModes, terrainTextureOpa
   const blobHandleOverridesRef = useRef(blobHandleOverrides)
   const setBlobHandleOverrideRef = useRef(setBlobHandleOverride)
   const setActiveBlobEditIdRef = useRef(setActiveBlobEditId)
-  // canonicalKey → { terrain, handles: { hexKey, cx, cy }[] } — updated by blob useMemo
-  const blobHandleDataRef = useRef<Map<string, { terrain: string; handles: { hexKey: string; cx: number; cy: number }[] }>>(new Map())
+  // canonicalKey → { terrain, handles: { edgeKey, cx, cy }[] } — updated by blob useMemo
+  const blobHandleDataRef = useRef<Map<string, { terrain: string; handles: { edgeKey: string; cx: number; cy: number }[] }>>(new Map())
   const activeToolRef = useRef(activeTool)
   const setHexHighlightRef = useRef(setHexHighlight)
   const clearHexHighlightRef = useRef(clearHexHighlight)
@@ -1191,7 +1191,7 @@ const roadV3TierGeomRef = useRef(roadV3TierGeom)
   smoothedCoastlineBoundaryRef.current = smoothedCoastlineBoundary
 
   const prevTerrainBlobsRef = useRef<{ terrain: string; polys: [number, number][][]; blobKeys: string[] }[]>([])
-  type TerrainBlobCacheEntry = { hexKey: string; rawPolys: [number, number][][]; hexCenters: [number, number][]; styleKey: string; blobs: { terrain: string; polys: [number, number][][]; blobKeys: string[] }[]; handleGroups?: Map<string, { hexKey: string; cx: number; cy: number }[]> }
+  type TerrainBlobCacheEntry = { hexKey: string; rawPolys: [number, number][][]; hexCenters: [number, number][]; styleKey: string; blobs: { terrain: string; polys: [number, number][][]; blobKeys: string[] }[]; handleGroups?: Map<string, { edgeKey: string; cx: number; cy: number }[]> }
   const perTerrainBlobCache = useRef(new Map<string, TerrainBlobCacheEntry>())
   const defaultTerrainBlobs = useMemo(() => {
     if (projectedHexes.length === 0 || hexRadius === 0) return []
@@ -1210,7 +1210,6 @@ const roadV3TierGeomRef = useRef(roadV3TierGeom)
       }
     }
     const terrainTypes = [...terrainTypeSet]
-    const HEX_DIRS: [number, number][] = [[1,0],[-1,0],[0,1],[0,-1],[1,-1],[-1,1]]
     blobHandleDataRef.current.clear()
     // Each terrain type is computed independently so cross-terrain blob coupling is impossible.
     const result = terrainTypes.flatMap(terrain => {
@@ -1241,7 +1240,7 @@ const roadV3TierGeomRef = useRef(roadV3TierGeom)
       const lobeThreshold   = ts?.lobeThreshold   ?? terrainBlobLobeThreshold
       const lobeDirection   = ts?.lobeDirection   ?? terrainBlobLobeDirection
 
-      // Build raw hex centers keyed by "q,r" — same formula as buildTerrainBlobTopology
+      // Build raw hex centers keyed by "q,r" (needed for canonical key lookup)
       const hexOrigCenterByKey = new Map<string, [number, number]>()
       for (const p of terrainProjected) {
         const h = p.hex as GeneratedHex
@@ -1252,29 +1251,6 @@ const roadV3TierGeomRef = useRef(roadV3TierGeom)
         ])
       }
 
-      // Compute handle positions (perimeter hexes with offsets) grouped by canonical key
-      const newHandleGroups = new Map<string, { hexKey: string; cx: number; cy: number }[]>()
-      for (const [hk, [ox, oy]] of hexOrigCenterByKey) {
-        const [q, r] = hk.split(',').map(Number)
-        const isPerimeter = HEX_DIRS.some(([dq, dr]) => !hexOrigCenterByKey.has(`${q+dq},${r+dr}`))
-        if (!isPerimeter) continue
-        const ck = componentMap.get(hk) ?? hk
-        const off = blobHandleOverrides[ck]?.[hk]
-        if (!newHandleGroups.has(ck)) newHandleGroups.set(ck, [])
-        newHandleGroups.get(ck)!.push({ hexKey: hk, cx: ox + (off?.[0] ?? 0) * hexRadius, cy: oy + (off?.[1] ?? 0) * hexRadius })
-      }
-      for (const [ck, handles] of newHandleGroups) {
-        blobHandleDataRef.current.set(ck, { terrain, handles })
-      }
-
-      // Modified hex centers: apply handle offsets so blob shape follows nudged handles
-      const modifiedHexCenters: [number, number][] = []
-      for (const [hk, [ox, oy]] of hexOrigCenterByKey) {
-        const ck = componentMap.get(hk) ?? hk
-        const off = blobHandleOverrides[ck]?.[hk]
-        modifiedHexCenters.push(off ? [ox + off[0] * hexRadius, oy + off[1] * hexRadius] : [ox, oy])
-      }
-
       const hexKey = `eot:${elevationOverridesTerrain}|` + terrainProjected.map(p => `${(p.hex as GeneratedHex).q},${(p.hex as GeneratedHex).r}`).join('|')
       const canonicalKeySet = new Set([...componentMap.values()])
       const handleKey = [...canonicalKeySet].sort().map(ck => {
@@ -1283,12 +1259,8 @@ const roadV3TierGeomRef = useRef(roadV3TierGeom)
       }).filter(Boolean).join('~')
       const styleKey = `${smooth}|${offset}|${bump}|${sweepFreq}|${lobeFreq}|${lobeAmp}|${lobeThreshold}|${lobeDirection}|${hexRadius}|${JSON.stringify(blobSeeds)}|${handleKey}`
       const cached = perTerrainBlobCache.current.get(terrain)
-      if (cached?.hexKey === hexKey && cached?.styleKey === styleKey) {
-        for (const [ck, handles] of cached.handleGroups ?? []) {
-          blobHandleDataRef.current.set(ck, { terrain, handles })
-        }
-        return cached.blobs
-      }
+
+      // Compute rawPolys (topology cache)
       let rawPolys: [number, number][][]
       if (cached?.hexKey === hexKey) {
         rawPolys = cached.rawPolys
@@ -1296,42 +1268,80 @@ const roadV3TierGeomRef = useRef(roadV3TierGeom)
         const topo = buildTerrainBlobTopology(terrainProjected, hexRadius)
         rawPolys = topo.find(e => e.terrain === terrain)?.rawPolys ?? []
       }
-      const shapedBlobs = shapeTerrainBlobs([{ terrain, rawPolys, hexCenters: modifiedHexCenters }], smooth, offset, bump, sweepFreq, lobeFreq, lobeAmp, lobeThreshold, lobeDirection, hexRadius, blobSeeds)
 
-      // Post-generation warp: directly displace polygon vertices toward nudged handles.
-      // Each vertex is pulled by the weighted sum of all handle offsets for this terrain,
-      // with influence falling off as a Gaussian (sigma = 1.5 * R).
+      // Build boundary edge handles from rawPolys — each consecutive vertex pair is one
+      // boundary edge; its midpoint is the handle. edgeKey = sorted snapped vertex keys.
+      const ESNAP = Math.max(2, hexRadius * 0.015)
+      const evk = (p: [number, number]) => `${Math.round(p[0]/ESNAP)},${Math.round(p[1]/ESNAP)}`
+      const newHandleGroups = new Map<string, { edgeKey: string; cx: number; cy: number }[]>()
+      for (const poly of rawPolys) {
+        if (poly.length < 3) continue
+        // Canonical key for this poly: nearest hex center to first vertex
+        const [fvx, fvy] = poly[0]
+        let polyCk = '', bestD = Infinity
+        for (const [hk, [hx, hy]] of hexOrigCenterByKey) {
+          const d = (fvx-hx)**2 + (fvy-hy)**2
+          if (d < bestD) { bestD = d; polyCk = componentMap.get(hk) ?? hk }
+        }
+        if (!polyCk) continue
+        if (!newHandleGroups.has(polyCk)) newHandleGroups.set(polyCk, [])
+        const group = newHandleGroups.get(polyCk)!
+        const n = poly.length
+        for (let i = 0; i < n; i++) {
+          const v1 = poly[i], v2 = poly[(i+1)%n]
+          const k1 = evk(v1), k2 = evk(v2)
+          const edgeKey = k1 < k2 ? `${k1}|${k2}` : `${k2}|${k1}`
+          const cx = (v1[0]+v2[0])/2, cy = (v1[1]+v2[1])/2
+          const off = blobHandleOverrides[polyCk]?.[edgeKey]
+          group.push({ edgeKey, cx: cx + (off?.[0] ?? 0) * hexRadius, cy: cy + (off?.[1] ?? 0) * hexRadius })
+        }
+      }
+      for (const [ck, handles] of newHandleGroups) {
+        blobHandleDataRef.current.set(ck, { terrain, handles })
+      }
+
+      if (cached?.hexKey === hexKey && cached?.styleKey === styleKey) {
+        for (const [ck, handles] of cached.handleGroups ?? []) {
+          blobHandleDataRef.current.set(ck, { terrain, handles })
+        }
+        return cached.blobs
+      }
+
+      const hexCenters = [...hexOrigCenterByKey.values()]
+      const shapedBlobs = shapeTerrainBlobs([{ terrain, rawPolys, hexCenters }], smooth, offset, bump, sweepFreq, lobeFreq, lobeAmp, lobeThreshold, lobeDirection, hexRadius, blobSeeds)
+
+      // Post-generation warp: displace final polygon vertices based on dragged edge handles.
+      // Anchor = original edge midpoint (pre-drag). Sigma = 0.6R → tight, local effect.
       const warpHandles: { cx: number; cy: number; dx: number; dy: number }[] = []
       for (const [ck, hdArr] of newHandleGroups) {
         const offsets = blobHandleOverrides[ck]
         if (!offsets) continue
-        for (const { hexKey: hk, cx, cy } of hdArr) {
-          const off = offsets[hk]
+        for (const { edgeKey, cx, cy } of hdArr) {
+          const off = offsets[edgeKey]
           if (!off || (off[0] === 0 && off[1] === 0)) continue
-          // Convert R-unit offset back to canvas px for the original (un-offset) center
-          const origCenter = hexOrigCenterByKey.get(hk)
-          if (!origCenter) continue
-          warpHandles.push({ cx: origCenter[0], cy: origCenter[1], dx: off[0] * hexRadius, dy: off[1] * hexRadius })
+          // cx/cy are the displaced positions; subtract offset to get original midpoint
+          const origCx = cx - (off[0] * hexRadius)
+          const origCy = cy - (off[1] * hexRadius)
+          warpHandles.push({ cx: origCx, cy: origCy, dx: off[0] * hexRadius, dy: off[1] * hexRadius })
         }
       }
 
       const blobs = warpHandles.length === 0 ? shapedBlobs : shapedBlobs.map(b => ({
         ...b,
         polys: b.polys.map(poly => {
-          const sigma2 = (hexRadius * 1.5) ** 2
+          const sigma2 = (hexRadius * 0.6) ** 2
           return poly.map(([x, y]) => {
             let wx = 0, wy = 0
             for (const { cx, cy, dx, dy } of warpHandles) {
-              const w = Math.exp(-((x - cx) ** 2 + (y - cy) ** 2) / sigma2)
-              wx += dx * w
-              wy += dy * w
+              const w = Math.exp(-((x-cx)**2 + (y-cy)**2) / sigma2)
+              wx += dx * w; wy += dy * w
             }
             return [x + wx, y + wy] as [number, number]
           })
         }),
       }))
 
-      perTerrainBlobCache.current.set(terrain, { hexKey, rawPolys, hexCenters: [...hexOrigCenterByKey.values()], styleKey, blobs, handleGroups: newHandleGroups })
+      perTerrainBlobCache.current.set(terrain, { hexKey, rawPolys, hexCenters, styleKey, blobs, handleGroups: newHandleGroups })
       return blobs
     })
     for (const t of perTerrainBlobCache.current.keys()) {
@@ -2443,8 +2453,8 @@ const roadV3TierGeomRef = useRef(roadV3TierGeom)
       ctx.save()
       for (const [ck, { handles }] of handleData) {
         const isActive = ck === activeId
-        for (const { hexKey, cx, cy } of handles) {
-          const hasOverride = !!(blobHandleOverridesRef.current[ck]?.[hexKey])
+        for (const { edgeKey, cx, cy } of handles) {
+          const hasOverride = !!(blobHandleOverridesRef.current[ck]?.[edgeKey])
           ctx.beginPath()
           ctx.arc(cx, cy, handleR, 0, Math.PI * 2)
           ctx.fillStyle = hasOverride ? '#ff6b35' : (isActive ? 'rgba(255,255,255,0.85)' : 'rgba(255,255,255,0.35)')
@@ -4693,8 +4703,8 @@ const roadV3TierGeomRef = useRef(roadV3TierGeom)
         if (handleGroup) {
           const hitHandle = handleGroup.handles.find(h => Math.hypot(lx - h.cx, ly - h.cy) < HANDLE_HIT_R * 1.5)
           if (hitHandle) {
-            const existingOff = blobHandleOverridesRef.current[activeId]?.[hitHandle.hexKey] ?? [0, 0]
-            dragging = { canonicalKey: activeId, hexKey: hitHandle.hexKey, startLx: lx, startLy: ly, baseOffset: existingOff as [number, number] }
+            const existingOff = blobHandleOverridesRef.current[activeId]?.[hitHandle.edgeKey] ?? [0, 0]
+            dragging = { canonicalKey: activeId, hexKey: hitHandle.edgeKey, startLx: lx, startLy: ly, baseOffset: existingOff as [number, number] }
             e.stopPropagation()
             e.preventDefault()
             return
