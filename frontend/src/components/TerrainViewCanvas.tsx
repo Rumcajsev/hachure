@@ -2408,28 +2408,24 @@ const roadV3TierGeomRef = useRef(roadV3TierGeom)
           ctx.stroke()
         }
       }
-      // Draw selection ring around active blob polygon
+      // Draw selection ring around the specific polygon belonging to the active canonical key
       if (activeId) {
-        const activeEntry = defaultTerrainBlobsRef.current.find(b =>
-          b.blobKeys.some((_, i) => {
-            const poly = b.polys[i]
-            const handles = handleData.get(activeId)?.handles
-            if (!handles || handles.length === 0) return false
-            return pointInPolygon(handles[0].cx, handles[0].cy, poly)
-          })
-        )
-        if (activeEntry) {
+        const activeHandles = handleData.get(activeId)?.handles ?? []
+        if (activeHandles.length > 0) {
+          const { cx: hx, cy: hy } = activeHandles[0]
           ctx.save()
           ctx.strokeStyle = '#1a6fbd'
           ctx.lineWidth = 2
           ctx.setLineDash([6, 4])
-          for (const poly of activeEntry.polys) {
-            if (poly.length < 3) continue
-            ctx.beginPath()
-            ctx.moveTo(poly[0][0], poly[0][1])
-            for (let i = 1; i < poly.length; i++) ctx.lineTo(poly[i][0], poly[i][1])
-            ctx.closePath()
-            ctx.stroke()
+          for (const entry of defaultTerrainBlobsRef.current) {
+            for (const poly of entry.polys) {
+              if (poly.length < 3 || !pointInPolygon(hx, hy, poly)) continue
+              ctx.beginPath()
+              ctx.moveTo(poly[0][0], poly[0][1])
+              for (let i = 1; i < poly.length; i++) ctx.lineTo(poly[i][0], poly[i][1])
+              ctx.closePath()
+              ctx.stroke()
+            }
           }
           ctx.restore()
         }
