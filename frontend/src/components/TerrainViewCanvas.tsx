@@ -2449,7 +2449,7 @@ const roadV3TierGeomRef = useRef(roadV3TierGeom)
     if (!isExport && blobEditModeRef.current) {
       const activeId = activeBlobEditIdRef.current
       const handleData = blobHandleDataRef.current
-      const handleR = Math.max(5, hexRadiusRef.current * 0.18)
+      const handleR = Math.max(2.5, hexRadiusRef.current * 0.06)
       ctx.save()
       for (const [ck, { handles }] of handleData) {
         const isActive = ck === activeId
@@ -4686,7 +4686,7 @@ const roadV3TierGeomRef = useRef(roadV3TierGeom)
   useEffect(() => {
     const el = canvasRef.current
     if (!el) return
-    const HANDLE_HIT_R = Math.max(8, hexRadiusRef.current * 0.22)
+    const HANDLE_HIT_R = Math.max(6, hexRadiusRef.current * 0.12)
     let dragging: { canonicalKey: string; hexKey: string; startLx: number; startLy: number; baseOffset: [number, number] } | null = null
 
     const onDown = (e: MouseEvent) => {
