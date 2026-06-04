@@ -349,10 +349,7 @@ function ElevationFlyout({ onClose }: { onClose: () => void }) {
             <div style={{ fontFamily: t.mono, fontSize: 9, letterSpacing: 0.8, color: t.inkFaint, textTransform: 'uppercase', fontWeight: 600 }}>
               Step 2 — Classify
             </div>
-            <label style={{ display: 'flex', alignItems: 'center', gap: 4, cursor: 'pointer' }}>
-              <input type="checkbox" checked={elevationImportEnabled} onChange={e => setElevationImportEnabled(e.target.checked)} style={{ margin: 0 }} />
-              <span style={{ fontFamily: t.mono, fontSize: 9, color: t.inkMute }}>enabled</span>
-            </label>
+            <ToggleSwitch enabled={elevationImportEnabled} onChange={setElevationImportEnabled} />
           </div>
           <MiniSlider label="Hills Δ ≥" display={`${classificationParams.rangeHillsM}m`} value={classificationParams.rangeHillsM} min={10} max={500} step={10} onChange={v => setClassificationParam('rangeHillsM', v)} accentColor='#9a8a5a' onDragStart={showOverlay} onDragEnd={hideOverlay} />
           <MiniSlider label="Hills alt ≥" display={`${classificationParams.medianHillsM}m`} value={classificationParams.medianHillsM} min={0} max={2000} step={50} onChange={v => setClassificationParam('medianHillsM', v)} accentColor='#9a8a5a' onDragStart={showOverlay} onDragEnd={hideOverlay} />
@@ -446,7 +443,9 @@ function TerrainVisibilityFilter({
 // ── Flyout content: hillshade ───────────────────────────────────────────────
 
 function HilshadeFlyout({ onClose }: { onClose: () => void }) {
+  const t = useTheme()
   const {
+    hillshadeEnabled, setHillshadeEnabled,
     hillshadeAzimuth, hillshadeAltitude, hillshadeIntensity, hillshadeMode,
     setHillshadeAzimuth, setHillshadeAltitude, setHillshadeIntensity, setHillshadeMode,
     hillshadeDisabledTerrains, hillshadeDisabledElevClasses,
@@ -456,17 +455,23 @@ function HilshadeFlyout({ onClose }: { onClose: () => void }) {
 
   return (
     <FlyoutShell title="Hillshade" onClose={onClose}>
-      <ToggleRow label="Hard shadows" checked={hillshadeMode === 'hard'} onChange={v => setHillshadeMode(v ? 'hard' : 'smooth')} />
-      <MiniSlider label="Sun azimuth"  display={`${hillshadeAzimuth}°`}        value={hillshadeAzimuth}  min={0} max={360} step={5}    onChange={setHillshadeAzimuth} />
-      <MiniSlider label="Sun altitude" display={`${hillshadeAltitude}°`}       value={hillshadeAltitude} min={5} max={85}  step={5}    onChange={setHillshadeAltitude} />
-      <MiniSlider label="Intensity"    display={hillshadeIntensity.toFixed(2)} value={hillshadeIntensity} min={0} max={1} step={0.05} onChange={setHillshadeIntensity} />
-      <TerrainVisibilityFilter
-        disabledTerrains={hillshadeDisabledTerrains}
-        disabledElevClasses={hillshadeDisabledElevClasses}
-        onChangeTerrain={setHillshadeDisabledTerrains}
-        onChangeElevClass={setHillshadeDisabledElevClasses}
-        customTerrains={customTerrains}
-      />
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '4px 14px 6px' }}>
+        <span style={{ fontFamily: t.mono, fontSize: 8.5, letterSpacing: 0.8, color: t.inkFaint, textTransform: 'uppercase', fontWeight: 600 }}>Enabled</span>
+        <ToggleSwitch enabled={hillshadeEnabled} onChange={setHillshadeEnabled} />
+      </div>
+      {hillshadeEnabled && <>
+        <ToggleRow label="Hard shadows" checked={hillshadeMode === 'hard'} onChange={v => setHillshadeMode(v ? 'hard' : 'smooth')} />
+        <MiniSlider label="Sun azimuth"  display={`${hillshadeAzimuth}°`}        value={hillshadeAzimuth}  min={0} max={360} step={5}    onChange={setHillshadeAzimuth} />
+        <MiniSlider label="Sun altitude" display={`${hillshadeAltitude}°`}       value={hillshadeAltitude} min={5} max={85}  step={5}    onChange={setHillshadeAltitude} />
+        <MiniSlider label="Intensity"    display={hillshadeIntensity.toFixed(2)} value={hillshadeIntensity} min={0} max={1} step={0.05} onChange={setHillshadeIntensity} />
+        <TerrainVisibilityFilter
+          disabledTerrains={hillshadeDisabledTerrains}
+          disabledElevClasses={hillshadeDisabledElevClasses}
+          onChangeTerrain={setHillshadeDisabledTerrains}
+          onChangeElevClass={setHillshadeDisabledElevClasses}
+          customTerrains={customTerrains}
+        />
+      </>}
     </FlyoutShell>
   )
 }
@@ -474,6 +479,7 @@ function HilshadeFlyout({ onClose }: { onClose: () => void }) {
 // ── Flyout content: contours ────────────────────────────────────────────────
 
 function ContoursFlyout({ onClose }: { onClose: () => void }) {
+  const t = useTheme()
   const {
     contoursEnabled, contourInterval, contourLineWidth,
     setContoursEnabled, setContourInterval, setContourLineWidth,
@@ -484,7 +490,10 @@ function ContoursFlyout({ onClose }: { onClose: () => void }) {
 
   return (
     <FlyoutShell title="Contours" onClose={onClose}>
-      <ToggleRow label="Enabled" checked={contoursEnabled} onChange={setContoursEnabled} />
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '4px 14px 6px' }}>
+        <span style={{ fontFamily: t.mono, fontSize: 8.5, letterSpacing: 0.8, color: t.inkFaint, textTransform: 'uppercase', fontWeight: 600 }}>Enabled</span>
+        <ToggleSwitch enabled={contoursEnabled} onChange={setContoursEnabled} />
+      </div>
       {contoursEnabled && (
         <>
           <MiniSlider label="Interval"   display={`${contourInterval}m`}    value={contourInterval}  min={10} max={500} step={10}   onChange={setContourInterval} />
@@ -1078,7 +1087,7 @@ export function TerrainSidebarV3() {
     mapStyle,
     heightmapUrl,
     elevationStatus,
-    hillshadeIntensity,
+    hillshadeEnabled,
     contoursEnabled,
   } = useMapStore()
 
@@ -1208,7 +1217,7 @@ export function TerrainSidebarV3() {
         <TriggerRow label="Import / classify" active={flyout === 'e-import'} onClick={() => toggleFlyout('e-import')} icon={IMPORT_ICON} />
         {(heightmapUrl || elevationStatus === 'done') && (
           <>
-            <TriggerRow label="Hillshade" active={flyout === 'e-hillshade'} onClick={() => toggleFlyout('e-hillshade')} enabled={hillshadeIntensity > 0} />
+            <TriggerRow label="Hillshade" active={flyout === 'e-hillshade'} onClick={() => toggleFlyout('e-hillshade')} enabled={hillshadeEnabled} />
             <TriggerRow label="Contours"  active={flyout === 'e-contours'}  onClick={() => toggleFlyout('e-contours')}  enabled={contoursEnabled} />
           </>
         )}

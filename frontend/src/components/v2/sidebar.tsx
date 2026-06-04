@@ -30,13 +30,14 @@ export function StripShell({ children }: { children: React.ReactNode }) {
 // ── FlyoutShell ───────────────────────────────────────────────────────────────
 
 export function FlyoutShell({
-  title, subtitle, onClose, onTitleChange, children,
+  title, subtitle, onClose, onTitleChange, children, width,
 }: {
   title: string
   subtitle?: string
   onClose: () => void
   onTitleChange?: (v: string) => void
   children: React.ReactNode
+  width?: number
 }) {
   const t = useTheme()
   return (
@@ -44,7 +45,7 @@ export function FlyoutShell({
       position: 'absolute',
       top: 0,
       left: STRIP_W,
-      width: FLYOUT_W,
+      width: width ?? FLYOUT_W,
       maxHeight: '100%',
       overflowY: 'auto',
       background: t.surface,

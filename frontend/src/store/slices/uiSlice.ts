@@ -90,6 +90,9 @@ export type UiSlice = {
   setUiScale: (v: 0.8 | 1.0 | 1.25) => void
   expandMode: boolean
   setExpandMode: (v: boolean) => void
+  expandFetchSteps: Record<string, 'loading' | 'done' | 'error'> | null
+  setExpandFetchStep: (step: string, status: 'loading' | 'done' | 'error') => void
+  clearExpandFetchSteps: () => void
   mapTitle: string
   setMapTitle: (v: string) => void
   mapStyle: 'standard' | 'historical_simple'
@@ -122,6 +125,11 @@ export const createUiSlice = (set: Set, get: () => MapStore): UiSlice => ({
   setUiScale: (v) => set({ uiScale: v }),
   expandMode: false,
   setExpandMode: (v) => set({ expandMode: v }),
+  expandFetchSteps: null,
+  setExpandFetchStep: (step, status) => set(s => ({
+    expandFetchSteps: { ...(s.expandFetchSteps ?? {}), [step]: status }
+  })),
+  clearExpandFetchSteps: () => set({ expandFetchSteps: null }),
   mapTitle: '',
   setMapTitle: (v) => set({ mapTitle: v }),
   mapStyle: 'standard',

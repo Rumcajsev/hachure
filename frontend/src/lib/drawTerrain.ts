@@ -800,6 +800,19 @@ export function drawTerrain(tCtx: Ctx, params: DrawTerrainParams): void {
         for (let i = 1; i < verts.length; i++) tCtx.lineTo(verts[i][0], verts[i][1])
         tCtx.closePath()
       }
+
+      // DEBUG — remove before ship
+      if (hex.coastline_clip && hex.coastline_clip.length > 0) {
+        const hexArea = polyArea(verts)
+        for (const ring of coastlineBoundaryRings) {
+          const clipped = clipPolygonToConvex(ring, verts)
+          const clipArea = clipped.length >= 3 ? polyArea(clipped) : 0
+          console.log(`[coast6] q=${hex.q} r=${hex.r} terrain=${hex.terrain} hexArea=${hexArea.toFixed(1)} clipArea=${clipArea.toFixed(1)} ratio=${(clipArea/hexArea).toFixed(3)} hasAnyClip=${hasAnyClip} addedHex=${addedHex}`)
+        }
+        if (coastlineBoundaryRings.length === 0) {
+          console.log(`[coast6] q=${hex.q} r=${hex.r} NO RINGS`)
+        }
+      }
     }
     tCtx.fill('evenodd')
 

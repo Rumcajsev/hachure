@@ -5,6 +5,7 @@ import {
   MiniSlider, ToggleRow, SegmentedControl,
   StripShell, FlyoutShell, V2Divider, TriggerRow, TGap,
 } from './sidebar'
+import { LABEL_PRESETS, resolveLabels } from '../../lib/labelPresets'
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 
@@ -24,7 +25,7 @@ const POINTY_EDGE_LABELS = ['SE', 'S', 'SW', 'NW', 'N', 'NE', 'C'] as const
 
 const terrainLabel = (k: string) => k.replace(/_/g, ' ')
 
-type FlyoutId = 'hex-borders' | 'hex-numbers' | 'map-shape' | 'impassable' | 'map-frame' | 'mega-hex' | 'terrain-legend' | 'ui-scale' | 'document' | null
+type FlyoutId = 'hex-borders' | 'hex-numbers' | 'map-shape' | 'impassable' | 'map-frame' | 'mega-hex' | 'terrain-legend' | 'ui-scale' | 'document' | 'typography' | null
 
 // ── SubLabel ──────────────────────────────────────────────────────────────────
 
@@ -576,6 +577,97 @@ function DocumentFlyout({ onClose }: { onClose: () => void }) {
   )
 }
 
+// ── TypographyFlyout ──────────────────────────────────────────────────────────
+
+function TypographyFlyout({ onClose }: { onClose: () => void }) {
+  const t = useTheme()
+  const { labelPresetId, setLabelPresetId, labelOverrides, resetAllLabelOverrides } = useMapStore()
+  const hasAnyOverride = Object.values(labelOverrides).some(v => v && Object.keys(v).length > 0)
+
+  return (
+    <FlyoutShell title="Typography" onClose={onClose} width={290}>
+      <div style={{ padding: '6px 14px 4px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+        <span style={{ fontFamily: t.mono, fontSize: 9, letterSpacing: 0.8, color: t.inkFaint, textTransform: 'uppercase', fontWeight: 600 }}>
+          Label preset
+        </span>
+        {hasAnyOverride && (
+          <button
+            onClick={resetAllLabelOverrides}
+            style={{ background: 'none', border: `1px solid ${t.line}`, color: t.inkMute, cursor: 'pointer', fontFamily: t.mono, fontSize: 9, padding: '2px 8px', letterSpacing: 0.3 }}
+          >
+            ↺ Clear all overrides
+          </button>
+        )}
+      </div>
+      <div style={{ padding: '2px 14px 10px', display: 'flex', flexDirection: 'column', gap: 2 }}>
+        {LABEL_PRESETS.map(preset => {
+          const active = preset.id === labelPresetId
+          const s = resolveLabels(preset.id, {})
+          const nameStyle = s.cityMajor
+          const waterStyle = s.water
+          const fg = active ? t.surface : undefined
+          const fgMuted = active ? `${t.surface}bb` : undefined
+          return (
+            <button
+              key={preset.id}
+              onClick={() => setLabelPresetId(preset.id)}
+              style={{
+                display: 'flex', alignItems: 'baseline',
+                padding: '5px 10px', gap: 10,
+                background: active ? t.ink : 'transparent',
+                border: `1px solid ${active ? t.ink : t.line}`,
+                cursor: 'pointer', textAlign: 'left',
+              }}
+            >
+              {/* Name rendered in the preset's own city font */}
+              <span style={{
+                fontFamily: nameStyle.family,
+                fontSize: 13,
+                fontStyle: nameStyle.italic ? 'italic' : 'normal',
+                fontWeight: nameStyle.weight,
+                color: fg ?? nameStyle.color,
+                textTransform: nameStyle.uppercase ? 'uppercase' : 'none',
+                letterSpacing: `${Math.min(nameStyle.letterSpacing, 0.12)}em`,
+                flex: '1 1 0',
+                minWidth: 0,
+                overflow: 'hidden', whiteSpace: 'nowrap', textOverflow: 'ellipsis',
+              }}>
+                {preset.name}
+              </span>
+              {/* Two short samples */}
+              <span style={{ display: 'flex', gap: 6, alignItems: 'baseline', marginLeft: 'auto', flexShrink: 0 }}>
+                <span style={{
+                  fontFamily: nameStyle.family,
+                  fontSize: 10,
+                  fontWeight: nameStyle.weight,
+                  fontStyle: nameStyle.italic ? 'italic' : 'normal',
+                  color: fg ?? nameStyle.color,
+                  textTransform: nameStyle.uppercase ? 'uppercase' : 'none',
+                  letterSpacing: `${Math.min(nameStyle.letterSpacing, 0.08)}em`,
+                  whiteSpace: 'nowrap',
+                }}>
+                  Lyon
+                </span>
+                <span style={{
+                  fontFamily: waterStyle.family,
+                  fontSize: 10,
+                  fontWeight: waterStyle.weight,
+                  fontStyle: 'italic',
+                  color: fgMuted ?? waterStyle.color,
+                  letterSpacing: `${Math.min(waterStyle.letterSpacing, 0.08)}em`,
+                  whiteSpace: 'nowrap',
+                }}>
+                  Rhône
+                </span>
+              </span>
+            </button>
+          )
+        })}
+      </div>
+    </FlyoutShell>
+  )
+}
+
 // ── DisplaySidebarV3 ──────────────────────────────────────────────────────────
 
 export function DisplaySidebarV3() {
@@ -609,6 +701,10 @@ export function DisplaySidebarV3() {
         <TriggerRow label="Document"        active={flyout === 'document'}       onClick={() => toggle('document')} />
 
         <TGap />
+        <V2Divider label="Typography" />
+        <TriggerRow label="Label Preset"    active={flyout === 'typography'}     onClick={() => toggle('typography')} />
+
+        <TGap />
         <V2Divider label="App" />
         <TriggerRow label="UI Scale"        active={flyout === 'ui-scale'}       onClick={() => toggle('ui-scale')} />
 
@@ -623,6 +719,7 @@ export function DisplaySidebarV3() {
       {flyout === 'terrain-legend' && <TerrainLegendFlyout onClose={() => setFlyout(null)} />}
       {flyout === 'ui-scale'       && <UiScaleFlyout       onClose={() => setFlyout(null)} />}
       {flyout === 'document'       && <DocumentFlyout      onClose={() => setFlyout(null)} />}
+      {flyout === 'typography'     && <TypographyFlyout    onClose={() => setFlyout(null)} />}
 
     </div>
   )

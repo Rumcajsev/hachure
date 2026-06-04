@@ -1,7 +1,7 @@
 import { useState, useRef } from 'react'
 import { useTheme } from '../context/ThemeContext'
 import { useMapStore, WORLDCOVER_CLASSES, DEFAULT_TERRAIN_RULES, TERRAIN_COLORS, type ClassRule } from '../store/mapStore'
-import { STRIP_W, MiniSlider } from './v2/sidebar'
+import { STRIP_W, MiniSlider, ToggleSwitch } from './v2/sidebar'
 
 const PANEL_W = 520
 
@@ -119,13 +119,20 @@ function TerrainDropZone({
       style={{
         borderRadius: 4,
         border: `1px solid ${dragOver ? color : t.line}`,
-        background: dragOver ? `${color}18` : t.surfaceAlt,
-        padding: '6px 8px',
+        borderLeft: `3px solid ${color}`,
+        background: t.surfaceAlt,
         marginBottom: 8,
-        transition: 'border-color 0.1s, background 0.1s',
+        overflow: 'hidden',
+        transition: 'border-color 0.1s',
       }}
     >
-      <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: rules.length > 0 ? 6 : 0 }}>
+      <div style={{
+        display: 'flex', alignItems: 'center', gap: 6,
+        padding: '6px 8px',
+        paddingBottom: rules.length > 0 ? 6 : 6,
+        background: dragOver ? `${color}30` : `${color}18`,
+        transition: 'background 0.1s',
+      }}>
         <div style={{ width: 10, height: 10, background: color, flexShrink: 0, borderRadius: 1 }} />
         <span style={{ fontSize: 11, fontFamily: t.mono, color: t.ink, textTransform: 'capitalize', flex: 1 }}>
           {terrainLabel(terrain)}
@@ -134,6 +141,7 @@ function TerrainDropZone({
           <span style={{ fontSize: 10, color: t.inkMute, fontFamily: t.mono }}>drop class here</span>
         )}
       </div>
+      <div style={{ padding: rules.length > 0 ? '6px 8px' : 0 }}>
       {rules.map(rule => (
         <AssignedRule
           key={rule.classCode}
@@ -143,6 +151,7 @@ function TerrainDropZone({
           onRemove={() => onRemove(terrain, rule.classCode)}
         />
       ))}
+      </div>
     </div>
   )
 }

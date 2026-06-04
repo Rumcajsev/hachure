@@ -85,7 +85,7 @@ export const DEFAULT_CLASSIFICATION_PARAMS: ClassificationParams = {
   medianMountainsM: 900,
 }
 
-export type PaperSize = 'A4' | 'A3' | 'A2' | 'A1'
+export type PaperSize = 'A4' | 'A3' | 'A2' | 'A1' | 'A0'
 export type Orientation = 'portrait' | 'landscape'
 export type HexOrientation = 'flat' | 'pointy'
 export type HexEdgeMode = 'whole' | 'half'
@@ -185,6 +185,7 @@ export const PAPER_MM: Record<PaperSize, [number, number]> = {
   A3: [297, 420],
   A2: [420, 594],
   A1: [594, 841],
+  A0: [841, 1189],
 }
 
 export const TERRAIN_COLORS: Record<string, string> = {
@@ -251,7 +252,7 @@ export function combinedDimsMm(
 
 // All A-size dimension pairs [width, height] in mm (both orientations)
 const A_SIZE_DIMS: { size: PaperSize; orientation: Orientation; w: number; h: number }[] = (
-  ['A4', 'A3', 'A2', 'A1'] as PaperSize[]
+  ['A4', 'A3', 'A2', 'A1', 'A0'] as PaperSize[]
 ).flatMap(size => {
   const [s, l] = PAPER_MM[size]
   return [

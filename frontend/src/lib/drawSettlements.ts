@@ -25,6 +25,8 @@ export type DrawSettlementsParams = {
   labelOffsets?: Record<string, { dx: number; dy: number }>
   liveLabelOffset?: { id: string; dx: number; dy: number }
   labelBBoxOut?: Record<string, LabelBBox>
+  /** Scale factor for all pixel-based sizes — use lineScale during PDF export. */
+  scale?: number
 }
 
 function closestPointOnSegment(
@@ -40,7 +42,7 @@ function closestPointOnSegment(
 
 export function drawSettlements(sCtx: Ctx, {
   settlements, tierStyles, labelSpecs, roadChains, railChains, roadJunctions, project, hexCenterOf, hexRadiusPx,
-  labelOffsets, liveLabelOffset, labelBBoxOut,
+  labelOffsets, liveLabelOffset, labelBBoxOut, scale = 1,
 }: DrawSettlementsParams) {
   const placed = settlements.filter(s => s.included && s.hex_q !== null)
 
@@ -68,8 +70,9 @@ export function drawSettlements(sCtx: Ctx, {
   for (const { chain } of roadChains) sampleChain(chain)
   for (const { chain } of railChains) sampleChain(chain)
 
+  const scaledHexRadiusPx = hexRadiusPx * scale
   // Spatial grid for obstacle point queries — avoids O(n) scan per label candidate.
-  const OBS_CELL = 24
+  const OBS_CELL = 24 * scale
   const obsGrid = new Map<number, number>()
   const obsKey = (gx: number, gy: number) => gx * 100003 + gy
   for (const [rx, ry] of obstaclePts) {
@@ -96,8 +99,8 @@ export function drawSettlements(sCtx: Ctx, {
     // Snap icon to closest road/rail point within the hex.
     // Junction positions are preferred — check them first, then fall back to segment snap.
     let cx = hx, cy = hy
-    if (hexRadiusPx > 0) {
-      let bestDist = hexRadiusPx
+    if (scaledHexRadiusPx > 0) {
+      let bestDist = scaledHexRadiusPx
       if (roadJunctions) {
         for (const { pos } of roadJunctions) {
           const [jx, jy] = project(pos[0], pos[1])
@@ -116,12 +119,12 @@ export function drawSettlements(sCtx: Ctx, {
     }
     const tier = (s.tier ?? (s.type === 'city' ? 1 : s.type === 'town' ? 3 : 4)) as SettlementTier
     const ts = tierStyles[tier]
-    const r = ts.size
+    const r = ts.size * scale
 
     if (ts.displayMode === 'icon') {
       sCtx.fillStyle = ts.fillColor
       sCtx.strokeStyle = ts.strokeColor
-      sCtx.lineWidth = ts.strokeWidth
+      sCtx.lineWidth = ts.strokeWidth * scale
       sCtx.beginPath()
       if (ts.shape === 'circle') {
         sCtx.arc(cx, cy, r, 0, Math.PI * 2)
@@ -142,7 +145,7 @@ export function drawSettlements(sCtx: Ctx, {
     const tw = sCtx.measureText(label).width
     const th = basePx
 
-    const gap = (ts.displayMode === 'icon' ? r : 0) + 3
+    const gap = (ts.displayMode === 'icon' ? r : 0) + 3 * scale
 
     type Cand = { x: number; y: number; bx: number; by: number; align: CanvasTextAlign; base: CanvasTextBaseline; bias: number }
     const hw = tw / 2, hh = th / 2
@@ -157,7 +160,7 @@ export function drawSettlements(sCtx: Ctx, {
       { x: cx + gap, y: cy + gap, bx: cx + gap,      by: cy + gap,      align: 'left',   base: 'top',    bias: 0.3 },
     ]
 
-    const pad = 3
+    const pad = 3 * scale
     let bestScore = Infinity
     let best = cands[0]
     for (const c of cands) {

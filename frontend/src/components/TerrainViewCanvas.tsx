@@ -1,7 +1,7 @@
 import { useRef, useEffect, useCallback, useState, useMemo, forwardRef, useImperativeHandle, type CSSProperties } from 'react'
 import maplibregl from 'maplibre-gl'
 import 'maplibre-gl/dist/maplibre-gl.css'
-import { useMapStore, TERRAIN_COLORS, WATER_COLOR, TERRAIN_PRIORITY, hexTerrainLayers, edgeBlobCanonicalKey, WORLDCOVER_CLASSES, validColWidthsForRows, validRowHeightsForCols, cellPaperInfo, type GeneratedHex, type RoadTierStyle } from '../store/mapStore'
+import { useMapStore, TERRAIN_COLORS, WATER_COLOR, TERRAIN_PRIORITY, hexTerrainLayers, edgeBlobCanonicalKey, WORLDCOVER_CLASSES, validColWidthsForRows, validRowHeightsForCols, cellPaperInfo, type GeneratedHex, type RoadTierStyle, type SettlementTier, type SettlementTierStyle } from '../store/mapStore'
 import { BlobOverrideFlyout } from './BlobOverrideFlyout'
 import { useTheme } from '../context/ThemeContext'
 import { hexAdjacent, catmullRom, offsetPolyline, pointInPolygon, distToSeg, douglasPeucker, chaikin } from '../lib/geometry'
@@ -230,6 +230,7 @@ terrainColors, terrainTextureScales, terrainTextureBlendModes, terrainTextureOpa
     beachStrip, beachColor, beachWidth,
     hillsColor, mountainsColor, reliefShadingOpacity,
     heightmapUrl, heightmapMeta,
+    hillshadeEnabled,
     hillshadeAzimuth, hillshadeAltitude, hillshadeIntensity, hillshadeMode,
     hillshadeDisabledTerrains, hillshadeDisabledElevClasses,
     setHillshadeAzimuth, setHillshadeAltitude, setHillshadeIntensity,
@@ -271,9 +272,11 @@ terrainColors, terrainTextureScales, terrainTextureBlendModes, terrainTextureOpa
     mapImageDataUrl, mapImageTransform, mapImageOpacity, setMapImageTransform,
     dataSource,
     blobSeeds, randomizeBlobSeed,
+    blobEditMode, setBlobEditMode, activeBlobEditId, setActiveBlobEditId,
+    blobHandleOverrides, setBlobHandleOverride,
     labelOffsets, setLabelOffset, clearAllLabelOffsets,
     worldcoverImageUrl, showWorldcoverOverlay,
-    expandMode, setExpandMode, expandMap,
+    expandMode, setExpandMode, expandMap, expandFetchSteps,
   } = useMapStore()
   // dev-only: expose store for dry-run console injection
   useEffect(() => { (window as any).__mapStore = useMapStore }, [])
@@ -517,6 +520,13 @@ terrainColors, terrainTextureScales, terrainTextureBlendModes, terrainTextureOpa
   const highlightPaintModeRef = useRef(highlightPaintMode)
   const highlightLineEraserRef = useRef(highlightLineEraser)
   const randomizeBlobSeedRef = useRef(randomizeBlobSeed)
+  const blobEditModeRef = useRef(blobEditMode)
+  const activeBlobEditIdRef = useRef(activeBlobEditId)
+  const blobHandleOverridesRef = useRef(blobHandleOverrides)
+  const setBlobHandleOverrideRef = useRef(setBlobHandleOverride)
+  const setActiveBlobEditIdRef = useRef(setActiveBlobEditId)
+  // canonicalKey → { terrain, handles: { hexKey, cx, cy }[] } — updated by blob useMemo
+  const blobHandleDataRef = useRef<Map<string, { terrain: string; handles: { hexKey: string; cx: number; cy: number }[] }>>(new Map())
   const activeToolRef = useRef(activeTool)
   const setHexHighlightRef = useRef(setHexHighlight)
   const clearHexHighlightRef = useRef(clearHexHighlight)
@@ -626,6 +636,11 @@ terrainColors, terrainTextureScales, terrainTextureBlendModes, terrainTextureOpa
   highlightLineEraserRef.current = highlightLineEraser
   activeToolRef.current = activeTool
   randomizeBlobSeedRef.current = randomizeBlobSeed
+  blobEditModeRef.current = blobEditMode
+  activeBlobEditIdRef.current = activeBlobEditId
+  blobHandleOverridesRef.current = blobHandleOverrides
+  setBlobHandleOverrideRef.current = setBlobHandleOverride
+  setActiveBlobEditIdRef.current = setActiveBlobEditId
   setHexHighlightRef.current = setHexHighlight
   clearHexHighlightRef.current = clearHexHighlight
   startNewLineSegmentRef.current = startNewLineSegment
@@ -782,6 +797,8 @@ terrainColors, terrainTextureScales, terrainTextureBlendModes, terrainTextureOpa
   elevationTypeBlobStylesRef.current = elevationTypeBlobStyles
   const reliefShadingOpacityRef = useRef(reliefShadingOpacity)
   reliefShadingOpacityRef.current = reliefShadingOpacity
+  const hillshadeEnabledRef = useRef(hillshadeEnabled)
+  hillshadeEnabledRef.current = hillshadeEnabled
   const hillshadeAzimuthRef = useRef(hillshadeAzimuth)
   hillshadeAzimuthRef.current = hillshadeAzimuth
   const hillshadeAltitudeRef = useRef(hillshadeAltitude)
@@ -1174,7 +1191,7 @@ const roadV3TierGeomRef = useRef(roadV3TierGeom)
   smoothedCoastlineBoundaryRef.current = smoothedCoastlineBoundary
 
   const prevTerrainBlobsRef = useRef<{ terrain: string; polys: [number, number][][]; blobKeys: string[] }[]>([])
-  type TerrainBlobCacheEntry = { hexKey: string; rawPolys: [number, number][][]; hexCenters: [number, number][]; styleKey: string; blobs: { terrain: string; polys: [number, number][][]; blobKeys: string[] }[] }
+  type TerrainBlobCacheEntry = { hexKey: string; rawPolys: [number, number][][]; hexCenters: [number, number][]; styleKey: string; blobs: { terrain: string; polys: [number, number][][]; blobKeys: string[] }[]; handleGroups?: Map<string, { hexKey: string; cx: number; cy: number }[]> }
   const perTerrainBlobCache = useRef(new Map<string, TerrainBlobCacheEntry>())
   const defaultTerrainBlobs = useMemo(() => {
     if (projectedHexes.length === 0 || hexRadius === 0) return []
@@ -1193,6 +1210,8 @@ const roadV3TierGeomRef = useRef(roadV3TierGeom)
       }
     }
     const terrainTypes = [...terrainTypeSet]
+    const HEX_DIRS: [number, number][] = [[1,0],[-1,0],[0,1],[0,-1],[1,-1],[-1,1]]
+    blobHandleDataRef.current.clear()
     // Each terrain type is computed independently so cross-terrain blob coupling is impossible.
     const result = terrainTypes.flatMap(terrain => {
       const componentMap = blobComponentsByTerrain.get(terrain) ?? new Map<string, string>()
@@ -1221,23 +1240,64 @@ const roadV3TierGeomRef = useRef(roadV3TierGeom)
       const lobeAmp         = ts?.lobeAmp         ?? terrainBlobLobeAmp
       const lobeThreshold   = ts?.lobeThreshold   ?? terrainBlobLobeThreshold
       const lobeDirection   = ts?.lobeDirection   ?? terrainBlobLobeDirection
-      const hexKey = `eot:${elevationOverridesTerrain}|` + terrainProjected.map(p => `${p.hex.q},${p.hex.r}`).join('|')
-      const styleKey = `${smooth}|${offset}|${bump}|${sweepFreq}|${lobeFreq}|${lobeAmp}|${lobeThreshold}|${lobeDirection}|${hexRadius}|${JSON.stringify(blobSeeds)}`
+
+      // Build raw hex centers keyed by "q,r" — same formula as buildTerrainBlobTopology
+      const hexOrigCenterByKey = new Map<string, [number, number]>()
+      for (const p of terrainProjected) {
+        const h = p.hex as GeneratedHex
+        const v = p.verts
+        hexOrigCenterByKey.set(`${h.q},${h.r}`, [
+          (v[0][0]+v[1][0]+v[2][0]+v[3][0]+v[4][0]+v[5][0]) / 6,
+          (v[0][1]+v[1][1]+v[2][1]+v[3][1]+v[4][1]+v[5][1]) / 6,
+        ])
+      }
+
+      // Compute handle positions (perimeter hexes with offsets) grouped by canonical key
+      const newHandleGroups = new Map<string, { hexKey: string; cx: number; cy: number }[]>()
+      for (const [hk, [ox, oy]] of hexOrigCenterByKey) {
+        const [q, r] = hk.split(',').map(Number)
+        const isPerimeter = HEX_DIRS.some(([dq, dr]) => !hexOrigCenterByKey.has(`${q+dq},${r+dr}`))
+        if (!isPerimeter) continue
+        const ck = componentMap.get(hk) ?? hk
+        const off = blobHandleOverrides[ck]?.[hk]
+        if (!newHandleGroups.has(ck)) newHandleGroups.set(ck, [])
+        newHandleGroups.get(ck)!.push({ hexKey: hk, cx: ox + (off?.[0] ?? 0) * hexRadius, cy: oy + (off?.[1] ?? 0) * hexRadius })
+      }
+      for (const [ck, handles] of newHandleGroups) {
+        blobHandleDataRef.current.set(ck, { terrain, handles })
+      }
+
+      // Modified hex centers: apply handle offsets so blob shape follows nudged handles
+      const modifiedHexCenters: [number, number][] = []
+      for (const [hk, [ox, oy]] of hexOrigCenterByKey) {
+        const ck = componentMap.get(hk) ?? hk
+        const off = blobHandleOverrides[ck]?.[hk]
+        modifiedHexCenters.push(off ? [ox + off[0] * hexRadius, oy + off[1] * hexRadius] : [ox, oy])
+      }
+
+      const hexKey = `eot:${elevationOverridesTerrain}|` + terrainProjected.map(p => `${(p.hex as GeneratedHex).q},${(p.hex as GeneratedHex).r}`).join('|')
+      const canonicalKeySet = new Set([...componentMap.values()])
+      const handleKey = [...canonicalKeySet].sort().map(ck => {
+        const h = blobHandleOverrides[ck]
+        return h && Object.keys(h).length > 0 ? `${ck}:${JSON.stringify(h)}` : ''
+      }).filter(Boolean).join('~')
+      const styleKey = `${smooth}|${offset}|${bump}|${sweepFreq}|${lobeFreq}|${lobeAmp}|${lobeThreshold}|${lobeDirection}|${hexRadius}|${JSON.stringify(blobSeeds)}|${handleKey}`
       const cached = perTerrainBlobCache.current.get(terrain)
-      if (cached?.hexKey === hexKey && cached?.styleKey === styleKey) return cached.blobs
+      if (cached?.hexKey === hexKey && cached?.styleKey === styleKey) {
+        for (const [ck, handles] of cached.handleGroups ?? []) {
+          blobHandleDataRef.current.set(ck, { terrain, handles })
+        }
+        return cached.blobs
+      }
       let rawPolys: [number, number][][]
-      let hexCenters: [number, number][]
       if (cached?.hexKey === hexKey) {
         rawPolys = cached.rawPolys
-        hexCenters = cached.hexCenters
       } else {
         const topo = buildTerrainBlobTopology(terrainProjected, hexRadius)
-        const entry = topo.find(e => e.terrain === terrain)
-        rawPolys = entry?.rawPolys ?? []
-        hexCenters = entry?.hexCenters ?? []
+        rawPolys = topo.find(e => e.terrain === terrain)?.rawPolys ?? []
       }
-      const blobs = shapeTerrainBlobs([{ terrain, rawPolys, hexCenters }], smooth, offset, bump, sweepFreq, lobeFreq, lobeAmp, lobeThreshold, lobeDirection, hexRadius, blobSeeds)
-      perTerrainBlobCache.current.set(terrain, { hexKey, rawPolys, hexCenters, styleKey, blobs })
+      const blobs = shapeTerrainBlobs([{ terrain, rawPolys, hexCenters: modifiedHexCenters }], smooth, offset, bump, sweepFreq, lobeFreq, lobeAmp, lobeThreshold, lobeDirection, hexRadius, blobSeeds)
+      perTerrainBlobCache.current.set(terrain, { hexKey, rawPolys, hexCenters: [...hexOrigCenterByKey.values()], styleKey, blobs, handleGroups: newHandleGroups })
       return blobs
     })
     for (const t of perTerrainBlobCache.current.keys()) {
@@ -1245,7 +1305,7 @@ const roadV3TierGeomRef = useRef(roadV3TierGeom)
     }
     prevTerrainBlobsRef.current = result
     return result
-  }, [isTerrainPainting, projectedHexes, blobComponentsByTerrain, terrainBlobOverrides, terrainTypeBlobStyles, terrainBlobSmooth, terrainBlobOffset, terrainBlobBump, terrainBlobSweepFreq, terrainBlobLobeFreq, terrainBlobLobeAmp, terrainBlobLobeThreshold, terrainBlobLobeDirection, hexRadius, realisticCoastline, blobSeeds, elevationOverridesTerrain])
+  }, [isTerrainPainting, projectedHexes, blobComponentsByTerrain, terrainBlobOverrides, terrainTypeBlobStyles, terrainBlobSmooth, terrainBlobOffset, terrainBlobBump, terrainBlobSweepFreq, terrainBlobLobeFreq, terrainBlobLobeAmp, terrainBlobLobeThreshold, terrainBlobLobeDirection, hexRadius, realisticCoastline, blobSeeds, elevationOverridesTerrain, blobHandleOverrides])
   const defaultTerrainBlobsRef = useRef(defaultTerrainBlobs)
   defaultTerrainBlobsRef.current = defaultTerrainBlobs
 
@@ -1629,7 +1689,7 @@ const roadV3TierGeomRef = useRef(roadV3TierGeom)
       mapStyle: mapStyleRef.current,
       historicalIconSets: historicalIconSetsRef.current,
       historicalIconParams: historicalIconParamsRef.current,
-      hillshadeCanvas: hillshadeCanvasRef.current,
+      hillshadeCanvas: hillshadeEnabledRef.current ? hillshadeCanvasRef.current : null,
       hillshadeDisabledTerrains: hillshadeDisabledTerrainsSetRef.current,
       hillshadeDisabledElevClasses: hillshadeDisabledElevClassesSetRef.current,
       contourCanvas: contourCanvasRef.current,
@@ -2086,8 +2146,17 @@ const roadV3TierGeomRef = useRef(roadV3TierGeom)
         ctx.drawImage(buildingsLayerRef.current, px, py, pw, ph)
       }
       if (isExport) {
-        _drawAllBuildings(ctx, { hexes: hexesRef.current, urbanHexes: urbanHexesRef.current, urbanStyle: urbanStyleRef.current, settlements: settlementsRef.current, settlementTierStyles: settlementTierStylesRef.current, roadChains, roadTierStyles: roadTierStylesRef.current, hexBuildingGeoCache: hexBuildingGeoCacheRef.current, project })
-        _drawAllBuildingsV2(ctx, { hexes: hexesRef.current, urbanHexes: urbanHexesRef.current, urbanStyle: urbanStyleRef.current, settlements: settlementsRef.current, settlementTierStyles: settlementTierStylesRef.current, roadChains, roadTierStyles: roadTierStylesRef.current, project })
+        const scaledSettlementTierStylesB = Object.fromEntries(
+          (Object.entries(settlementTierStylesRef.current) as [string, SettlementTierStyle][]).map(([k, v]) => [k, {
+            ...v,
+            buildingSizeMin: v.buildingSizeMin * lineScale, buildingSizeMax: v.buildingSizeMax * lineScale,
+            roadSetback: v.roadSetback * lineScale, slotSpacing: v.slotSpacing * lineScale,
+            buildingV2Size: v.buildingV2Size * lineScale, buildingV2Spacing: v.buildingV2Spacing * lineScale,
+            buildingStrokeWidth: v.buildingStrokeWidth * lineScale,
+          }])
+        ) as Record<SettlementTier, SettlementTierStyle>
+        _drawAllBuildings(ctx, { hexes: hexesRef.current, urbanHexes: urbanHexesRef.current, urbanStyle: urbanStyleRef.current, settlements: settlementsRef.current, settlementTierStyles: scaledSettlementTierStylesB, roadChains, roadTierStyles: roadTierStylesRef.current, hexBuildingGeoCache: hexBuildingGeoCacheRef.current, project })
+        _drawAllBuildingsV2(ctx, { hexes: hexesRef.current, urbanHexes: urbanHexesRef.current, urbanStyle: urbanStyleRef.current, settlements: settlementsRef.current, settlementTierStyles: scaledSettlementTierStylesB, roadChains, roadTierStyles: roadTierStylesRef.current, project })
       }
     }
 
@@ -2320,6 +2389,54 @@ const roadV3TierGeomRef = useRef(roadV3TierGeom)
       })
     }
 
+    // Blob handle editing overlay
+    if (!isExport && blobEditModeRef.current) {
+      const activeId = activeBlobEditIdRef.current
+      const handleData = blobHandleDataRef.current
+      const handleR = Math.max(5, hexRadiusRef.current * 0.18)
+      ctx.save()
+      for (const [ck, { handles }] of handleData) {
+        const isActive = ck === activeId
+        for (const { hexKey, cx, cy } of handles) {
+          const hasOverride = !!(blobHandleOverridesRef.current[ck]?.[hexKey])
+          ctx.beginPath()
+          ctx.arc(cx, cy, handleR, 0, Math.PI * 2)
+          ctx.fillStyle = hasOverride ? '#ff6b35' : (isActive ? 'rgba(255,255,255,0.85)' : 'rgba(255,255,255,0.35)')
+          ctx.fill()
+          ctx.lineWidth = isActive ? 2 : 1
+          ctx.strokeStyle = isActive ? '#1a6fbd' : 'rgba(80,120,200,0.6)'
+          ctx.stroke()
+        }
+      }
+      // Draw selection ring around active blob polygon
+      if (activeId) {
+        const activeEntry = defaultTerrainBlobsRef.current.find(b =>
+          b.blobKeys.some((_, i) => {
+            const poly = b.polys[i]
+            const handles = handleData.get(activeId)?.handles
+            if (!handles || handles.length === 0) return false
+            return pointInPolygon(handles[0].cx, handles[0].cy, poly)
+          })
+        )
+        if (activeEntry) {
+          ctx.save()
+          ctx.strokeStyle = '#1a6fbd'
+          ctx.lineWidth = 2
+          ctx.setLineDash([6, 4])
+          for (const poly of activeEntry.polys) {
+            if (poly.length < 3) continue
+            ctx.beginPath()
+            ctx.moveTo(poly[0][0], poly[0][1])
+            for (let i = 1; i < poly.length; i++) ctx.lineTo(poly[i][0], poly[i][1])
+            ctx.closePath()
+            ctx.stroke()
+          }
+          ctx.restore()
+        }
+      }
+      ctx.restore()
+    }
+
     // Settlements — offscreen cached
     {
 
@@ -2348,7 +2465,7 @@ const roadV3TierGeomRef = useRef(roadV3TierGeom)
       }
       if (isExport) {
         const activeRoadDataS = smoothedRoadDataV2Ref.current ?? smoothedRoadDataRef.current
-        _drawSettlements(ctx, { settlements: settlementsRef.current, tierStyles: settlementTierStylesRef.current, labelSpecs: resolvedLabelSpecsRef.current, roadChains: activeRoadDataS.chains, roadJunctions: activeRoadDataS.junctions, railChains: smoothedRailDataRef.current.chains, project, hexCenterOf: (q, r) => { const h = hexesRef.current.find(h => h.q === q && h.r === r); return h ? project(h.center[0], h.center[1]) : null }, hexRadiusPx: hexRadiusRef.current, labelOffsets: labelOffsetsRef.current })
+        _drawSettlements(ctx, { settlements: settlementsRef.current, tierStyles: settlementTierStylesRef.current, labelSpecs: resolvedLabelSpecsRef.current, roadChains: activeRoadDataS.chains, roadJunctions: activeRoadDataS.junctions, railChains: smoothedRailDataRef.current.chains, project, hexCenterOf: (q, r) => { const h = hexesRef.current.find(h => h.q === q && h.r === r); return h ? project(h.center[0], h.center[1]) : null }, hexRadiusPx: hexRadiusRef.current, labelOffsets: labelOffsetsRef.current, scale: lineScale })
       }
     }
 
@@ -2357,7 +2474,7 @@ const roadV3TierGeomRef = useRef(roadV3TierGeom)
       const snap = !isExport && iconPlaceModeRef.current && iconSnapRef.current
         ? { overlayId: activeIconOverlayIdRef.current!, lon: iconSnapRef.current[0], lat: iconSnapRef.current[1] }
         : undefined
-      _drawIcons({ ctx, iconOverlays: iconOverlaysRef.current, placedIcons: placedIconsRef.current, project, R, inMargin, snapPreview: snap })
+      _drawIcons({ ctx, iconOverlays: iconOverlaysRef.current, placedIcons: placedIconsRef.current, project, R, inMargin, snapPreview: snap, scale: isExport ? lineScale : 1 })
     }
 
     // Labels — drawn on top of icons
@@ -2381,6 +2498,7 @@ const roadV3TierGeomRef = useRef(roadV3TierGeom)
         snapPreview: !dl && !isExport ? snap : null,
         editingLabel: el ? { overlayId: el.overlayId, index: el.index } : null,
         draggingLabel: dragSnap,
+        scale: isExport ? lineScale : 1,
       })
     }
 
@@ -2781,7 +2899,7 @@ const roadV3TierGeomRef = useRef(roadV3TierGeom)
     terrainDirtyRef.current = true
     draw()
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [hillshadeAzimuth, hillshadeAltitude, hillshadeIntensity, hillshadeMode])
+  }, [hillshadeEnabled, hillshadeAzimuth, hillshadeAltitude, hillshadeIntensity, hillshadeMode])
 
   // Recompute contours when params change
   useEffect(() => {
@@ -2824,7 +2942,7 @@ const roadV3TierGeomRef = useRef(roadV3TierGeom)
   }, [activeTool.type])
 
   // Redraw when data changes
-  useEffect(() => { draw() }, [generatedHexes, hexBorderMode, hexEdgeMode, hexBorderOpacity, hexBorderColor, hexBorderDifference, hexNumbersEnabled, hexNumberEdge, hexNumberColor, hexNumberFontScale, hexNumberStartCorner, hexNumberMap, smoothedRoadData, smoothedRailData, showRawOsmRoads, roadNodeEditMode, riverNodeEditMode, riverChainOverrides, riverEdges, canalEdges, riverEditMode, canalEditMode, riverWidthScale, canalWidthScale, riverCurveSteps, riverWobble, riverDetail, riverWiggleFreq, riverWiggleAmp, riverSmoothing, riverPathSmoothing, showRiverLabels, riverLabelColor, riverSegmentProps, canalSegmentProps, riverSelectMode, canalSelectMode, selectedSegmentKeys, selectedCanalSegmentKeys, riverStyle, canalStyle, riverHopProps, selectedHopKey, defaultTerrainBlobs, defaultWaterBlobs, terrainColors, terrainTextureScales, terrainTextureBlendModes, terrainTextureOpacities, terrainTextureTintColors, terrainTextureTintOpacities, terrainTextureFile, terrainTextureEnabled, terrainBlobOverrides, terrainTypeBlobStyles, waterOverrides, terrainRenderMode, settlements, settlementTierStyles, urbanHexes, urbanStyle, roadTierStyles, railStyle, highlights, highlightedHexes, highlightLines, highlightEdgePaths, iconOverlays, placedIcons, labelOverlays, placedLabels, realisticCoastline, coastlineDebugRaw, smoothedCoastlineBoundary, rawCoastlineBoundary, beachStrip, beachColor, beachWidth, coastlineDPEpsilon, coastlineChaikinPasses, edgeBlobPainted, edgeBlobOverrides, edgeBlobWidth, roadSegmentProps, roadHopProps, selectedRoadSegmentKeys, selectedRoadHopKey, roadSelectMode, railNodeEditMode, railControlOverrides, railSelectMode, railWiggleAmp, railWiggleFreq, railSmoothing, railSegmentProps, railHopProps, selectedRailSegmentKeys, selectedRailHopKey, mapBgColor, mapBorderEnabled, mapBorderColor, mapBorderWidth, clipToHexGrid, excludedHexKeys, disabledHexKeys, autoDisabledOceanHexKeys, megaHexEnabled, megaHexRadius, megaHexColor, megaHexOpacity, megaHexLineWidth, megaHexOriginQ, megaHexOriginR, bridgesEnabled, bridgeStyle, bridgeTiers, bridgeOverrides, showElevationDebug, showElevationClassOverlay, mapStyle, labelOffsets, activeTool, roadClearanceTerrains, draw])
+  useEffect(() => { draw() }, [generatedHexes, hexBorderMode, hexEdgeMode, hexBorderOpacity, hexBorderColor, hexBorderDifference, hexNumbersEnabled, hexNumberEdge, hexNumberColor, hexNumberFontScale, hexNumberStartCorner, hexNumberMap, smoothedRoadData, smoothedRailData, showRawOsmRoads, roadNodeEditMode, riverNodeEditMode, riverChainOverrides, riverEdges, canalEdges, riverEditMode, canalEditMode, riverWidthScale, canalWidthScale, riverCurveSteps, riverWobble, riverDetail, riverWiggleFreq, riverWiggleAmp, riverSmoothing, riverPathSmoothing, showRiverLabels, riverLabelColor, riverSegmentProps, canalSegmentProps, riverSelectMode, canalSelectMode, selectedSegmentKeys, selectedCanalSegmentKeys, riverStyle, canalStyle, riverHopProps, selectedHopKey, defaultTerrainBlobs, defaultWaterBlobs, terrainColors, terrainTextureScales, terrainTextureBlendModes, terrainTextureOpacities, terrainTextureTintColors, terrainTextureTintOpacities, terrainTextureFile, terrainTextureEnabled, terrainBlobOverrides, terrainTypeBlobStyles, waterOverrides, terrainRenderMode, settlements, settlementTierStyles, urbanHexes, urbanStyle, roadTierStyles, railStyle, highlights, highlightedHexes, highlightLines, highlightEdgePaths, iconOverlays, placedIcons, labelOverlays, placedLabels, realisticCoastline, coastlineDebugRaw, smoothedCoastlineBoundary, rawCoastlineBoundary, beachStrip, beachColor, beachWidth, coastlineDPEpsilon, coastlineChaikinPasses, edgeBlobPainted, edgeBlobOverrides, edgeBlobWidth, roadSegmentProps, roadHopProps, selectedRoadSegmentKeys, selectedRoadHopKey, roadSelectMode, railNodeEditMode, railControlOverrides, railSelectMode, railWiggleAmp, railWiggleFreq, railSmoothing, railSegmentProps, railHopProps, selectedRailSegmentKeys, selectedRailHopKey, mapBgColor, mapBorderEnabled, mapBorderColor, mapBorderWidth, clipToHexGrid, excludedHexKeys, disabledHexKeys, autoDisabledOceanHexKeys, megaHexEnabled, megaHexRadius, megaHexColor, megaHexOpacity, megaHexLineWidth, megaHexOriginQ, megaHexOriginR, bridgesEnabled, bridgeStyle, bridgeTiers, bridgeOverrides, showElevationDebug, showElevationClassOverlay, mapStyle, labelOffsets, labelPresetId, labelOverrides, activeTool, roadClearanceTerrains, blobEditMode, activeBlobEditId, blobHandleOverrides, draw])
 
   useEffect(() => { drawOsmHighlight() }, [osmHighlightTier, osmSpotlightMode, osmSpotlightTiers, osmRailHighlight, hoveredOsmRiverIdx, drawOsmHighlight])
 
@@ -4512,6 +4630,84 @@ const roadV3TierGeomRef = useRef(roadV3TierGeom)
     return () => el.removeEventListener('contextmenu', onContextMenu)
   }, [findHexAtClient])
 
+  // Blob handle editing — select blob, drag perimeter hex handles
+  useEffect(() => {
+    const el = canvasRef.current
+    if (!el) return
+    const HANDLE_HIT_R = Math.max(8, hexRadiusRef.current * 0.22)
+    let dragging: { canonicalKey: string; hexKey: string; startLx: number; startLy: number; baseOffset: [number, number] } | null = null
+
+    const onDown = (e: MouseEvent) => {
+      if (!blobEditModeRef.current) return
+      if (e.button !== 0) return
+      const logical = clientToLogicalRef.current(e.clientX, e.clientY)
+      if (!logical) return
+      const { lx, ly } = logical
+
+      // Check if clicking a handle of the active blob
+      const activeId = activeBlobEditIdRef.current
+      if (activeId) {
+        const handleGroup = blobHandleDataRef.current.get(activeId)
+        if (handleGroup) {
+          const hitHandle = handleGroup.handles.find(h => Math.hypot(lx - h.cx, ly - h.cy) < HANDLE_HIT_R * 1.5)
+          if (hitHandle) {
+            const existingOff = blobHandleOverridesRef.current[activeId]?.[hitHandle.hexKey] ?? [0, 0]
+            dragging = { canonicalKey: activeId, hexKey: hitHandle.hexKey, startLx: lx, startLy: ly, baseOffset: existingOff as [number, number] }
+            e.stopPropagation()
+            e.preventDefault()
+            return
+          }
+        }
+      }
+
+      // Click on a blob to select it — find canonical key via handle data (nearest handle in blob)
+      const allBlobs = defaultTerrainBlobsRef.current
+      for (const entry of allBlobs) {
+        for (const poly of entry.polys) {
+          if (!pointInPolygon(lx, ly, poly)) continue
+          // Find which canonical key owns this polygon: pick ck whose handles are nearest the click
+          let bestCk: string | null = null, bestD = Infinity
+          for (const [ck, hd] of blobHandleDataRef.current) {
+            if (hd.terrain !== entry.terrain) continue
+            for (const h of hd.handles) {
+              const d = Math.hypot(lx - h.cx, ly - h.cy)
+              if (d < bestD) { bestD = d; bestCk = ck }
+            }
+          }
+          if (bestCk) {
+            setActiveBlobEditIdRef.current(bestCk === activeBlobEditIdRef.current ? null : bestCk)
+            e.stopPropagation()
+          }
+          return
+        }
+      }
+      // Click on empty area → deselect
+      setActiveBlobEditIdRef.current(null)
+    }
+
+    const onMove = (e: MouseEvent) => {
+      if (!dragging) return
+      const logical = clientToLogicalRef.current(e.clientX, e.clientY)
+      if (!logical) return
+      const { lx, ly } = logical
+      const dx = (lx - dragging.startLx) / hexRadiusRef.current
+      const dy = (ly - dragging.startLy) / hexRadiusRef.current
+      const newOffset: [number, number] = [dragging.baseOffset[0] + dx, dragging.baseOffset[1] + dy]
+      setBlobHandleOverrideRef.current(dragging.canonicalKey, dragging.hexKey, newOffset)
+    }
+
+    const onUp = () => { dragging = null }
+
+    el.addEventListener('mousedown', onDown, { capture: true })
+    window.addEventListener('mousemove', onMove)
+    window.addEventListener('mouseup', onUp)
+    return () => {
+      el.removeEventListener('mousedown', onDown, { capture: true })
+      window.removeEventListener('mousemove', onMove)
+      window.removeEventListener('mouseup', onUp)
+    }
+  }, [clientToLogical])
+
   // Click → select hex
   const draggedRef = useRef(false)
   const edgeDragRef = useRef<{ mode: 'add' | 'remove'; painted: Set<string> } | null>(null)
@@ -5608,34 +5804,46 @@ const roadV3TierGeomRef = useRef(roadV3TierGeom)
               boxShadow: '0 0 0 2px rgba(220,210,190,0.7)',
               pointerEvents: 'none',
             }} />
-            {/* Edge + buttons */}
+            {/* Edge + buttons — use metadata paper_mm as source of truth for single-sheet maps */}
             {edges.map(edge => {
+              const isSingle = pageGrid.colWidths.length === 1 && pageGrid.rowHeights.length === 1
+              const effectiveRowHeights = isSingle && generatedMetadata
+                ? [generatedMetadata.paper_mm[1]]
+                : pageGrid.rowHeights
+              const effectiveColWidths = isSingle && generatedMetadata
+                ? [generatedMetadata.paper_mm[0]]
+                : pageGrid.colWidths
               const opts = isCol(edge)
-                ? validColWidthsForRows(pageGrid.rowHeights)
-                : validRowHeightsForCols(pageGrid.colWidths)
+                ? validColWidthsForRows(effectiveRowHeights)
+                : validRowHeightsForCols(effectiveColWidths)
               if (opts.length === 0) return null
               const { x, y } = btnCenter[edge]
-              const label = opts.length === 1
-                ? (() => {
-                    const info = isCol(edge)
-                      ? cellPaperInfo(opts[0], pageGrid.rowHeights[0])
-                      : cellPaperInfo(pageGrid.colWidths[0], opts[0])
-                    return info ? `+ ${info.size} ${info.orientation === 'landscape' ? '↔' : '↕'}` : `+ ${opts[0]}mm`
-                  })()
-                : `+ ${isCol(edge) ? 'COL' : 'ROW'}`
-              return (
-                <button
-                  key={edge}
-                  style={{ ...pillStyle, left: x, top: y, pointerEvents: 'auto' }}
-                  onClick={async (e) => {
-                    e.stopPropagation()
-                    setExpandMode(false)
-                    await expandMap(edge, opts[0])
-                  }}
-                >
-                  {label}
-                </button>
-              )
+              const isVertEdge = edge === 'left' || edge === 'right'
+              return opts.map((optMm, i) => {
+                const info = isCol(edge)
+                  ? cellPaperInfo(optMm, effectiveRowHeights[0])
+                  : cellPaperInfo(effectiveColWidths[0], optMm)
+                const label = info
+                  ? `+ ${info.size} ${info.orientation === 'landscape' ? '↔' : '↕'}`
+                  : `+ ${optMm}mm`
+                const offset = (i - (opts.length - 1) / 2) * 44
+                const btnStyle = isVertEdge
+                  ? { ...pillStyle, left: x, top: y + offset }
+                  : { ...pillStyle, left: x + offset, top: y }
+                return (
+                  <button
+                    key={`${edge}-${optMm}`}
+                    style={{ ...btnStyle, pointerEvents: 'auto' }}
+                    onClick={async (e) => {
+                      e.stopPropagation()
+                      setExpandMode(false)
+                      await expandMap(edge, optMm)
+                    }}
+                  >
+                    {label}
+                  </button>
+                )
+              })
             })}
             {/* Done button */}
             <button
@@ -5649,6 +5857,37 @@ const roadV3TierGeomRef = useRef(roadV3TierGeom)
             >
               Cancel
             </button>
+          </div>
+        )
+      })()}
+
+      {expandFetchSteps && (() => {
+        const stepLabels: Record<string, string> = {
+          terrain: 'Terrain', elevation: 'Elevation', roads: 'Roads',
+          rivers: 'Rivers', settlements: 'Settlements', rails: 'Rails',
+        }
+        const entries = Object.entries(expandFetchSteps)
+        const allDone = entries.every(([, s]) => s === 'done' || s === 'error')
+        return (
+          <div style={{
+            position: 'absolute', bottom: 24, right: 24, zIndex: 30,
+            background: 'rgba(14,13,11,0.92)', border: '1px solid rgba(100,95,88,0.4)',
+            borderRadius: 10, padding: '12px 16px', minWidth: 160,
+            fontFamily: 'inherit', fontSize: 12, color: '#b8b0a0',
+            display: 'flex', flexDirection: 'column', gap: 6,
+            opacity: allDone ? 0.6 : 1, transition: 'opacity 0.6s',
+          }}>
+            <div style={{ fontSize: 11, fontWeight: 600, color: '#d0c8b8', letterSpacing: '0.06em', textTransform: 'uppercase', marginBottom: 2 }}>
+              Expanding map
+            </div>
+            {entries.map(([key, status]) => (
+              <div key={key} style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                <span style={{ width: 14, textAlign: 'center', color: status === 'done' ? '#7ab87a' : status === 'error' ? '#c06060' : '#888' }}>
+                  {status === 'done' ? '✓' : status === 'error' ? '✗' : '…'}
+                </span>
+                <span style={{ color: status === 'loading' ? '#d0c8b8' : undefined }}>{stepLabels[key] ?? key}</span>
+              </div>
+            ))}
           </div>
         )
       })()}

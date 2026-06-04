@@ -19,6 +19,7 @@ export type ElevationSlice = {
   elevationPaintBrush: 'flat' | 'hills' | 'mountains'
   heightmapUrl: string | null
   heightmapMeta: HeightmapMeta | null
+  hillshadeEnabled: boolean
   hillshadeAzimuth: number
   hillshadeAltitude: number
   hillshadeIntensity: number
@@ -46,6 +47,7 @@ export type ElevationSlice = {
   setElevationPaintBrush: (v: 'flat' | 'hills' | 'mountains') => void
   overrideHexElevation: (q: number, r: number, cls: 'flat' | 'hills' | 'mountains') => void
   clearElevationOverrides: () => void
+  setHillshadeEnabled: (v: boolean) => void
   setHillshadeAzimuth: (v: number) => void
   setHillshadeAltitude: (v: number) => void
   setHillshadeIntensity: (v: number) => void
@@ -75,6 +77,7 @@ export const createElevationSlice = (set: Set, get: () => MapStore): ElevationSl
   elevationPaintBrush: 'hills',
   heightmapUrl: null,
   heightmapMeta: null,
+  hillshadeEnabled: true,
   hillshadeAzimuth: 315,
   hillshadeAltitude: 45,
   hillshadeIntensity: 0.6,
@@ -200,6 +203,7 @@ export const createElevationSlice = (set: Set, get: () => MapStore): ElevationSl
     set({ generatedHexes: _classify(cleared, classificationParams) })
   },
 
+  setHillshadeEnabled: (v) => set({ hillshadeEnabled: v }),
   setHillshadeAzimuth: (v) => set({ hillshadeAzimuth: v }),
   setHillshadeAltitude: (v) => set({ hillshadeAltitude: v }),
   setHillshadeIntensity: (v) => set({ hillshadeIntensity: v }),

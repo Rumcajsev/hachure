@@ -8,6 +8,8 @@ export interface DrawIconsParams {
   R: number
   inMargin: (pts: [number, number][]) => boolean
   snapPreview?: { overlayId: string; lon: number; lat: number }
+  /** Scale factor for pixel-based stroke widths — use lineScale during PDF export. */
+  scale?: number
 }
 
 const SIN60 = Math.sin(Math.PI / 3)
@@ -60,7 +62,7 @@ export function drawIconShape(
 }
 
 export function drawIcons(params: DrawIconsParams) {
-  const { ctx, iconOverlays, placedIcons, project, R, inMargin, snapPreview } = params
+  const { ctx, iconOverlays, placedIcons, project, R, inMargin, snapPreview, scale = 1 } = params
 
   for (const overlay of iconOverlays) {
     const icons = placedIcons[overlay.id] ?? []
@@ -68,7 +70,7 @@ export function drawIcons(params: DrawIconsParams) {
     for (const [lon, lat] of icons) {
       const [px, py] = project(lon, lat)
       if (!inMargin([[px, py]])) continue
-      drawIconShape(ctx, px, py, r, overlay.shape, overlay.fillColor, overlay.strokeColor, overlay.strokeWidth)
+      drawIconShape(ctx, px, py, r, overlay.shape, overlay.fillColor, overlay.strokeColor, overlay.strokeWidth * scale)
     }
   }
 
@@ -76,7 +78,7 @@ export function drawIcons(params: DrawIconsParams) {
     const overlay = iconOverlays.find(o => o.id === snapPreview.overlayId)
     if (overlay) {
       const [px, py] = project(snapPreview.lon, snapPreview.lat)
-      drawIconShape(ctx, px, py, R * overlay.size, overlay.shape, overlay.fillColor, overlay.strokeColor, overlay.strokeWidth, 0.5)
+      drawIconShape(ctx, px, py, R * overlay.size, overlay.shape, overlay.fillColor, overlay.strokeColor, overlay.strokeWidth * scale, 0.5)
     }
   }
 }

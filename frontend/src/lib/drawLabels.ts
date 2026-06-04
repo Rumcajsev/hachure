@@ -10,6 +10,8 @@ export interface DrawLabelsParams {
   snapPreview?: { overlayId: string; lon: number; lat: number } | null
   editingLabel?: { overlayId: string; index: number } | null
   draggingLabel?: { overlayId: string; index: number; lon: number; lat: number } | null
+  /** Scale factor for all pixel-based sizes — use lineScale during PDF export. */
+  scale?: number
 }
 
 const LINE_STEP_RATIO = 1.2
@@ -77,9 +79,13 @@ function drawLabelBox(
 }
 
 export function drawLabels(params: DrawLabelsParams) {
-  const { ctx, labelOverlays, placedLabels, project, inMargin, snapPreview, editingLabel, draggingLabel } = params
+  const { ctx, labelOverlays, placedLabels, project, inMargin, snapPreview, editingLabel, draggingLabel, scale = 1 } = params
+
+  const scaleOverlay = (o: LabelOverlay): LabelOverlay =>
+    scale === 1 ? o : { ...o, textSize: o.textSize * scale, strokeWidth: o.strokeWidth * scale }
 
   for (const overlay of labelOverlays) {
+    const scaled = scaleOverlay(overlay)
     const labels = placedLabels[overlay.id] ?? []
     for (let i = 0; i < labels.length; i++) {
       if (editingLabel?.overlayId === overlay.id && editingLabel.index === i) continue
@@ -87,7 +93,7 @@ export function drawLabels(params: DrawLabelsParams) {
       const { lon, lat, text } = labels[i]
       const [px, py] = project(lon, lat)
       if (!inMargin([[px, py]])) continue
-      drawLabelBox(ctx, px, py, text || overlay.name, overlay)
+      drawLabelBox(ctx, px, py, text || overlay.name, scaled)
     }
   }
 
@@ -97,7 +103,7 @@ export function drawLabels(params: DrawLabelsParams) {
       const labels = placedLabels[overlay.id] ?? []
       const label = labels[draggingLabel.index]
       const [px, py] = project(draggingLabel.lon, draggingLabel.lat)
-      drawLabelBox(ctx, px, py, label?.text || overlay.name, overlay, 0.7)
+      drawLabelBox(ctx, px, py, label?.text || overlay.name, scaleOverlay(overlay), 0.7)
     }
   }
 
@@ -105,7 +111,7 @@ export function drawLabels(params: DrawLabelsParams) {
     const overlay = labelOverlays.find(o => o.id === snapPreview.overlayId)
     if (overlay) {
       const [px, py] = project(snapPreview.lon, snapPreview.lat)
-      drawLabelBox(ctx, px, py, overlay.name, overlay, 0.5)
+      drawLabelBox(ctx, px, py, overlay.name, scaleOverlay(overlay), 0.5)
     }
   }
 }

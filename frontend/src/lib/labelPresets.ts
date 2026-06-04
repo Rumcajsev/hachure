@@ -42,21 +42,10 @@ function spec(
 
 // ── Built-in presets ───────────────────────────────────────────────────────────
 
+// Order matches the HTML body: 01, 02, 03, 04, 06, 08, 09, 10, 11, 12, 14, 15, 16
+// Approaches 05 (Editorial), 07 (État-Major), 13 (Age of Sail), 17 (Schoolbook)
+// were defined in CSS but not shown in the comparison document — excluded.
 export const LABEL_PRESETS: LabelPreset[] = [
-  {
-    id: 'ibm_hybrid',
-    name: 'IBM Plex',
-    mapStyleDefault: 'standard',
-    specs: {
-      cityMajor: spec('"IBM Plex Serif", Georgia, serif',    1.10, 600, false, true,  0.08, '#1a1a14'),
-      cityMinor: spec('"IBM Plex Serif", Georgia, serif',    0.90, 600, false, false, 0.02, '#2a2a1e'),
-      town:      spec('"IBM Plex Sans Condensed", sans-serif', 0.80, 400, false, false, 0.03, '#3a3a2e'),
-      village:   spec('"IBM Plex Sans Condensed", sans-serif', 0.70, 300, false, false, 0.02, '#4a4a3e'),
-      water:     spec('"IBM Plex Serif", Georgia, serif',    0.72, 300, true,  false, 0.04, '#4a7898'),
-      terrain:   spec('"IBM Plex Sans Condensed", sans-serif', 0.68, 300, true,  true,  0.10, '#5a7040'),
-      hexRef:    spec('"IBM Plex Sans Condensed", monospace', 0.60, 300, false, false, 0.00, '#888878'),
-    },
-  },
   {
     id: 'classic_cartographic',
     name: 'Classic',
@@ -85,32 +74,6 @@ export const LABEL_PRESETS: LabelPreset[] = [
     },
   },
   {
-    id: 'copperplate_atlas',
-    name: 'Copperplate',
-    specs: {
-      cityMajor: spec('"GFS Didot", Georgia, serif',         1.05, 400, false, true,  0.22, '#18120a'),
-      cityMinor: spec('"Cormorant Garamond", Georgia, serif', 0.90, 600, true,  false, 0.02, '#221808'),
-      town:      spec('"Cormorant Garamond", Georgia, serif', 0.78, 400, true,  false, 0.01, '#3a2e18'),
-      village:   spec('"Cormorant Garamond", Georgia, serif', 0.66, 300, true,  false, 0.01, '#4a3e28'),
-      water:     spec('"Cormorant Garamond", Georgia, serif', 0.66, 300, true,  false, 0.08, '#3a6878'),
-      terrain:   spec('"GFS Didot", Georgia, serif',         0.64, 400, true,  true,  0.16, '#4a6030'),
-      hexRef:    spec('"Source Code Pro", monospace',        0.55, 300, false, false, 0.00, '#666050'),
-    },
-  },
-  {
-    id: 'etat_major',
-    name: 'État-Major',
-    specs: {
-      cityMajor: spec('"Cormorant Garamond", Georgia, serif', 1.10, 300, true,  false, 0.12, '#18100a'),
-      cityMinor: spec('"Cormorant Garamond", Georgia, serif', 0.90, 600, false, false, 0.03, '#22180a'),
-      town:      spec('"Cormorant Garamond", Georgia, serif', 0.80, 400, true,  false, 0.01, '#382a14'),
-      village:   spec('"Cormorant Garamond", Georgia, serif', 0.68, 300, true,  false, 0.01, '#483a24'),
-      water:     spec('"Cormorant Garamond", Georgia, serif', 0.68, 300, true,  false, 0.10, '#3a6878'),
-      terrain:   spec('"Cormorant Garamond", Georgia, serif', 0.66, 300, true,  true,  0.12, '#4a6030'),
-      hexRef:    spec('"Source Code Pro", monospace',        0.55, 300, false, false, 0.00, '#666050'),
-    },
-  },
-  {
     id: 'military_ops',
     name: 'Military Ops',
     specs: {
@@ -124,29 +87,17 @@ export const LABEL_PRESETS: LabelPreset[] = [
     },
   },
   {
-    id: 'soviet_topo',
-    name: 'Soviet Topo',
+    id: 'ibm_hybrid',
+    name: 'IBM Plex',
+    mapStyleDefault: 'standard',
     specs: {
-      cityMajor: spec('"IBM Plex Sans Condensed", sans-serif', 0.96, 600, false, true,  0.20, '#141414'),
-      cityMinor: spec('"IBM Plex Sans Condensed", sans-serif', 0.82, 600, false, true,  0.08, '#242420'),
-      town:      spec('"IBM Plex Sans Condensed", sans-serif', 0.72, 400, false, true,  0.06, '#383830'),
-      village:   spec('"IBM Plex Sans Condensed", sans-serif', 0.62, 300, false, false, 0.04, '#484840'),
-      water:     spec('"IBM Plex Sans Condensed", sans-serif', 0.62, 300, true,  false, 0.08, '#3a6878'),
-      terrain:   spec('"IBM Plex Sans Condensed", sans-serif', 0.60, 300, false, true,  0.16, '#4a6030'),
-      hexRef:    spec('"IBM Plex Sans Condensed", monospace', 0.55, 300, false, false, 0.00, '#686858'),
-    },
-  },
-  {
-    id: 'editorial',
-    name: 'Editorial',
-    specs: {
-      cityMajor: spec('"DM Serif Display", Georgia, serif',   1.10, 400, false, false, 0.06, '#18100a'),
-      cityMinor: spec('"Spectral", Georgia, serif',           0.90, 600, false, false, 0.02, '#221808'),
-      town:      spec('"Spectral", Georgia, serif',           0.78, 400, false, false, 0.01, '#382a14'),
-      village:   spec('"Spectral", Georgia, serif',           0.66, 300, false, false, 0.01, '#48381e'),
-      water:     spec('"Spectral", Georgia, serif',           0.66, 300, true,  false, 0.05, '#3a6878'),
-      terrain:   spec('"DM Serif Display", Georgia, serif',   0.64, 400, true,  false, 0.04, '#4a6030'),
-      hexRef:    spec('"Source Code Pro", monospace',         0.55, 300, false, false, 0.00, '#666050'),
+      cityMajor: spec('"IBM Plex Serif", Georgia, serif',    1.10, 600, false, true,  0.08, '#1a1a14'),
+      cityMinor: spec('"IBM Plex Serif", Georgia, serif',    0.90, 600, false, false, 0.02, '#2a2a1e'),
+      town:      spec('"IBM Plex Sans Condensed", sans-serif', 0.80, 400, false, false, 0.03, '#3a3a2e'),
+      village:   spec('"IBM Plex Sans Condensed", sans-serif', 0.70, 300, false, false, 0.02, '#4a4a3e'),
+      water:     spec('"IBM Plex Serif", Georgia, serif',    0.72, 300, true,  false, 0.04, '#4a7898'),
+      terrain:   spec('"IBM Plex Sans Condensed", sans-serif', 0.68, 300, true,  true,  0.10, '#5a7040'),
+      hexRef:    spec('"IBM Plex Sans Condensed", monospace', 0.60, 300, false, false, 0.00, '#888878'),
     },
   },
   {
@@ -202,6 +153,19 @@ export const LABEL_PRESETS: LabelPreset[] = [
     },
   },
   {
+    id: 'soviet_topo',
+    name: 'Soviet Topo',
+    specs: {
+      cityMajor: spec('"IBM Plex Sans Condensed", sans-serif', 0.96, 600, false, true,  0.20, '#141414'),
+      cityMinor: spec('"IBM Plex Sans Condensed", sans-serif', 0.82, 600, false, true,  0.08, '#242420'),
+      town:      spec('"IBM Plex Sans Condensed", sans-serif', 0.72, 400, false, true,  0.06, '#383830'),
+      village:   spec('"IBM Plex Sans Condensed", sans-serif', 0.62, 300, false, false, 0.04, '#484840'),
+      water:     spec('"IBM Plex Sans Condensed", sans-serif', 0.62, 300, true,  false, 0.08, '#3a6878'),
+      terrain:   spec('"IBM Plex Sans Condensed", sans-serif', 0.60, 300, false, true,  0.16, '#4a6030'),
+      hexRef:    spec('"IBM Plex Sans Condensed", monospace', 0.55, 300, false, false, 0.00, '#686858'),
+    },
+  },
+  {
     id: 'art_deco',
     name: 'Art Deco',
     specs: {
@@ -211,19 +175,6 @@ export const LABEL_PRESETS: LabelPreset[] = [
       village:   spec('"Raleway", sans-serif',                0.66, 400, false, false, 0.06, '#483818'),
       water:     spec('"Libre Baskerville", Georgia, serif',  0.64, 400, true,  false, 0.04, '#3a6878'),
       terrain:   spec('"Raleway", sans-serif',                0.62, 300, false, true,  0.20, '#4a6030'),
-      hexRef:    spec('"Source Code Pro", monospace',         0.55, 300, false, false, 0.00, '#666050'),
-    },
-  },
-  {
-    id: 'age_of_sail',
-    name: 'Age of Sail',
-    specs: {
-      cityMajor: spec('"Cinzel Decorative", Georgia, serif',  0.90, 400, false, false, 0.06, '#18100a'),
-      cityMinor: spec('"IM Fell English", Georgia, serif',    0.90, 400, false, false, 0.02, '#221808'),
-      town:      spec('"IM Fell English", Georgia, serif',    0.78, 400, false, false, 0.01, '#382a14'),
-      village:   spec('"IM Fell English", Georgia, serif',    0.66, 400, true,  false, 0.01, '#483818'),
-      water:     spec('"IM Fell English", Georgia, serif',    0.66, 400, true,  false, 0.08, '#3a6878'),
-      terrain:   spec('"IM Fell English", Georgia, serif',    0.64, 400, true,  false, 0.06, '#4a6030'),
       hexRef:    spec('"Source Code Pro", monospace',         0.55, 300, false, false, 0.00, '#666050'),
     },
   },
@@ -254,16 +205,16 @@ export const LABEL_PRESETS: LabelPreset[] = [
     },
   },
   {
-    id: 'schoolbook',
-    name: 'Schoolbook',
+    id: 'copperplate_atlas',
+    name: 'Copperplate',
     specs: {
-      cityMajor: spec('"Almendra", Georgia, serif',           1.00, 700, false, true,  0.18, '#18100a'),
-      cityMinor: spec('"Almendra", Georgia, serif',           0.88, 400, false, true,  0.02, '#221808'),
-      town:      spec('"Almendra", Georgia, serif',           0.78, 700, false, false, 0.06, '#382a14'),
-      village:   spec('"Almendra", Georgia, serif',           0.66, 400, false, false, 0.01, '#483818'),
-      water:     spec('"Almendra", Georgia, serif',           0.64, 400, true,  false, 0.04, '#3a6878'),
-      terrain:   spec('"Almendra", Georgia, serif',           0.62, 400, true,  true,  0.10, '#4a6030'),
-      hexRef:    spec('"Source Code Pro", monospace',         0.55, 300, false, false, 0.00, '#666050'),
+      cityMajor: spec('"GFS Didot", Georgia, serif',         1.05, 400, false, true,  0.22, '#18120a'),
+      cityMinor: spec('"Cormorant Garamond", Georgia, serif', 0.90, 600, true,  false, 0.02, '#221808'),
+      town:      spec('"Cormorant Garamond", Georgia, serif', 0.78, 400, true,  false, 0.01, '#3a2e18'),
+      village:   spec('"Cormorant Garamond", Georgia, serif', 0.66, 300, true,  false, 0.01, '#4a3e28'),
+      water:     spec('"Cormorant Garamond", Georgia, serif', 0.66, 300, true,  false, 0.08, '#3a6878'),
+      terrain:   spec('"GFS Didot", Georgia, serif',         0.64, 400, true,  true,  0.16, '#4a6030'),
+      hexRef:    spec('"Source Code Pro", monospace',        0.55, 300, false, false, 0.00, '#666050'),
     },
   },
 ]
