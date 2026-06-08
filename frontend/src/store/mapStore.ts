@@ -68,9 +68,6 @@ export interface BlobOverride {
   outlineEnabled?: boolean
   outlineColor?: string
   outlineWidth?: number
-  riverRepulsionRadius?: number  // hex-radii units; 0 = off
-  roadRepulsionRadius?: number   // hex-radii units; 0 = off
-  repulsionStrength?: number     // 0–1, default 1
 }
 
 
@@ -387,8 +384,6 @@ export const DEFAULT_TERRAIN_BLOB = {
   lobeAmp: 0.49,
   lobeThreshold: 0.08,
   lobeDirection: -1 as const,
-  polygonize: 0,
-  simplify: 0,
 }
 
 export const DEFAULT_EDGE_BLOB = {
@@ -830,8 +825,6 @@ export const useMapStore = create<MapStore>()(persist((set, get) => ({
     terrainBlobLobeAmp: s.terrainBlobLobeAmp,
     terrainBlobLobeThreshold: s.terrainBlobLobeThreshold,
     terrainBlobLobeDirection: s.terrainBlobLobeDirection,
-    terrainBlobPolygonize: s.terrainBlobPolygonize,
-    terrainBlobSimplify: s.terrainBlobSimplify,
     realisticCoastline: s.realisticCoastline,
     beachStrip: s.beachStrip,
     beachColor: s.beachColor,

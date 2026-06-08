@@ -445,7 +445,6 @@ export const createUiSlice = (set: Set, get: () => MapStore): UiSlice => ({
         terrainBlobBump: s.terrainBlobBump, terrainBlobSweepFreq: s.terrainBlobSweepFreq,
         terrainBlobLobeFreq: s.terrainBlobLobeFreq, terrainBlobLobeAmp: s.terrainBlobLobeAmp,
         terrainBlobLobeThreshold: s.terrainBlobLobeThreshold, terrainBlobLobeDirection: s.terrainBlobLobeDirection,
-        terrainBlobPolygonize: s.terrainBlobPolygonize, terrainBlobSimplify: s.terrainBlobSimplify,
         realisticCoastline: s.realisticCoastline, beachStrip: s.beachStrip,
         beachColor: s.beachColor, beachWidth: s.beachWidth,
         terrainColors: s.terrainColors, terrainTextureScales: s.terrainTextureScales,

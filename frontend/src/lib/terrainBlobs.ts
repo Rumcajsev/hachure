@@ -1,7 +1,7 @@
 /** Terrain blob building and field-style rendering utilities.
  *  Depends on geometry, noise, and projection libs — no React, no store state. */
 
-import { chaikin, subdivideClosedPolygon, resampleSmoothQuad, douglasPeuckerClosed } from './geometry'
+import { chaikin, subdivideClosedPolygon, resampleSmoothQuad } from './geometry'
 import { makePermutation, perlinNoise2D, perturbXY, perturbNormal } from './noise'
 import { projectToCanvas } from './projection'
 import { hexTerrainLayers } from '../store/mapStore'
@@ -43,121 +43,6 @@ export function coastalBlobTerrains(hex: GeneratedHex, realisticCoastline: boole
   const merged = new Set(base)
   merged.add(land)
   return [...merged]
-}
-
-// ── Feature repulsion ────────────────────────────────────────────────────────
-
-export type RepulsionSource = {
-  polyline: [number, number][]
-  radius: number    // canvas pixels
-  strength: number  // 0–1
-}
-
-function closestOnSegment(
-  px: number, py: number,
-  ax: number, ay: number,
-  bx: number, by: number,
-): { dist: number; cx: number; cy: number } {
-  const dx = bx - ax, dy = by - ay
-  const len2 = dx * dx + dy * dy
-  if (len2 < 1e-10) return { dist: Math.hypot(px - ax, py - ay), cx: ax, cy: ay }
-  const t = Math.max(0, Math.min(1, ((px - ax) * dx + (py - ay) * dy) / len2))
-  const cx = ax + t * dx, cy = ay + t * dy
-  return { dist: Math.hypot(px - cx, py - cy), cx, cy }
-}
-
-/** Push blob polygon vertices away from feature polylines (rivers, roads, etc.).
- *  The repulsion boundary is noisy — it inherits the terrain's bumpFraction and
- *  sweepFreq so the valley edge looks like it belongs to that terrain type. */
-export function applyFeatureRepulsion(
-  polys: [number, number][][],
-  sources: RepulsionSource[],
-  bumpFraction: number,
-  sweepFreq: number,
-  R: number,
-  seed: number,
-): [number, number][][] {
-  if (sources.length === 0 || polys.length === 0) return polys
-  const perm = makePermutation(seed + 199)
-  const noiseFreq = sweepFreq / R
-
-  return polys.map(poly =>
-    poly.map(([x, y]) => {
-      let bestDist = Infinity, bestCx = x, bestCy = y
-      let bestRadius = 0, bestStrength = 0
-
-      for (const src of sources) {
-        if (src.radius <= 0 || src.polyline.length < 2) continue
-        const line = src.polyline
-        // Quick bbox pre-check to skip distant polylines
-        let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity
-        for (const [lx, ly] of line) {
-          if (lx < minX) minX = lx; if (lx > maxX) maxX = lx
-          if (ly < minY) minY = ly; if (ly > maxY) maxY = ly
-        }
-        if (x < minX - src.radius || x > maxX + src.radius ||
-            y < minY - src.radius || y > maxY + src.radius) continue
-
-        for (let i = 0; i < line.length - 1; i++) {
-          const r = closestOnSegment(x, y, line[i][0], line[i][1], line[i + 1][0], line[i + 1][1])
-          if (r.dist < bestDist) {
-            bestDist = r.dist; bestCx = r.cx; bestCy = r.cy
-            bestRadius = src.radius; bestStrength = src.strength
-          }
-        }
-      }
-
-      if (bestDist >= bestRadius) return [x, y] as [number, number]
-
-      const noise = (perlinNoise2D(x * noiseFreq, y * noiseFreq, perm) + 1) / 2
-      const noisyRadius = bestRadius * (1 + noise * bumpFraction)
-      if (bestDist >= noisyRadius) return [x, y] as [number, number]
-
-      const len = bestDist > 1e-6 ? bestDist : 1
-      const awayX = (x - bestCx) / len
-      const awayY = (y - bestCy) / len
-      const pushMag = (noisyRadius - bestDist) / noisyRadius * bestStrength * noisyRadius
-      return [x + awayX * pushMag, y + awayY * pushMag] as [number, number]
-    })
-  )
-}
-
-/** Build an organic closed polygon around a polyline that can be used as a
- *  hole (evenodd fill) to carve a natural-looking gap through terrain blobs.
- *  Width varies with Perlin noise using the terrain's own bump/sweepFreq params. */
-export function buildCorridorPolygon(
-  pts: [number, number][],
-  halfWidth: number,
-  bumpFraction: number,
-  sweepFreq: number,
-  R: number,
-  seed: number,
-): [number, number][] {
-  if (pts.length < 2 || halfWidth <= 0) return []
-  const perm = makePermutation(seed + 777)
-  const noiseFreq = sweepFreq / R
-  const noiseAmp = halfWidth * bumpFraction
-
-  const leftSide: [number, number][] = []
-  const rightSide: [number, number][] = []
-
-  for (let i = 0; i < pts.length; i++) {
-    let tx: number, ty: number
-    if (i === 0) { tx = pts[1][0] - pts[0][0]; ty = pts[1][1] - pts[0][1] }
-    else if (i === pts.length - 1) { tx = pts[i][0] - pts[i-1][0]; ty = pts[i][1] - pts[i-1][1] }
-    else { tx = pts[i+1][0] - pts[i-1][0]; ty = pts[i+1][1] - pts[i-1][1] }
-    const len = Math.hypot(tx, ty)
-    if (len < 1e-6) { leftSide.push(pts[i]); rightSide.push(pts[i]); continue }
-    const nx = -ty / len, ny = tx / len
-
-    const [x, y] = pts[i]
-    const noise = perlinNoise2D(x * noiseFreq, y * noiseFreq, perm)
-    const w = Math.max(0, halfWidth + noise * noiseAmp)
-    leftSide.push([x + nx * w, y + ny * w])
-    rightSide.push([x - nx * w, y - ny * w])
-  }
-
-  return [...leftSide, ...rightSide.reverse()]
 }
 
 // ── Blob shape helpers ───────────────────────────────────────────────────────
@@ -306,8 +191,6 @@ export function shapeTerrainBlobs(
   lobeDirection: number,
   R: number,
   blobSeeds: Record<string, number> = {},
-  polygonize: number = 0,
-  simplify: number = 0,
 ): { terrain: string; polys: [number, number][][]; blobKeys: string[] }[] {
   const result: { terrain: string; polys: [number, number][][]; blobKeys: string[] }[] = []
 
@@ -325,14 +208,8 @@ export function shapeTerrainBlobs(
       const { seed } = rawSeeds[i]
 
       let p: [number, number][] = poly
-
-      // DP simplification — merge nearly-collinear hex edges into longer straight runs
-      if (simplify > 0) p = douglasPeuckerClosed(p, simplify * R)
-
-      // preSmoothVar scaled by polygonize — skipped entirely in polygon mode
-      const effectiveSmooth = smooth * polygonize
-      const smoothPasses = Math.floor(effectiveSmooth)
-      const smoothRemainder = effectiveSmooth - smoothPasses
+      const smoothPasses = Math.floor(smooth)
+      const smoothRemainder = smooth - smoothPasses
       for (let pass = 0; pass < smoothPasses; pass++) p = preSmoothVar(p, 0.4)
       if (smoothRemainder > 0) p = preSmoothVar(p, 0.4 * smoothRemainder)
       p = resizeToHexAnchors(p, hexCenters, resizeS)
@@ -344,8 +221,7 @@ export function shapeTerrainBlobs(
       const permP1y = makePermutation(seed + 31)
       p = perturbXY(p, permP1x, permP1y, sweepFreq / R, p1Amp)
 
-      // resampleSmoothQuad — skipped in polygon mode, scaled in between
-      if (polygonize > 0) p = resampleSmoothQuad(p, Math.max(1, Math.round(polygonize * 5)))
+      p = resampleSmoothQuad(p, 5)
 
       const permP2a = makePermutation(seed + 67)
       const permP2b = makePermutation(seed + 113)
@@ -374,14 +250,12 @@ export function buildTerrainBlobsV2(
   lobeThreshold: number,
   lobeDirection: number,
   R: number,
-  polygonize: number = 0,
-  simplify: number = 0,
 ): { terrain: string; polys: [number, number][][] }[] {
   return shapeTerrainBlobs(
     buildTerrainBlobTopology(projected, R),
     smooth, offsetFraction, bumpFraction,
     sweepFreq, lobeFreq, lobeAmp, lobeThreshold, lobeDirection,
-    R, {}, polygonize, simplify,
+    R,
   )
 }
 
