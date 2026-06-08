@@ -168,6 +168,7 @@ export const TerrainViewCanvas = forwardRef<TerrainViewCanvasHandle, { surroundC
     terrainBlobSmooth, terrainBlobOffset, terrainBlobBump,
     terrainBlobSweepFreq, terrainBlobLobeFreq, terrainBlobLobeAmp, terrainBlobLobeThreshold, terrainBlobLobeDirection,
     terrainBlobSimplify,
+    terrainBlobSubdivide,
     terrainBlobFeather,
     terrainBlobOutlineEnabled, terrainBlobOutlineColor, terrainBlobOutlineWidth,
 terrainColors, terrainTextureScales, terrainTextureBlendModes, terrainTextureOpacities,
@@ -477,6 +478,7 @@ terrainColors, terrainTextureScales, terrainTextureBlendModes, terrainTextureOpa
   const terrainBlobLobeThresholdRef = useRef(terrainBlobLobeThreshold)
   const terrainBlobLobeDirectionRef = useRef(terrainBlobLobeDirection)
   const terrainBlobSimplifyRef = useRef(terrainBlobSimplify)
+  const terrainBlobSubdivideRef = useRef(terrainBlobSubdivide)
   const terrainBlobFeatherRef = useRef(terrainBlobFeather)
   const terrainBlobOutlineEnabledRef = useRef(terrainBlobOutlineEnabled)
   const terrainBlobOutlineColorRef = useRef(terrainBlobOutlineColor)
@@ -769,6 +771,7 @@ terrainColors, terrainTextureScales, terrainTextureBlendModes, terrainTextureOpa
   terrainBlobLobeThresholdRef.current = terrainBlobLobeThreshold
   terrainBlobLobeDirectionRef.current = terrainBlobLobeDirection
   terrainBlobSimplifyRef.current = terrainBlobSimplify
+  terrainBlobSubdivideRef.current = terrainBlobSubdivide
   terrainBlobFeatherRef.current = terrainBlobFeather
   terrainBlobOutlineEnabledRef.current = terrainBlobOutlineEnabled
   terrainBlobOutlineColorRef.current = terrainBlobOutlineColor
@@ -1260,7 +1263,7 @@ const roadV3TierGeomRef = useRef(roadV3TierGeom)
         const h = blobHandleOverrides[ck]
         return h && Object.keys(h).length > 0 ? `${ck}:${JSON.stringify(h)}` : ''
       }).filter(Boolean).join('~')
-      const styleKey = `${smooth}|${offset}|${bump}|${sweepFreq}|${lobeFreq}|${lobeAmp}|${lobeThreshold}|${lobeDirection}|${terrainBlobSimplify}|${hexRadius}|${JSON.stringify(blobSeeds)}|${handleKey}`
+      const styleKey = `${smooth}|${offset}|${bump}|${sweepFreq}|${lobeFreq}|${lobeAmp}|${lobeThreshold}|${lobeDirection}|${terrainBlobSimplify}|${terrainBlobSubdivide}|${hexRadius}|${JSON.stringify(blobSeeds)}|${handleKey}`
       const cached = perTerrainBlobCache.current.get(terrain)
 
       // Compute rawPolys (topology cache)
@@ -1311,7 +1314,7 @@ const roadV3TierGeomRef = useRef(roadV3TierGeom)
       }
 
       const hexCenters = [...hexOrigCenterByKey.values()]
-      const shapedBlobs = shapeTerrainBlobs([{ terrain, rawPolys, hexCenters }], smooth, offset, bump, sweepFreq, lobeFreq, lobeAmp, lobeThreshold, lobeDirection, hexRadius, blobSeeds, terrainBlobSimplify)
+      const shapedBlobs = shapeTerrainBlobs([{ terrain, rawPolys, hexCenters }], smooth, offset, bump, sweepFreq, lobeFreq, lobeAmp, lobeThreshold, lobeDirection, hexRadius, blobSeeds, terrainBlobSimplify, terrainBlobSubdivide)
 
       // Post-generation warp: displace final polygon vertices based on dragged edge handles.
       // Anchor = original edge midpoint (pre-drag). Sigma = 0.6R → tight, local effect.
@@ -1352,7 +1355,7 @@ const roadV3TierGeomRef = useRef(roadV3TierGeom)
     }
     prevTerrainBlobsRef.current = result
     return result
-  }, [isTerrainPainting, projectedHexes, blobComponentsByTerrain, terrainBlobOverrides, terrainTypeBlobStyles, terrainBlobSmooth, terrainBlobOffset, terrainBlobBump, terrainBlobSweepFreq, terrainBlobLobeFreq, terrainBlobLobeAmp, terrainBlobLobeThreshold, terrainBlobLobeDirection, terrainBlobSimplify, hexRadius, realisticCoastline, blobSeeds, elevationOverridesTerrain, blobHandleOverrides])
+  }, [isTerrainPainting, projectedHexes, blobComponentsByTerrain, terrainBlobOverrides, terrainTypeBlobStyles, terrainBlobSmooth, terrainBlobOffset, terrainBlobBump, terrainBlobSweepFreq, terrainBlobLobeFreq, terrainBlobLobeAmp, terrainBlobLobeThreshold, terrainBlobLobeDirection, terrainBlobSimplify, terrainBlobSubdivide, hexRadius, realisticCoastline, blobSeeds, elevationOverridesTerrain, blobHandleOverrides])
   const defaultTerrainBlobsRef = useRef(defaultTerrainBlobs)
   defaultTerrainBlobsRef.current = defaultTerrainBlobs
 
@@ -1383,13 +1386,13 @@ const roadV3TierGeomRef = useRef(roadV3TierGeom)
       const hexKey = `eot:${elevationOverridesTerrain}|` + bgProjected.map(p => `${p.hex.q},${p.hex.r}`).join('|')
       const cached = backgroundBlobCache.current.get(terrain)
       if (cached?.hexKey === hexKey) return cached.blobs
-      const blobs = buildTerrainBlobsV2(bgProjected, terrainBlobSmooth, terrainBlobOffset, terrainBlobBump, terrainBlobSweepFreq, terrainBlobLobeFreq, terrainBlobLobeAmp, terrainBlobLobeThreshold, terrainBlobLobeDirection, hexRadius, terrainBlobSimplify)
+      const blobs = buildTerrainBlobsV2(bgProjected, terrainBlobSmooth, terrainBlobOffset, terrainBlobBump, terrainBlobSweepFreq, terrainBlobLobeFreq, terrainBlobLobeAmp, terrainBlobLobeThreshold, terrainBlobLobeDirection, hexRadius, terrainBlobSimplify, terrainBlobSubdivide)
       backgroundBlobCache.current.set(terrain, { hexKey, blobs })
       return blobs
     })
     prevBackgroundBlobsRef.current = result
     return result
-  }, [isTerrainPainting, projectedHexes, hexRadius, terrainLayersEnabled, terrainBlobSmooth, terrainBlobOffset, terrainBlobBump, terrainBlobSweepFreq, terrainBlobLobeFreq, terrainBlobLobeAmp, terrainBlobLobeThreshold, terrainBlobLobeDirection, terrainBlobSimplify, elevationOverridesTerrain])
+  }, [isTerrainPainting, projectedHexes, hexRadius, terrainLayersEnabled, terrainBlobSmooth, terrainBlobOffset, terrainBlobBump, terrainBlobSweepFreq, terrainBlobLobeFreq, terrainBlobLobeAmp, terrainBlobLobeThreshold, terrainBlobLobeDirection, terrainBlobSimplify, terrainBlobSubdivide, elevationOverridesTerrain])
   const defaultBackgroundBlobsRef = useRef(defaultBackgroundBlobs)
   defaultBackgroundBlobsRef.current = defaultBackgroundBlobs
 
@@ -1411,7 +1414,7 @@ const roadV3TierGeomRef = useRef(roadV3TierGeom)
       return prevLakeBlobsRef.current
     }
     const hexKey = defaultWaterProjected.map(p => `${p.hex.q},${p.hex.r}`).join('|')
-    const styleKey = `${terrainBlobSmooth}|${terrainBlobOffset}|${terrainBlobBump}|${terrainBlobSweepFreq}|${terrainBlobLobeFreq}|${terrainBlobLobeAmp}|${terrainBlobLobeThreshold}|${terrainBlobLobeDirection}|${terrainBlobSimplify}|${hexRadius}`
+    const styleKey = `${terrainBlobSmooth}|${terrainBlobOffset}|${terrainBlobBump}|${terrainBlobSweepFreq}|${terrainBlobLobeFreq}|${terrainBlobLobeAmp}|${terrainBlobLobeThreshold}|${terrainBlobLobeDirection}|${terrainBlobSimplify}|${terrainBlobSubdivide}|${hexRadius}`
     if (lakeBlobCache.current?.hexKey === hexKey && lakeBlobCache.current?.styleKey === styleKey) {
       return lakeBlobCache.current.blobs
     }
@@ -1426,11 +1429,11 @@ const roadV3TierGeomRef = useRef(roadV3TierGeom)
       waterRawPolys = entry?.rawPolys ?? []
       waterHexCenters = entry?.hexCenters ?? []
     }
-    const result = shapeTerrainBlobs([{ terrain: 'water', rawPolys: waterRawPolys, hexCenters: waterHexCenters }], terrainBlobSmooth, terrainBlobOffset, terrainBlobBump, terrainBlobSweepFreq, terrainBlobLobeFreq, terrainBlobLobeAmp, terrainBlobLobeThreshold, terrainBlobLobeDirection, hexRadius, {}, terrainBlobSimplify)
+    const result = shapeTerrainBlobs([{ terrain: 'water', rawPolys: waterRawPolys, hexCenters: waterHexCenters }], terrainBlobSmooth, terrainBlobOffset, terrainBlobBump, terrainBlobSweepFreq, terrainBlobLobeFreq, terrainBlobLobeAmp, terrainBlobLobeThreshold, terrainBlobLobeDirection, hexRadius, {}, terrainBlobSimplify, terrainBlobSubdivide)
     lakeBlobCache.current = { hexKey, rawPolys: waterRawPolys, hexCenters: waterHexCenters, styleKey, blobs: result }
     prevLakeBlobsRef.current = result
     return result
-  }, [isTerrainPainting, projectedHexes, blobComponents, waterOverrides, terrainBlobSmooth, terrainBlobOffset, terrainBlobBump, terrainBlobSweepFreq, terrainBlobLobeFreq, terrainBlobLobeAmp, terrainBlobLobeThreshold, terrainBlobLobeDirection, terrainBlobSimplify, hexRadius])
+  }, [isTerrainPainting, projectedHexes, blobComponents, waterOverrides, terrainBlobSmooth, terrainBlobOffset, terrainBlobBump, terrainBlobSweepFreq, terrainBlobLobeFreq, terrainBlobLobeAmp, terrainBlobLobeThreshold, terrainBlobLobeDirection, terrainBlobSimplify, terrainBlobSubdivide, hexRadius])
   const defaultWaterBlobsRef = useRef(defaultWaterBlobs)
   defaultWaterBlobsRef.current = defaultWaterBlobs
 
@@ -1469,7 +1472,7 @@ const roadV3TierGeomRef = useRef(roadV3TierGeom)
         ? cachedTopo
         : (buildTerrainBlobTopology(elevProjected, hexRadius).find(e => e.terrain === cls) ?? null)
       if (!topoEntry) return { topo: null, polys: [] as [number, number][][] }
-      const shaped = shapeTerrainBlobs([topoEntry], smooth, offset, bump, sweepFreq, lobeFreq, lobeAmp, lobeThreshold, lobeDirection, hexRadius, {}, terrainBlobSimplify)
+      const shaped = shapeTerrainBlobs([topoEntry], smooth, offset, bump, sweepFreq, lobeFreq, lobeAmp, lobeThreshold, lobeDirection, hexRadius, {}, terrainBlobSimplify, terrainBlobSubdivide)
       return { topo: topoEntry, polys: shaped.find(b => b.terrain === cls)?.polys ?? [] }
     }
     const hillsResult = makePolys('hills', elevationBlobsCache.current?.topoHills)
@@ -1478,7 +1481,7 @@ const roadV3TierGeomRef = useRef(roadV3TierGeom)
     elevationBlobsCache.current = { hexKey, topoHills: hillsResult.topo, topoMountains: mountainsResult.topo, styleKey, blobs }
     prevElevationBlobsRef.current = blobs
     return blobs
-  }, [isTerrainPainting, projectedHexes, terrainBlobSmooth, terrainBlobOffset, terrainBlobBump, terrainBlobSweepFreq, terrainBlobLobeFreq, terrainBlobLobeAmp, terrainBlobLobeThreshold, terrainBlobLobeDirection, terrainBlobSimplify, hexRadius, elevationTypeBlobStyles, elevationImportEnabled])
+  }, [isTerrainPainting, projectedHexes, terrainBlobSmooth, terrainBlobOffset, terrainBlobBump, terrainBlobSweepFreq, terrainBlobLobeFreq, terrainBlobLobeAmp, terrainBlobLobeThreshold, terrainBlobLobeDirection, terrainBlobSimplify, terrainBlobSubdivide, hexRadius, elevationTypeBlobStyles, elevationImportEnabled])
   const defaultElevationBlobsRef = useRef(defaultElevationBlobs)
   defaultElevationBlobsRef.current = defaultElevationBlobs
 
@@ -1835,6 +1838,7 @@ const roadV3TierGeomRef = useRef(roadV3TierGeom)
             tsRef?.lobeDirection   ?? terrainBlobLobeDirectionRef.current,
             R,
             terrainBlobSimplifyRef.current,
+            terrainBlobSubdivideRef.current,
           )
         })
         const waterOverriddenKeys = new Set(Object.keys(waterOverridesRef.current))
@@ -1846,7 +1850,7 @@ const roadV3TierGeomRef = useRef(roadV3TierGeom)
           })
           .map(p => ({ hex: { ...p.hex, terrain: 'water' }, verts: p.verts }))
         exportWaterBlobs = defaultWaterProjected.length > 0
-          ? buildTerrainBlobsV2(defaultWaterProjected, terrainBlobSmoothRef.current, terrainBlobOffsetRef.current, terrainBlobBumpRef.current, terrainBlobSweepFreqRef.current, terrainBlobLobeFreqRef.current, terrainBlobLobeAmpRef.current, terrainBlobLobeThresholdRef.current, terrainBlobLobeDirectionRef.current, R, terrainBlobSimplifyRef.current)
+          ? buildTerrainBlobsV2(defaultWaterProjected, terrainBlobSmoothRef.current, terrainBlobOffsetRef.current, terrainBlobBumpRef.current, terrainBlobSweepFreqRef.current, terrainBlobLobeFreqRef.current, terrainBlobLobeAmpRef.current, terrainBlobLobeThresholdRef.current, terrainBlobLobeDirectionRef.current, R, terrainBlobSimplifyRef.current, terrainBlobSubdivideRef.current)
           : []
       }
       _drawTerrain(ctx, { ...terrainParams, backgroundTerrainBlobs: defaultBackgroundBlobsRef.current, defaultTerrainBlobs: exportTerrainBlobs, defaultWaterBlobs: exportWaterBlobs })

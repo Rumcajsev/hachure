@@ -192,6 +192,7 @@ export function shapeTerrainBlobs(
   R: number,
   blobSeeds: Record<string, number> = {},
   simplify: number = 0,
+  subdivide: number = 0.25,
 ): { terrain: string; polys: [number, number][][]; blobKeys: string[] }[] {
   const result: { terrain: string; polys: [number, number][][]; blobKeys: string[] }[] = []
 
@@ -215,9 +216,7 @@ export function shapeTerrainBlobs(
       if (smoothRemainder > 0) p = preSmoothVar(p, 0.4 * smoothRemainder)
       p = resizeToHexAnchors(p, hexCenters, resizeS)
 
-      // R * 0.25 (was 0.15) halves the point count before perturbXY and the
-      // 5× resampleSmoothQuad multiplier, cutting perturbNormal cost by ~40%.
-      p = subdivideClosedPolygon(p, R * 0.25)
+      p = subdivideClosedPolygon(p, R * subdivide)
       const permP1x = makePermutation(seed)
       const permP1y = makePermutation(seed + 31)
       p = perturbXY(p, permP1x, permP1y, sweepFreq / R, p1Amp)
@@ -252,12 +251,13 @@ export function buildTerrainBlobsV2(
   lobeDirection: number,
   R: number,
   simplify: number = 0,
+  subdivide: number = 0.25,
 ): { terrain: string; polys: [number, number][][] }[] {
   return shapeTerrainBlobs(
     buildTerrainBlobTopology(projected, R),
     smooth, offsetFraction, bumpFraction,
     sweepFreq, lobeFreq, lobeAmp, lobeThreshold, lobeDirection,
-    R, {}, simplify,
+    R, {}, simplify, subdivide,
   )
 }
 
