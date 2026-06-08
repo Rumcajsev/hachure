@@ -33,7 +33,8 @@ export function douglasPeuckerClosed(pts: [number, number][], epsilon: number): 
   }
   const half1 = douglasPeucker([...pts.slice(0, splitIdx + 1)], epsilon)
   const half2 = douglasPeucker([...pts.slice(splitIdx), pts[0]], epsilon)
-  return [...half1.slice(0, -1), ...half2.slice(0, -1)]
+  const result = [...half1.slice(0, -1), ...half2.slice(0, -1)]
+  return result.length >= 3 ? result : pts
 }
 
 export function hexAdjacent(q1: number, r1: number, q2: number, r2: number): boolean {
