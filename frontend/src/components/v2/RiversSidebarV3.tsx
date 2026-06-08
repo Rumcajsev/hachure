@@ -25,7 +25,7 @@ const RIVER_STROKE_GROUPS = [{ label: 'Dark', colors: [...PALETTE_RIVER_OUTLINE]
 const CANAL_FILL_GROUPS   = [{ label: 'Teal', colors: [...PALETTE_CANAL] }]
 const CANAL_STROKE_GROUPS = [{ label: 'Dark', colors: [...PALETTE_CANAL_OUTLINE] }]
 
-type FlyoutId = 'river-0' | 'river-1' | 'river-2' | 'canal' | 'osm' | 'segment' | 'river-labels' | null
+type FlyoutId = 'river-0' | 'river-1' | 'river-2' | 'osm' | 'segment' | 'river-labels' | null
 
 const TIER_COLORS = ['#6090c8', '#8090b8', '#a0a8c0'] as const
 
@@ -497,13 +497,13 @@ export function RiversSidebarV3() {
 
         <V2Divider label="Paint" />
 
-        {([0, 1, 2] as const).map(tier => (
+        {([0, 1, 2] as const).map((tier, i) => (
           <BrushRow
             key={tier}
             label={tierStyles[tier].label}
             color={tierStyles[tier].color}
             active={riverEditMode}
-            shortcut={tier === 0 ? '1' : undefined}
+            shortcut={(['Q', 'W', 'E'] as const)[i]}
             showCog
             cogOpen={flyout === `river-${tier}`}
             onSelect={() => setActiveTool(riverEditMode ? { type: 'none' } : { type: 'river-paint' })}
@@ -522,31 +522,9 @@ export function RiversSidebarV3() {
         <TGap />
 
         <BrushRow
-          label="Canal"
-          color={canalStyle.color}
-          active={canalEditMode}
-          shortcut="2"
-          showCog
-          cogOpen={flyout === 'canal'}
-          onSelect={() => setActiveTool(canalEditMode ? { type: 'none' } : { type: 'canal-paint' })}
-          onCog={() => toggle('canal')}
-        />
-        {canalEditMode && (
-          <BrushRow
-            label="— select"
-            color={canalSelectMode ? canalStyle.color : t.inkFaint}
-            active={canalSelectMode}
-            onSelect={() => setActiveTool(canalSelectMode ? { type: 'canal-paint' } : { type: 'canal-select' })}
-          />
-        )}
-
-        <TGap />
-
-        <BrushRow
           label="Edit nodes"
           color={riverNodeEditMode ? '#8ab8d8' : t.inkFaint}
           active={riverNodeEditMode}
-          shortcut="4"
           onSelect={() => setActiveTool(riverNodeEditMode ? { type: 'none' } : { type: 'river-node-edit' })}
         />
 
@@ -567,7 +545,6 @@ export function RiversSidebarV3() {
       {flyout === 'river-0' && <RiverTierFlyout tier={0} onClose={() => setFlyout(null)} />}
       {flyout === 'river-1' && <RiverTierFlyout tier={1} onClose={() => setFlyout(null)} />}
       {flyout === 'river-2' && <RiverTierFlyout tier={2} onClose={() => setFlyout(null)} />}
-      {flyout === 'canal'        && <CanalStyleFlyout onClose={() => setFlyout(null)} />}
       {flyout === 'osm'          && <OsmRiversFlyout  onClose={() => setFlyout(null)} />}
       {flyout === 'river-labels' && <RiverLabelFlyout onClose={() => setFlyout(null)} />}
       {flyout === 'segment'    && (

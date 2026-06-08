@@ -40,7 +40,6 @@ const IMPORT_ICON = (
 type FlyoutState =
   | null
   | { kind: 'river-0' } | { kind: 'river-1' } | { kind: 'river-2' }
-  | { kind: 'canal-style' }
   | { kind: 'osm-rivers' }
   | { kind: 'river-segment'; segMode: 'river' | 'canal' }
   | { kind: 'river-labels' }
@@ -179,9 +178,9 @@ function PlacedSettlementsFlyout({
 export function FeaturesSidebarV3() {
   const t = useTheme()
   const {
-    riverEditMode, canalEditMode, riverNodeEditMode,
-    riverSelectMode, canalSelectMode,
-    riverTierStyles, riverStyle, canalStyle,
+    riverEditMode, riverNodeEditMode,
+    riverSelectMode,
+    riverTierStyles, riverStyle,
     selectedSegmentKeys, setSelectedSegmentKeys,
     selectedCanalSegmentKeys, setSelectedCanalSegmentKeys,
     roadPaintMode, roadPaintBrush, roadPaintEraser,
@@ -249,7 +248,7 @@ export function FeaturesSidebarV3() {
         {/* ── RIVERS ───────────────────────────────────────────────── */}
         <V2Divider label="Rivers" />
 
-        {([0, 1, 2] as const).map(tier => {
+        {([0, 1, 2] as const).map((tier, i) => {
           const ts = (riverTierStyles ?? DEFAULT_RIVER_TIER_STYLES)[tier]
           const kind = `river-${tier}` as 'river-0' | 'river-1' | 'river-2'
           return (
@@ -258,7 +257,7 @@ export function FeaturesSidebarV3() {
               label={ts.label}
               color={ts.color}
               active={riverEditMode}
-              shortcut={tier === 0 ? '1' : undefined}
+              shortcut={['Q', 'W', 'E'][i]}
               showCog
               cogOpen={flyout?.kind === kind}
               onSelect={() => setActiveTool(riverEditMode ? { type: 'none' } : { type: 'river-paint' })}
@@ -278,31 +277,9 @@ export function FeaturesSidebarV3() {
         <TGap />
 
         <BrushRow
-          label="Canal"
-          color={canalStyle.color}
-          active={canalEditMode}
-          shortcut="2"
-          showCog
-          cogOpen={flyout?.kind === 'canal-style'}
-          onSelect={() => setActiveTool(canalEditMode ? { type: 'none' } : { type: 'canal-paint' })}
-          onCog={() => open({ kind: 'canal-style' })}
-        />
-        {canalEditMode && (
-          <BrushRow
-            label="— select"
-            color={canalSelectMode ? canalStyle.color : t.inkFaint}
-            active={canalSelectMode}
-            onSelect={() => setActiveTool(canalSelectMode ? { type: 'canal-paint' } : { type: 'canal-select' })}
-          />
-        )}
-
-        <TGap />
-
-        <BrushRow
           label="Edit nodes"
           color={riverNodeEditMode ? '#8ab8d8' : t.inkFaint}
           active={riverNodeEditMode}
-          shortcut="4"
           onSelect={() => setActiveTool(riverNodeEditMode ? { type: 'none' } : { type: 'river-node-edit' })}
         />
 
@@ -325,7 +302,7 @@ export function FeaturesSidebarV3() {
             label={label}
             color={color}
             active={roadPaintMode && roadPaintBrush === tier && !roadPaintEraser}
-            shortcut={String(tier + 1)}
+            shortcut={['1', '2', '3'][tier]}
             showCog
             cogOpen={flyout?.kind === 'road-style' && (flyout as Extract<FlyoutState, { kind: 'road-style' }>).tier === tier}
             onSelect={() => {
@@ -339,7 +316,7 @@ export function FeaturesSidebarV3() {
           label="Eraser"
           color={t.inkFaint}
           active={roadPaintMode && roadPaintEraser}
-          shortcut="E"
+          shortcut="R"
           onSelect={() => {
             if (roadPaintMode && roadPaintEraser) setActiveTool({ type: 'none' })
             else setActiveTool({ type: 'road', tier: roadPaintBrush, erasing: true })
@@ -417,7 +394,7 @@ export function FeaturesSidebarV3() {
               label={TIER_LABELS[tier]}
               color={ts.fillColor || ts.strokeColor}
               active={settlementPlaceTier === tier}
-              shortcut={String(tier)}
+              shortcut={['Z', 'X', 'C', 'V'][tier - 1]}
               showCog
               cogOpen={flyout?.kind === 'tier' && (flyout as Extract<FlyoutState, { kind: 'tier' }>).tier === tier}
               onSelect={() => selectTier(tier)}
@@ -468,7 +445,6 @@ export function FeaturesSidebarV3() {
       {flyout?.kind === 'river-0' && <RiverTierFlyout tier={0} onClose={() => setFlyout(null)} />}
       {flyout?.kind === 'river-1' && <RiverTierFlyout tier={1} onClose={() => setFlyout(null)} />}
       {flyout?.kind === 'river-2' && <RiverTierFlyout tier={2} onClose={() => setFlyout(null)} />}
-      {flyout?.kind === 'canal-style'       && <CanalStyleFlyout onClose={() => setFlyout(null)} />}
       {flyout?.kind === 'osm-rivers'        && <OsmRiversFlyout  onClose={() => setFlyout(null)} />}
       {flyout?.kind === 'river-labels'      && <RiverLabelFlyout onClose={() => setFlyout(null)} />}
       {flyout?.kind === 'river-segment'     && (
