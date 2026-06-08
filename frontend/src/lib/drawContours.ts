@@ -117,6 +117,44 @@ function chainSegments(segs: Seg[]): [number, number][][] {
   return chains
 }
 
+// Distance-based thinning — keeps only points at least minDist apart.
+// Reduces point density so subsequent smoothing has real geometry to work with.
+function thinByDistance(pts: [number, number][], minDist: number, closed: boolean): [number, number][] {
+  if (pts.length <= 2) return pts
+  const out: [number, number][] = [pts[0]]
+  for (let i = 1; i < pts.length - 1; i++) {
+    const prev = out[out.length - 1]
+    const dx = pts[i][0] - prev[0], dy = pts[i][1] - prev[1]
+    if (Math.sqrt(dx * dx + dy * dy) >= minDist) out.push(pts[i])
+  }
+  if (!closed) out.push(pts[pts.length - 1])
+  return out.length >= 2 ? out : pts
+}
+
+// Gaussian-weighted 3-point average — open chain endpoints stay pinned.
+function gaussianSmoothPass(pts: [number, number][], closed: boolean): [number, number][] {
+  const n = pts.length
+  const out: [number, number][] = new Array(n)
+  for (let i = 0; i < n; i++) {
+    if (!closed && (i === 0 || i === n - 1)) { out[i] = pts[i]; continue }
+    const prev = pts[(i - 1 + n) % n]
+    const cur  = pts[i]
+    const next = pts[(i + 1) % n]
+    out[i] = [prev[0] * 0.25 + cur[0] * 0.5 + next[0] * 0.25,
+              prev[1] * 0.25 + cur[1] * 0.5 + next[1] * 0.25]
+  }
+  return out
+}
+
+function smoothChain(pts: [number, number][], closed: boolean, passes: number, cellW: number): [number, number][] {
+  // Thin first so passes have meaningful spacing to work with, then smooth.
+  // minDist grows with passes: at 1 pass almost no thinning, at 10 passes very aggressive.
+  const minDist = cellW * passes * 1.5
+  let result = thinByDistance(pts, minDist, closed)
+  for (let i = 0; i < passes; i++) result = gaussianSmoothPass(result, closed)
+  return result
+}
+
 // Internal render scale — canvas is drawn stretched back to pw×ph by the caller,
 // so this purely governs how many pixels the vector paths are rasterised at.
 const CONTOUR_SCALE = 4
@@ -186,24 +224,30 @@ export function computeContours(
     ctx.lineCap = 'round'
     ctx.lineJoin = 'round'
 
+    const cellW = pw / width
+
     for (const raw of chains) {
-      const pts: [number, number][] = raw.map(([x, y]) => [toX(x), toY(y)])
-      const n = pts.length
-      if (n < 2) continue
+      let pts: [number, number][] = raw.map(([x, y]) => [toX(x), toY(y)])
+      if (pts.length < 2) continue
 
       // Detect closed loops: first and last point within half a heightmap cell
-      const dx = pts[0][0] - pts[n - 1][0]
-      const dy = pts[0][1] - pts[n - 1][1]
-      const isClosed = Math.sqrt(dx * dx + dy * dy) < (pw / width) * 0.6
+      const dx = pts[0][0] - pts[pts.length - 1][0]
+      const dy = pts[0][1] - pts[pts.length - 1][1]
+      const isClosed = Math.sqrt(dx * dx + dy * dy) < cellW * 0.6
 
+      if (smoothPasses > 0 && pts.length >= 3) {
+        pts = smoothChain(pts, isClosed, smoothPasses, cellW)
+      }
+
+      const n = pts.length
       ctx.beginPath()
       if (smoothPasses === 0 || n < 3) {
-        // Raw marching-squares output — straight lineTo segments
+        // Raw output — straight segments
         ctx.moveTo(pts[0][0], pts[0][1])
         for (let i = 1; i < n; i++) ctx.lineTo(pts[i][0], pts[i][1])
         if (isClosed) ctx.closePath()
       } else if (isClosed) {
-        // Closed loop: quadratic bezier through midpoints, wrapping seamlessly
+        // Closed loop: bezier through midpoints, seamless wrap
         const mx0 = (pts[n - 1][0] + pts[0][0]) / 2
         const my0 = (pts[n - 1][1] + pts[0][1]) / 2
         ctx.moveTo(mx0, my0)
@@ -215,11 +259,9 @@ export function computeContours(
         ctx.quadraticCurveTo(pts[n - 1][0], pts[n - 1][1], mx0, my0)
         ctx.closePath()
       } else {
-        // Open chain: bezier between midpoints, hard endpoints preserved
+        // Open chain: bezier through midpoints, hard endpoints preserved
         ctx.moveTo(pts[0][0], pts[0][1])
-        const mx1 = (pts[0][0] + pts[1][0]) / 2
-        const my1 = (pts[0][1] + pts[1][1]) / 2
-        ctx.lineTo(mx1, my1)
+        ctx.lineTo((pts[0][0] + pts[1][0]) / 2, (pts[0][1] + pts[1][1]) / 2)
         for (let i = 1; i < n - 1; i++) {
           const mx = (pts[i][0] + pts[i + 1][0]) / 2
           const my = (pts[i][1] + pts[i + 1][1]) / 2

@@ -867,6 +867,36 @@ function TerrainCogFlyout({ terrain, onClose }: { terrain: string; onClose: () =
           />
         </>}
       </div>
+
+      {/* Feature repulsion */}
+      <div style={{ borderTop: `1px solid ${tk.line2}`, paddingTop: 4 }}>
+        <div style={{ padding: '6px 12px 4px', fontFamily: tk.mono, fontSize: 8.5, letterSpacing: 0.8, color: tk.inkFaint, textTransform: 'uppercase' as const, fontWeight: 600 }}>
+          Feature repulsion
+        </div>
+        <MiniSlider
+          label="River pushback"
+          display={typeStyle?.riverRepulsionRadius ? `${typeStyle.riverRepulsionRadius.toFixed(1)}R` : 'off'}
+          value={Math.round((typeStyle?.riverRepulsionRadius ?? 0) * 10)}
+          min={0} max={30} step={1}
+          onChange={v => setTerrainTypeBlobStyle(terrain, { riverRepulsionRadius: v / 10 })}
+        />
+        <MiniSlider
+          label="Road pushback"
+          display={typeStyle?.roadRepulsionRadius ? `${typeStyle.roadRepulsionRadius.toFixed(1)}R` : 'off'}
+          value={Math.round((typeStyle?.roadRepulsionRadius ?? 0) * 10)}
+          min={0} max={30} step={1}
+          onChange={v => setTerrainTypeBlobStyle(terrain, { roadRepulsionRadius: v / 10 })}
+        />
+        {((typeStyle?.riverRepulsionRadius ?? 0) > 0 || (typeStyle?.roadRepulsionRadius ?? 0) > 0) && (
+          <MiniSlider
+            label="Strength"
+            display={`${Math.round((typeStyle?.repulsionStrength ?? 1) * 100)}%`}
+            value={Math.round((typeStyle?.repulsionStrength ?? 1) * 100)}
+            min={0} max={100} step={1}
+            onChange={v => setTerrainTypeBlobStyle(terrain, { repulsionStrength: v / 100 })}
+          />
+        )}
+      </div>
     </FlyoutShell>
   )
 }

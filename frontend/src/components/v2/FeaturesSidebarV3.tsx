@@ -194,7 +194,6 @@ export function FeaturesSidebarV3() {
     settlements,
     settlementPlaceTier, setSettlementPlaceTier,
     settlementTierStyles,
-    deleteSettlement, updateSettlement,
     settlementMoveIndex, setSettlementMoveIndex,
     urbanHexes, urbanPaintMode,
     showSettlementLabels, setShowSettlementLabels,
@@ -437,79 +436,11 @@ export function FeaturesSidebarV3() {
         <TriggerRow label="Style…" active={flyout?.kind === 'urban'} onClick={() => open({ kind: 'urban' })} />
 
         <TGap />
-        <V2Divider label={`Placed (${allPlaced.length})`} />
-        {allPlaced.length === 0 && (
-          <div style={{ padding: '4px 10px', fontFamily: t.sans, fontSize: 10, color: t.inkFaint, fontStyle: 'italic' }}>
-            click a tier then a hex
-          </div>
-        )}
-        {settlements.map((s, i) => {
-          if (!s.isCustom) return null
-          const ts = settlementTierStyles[(s.tier ?? 2) as SettlementTier]
-          const isMoving = settlementMoveIndex === i
-          const labelOpen = flyout?.kind === 'label' && (flyout as Extract<FlyoutState, { kind: 'label' }>).index === i
-          return (
-            <div
-              key={i}
-              style={{
-                display: 'grid', gridTemplateColumns: '16px 1fr 18px 18px 18px',
-                alignItems: 'center', gap: 4,
-                padding: '4px 8px', borderBottom: `1px solid ${t.line2}`,
-              }}
-            >
-              <TierIcon shape={ts.shape} size={ts.size} fill={ts.fillColor} stroke={ts.strokeColor} strokeWidth={ts.strokeWidth} />
-              {editingName === i ? (
-                <input
-                  autoFocus
-                  value={editingNameValue}
-                  onChange={e => setEditingNameValue(e.target.value)}
-                  onBlur={() => commitRename(i)}
-                  onKeyDown={e => { if (e.key === 'Enter') commitRename(i); if (e.key === 'Escape') setEditingName(null) }}
-                  style={{
-                    flex: 1, background: t.paper2, border: `1px solid ${t.line}`,
-                    color: t.ink, fontFamily: t.sans, fontSize: 10.5, padding: '1px 4px',
-                    minWidth: 0,
-                  }}
-                />
-              ) : (
-                <span
-                  style={{ fontFamily: t.sans, fontSize: 10.5, color: t.ink, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', cursor: 'text', minWidth: 0 }}
-                  onDoubleClick={() => startRename(i, s.name)}
-                  title="Double-click to rename"
-                >
-                  {s.name}
-                </span>
-              )}
-              <button
-                onClick={() => isMoving ? setSettlementMoveIndex(null) : setSettlementMoveIndex(i)}
-                title={isMoving ? 'Cancel move' : 'Move'}
-                style={{
-                  background: isMoving ? t.paper2 : 'none',
-                  border: `1px solid ${isMoving ? t.line : 'transparent'}`,
-                  color: isMoving ? t.ink : t.inkFaint,
-                  cursor: 'pointer', padding: '1px 2px', fontSize: 9, fontFamily: t.mono,
-                  display: 'flex', alignItems: 'center', justifyContent: 'center',
-                }}
-              >↔</button>
-              <button
-                onClick={() => open({ kind: 'label', index: i })}
-                title="Label style"
-                style={{
-                  background: labelOpen ? t.paper2 : 'none',
-                  border: `1px solid ${labelOpen ? t.line : 'transparent'}`,
-                  color: s.labelOverride && Object.keys(s.labelOverride).length > 0 ? '#7de0a0' : t.inkFaint,
-                  cursor: 'pointer', padding: '1px 2px', fontSize: 9, fontFamily: t.mono,
-                  display: 'flex', alignItems: 'center', justifyContent: 'center',
-                }}
-              >T</button>
-              <button
-                onClick={() => deleteSettlement(i)}
-                title="Delete"
-                style={{ background: 'none', border: 'none', color: t.inkFaint, cursor: 'pointer', padding: '1px 2px', fontSize: 12, lineHeight: 1, display: 'flex', alignItems: 'center', justifyContent: 'center' }}
-              >×</button>
-            </div>
-          )
-        })}
+        <TriggerRow
+          label={`Placed (${allPlaced.length})`}
+          active={flyout?.kind === 'placed'}
+          onClick={() => open({ kind: 'placed' })}
+        />
 
         {dataSource === 'osm' && (
           <>
@@ -562,6 +493,12 @@ export function FeaturesSidebarV3() {
       )}
       {flyout?.kind === 'tier'              && <TierStyleFlyout tier={(flyout as Extract<FlyoutState, { kind: 'tier' }>).tier} onClose={() => setFlyout(null)} />}
       {flyout?.kind === 'urban'             && <UrbanStyleFlyout onClose={() => setFlyout(null)} />}
+      {flyout?.kind === 'placed'            && (
+        <PlacedSettlementsFlyout
+          onClose={() => setFlyout(null)}
+          onOpenLabel={i => setFlyout({ kind: 'label', index: i })}
+        />
+      )}
       {flyout?.kind === 'osm-settlements'   && <OsmSettlementsFlyout onClose={() => setFlyout(null)} />}
       {flyout?.kind === 'label'             && <SettlementLabelFlyout index={(flyout as Extract<FlyoutState, { kind: 'label' }>).index} onClose={() => setFlyout(null)} />}
 

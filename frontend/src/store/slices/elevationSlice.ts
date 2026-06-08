@@ -31,6 +31,10 @@ export type ElevationSlice = {
   contourBaseElevation: number
   contourSmoothPasses: number
   contourLineWidth: number
+  contourIndexEvery: number
+  contourIndexWidthMult: number
+  contourColor: string
+  contourOpacity: number
   contourDisabledTerrains: string[]
   contourDisabledElevClasses: string[]
   elevationImportEnabled: boolean
@@ -59,6 +63,10 @@ export type ElevationSlice = {
   setContourBaseElevation: (v: number) => void
   setContourSmoothPasses: (v: number) => void
   setContourLineWidth: (v: number) => void
+  setContourIndexEvery: (v: number) => void
+  setContourIndexWidthMult: (v: number) => void
+  setContourColor: (v: string) => void
+  setContourOpacity: (v: number) => void
   setContourDisabledTerrains: (v: string[]) => void
   setContourDisabledElevClasses: (v: string[]) => void
   elevationTypeBlobStyles: Record<string, BlobOverride>
@@ -87,8 +95,12 @@ export const createElevationSlice = (set: Set, get: () => MapStore): ElevationSl
   contoursEnabled: false,
   contourInterval: 50,
   contourBaseElevation: 0,
-  contourSmoothPasses: 1,
+  contourSmoothPasses: 2,
   contourLineWidth: 1.5,
+  contourIndexEvery: 5,
+  contourIndexWidthMult: 2,
+  contourColor: '#6b5a3a',
+  contourOpacity: 0.7,
   contourDisabledTerrains: [],
   contourDisabledElevClasses: [],
   elevationImportEnabled: true,
@@ -215,6 +227,10 @@ export const createElevationSlice = (set: Set, get: () => MapStore): ElevationSl
   setContourBaseElevation: (v) => set({ contourBaseElevation: v }),
   setContourSmoothPasses: (v) => set({ contourSmoothPasses: v }),
   setContourLineWidth: (v) => set({ contourLineWidth: v }),
+  setContourIndexEvery: (v) => set({ contourIndexEvery: v }),
+  setContourIndexWidthMult: (v) => set({ contourIndexWidthMult: v }),
+  setContourColor: (v) => set({ contourColor: v }),
+  setContourOpacity: (v) => set({ contourOpacity: v }),
   setContourDisabledTerrains: (v) => set({ contourDisabledTerrains: v }),
   setContourDisabledElevClasses: (v) => set({ contourDisabledElevClasses: v }),
   elevationTypeBlobStyles: {},

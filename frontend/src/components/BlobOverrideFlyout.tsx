@@ -1,5 +1,7 @@
-import { useEffect } from 'react'
+import { useEffect, useState } from 'react'
 import { useMapStore, WATER_COLOR, type BlobOverride } from '../store/mapStore'
+import { useTheme } from '../context/ThemeContext'
+import { MiniSlider } from './v2/sidebar'
 
 interface Props {
   type: 'terrain' | 'water' | 'edge'
@@ -10,14 +12,19 @@ interface Props {
   onClose: () => void
 }
 
+type Tab = 'simple' | 'detail'
+
 export function BlobOverrideFlyout({ type, canonicalKey, terrain, x, y, onClose }: Props) {
+  const t = useTheme()
+  const [tab, setTab] = useState<Tab>('simple')
   const {
     terrainBlobOverrides, setTerrainBlobOverride,
     waterOverrides, setWaterOverride,
     edgeBlobOverrides, setEdgeBlobOverride,
     terrainColors,
     terrainBlobSmooth, terrainBlobOffset, terrainBlobBump,
-    terrainBlobSweepFreq, terrainBlobLobeFreq, terrainBlobLobeAmp, terrainBlobLobeThreshold, terrainBlobLobeDirection,
+    terrainBlobSweepFreq,
+    terrainBlobLobeFreq, terrainBlobLobeAmp, terrainBlobLobeThreshold, terrainBlobLobeDirection,
     edgeBlobWidth,
   } = useMapStore()
 
@@ -35,10 +42,9 @@ export function BlobOverrideFlyout({ type, canonicalKey, terrain, x, y, onClose 
     return () => document.removeEventListener('mousedown', handler)
   }, [onClose])
 
-  const W = 210
-  const estH = type === 'edge' ? 200 : 180
+  const W = 220
   const clampedX = Math.min(x, window.innerWidth - W - 8)
-  const clampedY = Math.min(y, window.innerHeight - estH - 8)
+  const clampedY = Math.min(y, window.innerHeight - 400)
 
   const override: BlobOverride = type === 'terrain'
     ? (terrainBlobOverrides[canonicalKey] ?? {})
@@ -46,26 +52,29 @@ export function BlobOverrideFlyout({ type, canonicalKey, terrain, x, y, onClose 
       ? (waterOverrides[canonicalKey] ?? {})
       : (edgeBlobOverrides[canonicalKey] ?? {})
 
-  // Edge blobs inherit shape from terrain blob global params; only width is edge-specific.
-  const globalSmooth        = terrainBlobSmooth
-  const globalOffset        = terrainBlobOffset
-  const globalBump          = terrainBlobBump
-  const globalSweepFreq     = terrainBlobSweepFreq
-  const globalLobeFreq      = terrainBlobLobeFreq
-  const globalLobeAmp       = terrainBlobLobeAmp
-  const globalLobeThreshold = terrainBlobLobeThreshold
-  const globalLobeDirection = terrainBlobLobeDirection
-  const globalWidth         = edgeBlobWidth
+  const g = {
+    smooth:        terrainBlobSmooth,
+    offset:        terrainBlobOffset,
+    bump:          terrainBlobBump,
+    sweepFreq:     terrainBlobSweepFreq,
+    lobeFreq:      terrainBlobLobeFreq,
+    lobeAmp:       terrainBlobLobeAmp,
+    lobeThreshold: terrainBlobLobeThreshold,
+    lobeDirection: terrainBlobLobeDirection,
+    width:         edgeBlobWidth,
+  }
 
-  const currentSmooth        = override.smooth        ?? globalSmooth
-  const currentOffset        = override.offset        ?? globalOffset
-  const currentBump          = override.bump          ?? globalBump
-  const currentSweepFreq     = override.sweepFreq     ?? globalSweepFreq
-  const currentLobeFreq      = override.lobeFreq      ?? globalLobeFreq
-  const currentLobeAmp       = override.lobeAmp       ?? globalLobeAmp
-  const currentLobeThreshold = override.lobeThreshold ?? globalLobeThreshold
-  const currentLobeDirection = override.lobeDirection ?? globalLobeDirection
-  const currentWidth         = override.width         ?? globalWidth
+  const cur = {
+    smooth:        override.smooth        ?? g.smooth,
+    offset:        override.offset        ?? g.offset,
+    bump:          override.bump          ?? g.bump,
+    sweepFreq:     override.sweepFreq     ?? g.sweepFreq,
+    lobeFreq:      override.lobeFreq      ?? g.lobeFreq,
+    lobeAmp:       override.lobeAmp       ?? g.lobeAmp,
+    lobeThreshold: override.lobeThreshold ?? g.lobeThreshold,
+    lobeDirection: override.lobeDirection ?? g.lobeDirection,
+    width:         override.width         ?? g.width,
+  }
 
   const setOverride = (patch: BlobOverride) => {
     if (type === 'terrain') setTerrainBlobOverride(canonicalKey, { terrain, ...patch })
@@ -73,8 +82,16 @@ export function BlobOverrideFlyout({ type, canonicalKey, terrain, x, y, onClose 
     else setEdgeBlobOverride(canonicalKey, patch)
   }
 
-  const fieldVal = (sliderInt: number, globalSliderInt: number, transform: (v: number) => number): number | undefined =>
-    sliderInt === globalSliderInt ? undefined : transform(sliderInt)
+  const undef = <T,>(v: T, gv: T): T | undefined => v === gv ? undefined : v
+
+  const setFringe = (amp: number) => {
+    const freq = 2.0 + amp * 3.0
+    setOverride({
+      lobeAmp: undef(amp, g.lobeAmp),
+      lobeFreq: undef(freq, g.lobeFreq),
+      lobeThreshold: undef(0, g.lobeThreshold),
+    })
+  }
 
   const reset = () => {
     if (type === 'terrain') setTerrainBlobOverride(canonicalKey, null)
@@ -84,16 +101,32 @@ export function BlobOverrideFlyout({ type, canonicalKey, terrain, x, y, onClose 
   }
 
   const accentColor = type === 'terrain'
-    ? (terrainColors[terrain!] ?? '#7a9e7a')
+    ? (terrainColors[terrain!] ?? t.rust)
     : type === 'water'
       ? (terrainColors['water'] ?? WATER_COLOR)
-      : (terrainColors[terrain!] ?? '#7a9e7a')
+      : (terrainColors[terrain!] ?? t.rust)
 
   const title = type === 'terrain'
     ? (terrain?.replace(/_/g, ' ') ?? 'blob')
     : type === 'water'
       ? 'water'
       : `edge · ${terrain?.replace(/_/g, ' ') ?? 'blob'}`
+
+  const tabStyle = (active: boolean) => ({
+    flex: 1,
+    padding: '3px 0',
+    fontFamily: t.mono,
+    fontSize: 9,
+    letterSpacing: 0.5,
+    textTransform: 'uppercase' as const,
+    background: active ? t.ink : 'transparent',
+    color: active ? t.surface : t.inkFaint,
+    border: `1px solid ${active ? t.ink : t.line}`,
+    marginLeft: -1,
+    cursor: 'pointer',
+    position: 'relative' as const,
+    zIndex: active ? 1 : 0,
+  })
 
   return (
     <div
@@ -103,128 +136,159 @@ export function BlobOverrideFlyout({ type, canonicalKey, terrain, x, y, onClose 
         left: clampedX,
         top: clampedY,
         width: W,
-        background: '#0e0f18',
-        border: '1px solid #2a2a4a',
-        borderRadius: 4,
-        padding: '10px 12px',
+        background: t.surface,
+        borderTop: `1px solid ${t.line}`,
+        borderRight: `1px solid ${t.line}`,
+        borderBottom: `1px solid ${t.line}`,
+        borderLeft: `3px solid ${accentColor}`,
+        borderRadius: 2,
+        boxShadow: t.shadowFlyout,
         zIndex: 200,
-        fontFamily: 'ui-monospace, monospace',
+        fontFamily: t.mono,
         fontSize: 11,
-        color: '#a0a0c0',
-        boxShadow: '0 4px 20px rgba(0,0,0,0.5)',
+        color: t.ink,
       }}
     >
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
-        <span style={{ color: '#e0e0f0', textTransform: 'capitalize', letterSpacing: 0.5, fontWeight: 500 }}>
-          {title}
-          {hasOverride && <span style={{ color: '#5a7a5a', fontSize: 9, marginLeft: 5 }}>overridden</span>}
-        </span>
+      {/* Header */}
+      <div style={{
+        display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+        padding: '8px 10px 6px',
+        borderBottom: `1px solid ${t.line2}`,
+      }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+          <span style={{ fontFamily: t.mono, fontSize: 9.5, fontWeight: 600, letterSpacing: 0.5, color: t.ink, textTransform: 'capitalize' }}>
+            {title}
+          </span>
+          {hasOverride && (
+            <span style={{ fontFamily: t.mono, fontSize: 8, letterSpacing: 0.4, color: t.rust, textTransform: 'uppercase' }}>
+              modified
+            </span>
+          )}
+        </div>
         <button
           onClick={onClose}
-          style={{ background: 'none', border: 'none', color: '#4a4a6a', cursor: 'pointer', padding: '0 2px', fontSize: 15, lineHeight: 1 }}
-          onMouseEnter={e => (e.currentTarget.style.color = '#a0a0c0')}
-          onMouseLeave={e => (e.currentTarget.style.color = '#4a4a6a')}
-        >×</button>
+          style={{ background: 'none', border: 'none', color: t.inkFaint, cursor: 'pointer', padding: 2, display: 'flex', alignItems: 'center' }}
+          onMouseEnter={e => (e.currentTarget.style.color = t.ink)}
+          onMouseLeave={e => (e.currentTarget.style.color = t.inkFaint)}
+        >
+          <svg width="8" height="8" viewBox="0 0 10 10" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round">
+            <path d="M2 2l6 6M8 2l-6 6" />
+          </svg>
+        </button>
       </div>
 
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-          {type === 'edge' && (
-            <div>
-              <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 3 }}>
-                <span style={{ fontSize: 10, letterSpacing: 0.5, textTransform: 'uppercase', color: '#4a4a6a' }}>Width</span>
-                <span style={{ color: '#5a5a7a', fontSize: 10 }}>{Math.round(currentWidth * 100)}%</span>
+      {/* Tabs */}
+      <div style={{ display: 'flex', padding: '6px 10px 0' }}>
+        <button style={tabStyle(tab === 'simple')} onClick={() => setTab('simple')}>Simple</button>
+        <button style={tabStyle(tab === 'detail')} onClick={() => setTab('detail')}>Detail</button>
+      </div>
+
+      {/* Controls */}
+      <div style={{ padding: '4px 0 8px' }}>
+        {tab === 'simple' ? (
+          <>
+            {type === 'edge' && (
+              <MiniSlider label="Width" display={`${Math.round(cur.width * 100)}%`}
+                value={Math.round(cur.width * 100)} min={5} max={80} step={1}
+                onChange={v => setOverride({ width: undef(v / 100, g.width) })}
+                accentColor={accentColor} />
+            )}
+            <MiniSlider label="Corner Rounding" display={cur.smooth}
+              value={cur.smooth} min={0} max={5} step={1}
+              onChange={v => setOverride({ smooth: undef(v, g.smooth) })}
+              accentColor={accentColor} />
+            <MiniSlider label="Waviness" display={`${Math.round(cur.bump * 100)}%`}
+              value={Math.round(cur.bump * 100)} min={0} max={60} step={1}
+              onChange={v => setOverride({ bump: undef(v / 100, g.bump) })}
+              accentColor={accentColor} />
+            <MiniSlider label="Inset" display={`${cur.offset > 0 ? '+' : ''}${Math.round(cur.offset * 100)}%`}
+              value={Math.round(cur.offset * 100)} min={-80} max={30} step={1}
+              onChange={v => setOverride({ offset: undef(v / 100, g.offset) })}
+              accentColor={accentColor} />
+            <MiniSlider label="Fringe" display={`${Math.round(cur.lobeAmp * 100)}%`}
+              value={Math.round(cur.lobeAmp * 100)} min={0} max={100} step={1}
+              onChange={v => setFringe(v / 100)}
+              accentColor={accentColor} />
+          </>
+        ) : (
+          <>
+            {type === 'edge' && (
+              <MiniSlider label="Width" display={`${Math.round(cur.width * 100)}%`}
+                value={Math.round(cur.width * 100)} min={5} max={80} step={1}
+                onChange={v => setOverride({ width: undef(v / 100, g.width) })}
+                accentColor={accentColor} />
+            )}
+            <MiniSlider label="Corner Rounding" display={cur.smooth}
+              value={cur.smooth} min={0} max={5} step={1}
+              onChange={v => setOverride({ smooth: undef(v, g.smooth) })}
+              accentColor={accentColor} />
+            <MiniSlider label="Waviness" display={`${Math.round(cur.bump * 100)}%`}
+              value={Math.round(cur.bump * 100)} min={0} max={60} step={1}
+              onChange={v => setOverride({ bump: undef(v / 100, g.bump) })}
+              accentColor={accentColor} />
+            <MiniSlider label="Inset" display={`${cur.offset > 0 ? '+' : ''}${Math.round(cur.offset * 100)}%`}
+              value={Math.round(cur.offset * 100)} min={-80} max={30} step={1}
+              onChange={v => setOverride({ offset: undef(v / 100, g.offset) })}
+              accentColor={accentColor} />
+            <MiniSlider label="Wave Scale" display={cur.sweepFreq.toFixed(2)}
+              value={Math.round(cur.sweepFreq * 100)} min={40} max={100} step={1}
+              onChange={v => setOverride({ sweepFreq: undef(v / 100, g.sweepFreq) })}
+              accentColor={accentColor} />
+            <MiniSlider label="Fringe Strength" display={`${Math.round(cur.lobeAmp * 100)}%`}
+              value={Math.round(cur.lobeAmp * 100)} min={0} max={100} step={1}
+              onChange={v => setOverride({ lobeAmp: undef(v / 100, g.lobeAmp) })}
+              accentColor={accentColor} />
+            <MiniSlider label="Fringe Scale" display={cur.lobeFreq.toFixed(1)}
+              value={Math.round(cur.lobeFreq * 10)} min={20} max={50} step={1}
+              onChange={v => setOverride({ lobeFreq: undef(v / 10, g.lobeFreq) })}
+              accentColor={accentColor} />
+            <MiniSlider label="Fringe Sparsity" display={`${Math.round(cur.lobeThreshold * 100)}%`}
+              value={Math.round(cur.lobeThreshold * 100)} min={0} max={40} step={1}
+              onChange={v => setOverride({ lobeThreshold: undef(v / 100, g.lobeThreshold) })}
+              accentColor={accentColor} />
+            <div style={{ padding: '2px 14px 0' }}>
+              <div style={{ fontFamily: t.mono, fontSize: 10, color: t.ink2, marginBottom: 4 }}>Fringe Direction</div>
+              <div style={{ display: 'flex' }}>
+                {(['Outward', 'Inward'] as const).map((label, i) => {
+                  const dir = i === 0 ? 1 : -1
+                  const active = i === 0 ? cur.lobeDirection >= 0 : cur.lobeDirection < 0
+                  return (
+                    <button key={label}
+                      onClick={() => setOverride({ lobeDirection: undef(dir, g.lobeDirection) })}
+                      style={{
+                        flex: 1, padding: '3px 0',
+                        fontFamily: t.mono, fontSize: 9, letterSpacing: 0.5, textTransform: 'uppercase',
+                        background: active ? t.ink : 'transparent',
+                        color: active ? t.surface : t.inkFaint,
+                        border: `1px solid ${active ? t.ink : t.line}`,
+                        marginLeft: i > 0 ? -1 : 0,
+                        cursor: 'pointer',
+                        position: 'relative', zIndex: active ? 1 : 0,
+                      }}
+                    >{label}</button>
+                  )
+                })}
               </div>
-              <input type="range" min={5} max={80} step={1} value={Math.round(currentWidth * 100)}
-                onChange={e => setOverride({ width: fieldVal(Number(e.target.value), Math.round(globalWidth * 100), v => v / 100) })}
-                style={{ width: '100%', accentColor }} />
             </div>
-          )}
-          <div>
-            <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 3 }}>
-              <span style={{ fontSize: 10, letterSpacing: 0.5, textTransform: 'uppercase', color: '#4a4a6a' }}>Corner Rounding</span>
-              <span style={{ color: '#5a5a7a', fontSize: 10 }}>{currentSmooth}</span>
-            </div>
-            <input type="range" min={0} max={5} step={1} value={currentSmooth}
-              onChange={e => setOverride({ smooth: fieldVal(Number(e.target.value), globalSmooth, v => v) })}
-              style={{ width: '100%', accentColor }} />
-          </div>
-          <div>
-            <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 3 }}>
-              <span style={{ fontSize: 10, letterSpacing: 0.5, textTransform: 'uppercase', color: '#4a4a6a' }}>Waviness</span>
-              <span style={{ color: '#5a5a7a', fontSize: 10 }}>{Math.round(currentBump * 100)}%</span>
-            </div>
-            <input type="range" min={0} max={60} step={1} value={Math.round(currentBump * 100)}
-              onChange={e => setOverride({ bump: fieldVal(Number(e.target.value), Math.round(globalBump * 100), v => v / 100) })}
-              style={{ width: '100%', accentColor }} />
-          </div>
-          <div>
-            <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 3 }}>
-              <span style={{ fontSize: 10, letterSpacing: 0.5, textTransform: 'uppercase', color: '#4a4a6a' }}>Inset</span>
-              <span style={{ color: '#5a5a7a', fontSize: 10 }}>{currentOffset > 0 ? '+' : ''}{Math.round(currentOffset * 100)}%</span>
-            </div>
-            <input type="range" min={-80} max={30} step={1} value={Math.round(currentOffset * 100)}
-              onChange={e => setOverride({ offset: fieldVal(Number(e.target.value), Math.round(globalOffset * 100), v => v / 100) })}
-              style={{ width: '100%', accentColor }} />
-          </div>
-          <div>
-            <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 3 }}>
-              <span style={{ fontSize: 10, letterSpacing: 0.5, textTransform: 'uppercase', color: '#4a4a6a' }}>Wave Scale</span>
-              <span style={{ color: '#5a5a7a', fontSize: 10 }}>{currentSweepFreq.toFixed(2)}</span>
-            </div>
-            <input type="range" min={40} max={100} step={1} value={Math.round(currentSweepFreq * 100)}
-              onChange={e => setOverride({ sweepFreq: fieldVal(Number(e.target.value), Math.round(globalSweepFreq * 100), v => v / 100) })}
-              style={{ width: '100%', accentColor }} />
-          </div>
-          <div>
-            <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 3 }}>
-              <span style={{ fontSize: 10, letterSpacing: 0.5, textTransform: 'uppercase', color: '#4a4a6a' }}>Fringe Scale</span>
-              <span style={{ color: '#5a5a7a', fontSize: 10 }}>{currentLobeFreq.toFixed(1)}</span>
-            </div>
-            <input type="range" min={20} max={50} step={1} value={Math.round(currentLobeFreq * 10)}
-              onChange={e => setOverride({ lobeFreq: fieldVal(Number(e.target.value), Math.round(globalLobeFreq * 10), v => v / 10) })}
-              style={{ width: '100%', accentColor }} />
-          </div>
-          <div>
-            <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 3 }}>
-              <span style={{ fontSize: 10, letterSpacing: 0.5, textTransform: 'uppercase', color: '#4a4a6a' }}>Fringe Strength</span>
-              <span style={{ color: '#5a5a7a', fontSize: 10 }}>{Math.round(currentLobeAmp * 100)}%</span>
-            </div>
-            <input type="range" min={0} max={100} step={1} value={Math.round(currentLobeAmp * 100)}
-              onChange={e => setOverride({ lobeAmp: fieldVal(Number(e.target.value), Math.round(globalLobeAmp * 100), v => v / 100) })}
-              style={{ width: '100%', accentColor }} />
-          </div>
-          <div>
-            <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 3 }}>
-              <span style={{ fontSize: 10, letterSpacing: 0.5, textTransform: 'uppercase', color: '#4a4a6a' }}>Fringe Sparsity</span>
-              <span style={{ color: '#5a5a7a', fontSize: 10 }}>{Math.round(currentLobeThreshold * 100)}%</span>
-            </div>
-            <input type="range" min={0} max={40} step={1} value={Math.round(currentLobeThreshold * 100)}
-              onChange={e => setOverride({ lobeThreshold: fieldVal(Number(e.target.value), Math.round(globalLobeThreshold * 100), v => v / 100) })}
-              style={{ width: '100%', accentColor }} />
-          </div>
-          <div>
-            <div style={{ fontSize: 10, letterSpacing: 0.5, textTransform: 'uppercase', color: '#4a4a6a', marginBottom: 5 }}>Fringe Direction</div>
-            <div style={{ display: 'flex', gap: 4 }}>
-              {([['Outward', 1], ['Inward', -1]] as const).map(([label, dir]) => {
-                const active = dir === 1 ? currentLobeDirection >= 0 : currentLobeDirection < 0
-                return (
-                  <button key={label} onClick={() => setOverride({ lobeDirection: dir === globalLobeDirection ? undefined : dir })} style={{
-                    flex: 1, padding: '3px 0', fontSize: 10, letterSpacing: 0.5, textTransform: 'uppercase',
-                    background: active ? '#2a3a5a' : 'none', border: '1px solid #2a2a4a',
-                    color: active ? '#8ab0e0' : '#4a4a6a', borderRadius: 3, cursor: 'pointer', fontFamily: 'ui-monospace, monospace',
-                  }}>{label}</button>
-                )
-              })}
-            </div>
-          </div>
-          {hasOverride && (
+          </>
+        )}
+
+        {hasOverride && (
+          <div style={{ margin: '6px 14px 0', borderTop: `1px solid ${t.line2}`, paddingTop: 6 }}>
             <button
               onClick={reset}
-              style={{ background: 'none', border: '1px solid #3a2a2a', color: '#7a4a4a', borderRadius: 3, padding: '3px 8px', cursor: 'pointer', fontFamily: 'inherit', fontSize: 10, marginTop: 2 }}
-              onMouseEnter={e => (e.currentTarget.style.color = '#b06060')}
-              onMouseLeave={e => (e.currentTarget.style.color = '#7a4a4a')}
-            >Reset to global</button>
-          )}
+              style={{
+                width: '100%', padding: '4px 0', background: 'none',
+                border: `1px solid ${t.line}`, color: t.inkMute, cursor: 'pointer',
+                fontFamily: t.mono, fontSize: 9, letterSpacing: 0.5,
+              }}
+              onMouseEnter={e => (e.currentTarget.style.color = t.ink)}
+              onMouseLeave={e => (e.currentTarget.style.color = t.inkMute)}
+            >
+              Reset to global
+            </button>
+          </div>
+        )}
       </div>
     </div>
   )

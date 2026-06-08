@@ -68,6 +68,9 @@ export interface BlobOverride {
   outlineEnabled?: boolean
   outlineColor?: string
   outlineWidth?: number
+  riverRepulsionRadius?: number
+  roadRepulsionRadius?: number
+  repulsionStrength?: number
 }
 
 
