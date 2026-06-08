@@ -2462,19 +2462,39 @@ const roadV3TierGeomRef = useRef(roadV3TierGeom)
       const lw = 1 / zoom
       ctx.save()
 
-      // Draw dashed simplified polygon for active blob
+      // Draw dashed simplified polygon for active blob — using live handle positions
+      // so it updates as handles are dragged
       if (activeId) {
-        const { simplifiedPolys: sPolys } = handleData.get(activeId) ?? {}
-        if (sPolys && sPolys.length > 0) {
+        const { handles, simplifiedPolys: sPolys } = handleData.get(activeId) ?? {}
+        if (handles && sPolys && sPolys.length > 0) {
           ctx.save()
-          ctx.strokeStyle = 'rgba(255,255,255,0.5)'
-          ctx.lineWidth = lw
+          ctx.lineJoin = 'round'
+          // Dark outline for contrast
+          ctx.strokeStyle = 'rgba(0,0,0,0.5)'
+          ctx.lineWidth = (lw + 1.5)
           ctx.setLineDash([4 / zoom, 4 / zoom])
+          let hIdx = 0
           for (const poly of sPolys) {
-            if (poly.length < 3) continue
+            const polyHandles = handles.slice(hIdx, hIdx + poly.length)
+            hIdx += poly.length
+            if (polyHandles.length < 3) continue
             ctx.beginPath()
-            ctx.moveTo(poly[0][0], poly[0][1])
-            for (let i = 1; i < poly.length; i++) ctx.lineTo(poly[i][0], poly[i][1])
+            ctx.moveTo(polyHandles[0].cx, polyHandles[0].cy)
+            for (let i = 1; i < polyHandles.length; i++) ctx.lineTo(polyHandles[i].cx, polyHandles[i].cy)
+            ctx.closePath()
+            ctx.stroke()
+          }
+          // White line on top
+          ctx.strokeStyle = 'rgba(255,255,255,0.9)'
+          ctx.lineWidth = lw + 0.5
+          hIdx = 0
+          for (const poly of sPolys) {
+            const polyHandles = handles.slice(hIdx, hIdx + poly.length)
+            hIdx += poly.length
+            if (polyHandles.length < 3) continue
+            ctx.beginPath()
+            ctx.moveTo(polyHandles[0].cx, polyHandles[0].cy)
+            for (let i = 1; i < polyHandles.length; i++) ctx.lineTo(polyHandles[i].cx, polyHandles[i].cy)
             ctx.closePath()
             ctx.stroke()
           }
@@ -4700,6 +4720,23 @@ const roadV3TierGeomRef = useRef(roadV3TierGeom)
     const HANDLE_HIT_R = Math.max(6, hexRadiusRef.current * 0.12)
     let dragging: { canonicalKey: string; hexKey: string; startLx: number; startLy: number; baseOffset: [number, number] } | null = null
 
+    const onRightClick = (e: MouseEvent) => {
+      if (!blobEditModeRef.current) return
+      const activeId = activeBlobEditIdRef.current
+      if (!activeId) return
+      const logical = clientToLogicalRef.current(e.clientX, e.clientY)
+      if (!logical) return
+      const { lx, ly } = logical
+      const handleGroup = blobHandleDataRef.current.get(activeId)
+      if (!handleGroup) return
+      const hitHandle = handleGroup.handles.find(h => Math.hypot(lx - h.cx, ly - h.cy) < HANDLE_HIT_R * 1.5)
+      if (hitHandle) {
+        setBlobHandleOverrideRef.current(activeId, hitHandle.edgeKey, null)
+        e.stopPropagation()
+        e.preventDefault()
+      }
+    }
+
     const onDown = (e: MouseEvent) => {
       if (!blobEditModeRef.current) return
       if (e.button !== 0) return
@@ -4762,10 +4799,12 @@ const roadV3TierGeomRef = useRef(roadV3TierGeom)
     const onUp = () => { dragging = null }
 
     el.addEventListener('mousedown', onDown, { capture: true })
+    el.addEventListener('contextmenu', onRightClick, { capture: true })
     window.addEventListener('mousemove', onMove)
     window.addEventListener('mouseup', onUp)
     return () => {
       el.removeEventListener('mousedown', onDown, { capture: true })
+      el.removeEventListener('contextmenu', onRightClick, { capture: true })
       window.removeEventListener('mousemove', onMove)
       window.removeEventListener('mouseup', onUp)
     }
