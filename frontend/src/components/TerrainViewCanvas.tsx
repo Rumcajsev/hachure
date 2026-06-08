@@ -4,10 +4,10 @@ import 'maplibre-gl/dist/maplibre-gl.css'
 import { useMapStore, TERRAIN_COLORS, WATER_COLOR, TERRAIN_PRIORITY, hexTerrainLayers, edgeBlobCanonicalKey, WORLDCOVER_CLASSES, validColWidthsForRows, validRowHeightsForCols, cellPaperInfo, type GeneratedHex, type RoadTierStyle, type SettlementTier, type SettlementTierStyle } from '../store/mapStore'
 import { BlobOverrideFlyout } from './BlobOverrideFlyout'
 import { useTheme } from '../context/ThemeContext'
-import { hexAdjacent, catmullRom, offsetPolyline, pointInPolygon, distToSeg, douglasPeucker, douglasPeuckerClosed, chaikin } from '../lib/geometry'
+import { hexAdjacent, catmullRom, offsetPolyline, pointInPolygon, distToSeg, douglasPeucker, douglasPeuckerClosed, chaikin, subtractPolygon } from '../lib/geometry'
 import { mulberry32, makePermutation } from '../lib/noise'
 import { projectToCanvas, unprojectFromCanvas, computePaper, computeWorldcoverBbox } from '../lib/projection'
-import { coastalBlobTerrains, bleedPolygon, buildTerrainBlobsV2, buildTerrainBlobTopology, shapeTerrainBlobs, computeConnectedComponents } from '../lib/terrainBlobs'
+import { coastalBlobTerrains, bleedPolygon, buildTerrainBlobsV2, buildTerrainBlobTopology, shapeTerrainBlobs, computeConnectedComponents, buildCorridorPolygon } from '../lib/terrainBlobs'
 import type { BlobTopologyEntry } from '../lib/terrainBlobs'
 import { findEdgeChains as findEdgeChainsSync } from '../lib/edgeBlobs'
 import { riverChainCache, buildRiverChains, buildRiverChainsV2 } from '../lib/riverChains'
@@ -1193,6 +1193,16 @@ const roadV3TierGeomRef = useRef(roadV3TierGeom)
   const smoothedCoastlineBoundaryRef = useRef(smoothedCoastlineBoundary)
   smoothedCoastlineBoundaryRef.current = smoothedCoastlineBoundary
 
+  // River chains projected to canvas pixels — used for corridor cutting in blob topology.
+  const riverChainsForRepulsion = useMemo(() => {
+    if (!generatedMetadata || !paperDims) return []
+    const { pw, ph, px, py } = paperDims
+    const proj = (pt: [number, number]): [number, number] =>
+      projectToCanvas(pt[0], pt[1], generatedMetadata, pw, ph, px, py) as [number, number]
+    return buildRiverChainsV2(riverEdges, generatedHexes, {}, riverWiggleFreq, riverWiggleAmp, riverSmoothing, {}, {}, riverPathSmoothing)
+      .map(c => c.chain.map(proj))
+  }, [riverEdges, generatedHexes, riverWiggleFreq, riverWiggleAmp, riverSmoothing, riverPathSmoothing, generatedMetadata, paperDims])
+
   const prevTerrainBlobsRef = useRef<{ terrain: string; polys: [number, number][][]; blobKeys: string[] }[]>([])
   type TerrainBlobCacheEntry = { hexKey: string; rawPolys: [number, number][][]; hexCenters: [number, number][]; styleKey: string; blobs: { terrain: string; polys: [number, number][][]; blobKeys: string[] }[]; handleGroups?: Map<string, { edgeKey: string; cx: number; cy: number }[]>; simplifiedPolyGroups?: Map<string, [number, number][][]> }
   const perTerrainBlobCache = useRef(new Map<string, TerrainBlobCacheEntry>())
@@ -1260,7 +1270,9 @@ const roadV3TierGeomRef = useRef(roadV3TierGeom)
         const h = blobHandleOverrides[ck]
         return h && Object.keys(h).length > 0 ? `${ck}:${JSON.stringify(h)}` : ''
       }).filter(Boolean).join('~')
-      const styleKey = `${smooth}|${offset}|${bump}|${sweepFreq}|${lobeFreq}|${lobeAmp}|${lobeThreshold}|${lobeDirection}|${terrainBlobSimplify}|${hexRadius}|${JSON.stringify(blobSeeds)}|${handleKey}`
+      const riverHW = (ts?.riverRepulsionRadius ?? 0) * hexRadius
+      const roadHW  = (ts?.roadRepulsionRadius  ?? 0) * hexRadius
+      const styleKey = `${smooth}|${offset}|${bump}|${sweepFreq}|${lobeFreq}|${lobeAmp}|${lobeThreshold}|${lobeDirection}|${terrainBlobSimplify}|${hexRadius}|${JSON.stringify(blobSeeds)}|${handleKey}|rr:${riverHW.toFixed(1)}|ro:${roadHW.toFixed(1)}|rc:${riverChainsForRepulsion.length}`
       const cached = perTerrainBlobCache.current.get(terrain)
 
       // Compute rawPolys (topology cache)
@@ -1277,14 +1289,15 @@ const roadV3TierGeomRef = useRef(roadV3TierGeom)
         ? rawPolys.map(p => douglasPeuckerClosed(p, terrainBlobSimplify * hexRadius))
         : rawPolys
 
-      // Build vertex handles from simplified poly corners — each vertex is one handle
+      // Build vertex handles and displaced polys simultaneously.
+      // Offsets applied to simplified vertices before shaping — no post-process warp needed.
       const ESNAP = Math.max(2, hexRadius * 0.015)
       const evk = (p: [number, number]) => `${Math.round(p[0]/ESNAP)},${Math.round(p[1]/ESNAP)}`
       const newHandleGroups = new Map<string, { edgeKey: string; cx: number; cy: number }[]>()
       const newSimplifiedPolys = new Map<string, [number, number][][]>()
+      const displacedPolys: [number, number][][] = []
       for (const poly of simplifiedPolys) {
         if (poly.length < 3) continue
-        // Canonical key: nearest hex center to first vertex
         const [fvx, fvy] = poly[0]
         let polyCk = '', bestD = Infinity
         for (const [hk, [hx, hy]] of hexOrigCenterByKey) {
@@ -1296,12 +1309,16 @@ const roadV3TierGeomRef = useRef(roadV3TierGeom)
         if (!newSimplifiedPolys.has(polyCk)) newSimplifiedPolys.set(polyCk, [])
         newSimplifiedPolys.get(polyCk)!.push(poly)
         const group = newHandleGroups.get(polyCk)!
-        for (let i = 0; i < poly.length; i++) {
-          const v = poly[i]
+        const displaced: [number, number][] = []
+        for (const v of poly) {
           const edgeKey = evk(v)
           const off = blobHandleOverrides[polyCk]?.[edgeKey]
-          group.push({ edgeKey, cx: v[0] + (off?.[0] ?? 0) * hexRadius, cy: v[1] + (off?.[1] ?? 0) * hexRadius })
+          const cx = v[0] + (off?.[0] ?? 0) * hexRadius
+          const cy = v[1] + (off?.[1] ?? 0) * hexRadius
+          group.push({ edgeKey, cx, cy })
+          displaced.push([cx, cy])
         }
+        displacedPolys.push(displaced)
       }
       for (const [ck, handles] of newHandleGroups) {
         blobHandleDataRef.current.set(ck, { terrain, handles, simplifiedPolys: newSimplifiedPolys.get(ck) ?? [] })
@@ -1315,38 +1332,32 @@ const roadV3TierGeomRef = useRef(roadV3TierGeom)
       }
 
       const hexCenters = [...hexOrigCenterByKey.values()]
-      const shapedBlobs = shapeTerrainBlobs([{ terrain, rawPolys, hexCenters }], smooth, offset, bump, sweepFreq, lobeFreq, lobeAmp, lobeThreshold, lobeDirection, hexRadius, blobSeeds, terrainBlobSimplify)
 
-      // Post-generation warp: displace final polygon vertices based on dragged vertex handles.
-      // Anchor = original vertex position (pre-drag). Sigma = 0.6R → tight, local effect.
-      const warpHandles: { cx: number; cy: number; dx: number; dy: number }[] = []
-      for (const [ck, hdArr] of newHandleGroups) {
-        const offsets = blobHandleOverrides[ck]
-        if (!offsets) continue
-        for (const { edgeKey, cx, cy } of hdArr) {
-          const off = offsets[edgeKey]
-          if (!off || (off[0] === 0 && off[1] === 0)) continue
-          // cx/cy are the displaced positions; subtract offset to get original midpoint
-          const origCx = cx - (off[0] * hexRadius)
-          const origCy = cy - (off[1] * hexRadius)
-          warpHandles.push({ cx: origCx, cy: origCy, dx: off[0] * hexRadius, dy: off[1] * hexRadius })
+      // Cut corridors out of displaced polys before shaping
+      let polysToShape = displacedPolys
+      if (riverHW > 0 || roadHW > 0) {
+        const seed = rawPolys[0] ? Math.abs(Math.round(rawPolys[0][0][0] * 73 + rawPolys[0][0][1] * 97)) : 0
+        if (riverHW > 0) {
+          for (const chain of riverChainsForRepulsion) {
+            const corridor = buildCorridorPolygon(chain, riverHW, bump, sweepFreq, hexRadius, seed)
+            if (corridor.length >= 3) polysToShape = polysToShape.flatMap(p => subtractPolygon(p, corridor))
+          }
         }
+        if (roadHW > 0 && paperDims && generatedMetadata) {
+          const { pw, ph, px, py } = paperDims
+          const proj = (pt: [number, number]): [number, number] =>
+            projectToCanvas(pt[0], pt[1], generatedMetadata, pw, ph, px, py) as [number, number]
+          for (const c of smoothedRoadData.chains) {
+            const chainPx = c.chain.map(proj)
+            const corridor = buildCorridorPolygon(chainPx, roadHW, bump, sweepFreq, hexRadius, seed + 1)
+            if (corridor.length >= 3) polysToShape = polysToShape.flatMap(p => subtractPolygon(p, corridor))
+          }
+        }
+        if (polysToShape.length === 0) polysToShape = rawPolys
       }
 
-      const blobs = warpHandles.length === 0 ? shapedBlobs : shapedBlobs.map(b => ({
-        ...b,
-        polys: b.polys.map(poly => {
-          const sigma2 = (hexRadius * 0.6) ** 2
-          return poly.map(([x, y]) => {
-            let wx = 0, wy = 0
-            for (const { cx, cy, dx, dy } of warpHandles) {
-              const w = Math.exp(-((x-cx)**2 + (y-cy)**2) / sigma2)
-              wx += dx * w; wy += dy * w
-            }
-            return [x + wx, y + wy] as [number, number]
-          })
-        }),
-      }))
+      // simplify:0 — polys already simplified and displaced, skip internal DP
+      const blobs = shapeTerrainBlobs([{ terrain, rawPolys: polysToShape, hexCenters }], smooth, offset, bump, sweepFreq, lobeFreq, lobeAmp, lobeThreshold, lobeDirection, hexRadius, blobSeeds, 0)
 
       perTerrainBlobCache.current.set(terrain, { hexKey, rawPolys, hexCenters, styleKey, blobs, handleGroups: newHandleGroups, simplifiedPolyGroups: newSimplifiedPolys })
       return blobs
@@ -1356,7 +1367,7 @@ const roadV3TierGeomRef = useRef(roadV3TierGeom)
     }
     prevTerrainBlobsRef.current = result
     return result
-  }, [isTerrainPainting, projectedHexes, blobComponentsByTerrain, terrainBlobOverrides, terrainTypeBlobStyles, terrainBlobSmooth, terrainBlobOffset, terrainBlobBump, terrainBlobSweepFreq, terrainBlobLobeFreq, terrainBlobLobeAmp, terrainBlobLobeThreshold, terrainBlobLobeDirection, terrainBlobSimplify, hexRadius, realisticCoastline, blobSeeds, elevationOverridesTerrain, blobHandleOverrides])
+  }, [isTerrainPainting, projectedHexes, blobComponentsByTerrain, terrainBlobOverrides, terrainTypeBlobStyles, terrainBlobSmooth, terrainBlobOffset, terrainBlobBump, terrainBlobSweepFreq, terrainBlobLobeFreq, terrainBlobLobeAmp, terrainBlobLobeThreshold, terrainBlobLobeDirection, terrainBlobSimplify, hexRadius, realisticCoastline, blobSeeds, elevationOverridesTerrain, blobHandleOverrides, riverChainsForRepulsion, smoothedRoadData])
   const defaultTerrainBlobsRef = useRef(defaultTerrainBlobs)
   defaultTerrainBlobsRef.current = defaultTerrainBlobs
 
