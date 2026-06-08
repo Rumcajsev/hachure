@@ -942,6 +942,36 @@ if (fromVersion < 64) {
     delete s.waterBlobSweepFreq; delete s.waterBlobLobeFreq; delete s.waterBlobLobeAmp
     delete s.waterBlobLobeThreshold; delete s.waterBlobLobeDirection
   }
+  if (fromVersion < 74) {
+    const DEFAULT_FX = {
+      glowEnabled: false, glowColor: 'rgba(0,0,0,0.25)', glowBlur: 6, glowSpread: 3,
+      outlineEnabled: false, outlineColor: '#2a4a6a', outlineWidth: 2, outlineDash: 'solid', fillDash: 'solid',
+    }
+    // Migrate riverStyle: old { strokeEnabled, strokeColor, strokeWidth } → { effect }
+    const rs = s.riverStyle as Record<string, unknown> | undefined
+    if (rs && rs.strokeEnabled !== undefined) {
+      rs.effect = { ...DEFAULT_FX, outlineEnabled: rs.strokeEnabled, outlineColor: rs.strokeColor ?? '#2a4a6a', outlineWidth: typeof rs.strokeWidth === 'number' ? rs.strokeWidth * 5 : 2 }
+      delete rs.strokeEnabled; delete rs.strokeColor; delete rs.strokeWidth
+    } else if (rs && !rs.effect) {
+      rs.effect = { ...DEFAULT_FX }
+    }
+    const cs = s.canalStyle as Record<string, unknown> | undefined
+    if (cs && cs.strokeEnabled !== undefined) {
+      cs.effect = { ...DEFAULT_FX, outlineEnabled: cs.strokeEnabled, outlineColor: cs.strokeColor ?? '#3a5a4a', outlineWidth: typeof cs.strokeWidth === 'number' ? cs.strokeWidth * 5 : 2 }
+      delete cs.strokeEnabled; delete cs.strokeColor; delete cs.strokeWidth
+    } else if (cs && !cs.effect) {
+      cs.effect = { ...DEFAULT_FX }
+    }
+    // Migrate roadTierStyles: add effect field if missing
+    const tiers = s.roadTierStyles as Array<Record<string, unknown>> | undefined
+    if (tiers) {
+      for (const t of tiers) {
+        if (!t.effect) t.effect = { ...DEFAULT_FX }
+      }
+    }
+    // terrainBlobEffect
+    if (!s.terrainBlobEffect) s.terrainBlobEffect = { ...DEFAULT_FX }
+  }
   if (fromVersion < 69) {
     const cp = s.classificationParams as Record<string, unknown> | undefined
     if (cp) {

@@ -2,6 +2,7 @@
 
 import type { RiverStyleConfig, LabelBBox } from '../store/mapStore'
 import { riverSmooth, applyWobble, drawVariableWidthStroke } from './riverChains'
+import { dashArray, drawLineGlow } from './strokeEffect'
 import type { LabelSpec } from './labelPresets'
 import { specToFont } from './labelPresets'
 
@@ -113,29 +114,54 @@ function drawRiverLayer(
       return { pts, segKey, hw: segHalfWidths(segKey), hopKeys, hopRanges, widthMults }
     })
 
-  // Pass 1: outline
-  if (style.strokeEnabled) {
+  const effect = style.effect
+
+  // Compute canvas bounds for the whole layer (needed for glow offscreen sizing)
+  const allPts = projected.flatMap(p => p.pts)
+  const xs = allPts.map(p => p[0]), ys = allPts.map(p => p[1])
+  const bx = Math.min(...xs), by = Math.min(...ys)
+  const bw = Math.max(...xs) - bx, bh = Math.max(...ys) - by
+  const layerBounds = { x: bx, y: by, w: bw, h: bh }
+
+  // Pass 0: outer glow (blurred halo behind everything)
+  if (effect.glowEnabled) {
     for (const { pts, segKey, hw, widthMults } of projected) {
       if (selectedKeys.has(segKey)) continue
-      const sw = hw[0] * style.strokeWidth
-      const ew = hw[1] * style.strokeWidth
-      drawVariableWidthStroke(rCtx, pts, hw[0] + sw, hw[1] + ew, style.strokeColor, widthMults)
+      const maxHW = Math.max(hw[0], hw[1])
+      drawLineGlow(rCtx, effect, maxHW, layerBounds,
+        (ctx, halfW, color) => drawVariableWidthStroke(ctx, pts, halfW, halfW, color, widthMults))
+    }
+  }
+
+  // Pass 1: outline
+  if (effect.outlineEnabled) {
+    for (const { pts, segKey, hw, widthMults } of projected) {
+      if (selectedKeys.has(segKey)) continue
+      const ow = effect.outlineWidth
+      rCtx.save()
+      rCtx.setLineDash(dashArray(effect.outlineDash, hw[0] + ow))
+      drawVariableWidthStroke(rCtx, pts, hw[0] + ow, hw[1] + ow, effect.outlineColor, widthMults)
+      rCtx.setLineDash([])
+      rCtx.restore()
     }
   }
 
   // Pass 2: fill
   for (const { pts, segKey, hw, widthMults } of projected) {
     if (selectedKeys.has(segKey)) continue
+    rCtx.save()
+    rCtx.setLineDash(dashArray(effect.fillDash, hw[0]))
     drawVariableWidthStroke(rCtx, pts, hw[0], hw[1], style.color, widthMults)
+    rCtx.setLineDash([])
+    rCtx.restore()
   }
 
-  // Pass 3: selected chains — outline → fill → glow → fill
+  // Pass 3: selected chains — outline → fill → selection glow → fill
   for (const { pts, segKey, hw, hopKeys, hopRanges, widthMults } of projected) {
     if (!selectedKeys.has(segKey)) continue
-    if (style.strokeEnabled) {
-      const sw = hw[0] * style.strokeWidth
-      const ew = hw[1] * style.strokeWidth
-      drawVariableWidthStroke(rCtx, pts, hw[0] + sw, hw[1] + ew, style.strokeColor, widthMults)
+    if (effect.outlineEnabled) {
+      const ow = effect.outlineWidth
+      drawVariableWidthStroke(rCtx, pts, hw[0] + ow, hw[1] + ow, effect.outlineColor, widthMults)
     }
     drawVariableWidthStroke(rCtx, pts, hw[0], hw[1], style.color, widthMults)
     drawVariableWidthStroke(rCtx, pts, hw[0] + 3, hw[1] + 3, 'rgba(100,180,255,0.35)', widthMults)

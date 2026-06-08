@@ -12,6 +12,7 @@ import {
   BrushRow, MiniSlider, BigColorSwatch, SegmentedControl, ToggleRow, tintBg,
   StripShell, FlyoutShell, V2Divider, TriggerRow, TGap,
 } from './sidebar'
+import { StrokeEffectPanel } from './StrokeEffectPanel'
 import { resolveLabels } from '../../lib/labelPresets'
 import { LabelSpecEditorRows } from './LabelSpecEditor'
 
@@ -50,9 +51,7 @@ export function RiverStyleFlyout({ onClose }: { onClose: () => void }) {
 
   const isModified =
     riverStyle.color !== DEFAULT_RIVER_STYLE.color ||
-    riverStyle.strokeEnabled !== DEFAULT_RIVER_STYLE.strokeEnabled ||
-    riverStyle.strokeColor !== DEFAULT_RIVER_STYLE.strokeColor ||
-    riverStyle.strokeWidth !== DEFAULT_RIVER_STYLE.strokeWidth
+    JSON.stringify(riverStyle.effect) !== JSON.stringify(DEFAULT_RIVER_STYLE.effect)
 
   return (
     <FlyoutShell title="River Style" subtitle={isModified ? 'modified' : undefined} onClose={onClose}>
@@ -77,16 +76,11 @@ export function RiverStyleFlyout({ onClose }: { onClose: () => void }) {
       </div>
 
       <div style={{ borderTop: `1px solid ${t.line2}` }}>
-        <div style={{ padding: '6px 14px 4px' }}>
-          <ToggleRow label="Outline" checked={riverStyle.strokeEnabled} onChange={v => setRiverStyle({ strokeEnabled: v })} />
-        </div>
-        {riverStyle.strokeEnabled && (
-          <>
-            <SubLabel label="Outline colour" />
-            <BigColorSwatch value={riverStyle.strokeColor} onChange={c => setRiverStyle({ strokeColor: c })} groups={RIVER_STROKE_GROUPS} />
-            <MiniSlider label="Width" display={`${Math.round(riverStyle.strokeWidth * 100)}%`} value={Math.round(riverStyle.strokeWidth * 100)} min={5} max={100} step={5} onChange={v => setRiverStyle({ strokeWidth: v / 100 })} />
-          </>
-        )}
+        <StrokeEffectPanel
+          effect={riverStyle.effect}
+          onChange={patch => setRiverStyle({ effect: { ...riverStyle.effect, ...patch } })}
+          colorGroups={[{ label: 'River', colors: [...RIVER_STROKE_GROUPS[0].colors] }]}
+        />
       </div>
 
       {isModified && (
@@ -114,9 +108,7 @@ export function CanalStyleFlyout({ onClose }: { onClose: () => void }) {
 
   const isModified =
     canalStyle.color !== DEFAULT_CANAL_STYLE.color ||
-    canalStyle.strokeEnabled !== DEFAULT_CANAL_STYLE.strokeEnabled ||
-    canalStyle.strokeColor !== DEFAULT_CANAL_STYLE.strokeColor ||
-    canalStyle.strokeWidth !== DEFAULT_CANAL_STYLE.strokeWidth
+    JSON.stringify(canalStyle.effect) !== JSON.stringify(DEFAULT_CANAL_STYLE.effect)
 
   return (
     <FlyoutShell title="Canal Style" subtitle={isModified ? 'modified' : undefined} onClose={onClose}>
@@ -129,16 +121,11 @@ export function CanalStyleFlyout({ onClose }: { onClose: () => void }) {
       </div>
 
       <div style={{ borderTop: `1px solid ${t.line2}` }}>
-        <div style={{ padding: '6px 14px 4px' }}>
-          <ToggleRow label="Outline" checked={canalStyle.strokeEnabled} onChange={v => setCanalStyle({ strokeEnabled: v })} />
-        </div>
-        {canalStyle.strokeEnabled && (
-          <>
-            <SubLabel label="Outline colour" />
-            <BigColorSwatch value={canalStyle.strokeColor} onChange={c => setCanalStyle({ strokeColor: c })} groups={CANAL_STROKE_GROUPS} />
-            <MiniSlider label="Width" display={`${Math.round(canalStyle.strokeWidth * 100)}%`} value={Math.round(canalStyle.strokeWidth * 100)} min={5} max={100} step={5} onChange={v => setCanalStyle({ strokeWidth: v / 100 })} />
-          </>
-        )}
+        <StrokeEffectPanel
+          effect={canalStyle.effect}
+          onChange={patch => setCanalStyle({ effect: { ...canalStyle.effect, ...patch } })}
+          colorGroups={[{ label: 'Canal', colors: [...CANAL_STROKE_GROUPS[0].colors] }]}
+        />
       </div>
 
       {isModified && (

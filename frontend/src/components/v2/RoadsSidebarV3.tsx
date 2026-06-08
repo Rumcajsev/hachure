@@ -4,7 +4,9 @@ import {
   DEFAULT_ROAD_TIER_STYLES, DEFAULT_RAIL_STYLE, DEFAULT_ROAD_GEOM, DEFAULT_RAIL_GEOM,
   DEFAULT_ROAD_V3_TIER_GEOM,
 } from '../../store/mapStore'
-import type { RoadDashStyle, RoadTierStyle } from '../../store/mapStore'
+import type { RoadDashStyle, RoadTierStyle, StrokeDash } from '../../store/mapStore'
+import { DEFAULT_STROKE_EFFECT } from '../../store/mapStore'
+import { StrokeEffectPanel } from './StrokeEffectPanel'
 import { buildRoadChains, buildRailChains } from '../../lib/roadChains'
 import { buildRoadChainsV3 } from '../../lib/roadChainsV3'
 import { drawRoadsAndRails } from '../../lib/drawRoadsRails'
@@ -409,6 +411,15 @@ export function RoadStyleFlyout({ tier, onClose }: { tier: 0 | 1 | 2; onClose: (
       <div style={{ padding: '4px 12px' }}>
         <SegmentedControl options={DASH_OPTIONS} value={s.caseDash} onChange={v => setRoadTierStyle(tier, { caseDash: v })} />
       </div>
+
+      <FSectionDivider />
+      <FSectionLabel label="Stroke &amp; glow" />
+      <StrokeEffectPanel
+        effect={s.effect ?? DEFAULT_STROKE_EFFECT}
+        onChange={patch => setRoadTierStyle(tier, { effect: { ...(s.effect ?? DEFAULT_STROKE_EFFECT), ...patch } })}
+        colorGroups={[{ label: 'Dark', colors: ['rgba(0,0,0,0.15)', 'rgba(0,0,0,0.25)', 'rgba(0,0,0,0.4)', 'rgba(60,40,10,0.3)'] }]}
+        showFillDash={false}
+      />
 
       {roadRenderVersion === 'v3' ? (
         <>

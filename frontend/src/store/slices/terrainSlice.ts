@@ -1,10 +1,11 @@
 import type {
   MapStore, GeneratedHex, GridMetadata, GenerateProgress, BlobOverride,
-  ActiveTool, CustomTerrain, TerrainRules, ClassRule,
+  ActiveTool, CustomTerrain, TerrainRules, ClassRule, StrokeEffect,
 } from '../mapStore'
 import {
   DEFAULT_TERRAIN_RULES,
   DEFAULT_TERRAIN_BLOB, DEFAULT_EDGE_BLOB, DEFAULT_LAKE_BLOB,
+  DEFAULT_STROKE_EFFECT,
   pageGridTotalMm, mapResolutionMpx,
 } from '../mapStore'
 import { type BlobPresetId, BLOB_PRESETS } from '../blobPresets'
@@ -33,6 +34,7 @@ export type TerrainSlice = {
   terrainBlobOutlineEnabled: boolean
   terrainBlobOutlineColor: string
   terrainBlobOutlineWidth: number
+  terrainBlobEffect: StrokeEffect
   realisticCoastline: boolean
   coastlineDebugRaw: boolean
   beachStrip: boolean
@@ -102,6 +104,7 @@ export type TerrainSlice = {
   setTerrainBlobOutlineEnabled: (v: boolean) => void
   setTerrainBlobOutlineColor: (v: string) => void
   setTerrainBlobOutlineWidth: (v: number) => void
+  setTerrainBlobEffect: (v: Partial<StrokeEffect>) => void
   applyTerrainBlobPreset: (id: BlobPresetId) => void
   setRealisticCoastline: (v: boolean) => void
   setCoastlineDebugRaw: (v: boolean) => void
@@ -193,6 +196,7 @@ export const createTerrainSlice = (set: Set, get: () => MapStore): TerrainSlice 
   terrainBlobOutlineEnabled: false,
   terrainBlobOutlineColor: '#000000',
   terrainBlobOutlineWidth: 1,
+  terrainBlobEffect: { ...DEFAULT_STROKE_EFFECT },
   realisticCoastline: false,
   coastlineDebugRaw: false,
   beachStrip: false,
@@ -892,6 +896,7 @@ export const createTerrainSlice = (set: Set, get: () => MapStore): TerrainSlice 
   setTerrainBlobOutlineEnabled: (v) => set({ terrainBlobOutlineEnabled: v }),
   setTerrainBlobOutlineColor: (v) => set({ terrainBlobOutlineColor: v }),
   setTerrainBlobOutlineWidth: (v) => set({ terrainBlobOutlineWidth: v }),
+  setTerrainBlobEffect: (v) => set(s => ({ terrainBlobEffect: { ...s.terrainBlobEffect, ...v } })),
   applyTerrainBlobPreset: (id) => {
     const values = BLOB_PRESETS[id].values
     set({

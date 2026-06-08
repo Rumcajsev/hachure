@@ -2,6 +2,7 @@
 
 import type { RoadTierStyle, RailStyle, RoadDashStyle } from '../store/mapStore'
 import { offsetPolyline, pointInPolygon } from './geometry'
+import { dashArray, drawLineGlow } from './strokeEffect'
 
 function dashPattern(style: RoadDashStyle, w: number): number[] {
   if (style === 'dashed') return [w * 2.5, w * 1.5]
@@ -154,13 +155,33 @@ export function drawRoadsAndRails(rCtx: Ctx, {
       }
     }
 
+    // Pass 0: outer glow per tier (behind everything)
+    for (const tier of [2, 1, 0] as const) {
+      const s = tierStyles[tier]
+      if (!s.effect?.glowEnabled) continue
+      for (const chain of chainsByTier[tier]) {
+        const pts = chain.map(([lon, lat]) => project(lon, lat)) as [number, number][]
+        if (pts.length < 2) continue
+        const xs = pts.map(p => p[0]), ys = pts.map(p => p[1])
+        const bounds = { x: Math.min(...xs), y: Math.min(...ys), w: Math.max(...xs) - Math.min(...xs), h: Math.max(...ys) - Math.min(...ys) }
+        drawLineGlow(rCtx, s.effect, s.outerW / 2, bounds, (ctx, halfW, color) => {
+          ctx.lineJoin = 'round'; ctx.lineCap = 'round'
+          ctx.strokeStyle = color; ctx.lineWidth = halfW * 2
+          ctx.beginPath(); ctx.moveTo(pts[0][0], pts[0][1])
+          for (let i = 1; i < pts.length; i++) ctx.lineTo(pts[i][0], pts[i][1])
+          ctx.stroke()
+        })
+      }
+    }
+
     rCtx.lineJoin = 'round'
     for (const tier of [2, 1, 0] as const) {
       const s = tierStyles[tier]
-      rCtx.lineCap = s.caseDash === 'dashed' ? 'butt' : 'round'
+      const outlineDash = s.effect?.outlineDash ?? s.caseDash
+      rCtx.lineCap = outlineDash === 'dashed' || outlineDash === 'dotted' ? 'butt' : 'round'
       rCtx.strokeStyle = s.outer
       rCtx.lineWidth = s.outerW
-      rCtx.setLineDash(dashPattern(s.caseDash, s.outerW))
+      rCtx.setLineDash(dashArray(outlineDash, s.outerW))
       for (const chain of chainsByTier[tier]) drawChain(chain)
     }
     rCtx.setLineDash([])
@@ -173,10 +194,11 @@ export function drawRoadsAndRails(rCtx: Ctx, {
     }
     for (const tier of [2, 1, 0] as const) {
       const s = tierStyles[tier]
-      rCtx.lineCap = s.fillDash === 'dashed' ? 'butt' : 'round'
+      const fillDash = s.effect?.fillDash ?? s.fillDash
+      rCtx.lineCap = fillDash === 'dashed' || fillDash === 'dotted' ? 'butt' : 'round'
       rCtx.strokeStyle = s.inner
       rCtx.lineWidth = s.outerW * 0.5
-      rCtx.setLineDash(dashPattern(s.fillDash, s.outerW * 0.5))
+      rCtx.setLineDash(dashArray(fillDash, s.outerW * 0.5))
       for (const chain of chainsByTier[tier]) drawChain(chain)
     }
     rCtx.setLineDash([])

@@ -65,9 +65,11 @@ export interface BlobOverride {
   enabled?: boolean
   width?: number
   feather?: number
+  // Legacy fields — kept for migration; use effect instead
   outlineEnabled?: boolean
   outlineColor?: string
   outlineWidth?: number
+  effect?: Partial<StrokeEffect>
   riverRepulsionRadius?: number
   roadRepulsionRadius?: number
   repulsionStrength?: number
@@ -216,25 +218,52 @@ export interface CustomTerrain {
 
 export const WATER_COLOR = '#3a6898'
 
+// ── Universal stroke/glow effect ─────────────────────────────────────────────
+
+export type StrokeDash = 'solid' | 'dashed' | 'dotted' | 'longdash' | 'dashdot'
+
+export interface StrokeEffect {
+  // Outer glow — blurred halo rendered behind the feature
+  glowEnabled: boolean
+  glowColor:   string   // use rgba for subtlety, e.g. 'rgba(0,0,0,0.3)'
+  glowBlur:    number   // blur radius in canvas px
+  glowSpread:  number   // extra half-width beyond feature edge (px)
+
+  // Hard outline — sharp border drawn behind the feature fill
+  outlineEnabled: boolean
+  outlineColor:   string
+  outlineWidth:   number   // extra px beyond feature edge
+  outlineDash:    StrokeDash
+
+  // Fill dash — the dash pattern applied to the main fill stroke
+  fillDash: StrokeDash
+}
+
+export const DEFAULT_STROKE_EFFECT: StrokeEffect = {
+  glowEnabled:    false,
+  glowColor:      'rgba(0,0,0,0.25)',
+  glowBlur:       6,
+  glowSpread:     3,
+  outlineEnabled: false,
+  outlineColor:   '#2a4a6a',
+  outlineWidth:   2,
+  outlineDash:    'solid',
+  fillDash:       'solid',
+}
+
 export interface RiverStyleConfig {
-  color: string
-  strokeEnabled: boolean
-  strokeColor: string
-  strokeWidth: number
+  color:  string
+  effect: StrokeEffect
 }
 
 export const DEFAULT_RIVER_STYLE: RiverStyleConfig = {
-  color: WATER_COLOR,
-  strokeEnabled: false,
-  strokeColor: '#2a4a6a',
-  strokeWidth: 0.4,
+  color:  WATER_COLOR,
+  effect: { ...DEFAULT_STROKE_EFFECT, outlineEnabled: false, outlineColor: '#2a4a6a', outlineWidth: 0.4 },
 }
 
 export const DEFAULT_CANAL_STYLE: RiverStyleConfig = {
-  color: '#6a9a8a',
-  strokeEnabled: true,
-  strokeColor: '#3a5a4a',
-  strokeWidth: 0.5,
+  color:  '#6a9a8a',
+  effect: { ...DEFAULT_STROKE_EFFECT, outlineEnabled: true, outlineColor: '#3a5a4a', outlineWidth: 1.5 },
 }
 
 export function paperDimsMm(size: PaperSize, orientation: Orientation): [number, number] {
@@ -352,16 +381,18 @@ export interface RoadTierStyle {
   outer: string
   inner: string
   outerW: number
+  // Legacy dash fields kept for migration; effect.outlineDash / effect.fillDash take over
   caseDash: RoadDashStyle
   fillDash: RoadDashStyle
   roughness: number
   bowing: number
+  effect: StrokeEffect
 }
 
 export const DEFAULT_ROAD_TIER_STYLES: [RoadTierStyle, RoadTierStyle, RoadTierStyle] = [
-  { outer: '#ffe8a8', inner: '#b07820', outerW: 4.5, caseDash: 'solid', fillDash: 'solid', roughness: 0.3, bowing: 0.5 },
-  { outer: '#f0e0b8', inner: '#8a5c2a', outerW: 3.0, caseDash: 'solid', fillDash: 'solid', roughness: 0.3, bowing: 0.5 },
-  { outer: '#d8d8c0', inner: '#606060', outerW: 2.0, caseDash: 'solid', fillDash: 'solid', roughness: 0.3, bowing: 0.5 },
+  { outer: '#ffe8a8', inner: '#b07820', outerW: 4.5, caseDash: 'solid', fillDash: 'solid', roughness: 0.3, bowing: 0.5, effect: { ...DEFAULT_STROKE_EFFECT } },
+  { outer: '#f0e0b8', inner: '#8a5c2a', outerW: 3.0, caseDash: 'solid', fillDash: 'solid', roughness: 0.3, bowing: 0.5, effect: { ...DEFAULT_STROKE_EFFECT } },
+  { outer: '#d8d8c0', inner: '#606060', outerW: 2.0, caseDash: 'solid', fillDash: 'solid', roughness: 0.3, bowing: 0.5, effect: { ...DEFAULT_STROKE_EFFECT } },
 ]
 
 export interface RailStyle {
@@ -887,7 +918,7 @@ export const useMapStore = create<MapStore>()(persist((set, get) => ({
     mapTitle: s.mapTitle,
     labelOffsets: s.labelOffsets,
   }),
-  version: 73,
+  version: 74,
   migrate: migratePersisted,
   merge: (persisted, current) => rehydrateState({ ...current, ...(persisted as Partial<MapStore>) }),
 }))
