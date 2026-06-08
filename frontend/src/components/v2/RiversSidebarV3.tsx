@@ -25,7 +25,7 @@ const RIVER_STROKE_GROUPS = [{ label: 'Dark', colors: [...PALETTE_RIVER_OUTLINE]
 const CANAL_FILL_GROUPS   = [{ label: 'Teal', colors: [...PALETTE_CANAL] }]
 const CANAL_STROKE_GROUPS = [{ label: 'Dark', colors: [...PALETTE_CANAL_OUTLINE] }]
 
-type FlyoutId = 'river-0' | 'river-1' | 'river-2' | 'osm' | 'segment' | 'river-labels' | null
+type FlyoutId = 'river-0' | 'river-1' | 'river-2' | 'shape' | 'osm' | 'segment' | 'river-labels' | null
 
 const TIER_COLORS = ['#6090c8', '#8090b8', '#a0a8c0'] as const
 
@@ -59,6 +59,25 @@ function SectionToggle({ label, enabled, onChange, accentColor }: { label: strin
   )
 }
 
+// ── GlobalShapeFlyout ─────────────────────────────────────────────────────────
+
+export function GlobalShapeFlyout({ onClose }: { onClose: () => void }) {
+  const {
+    riverWiggleAmp, setRiverWiggleAmp,
+    riverWiggleFreq, setRiverWiggleFreq,
+    riverSmoothing, setRiverSmoothing,
+    riverPathSmoothing, setRiverPathSmoothing,
+  } = useMapStore()
+  return (
+    <FlyoutShell title="Shape defaults" subtitle="applied to all tiers unless overridden" onClose={onClose}>
+      <MiniSlider label="Wiggle amp"  display={riverWiggleAmp.toFixed(2)}  value={Math.round(riverWiggleAmp * 100)} min={0} max={100} step={1} onChange={v => setRiverWiggleAmp(v / 100)} />
+      <MiniSlider label="Wiggle freq" display={riverWiggleFreq.toFixed(1)} value={Math.round(riverWiggleFreq * 10)} min={5} max={100} step={1} onChange={v => setRiverWiggleFreq(v / 10)} />
+      <MiniSlider label="Line smooth" display={String(riverSmoothing)}     value={riverSmoothing}     min={2} max={30} step={1} onChange={setRiverSmoothing} />
+      <MiniSlider label="Path smooth" display={String(riverPathSmoothing)} value={riverPathSmoothing} min={0} max={50} step={1} onChange={setRiverPathSmoothing} />
+    </FlyoutShell>
+  )
+}
+
 // ── RiverTierFlyout ───────────────────────────────────────────────────────────
 
 export function RiverTierFlyout({ tier, onClose }: { tier: RiverTier; onClose: () => void }) {
@@ -74,16 +93,21 @@ export function RiverTierFlyout({ tier, onClose }: { tier: RiverTier; onClose: (
   const setFx = (patch: Partial<typeof fx>) => setS({ effect: { ...fx, ...patch } })
   const accentColor = TIER_COLORS[tier]
 
-  const wiggleAmp     = s.wiggleAmp     ?? def.wiggleAmp
-  const wiggleFreq    = s.wiggleFreq    ?? def.wiggleFreq
-  const smoothing     = s.smoothing     ?? def.smoothing
-  const pathSmoothing = s.pathSmoothing ?? def.pathSmoothing
+  const shapeOverrideEnabled = s.wiggleAmp !== undefined
+  const {
+    riverWiggleAmp, riverWiggleFreq, riverSmoothing, riverPathSmoothing,
+  } = useMapStore()
+  // Use tier override if set, else fall back to global
+  const wiggleAmp     = s.wiggleAmp     ?? riverWiggleAmp
+  const wiggleFreq    = s.wiggleFreq    ?? riverWiggleFreq
+  const smoothing     = s.smoothing     ?? riverSmoothing
+  const pathSmoothing = s.pathSmoothing ?? riverPathSmoothing
 
   const isModified =
     s.color !== def.color || s.widthScale !== def.widthScale ||
     JSON.stringify(s.effect) !== JSON.stringify(def.effect) ||
-    wiggleAmp !== def.wiggleAmp || wiggleFreq !== def.wiggleFreq ||
-    smoothing !== def.smoothing || pathSmoothing !== def.pathSmoothing
+    s.wiggleAmp !== undefined || s.wiggleFreq !== undefined ||
+    s.smoothing !== undefined || s.pathSmoothing !== undefined
 
   return (
     <FlyoutShell title={s.label} subtitle={isModified ? 'modified' : undefined} onClose={onClose}>
@@ -110,12 +134,20 @@ export function RiverTierFlyout({ tier, onClose }: { tier: RiverTier; onClose: (
         </>
       )}
 
-      {/* Shape */}
-      <SectionToggle label="Shape" enabled accentColor={accentColor} onChange={() => {}} />
-      <MiniSlider label="Wiggle amp"   display={wiggleAmp.toFixed(2)}  value={Math.round(wiggleAmp * 100)} min={0}   max={100} step={1} accentColor={accentColor} onChange={v => setS({ wiggleAmp: v / 100 })} />
-      <MiniSlider label="Wiggle freq"  display={wiggleFreq.toFixed(1)} value={Math.round(wiggleFreq * 10)} min={5}   max={100} step={1} accentColor={accentColor} onChange={v => setS({ wiggleFreq: v / 10 })} />
-      <MiniSlider label="Line smooth"  display={String(smoothing)}     value={smoothing}     min={2} max={30} step={1} accentColor={accentColor} onChange={v => setS({ smoothing: v })} />
-      <MiniSlider label="Path smooth"  display={String(pathSmoothing)} value={pathSmoothing} min={0} max={50} step={1} accentColor={accentColor} onChange={v => setS({ pathSmoothing: v })} />
+      {/* Shape override */}
+      <SectionToggle
+        label="Shape override"
+        enabled={shapeOverrideEnabled}
+        accentColor={accentColor}
+        onChange={v => {
+          if (v) setS({ wiggleAmp: riverWiggleAmp, wiggleFreq: riverWiggleFreq, smoothing: riverSmoothing, pathSmoothing: riverPathSmoothing })
+          else   setS({ wiggleAmp: undefined, wiggleFreq: undefined, smoothing: undefined, pathSmoothing: undefined })
+        }}
+      />
+      <MiniSlider label="Wiggle amp"  display={wiggleAmp.toFixed(2)}  value={Math.round(wiggleAmp * 100)} min={0} max={100} step={1} accentColor={shapeOverrideEnabled ? accentColor : undefined} onChange={v => setS({ wiggleAmp: v / 100 })} disabled={!shapeOverrideEnabled} />
+      <MiniSlider label="Wiggle freq" display={wiggleFreq.toFixed(1)} value={Math.round(wiggleFreq * 10)} min={5} max={100} step={1} accentColor={shapeOverrideEnabled ? accentColor : undefined} onChange={v => setS({ wiggleFreq: v / 10 })} disabled={!shapeOverrideEnabled} />
+      <MiniSlider label="Line smooth" display={String(smoothing)}     value={smoothing}     min={2} max={30} step={1} accentColor={shapeOverrideEnabled ? accentColor : undefined} onChange={v => setS({ smoothing: v })} disabled={!shapeOverrideEnabled} />
+      <MiniSlider label="Path smooth" display={String(pathSmoothing)} value={pathSmoothing} min={0} max={50} step={1} accentColor={shapeOverrideEnabled ? accentColor : undefined} onChange={v => setS({ pathSmoothing: v })} disabled={!shapeOverrideEnabled} />
 
       {isModified && (
         <div style={{ margin: '8px 14px 0', borderTop: `1px solid ${t.line2}`, paddingTop: 8 }}>
@@ -540,11 +572,16 @@ export function RiversSidebarV3() {
         )}
 
         <TGap />
+        <V2Divider label="Style" />
+        <TriggerRow label="Shape defaults" active={flyout === 'shape'} onClick={() => toggle('shape')} />
+
+        <TGap />
         <V2Divider label="Labels" />
         <TriggerRow label="Label Style" active={flyout === 'river-labels'} onClick={() => toggle('river-labels')} />
 
       </StripShell>
 
+      {flyout === 'shape'   && <GlobalShapeFlyout onClose={() => setFlyout(null)} />}
       {flyout === 'river-0' && <RiverTierFlyout tier={0} onClose={() => setFlyout(null)} />}
       {flyout === 'river-1' && <RiverTierFlyout tier={1} onClose={() => setFlyout(null)} />}
       {flyout === 'river-2' && <RiverTierFlyout tier={2} onClose={() => setFlyout(null)} />}

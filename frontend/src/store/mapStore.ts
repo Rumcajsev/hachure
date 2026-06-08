@@ -255,21 +255,22 @@ export const DEFAULT_STROKE_EFFECT: StrokeEffect = {
 export type RiverTier = 0 | 1 | 2
 
 export interface RiverTierStyle {
-  label:         string
-  color:         string
-  widthScale:    number   // multiplier on the base half-width
-  visible:       boolean
-  effect:        StrokeEffect
-  wiggleAmp:     number
-  wiggleFreq:    number
-  smoothing:     number
-  pathSmoothing: number
+  label:          string
+  color:          string
+  widthScale:     number   // multiplier on the base half-width
+  visible:        boolean
+  effect:         StrokeEffect
+  // Shape override — undefined means inherit from global river shape settings
+  wiggleAmp?:     number
+  wiggleFreq?:    number
+  smoothing?:     number
+  pathSmoothing?: number
 }
 
 export const DEFAULT_RIVER_TIER_STYLES: [RiverTierStyle, RiverTierStyle, RiverTierStyle] = [
-  { label: 'Major River', color: WATER_COLOR, widthScale: 1.5,  visible: true, effect: { ...DEFAULT_STROKE_EFFECT }, wiggleAmp: 0.20, wiggleFreq: 2.5, smoothing: 12, pathSmoothing: 0 },
-  { label: 'River',       color: WATER_COLOR, widthScale: 1.0,  visible: true, effect: { ...DEFAULT_STROKE_EFFECT }, wiggleAmp: 0.25, wiggleFreq: 2.5, smoothing: 10, pathSmoothing: 0 },
-  { label: 'Stream',      color: '#5878a0',   widthScale: 0.55, visible: true, effect: { ...DEFAULT_STROKE_EFFECT }, wiggleAmp: 0.35, wiggleFreq: 3.5, smoothing: 8,  pathSmoothing: 0 },
+  { label: 'Major River', color: WATER_COLOR, widthScale: 1.5,  visible: true, effect: { ...DEFAULT_STROKE_EFFECT } },
+  { label: 'River',       color: WATER_COLOR, widthScale: 1.0,  visible: true, effect: { ...DEFAULT_STROKE_EFFECT } },
+  { label: 'Stream',      color: '#5878a0',   widthScale: 0.55, visible: true, effect: { ...DEFAULT_STROKE_EFFECT } },
 ]
 
 /** Maps OSM waterway type string to river tier (0=Major River, 1=River, 2=Stream) */
@@ -952,7 +953,7 @@ export const useMapStore = create<MapStore>()(persist((set, get) => ({
     mapTitle: s.mapTitle,
     labelOffsets: s.labelOffsets,
   }),
-  version: 76,
+  version: 77,
   migrate: migratePersisted,
   merge: (persisted, current) => rehydrateState({ ...current, ...(persisted as Partial<MapStore>) }),
 }))
