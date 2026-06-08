@@ -413,11 +413,11 @@ export function RoadStyleFlyout({ tier, onClose }: { tier: 0 | 1 | 2; onClose: (
       </div>
 
       <FSectionDivider />
-      <FSectionLabel label="Stroke &amp; glow" />
       <StrokeEffectPanel
         effect={s.effect ?? DEFAULT_STROKE_EFFECT}
         onChange={patch => setRoadTierStyle(tier, { effect: { ...(s.effect ?? DEFAULT_STROKE_EFFECT), ...patch } })}
         colorGroups={[{ label: 'Dark', colors: ['rgba(0,0,0,0.15)', 'rgba(0,0,0,0.25)', 'rgba(0,0,0,0.4)', 'rgba(60,40,10,0.3)'] }]}
+        showOutline={false}
         showFillDash={false}
       />
 

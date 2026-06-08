@@ -2,6 +2,7 @@
  *  Pure canvas operations — no React or store imports except types. */
 
 import type { GeneratedHex, BlobOverride, StrokeEffect } from '../store/mapStore'
+import { DEFAULT_STROKE_EFFECT } from '../store/mapStore'
 import { drawPolyGlow, resolveBlobEffect } from './strokeEffect'
 import { buildTerrainBlobsV2, bleedPolygon } from './terrainBlobs'
 import { clipPolygonToConvex, pointInPolygon } from './geometry'
@@ -400,7 +401,7 @@ export function drawTerrain(tCtx: Ctx, params: DrawTerrainParams): void {
 
     for (const [cls, polys] of [['hills', elevationBlobs.hills], ['mountains', elevationBlobs.mountains]] as const) {
       const clsStyle = elevationTypeBlobStyles[cls]
-      const fx = resolveBlobEffect(clsStyle, params.terrainBlobEffect, terrainBlobOutlineEnabled, terrainBlobOutlineColor, terrainBlobOutlineWidth)
+      const fx = resolveBlobEffect(clsStyle, params.terrainBlobEffect ?? DEFAULT_STROKE_EFFECT, terrainBlobOutlineEnabled, terrainBlobOutlineColor, terrainBlobOutlineWidth)
       if (polys.length === 0) continue
       if (fx.glowEnabled) {
         const xs = polys.flat().map(p => p[0]), ys = polys.flat().map(p => p[1])
@@ -658,7 +659,7 @@ export function drawTerrain(tCtx: Ctx, params: DrawTerrainParams): void {
       // d. Blob outline + glow pass
       if (defaultPolys.length > 0) {
         const typeStyle = params.terrainTypeBlobStyles[terrain]
-        const fx = resolveBlobEffect(typeStyle, params.terrainBlobEffect, terrainBlobOutlineEnabled, terrainBlobOutlineColor, terrainBlobOutlineWidth)
+        const fx = resolveBlobEffect(typeStyle, params.terrainBlobEffect ?? DEFAULT_STROKE_EFFECT, terrainBlobOutlineEnabled, terrainBlobOutlineColor, terrainBlobOutlineWidth)
         if (fx.glowEnabled) {
           const xs = defaultPolys.flat().map(p => p[0]), ys = defaultPolys.flat().map(p => p[1])
           const bounds = { x: Math.min(...xs), y: Math.min(...ys), w: Math.max(...xs) - Math.min(...xs), h: Math.max(...ys) - Math.min(...ys) }

@@ -1,6 +1,7 @@
 /** Road and rail layer rendering. Pure canvas operations — no React or store imports. */
 
 import type { RoadTierStyle, RailStyle, RoadDashStyle } from '../store/mapStore'
+import { DEFAULT_STROKE_EFFECT } from '../store/mapStore'
 import { offsetPolyline, pointInPolygon } from './geometry'
 import { dashArray, drawLineGlow } from './strokeEffect'
 
@@ -177,7 +178,7 @@ export function drawRoadsAndRails(rCtx: Ctx, {
     rCtx.lineJoin = 'round'
     for (const tier of [2, 1, 0] as const) {
       const s = tierStyles[tier]
-      const outlineDash = s.effect?.outlineDash ?? s.caseDash
+      const outlineDash = (s.effect ?? DEFAULT_STROKE_EFFECT).outlineDash ?? s.caseDash
       rCtx.lineCap = outlineDash === 'dashed' || outlineDash === 'dotted' ? 'butt' : 'round'
       rCtx.strokeStyle = s.outer
       rCtx.lineWidth = s.outerW
@@ -194,7 +195,7 @@ export function drawRoadsAndRails(rCtx: Ctx, {
     }
     for (const tier of [2, 1, 0] as const) {
       const s = tierStyles[tier]
-      const fillDash = s.effect?.fillDash ?? s.fillDash
+      const fillDash = (s.effect ?? DEFAULT_STROKE_EFFECT).fillDash ?? s.fillDash
       rCtx.lineCap = fillDash === 'dashed' || fillDash === 'dotted' ? 'butt' : 'round'
       rCtx.strokeStyle = s.inner
       rCtx.lineWidth = s.outerW * 0.5

@@ -1,6 +1,7 @@
 /** River and canal layer rendering. Pure canvas operations — no React or store imports. */
 
 import type { RiverStyleConfig, LabelBBox } from '../store/mapStore'
+import { DEFAULT_STROKE_EFFECT } from '../store/mapStore'
 import { riverSmooth, applyWobble, drawVariableWidthStroke } from './riverChains'
 import { dashArray, drawLineGlow } from './strokeEffect'
 import type { LabelSpec } from './labelPresets'
@@ -114,7 +115,7 @@ function drawRiverLayer(
       return { pts, segKey, hw: segHalfWidths(segKey), hopKeys, hopRanges, widthMults }
     })
 
-  const effect = style.effect
+  const effect = style.effect ?? DEFAULT_STROKE_EFFECT
 
   // Compute canvas bounds for the whole layer (needed for glow offscreen sizing)
   const allPts = projected.flatMap(p => p.pts)
