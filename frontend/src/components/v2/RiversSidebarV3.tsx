@@ -65,10 +65,6 @@ export function RiverTierFlyout({ tier, onClose }: { tier: RiverTier; onClose: (
   const t = useTheme()
   const {
     riverTierStyles, setRiverTierStyle,
-    riverWiggleAmp, setRiverWiggleAmp,
-    riverWiggleFreq, setRiverWiggleFreq,
-    riverSmoothing, setRiverSmoothing,
-    riverPathSmoothing, setRiverPathSmoothing,
   } = useMapStore()
 
   const s = riverTierStyles?.[tier] ?? DEFAULT_RIVER_TIER_STYLES[tier]
@@ -78,9 +74,16 @@ export function RiverTierFlyout({ tier, onClose }: { tier: RiverTier; onClose: (
   const setFx = (patch: Partial<typeof fx>) => setS({ effect: { ...fx, ...patch } })
   const accentColor = TIER_COLORS[tier]
 
+  const wiggleAmp     = s.wiggleAmp     ?? def.wiggleAmp
+  const wiggleFreq    = s.wiggleFreq    ?? def.wiggleFreq
+  const smoothing     = s.smoothing     ?? def.smoothing
+  const pathSmoothing = s.pathSmoothing ?? def.pathSmoothing
+
   const isModified =
     s.color !== def.color || s.widthScale !== def.widthScale ||
-    JSON.stringify(s.effect) !== JSON.stringify(def.effect)
+    JSON.stringify(s.effect) !== JSON.stringify(def.effect) ||
+    wiggleAmp !== def.wiggleAmp || wiggleFreq !== def.wiggleFreq ||
+    smoothing !== def.smoothing || pathSmoothing !== def.pathSmoothing
 
   return (
     <FlyoutShell title={s.label} subtitle={isModified ? 'modified' : undefined} onClose={onClose}>
@@ -107,12 +110,12 @@ export function RiverTierFlyout({ tier, onClose }: { tier: RiverTier; onClose: (
         </>
       )}
 
-      {/* Shape (global — shared across tiers) */}
-      <SectionToggle label="Shape (global)" enabled accentColor={accentColor} onChange={() => {}} />
-      <MiniSlider label="Amplitude"   display={riverWiggleAmp.toFixed(2)}  value={Math.round(riverWiggleAmp * 100)} min={0}  max={100} step={1} accentColor={accentColor} onChange={v => setRiverWiggleAmp(v / 100)} />
-      <MiniSlider label="Frequency"   display={riverWiggleFreq.toFixed(1)} value={Math.round(riverWiggleFreq * 10)} min={5}  max={100} step={1} accentColor={accentColor} onChange={v => setRiverWiggleFreq(v / 10)} />
-      <MiniSlider label="Line smooth" display={String(riverSmoothing)}     value={riverSmoothing}     min={2} max={30} step={1} accentColor={accentColor} onChange={setRiverSmoothing} />
-      <MiniSlider label="Path smooth" display={String(riverPathSmoothing)} value={riverPathSmoothing} min={0} max={50} step={1} accentColor={accentColor} onChange={setRiverPathSmoothing} />
+      {/* Shape */}
+      <SectionToggle label="Shape" enabled accentColor={accentColor} onChange={() => {}} />
+      <MiniSlider label="Wiggle amp"   display={wiggleAmp.toFixed(2)}  value={Math.round(wiggleAmp * 100)} min={0}   max={100} step={1} accentColor={accentColor} onChange={v => setS({ wiggleAmp: v / 100 })} />
+      <MiniSlider label="Wiggle freq"  display={wiggleFreq.toFixed(1)} value={Math.round(wiggleFreq * 10)} min={5}   max={100} step={1} accentColor={accentColor} onChange={v => setS({ wiggleFreq: v / 10 })} />
+      <MiniSlider label="Line smooth"  display={String(smoothing)}     value={smoothing}     min={2} max={30} step={1} accentColor={accentColor} onChange={v => setS({ smoothing: v })} />
+      <MiniSlider label="Path smooth"  display={String(pathSmoothing)} value={pathSmoothing} min={0} max={50} step={1} accentColor={accentColor} onChange={v => setS({ pathSmoothing: v })} />
 
       {isModified && (
         <div style={{ margin: '8px 14px 0', borderTop: `1px solid ${t.line2}`, paddingTop: 8 }}>

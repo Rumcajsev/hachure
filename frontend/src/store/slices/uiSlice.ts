@@ -994,6 +994,22 @@ if (fromVersion < 64) {
       }
     }
   }
+  if (fromVersion < 76) {
+    // Seed per-tier shape fields from global wiggle/smoothing values
+    const amp  = typeof s.riverWiggleAmp     === 'number' ? s.riverWiggleAmp     : 0.25
+    const freq = typeof s.riverWiggleFreq    === 'number' ? s.riverWiggleFreq    : 2.5
+    const sm   = typeof s.riverSmoothing     === 'number' ? s.riverSmoothing     : 10
+    const ps   = typeof s.riverPathSmoothing === 'number' ? s.riverPathSmoothing : 0
+    const tiers = s.riverTierStyles as Array<Record<string, unknown>> | undefined
+    if (tiers) {
+      for (const t of tiers) {
+        if (t.wiggleAmp     === undefined) t.wiggleAmp     = amp
+        if (t.wiggleFreq    === undefined) t.wiggleFreq    = freq
+        if (t.smoothing     === undefined) t.smoothing     = sm
+        if (t.pathSmoothing === undefined) t.pathSmoothing = ps
+      }
+    }
+  }
   if (fromVersion < 69) {
     const cp = s.classificationParams as Record<string, unknown> | undefined
     if (cp) {

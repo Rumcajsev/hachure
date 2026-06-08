@@ -2033,10 +2033,16 @@ const roadV3TierGeomRef = useRef(roadV3TierGeom)
     let riverTierChainData: [import('../lib/drawRivers').ChainEntry[], import('../lib/drawRivers').ChainEntry[], import('../lib/drawRivers').ChainEntry[]]
     let riverChainData, canalChainData
     if (RIVER_V2) {
-      riverTierChainData = tierEdges.map(edges =>
-        buildRiverChainsV2(edges, hexesRef.current, riverChainOverridesRef.current, riverWiggleFreqRef.current, riverWiggleAmpRef.current, riverSmoothingRef.current, riverHopPropsRef.current, riverSegmentPropsRef.current, riverPathSmoothingRef.current)
+      const ts = riverTierStylesRef.current
+      riverTierChainData = ([0, 1, 2] as const).map(tier => {
+        const style = ts?.[tier]
+        const amp  = style?.wiggleAmp     ?? riverWiggleAmpRef.current
+        const freq = style?.wiggleFreq    ?? riverWiggleFreqRef.current
+        const sm   = style?.smoothing     ?? riverSmoothingRef.current
+        const ps   = style?.pathSmoothing ?? riverPathSmoothingRef.current
+        return buildRiverChainsV2(tierEdges[tier], hexesRef.current, riverChainOverridesRef.current, freq, amp, sm, riverHopPropsRef.current, riverSegmentPropsRef.current, ps)
           .map(c => ({ vertices: c.chain, segKey: c.segKey, hopKeys: c.hopKeys, hopRanges: c.hopRanges }))
-      ) as typeof riverTierChainData
+      }) as typeof riverTierChainData
       const rv2 = buildRiverChainsV2(riverEdgesRef.current, hexesRef.current, riverChainOverridesRef.current, riverWiggleFreqRef.current, riverWiggleAmpRef.current, riverSmoothingRef.current, riverHopPropsRef.current, riverSegmentPropsRef.current, riverPathSmoothingRef.current)
       riverChainsV2Ref.current = rv2
       riverChainData = rv2.map(c => ({ vertices: c.chain, segKey: c.segKey, hopKeys: c.hopKeys, hopRanges: c.hopRanges }))
