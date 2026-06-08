@@ -96,6 +96,8 @@ function ShapeSettingsFlyout({ onClose }: { onClose: () => void }) {
     terrainBlobLobeAmp, setTerrainBlobLobeAmp,
     terrainBlobLobeThreshold, setTerrainBlobLobeThreshold,
     terrainBlobLobeDirection, setTerrainBlobLobeDirection,
+    terrainBlobPolygonize, setTerrainBlobPolygonize,
+    terrainBlobSimplify, setTerrainBlobSimplify,
     terrainBlobFeather, setTerrainBlobFeather,
     terrainBlobOutlineEnabled, setTerrainBlobOutlineEnabled,
     terrainBlobOutlineColor, setTerrainBlobOutlineColor,
@@ -180,6 +182,8 @@ function ShapeSettingsFlyout({ onClose }: { onClose: () => void }) {
         setLocal(prev => ({ ...prev, ...values }))
       }} />
       <MiniSlider label="Corner Rounding" display={Math.round(local.smooth * 4) / 4} value={local.smooth} min={0} max={2} step={0.25} onChange={v => set('smooth', v)} accentColor={t.rust} />
+      <MiniSlider label="Smoothing" display={terrainBlobPolygonize === 0 ? 'polygon' : `${Math.round(terrainBlobPolygonize * 100)}%`} value={Math.round(terrainBlobPolygonize * 100)} min={0} max={100} step={1} onChange={v => setTerrainBlobPolygonize(v / 100)} accentColor={t.rust} />
+      <MiniSlider label="Edge Simplify" display={terrainBlobSimplify === 0 ? 'off' : `${Math.round(terrainBlobSimplify * 100)}%`} value={Math.round(terrainBlobSimplify * 100)} min={0} max={100} step={1} onChange={v => setTerrainBlobSimplify(v / 100)} accentColor={t.rust} />
       <MiniSlider label="Waviness" display={`${Math.round(local.bump * 100)}%`} value={Math.round(local.bump * 100)} min={0} max={60} step={1} onChange={v => set('bump', v / 100)} accentColor={t.rust} />
       <MiniSlider label="Inset" display={`${local.offset > 0 ? '+' : ''}${Math.round(local.offset * 100)}%`} value={Math.round(local.offset * 100)} min={-80} max={30} step={1} onChange={v => set('offset', v / 100)} accentColor={t.rust} />
       <div style={{ margin: '6px 12px 2px', borderTop: `1px solid ${t.line2}`, paddingTop: 8 }}>
@@ -481,8 +485,10 @@ function HilshadeFlyout({ onClose }: { onClose: () => void }) {
 function ContoursFlyout({ onClose }: { onClose: () => void }) {
   const t = useTheme()
   const {
-    contoursEnabled, contourInterval, contourLineWidth,
-    setContoursEnabled, setContourInterval, setContourLineWidth,
+    contoursEnabled, contourInterval, contourBaseElevation, contourSmoothPasses,
+    contourLineWidth, contourIndexEvery, contourIndexWidthMult, contourColor, contourOpacity,
+    setContoursEnabled, setContourInterval, setContourBaseElevation, setContourSmoothPasses,
+    setContourLineWidth, setContourIndexEvery, setContourIndexWidthMult, setContourColor, setContourOpacity,
     contourDisabledTerrains, contourDisabledElevClasses,
     setContourDisabledTerrains, setContourDisabledElevClasses,
     customTerrains,
@@ -496,8 +502,19 @@ function ContoursFlyout({ onClose }: { onClose: () => void }) {
       </div>
       {contoursEnabled && (
         <>
-          <MiniSlider label="Interval"   display={`${contourInterval}m`}    value={contourInterval}  min={10} max={500} step={10}   onChange={setContourInterval} />
-          <MiniSlider label="Line width" display={contourLineWidth.toFixed(2)} value={contourLineWidth} min={0.5} max={4} step={0.25} onChange={setContourLineWidth} />
+          <MiniSlider label="Interval"      display={`${contourInterval}m`}           value={contourInterval}      min={10}  max={500} step={10}   onChange={setContourInterval} />
+          <MiniSlider label="Base elev"     display={`${contourBaseElevation}m`}      value={contourBaseElevation} min={-500} max={4000} step={50}  onChange={setContourBaseElevation} />
+          <MiniSlider label="Smooth passes" display={`${contourSmoothPasses}`}        value={contourSmoothPasses}  min={0}   max={10}  step={1}    onChange={setContourSmoothPasses} />
+          <MiniSlider label="Line width"    display={contourLineWidth.toFixed(2)}     value={contourLineWidth}     min={0.1} max={4}   step={0.05} onChange={setContourLineWidth} />
+          <MiniSlider label="Index every"   display={contourIndexEvery === 0 ? 'off' : `${contourIndexEvery}`} value={contourIndexEvery} min={0} max={10} step={1} onChange={setContourIndexEvery} />
+          {contourIndexEvery > 0 && (
+            <MiniSlider label="Index width" display={`×${contourIndexWidthMult.toFixed(1)}`} value={contourIndexWidthMult} min={1} max={5} step={0.25} onChange={setContourIndexWidthMult} />
+          )}
+          <MiniSlider label="Opacity"       display={`${Math.round(contourOpacity * 100)}%`} value={Math.round(contourOpacity * 100)} min={5} max={100} step={5} onChange={v => setContourOpacity(v / 100)} />
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '4px 14px 6px' }}>
+            <span style={{ fontFamily: t.mono, fontSize: 8.5, letterSpacing: 0.8, color: t.inkFaint, textTransform: 'uppercase', fontWeight: 600 }}>Color</span>
+            <BigColorSwatch value={contourColor} onChange={setContourColor} groups={PALETTE_TERRAIN_GROUPS} />
+          </div>
         </>
       )}
       <TerrainVisibilityFilter
@@ -864,6 +881,36 @@ function TerrainCogFlyout({ terrain, onClose }: { terrain: string; onClose: () =
             onChange={v => setTerrainTypeBlobStyle(terrain, { outlineWidth: v })}
           />
         </>}
+      </div>
+
+      {/* Feature repulsion */}
+      <div style={{ borderTop: `1px solid ${tk.line2}`, paddingTop: 4 }}>
+        <div style={{ padding: '6px 12px 4px', fontFamily: tk.mono, fontSize: 8.5, letterSpacing: 0.8, color: tk.inkFaint, textTransform: 'uppercase' as const, fontWeight: 600 }}>
+          Feature repulsion
+        </div>
+        <MiniSlider
+          label="River pushback"
+          display={typeStyle?.riverRepulsionRadius ? `${typeStyle.riverRepulsionRadius.toFixed(1)}R` : 'off'}
+          value={Math.round((typeStyle?.riverRepulsionRadius ?? 0) * 10)}
+          min={0} max={30} step={1}
+          onChange={v => setTerrainTypeBlobStyle(terrain, { riverRepulsionRadius: v / 10 })}
+        />
+        <MiniSlider
+          label="Road pushback"
+          display={typeStyle?.roadRepulsionRadius ? `${typeStyle.roadRepulsionRadius.toFixed(1)}R` : 'off'}
+          value={Math.round((typeStyle?.roadRepulsionRadius ?? 0) * 10)}
+          min={0} max={30} step={1}
+          onChange={v => setTerrainTypeBlobStyle(terrain, { roadRepulsionRadius: v / 10 })}
+        />
+        {((typeStyle?.riverRepulsionRadius ?? 0) > 0 || (typeStyle?.roadRepulsionRadius ?? 0) > 0) && (
+          <MiniSlider
+            label="Strength"
+            display={`${Math.round((typeStyle?.repulsionStrength ?? 1) * 100)}%`}
+            value={Math.round((typeStyle?.repulsionStrength ?? 1) * 100)}
+            min={0} max={100} step={1}
+            onChange={v => setTerrainTypeBlobStyle(terrain, { repulsionStrength: v / 100 })}
+          />
+        )}
       </div>
     </FlyoutShell>
   )
