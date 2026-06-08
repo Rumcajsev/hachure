@@ -278,10 +278,10 @@ export const createRiversSlice = (set: Set, get: () => MapStore): RiversSlice =>
 
     toggleRiverEdge: (q1, r1, q2, r2) => {
       get().pushUndoSnapshot()
-      const { riverEdges } = get()
+      const { riverEdges, riverPaintTier } = get()
       const k = edgeKey(q1, r1, q2, r2)
       const idx = riverEdges.findIndex(e => edgeKey(e.q1, e.r1, e.q2, e.r2) === k)
-      set({ riverEdges: idx >= 0 ? riverEdges.filter((_, i) => i !== idx) : [...riverEdges, { q1, r1, q2, r2 }] })
+      set({ riverEdges: idx >= 0 ? riverEdges.filter((_, i) => i !== idx) : [...riverEdges, { q1, r1, q2, r2, tier: riverPaintTier }] })
     },
     setRiverEdges: (edges) => set({ riverEdges: edges }),
 
