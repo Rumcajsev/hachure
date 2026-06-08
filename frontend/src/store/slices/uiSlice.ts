@@ -219,6 +219,7 @@ export const createUiSlice = (set: Set, get: () => MapStore): UiSlice => ({
     }
 
     updates.riverEditMode = tool.type === 'river-paint' || tool.type === 'river-select'
+    if (tool.type === 'river-paint') updates.riverPaintTier = tool.tier
     updates.riverSelectMode = tool.type === 'river-select'
     if (!updates.riverEditMode) { updates.selectedSegmentKeys = []; updates.selectedHopKey = null }
 

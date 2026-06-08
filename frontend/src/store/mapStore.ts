@@ -103,7 +103,7 @@ export type ActiveTool =
   | { type: 'rail'; erasing: boolean }
   | { type: 'node-edit' }
   | { type: 'river-node-edit' }
-  | { type: 'river-paint' }
+  | { type: 'river-paint'; tier: RiverTier }
   | { type: 'river-select' }
   | { type: 'canal-paint' }
   | { type: 'canal-select' }

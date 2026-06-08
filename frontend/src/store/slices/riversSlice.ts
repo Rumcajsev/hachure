@@ -25,6 +25,7 @@ export type RiversSlice = {
   riverStyle: RiverStyleConfig   // legacy, kept for migration
   canalStyle: RiverStyleConfig
   riverEditMode: boolean
+  riverPaintTier: RiverTier
   canalEditMode: boolean
   riverWidthScale: number        // legacy, kept for migration
   canalWidthScale: number
@@ -147,6 +148,7 @@ export const createRiversSlice = (set: Set, get: () => MapStore): RiversSlice =>
     showRiverLabels: true,
     riverLabelColor: '#2a5a8a',
     riverEditMode: false,
+    riverPaintTier: 1 as RiverTier,
     canalEditMode: false,
     riverSegmentProps: {},
     canalSegmentProps: {},

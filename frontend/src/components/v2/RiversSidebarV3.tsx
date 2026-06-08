@@ -468,7 +468,7 @@ export function RiverLabelFlyout({ onClose }: { onClose: () => void }) {
 export function RiversSidebarV3() {
   const t = useTheme()
   const {
-    riverEditMode, canalEditMode, riverNodeEditMode,
+    riverEditMode, riverPaintTier, canalEditMode, riverNodeEditMode,
     riverSelectMode, canalSelectMode,
     setActiveTool,
     selectedSegmentKeys, setSelectedSegmentKeys,
@@ -502,11 +502,11 @@ export function RiversSidebarV3() {
             key={tier}
             label={tierStyles[tier].label}
             color={tierStyles[tier].color}
-            active={riverEditMode}
+            active={riverEditMode && riverPaintTier === tier}
             shortcut={(['Q', 'W', 'E'] as const)[i]}
             showCog
             cogOpen={flyout === `river-${tier}`}
-            onSelect={() => setActiveTool(riverEditMode ? { type: 'none' } : { type: 'river-paint' })}
+            onSelect={() => setActiveTool(riverEditMode && riverPaintTier === tier ? { type: 'none' } : { type: 'river-paint', tier })}
             onCog={() => toggle(`river-${tier}` as FlyoutId)}
           />
         ))}
@@ -515,7 +515,7 @@ export function RiversSidebarV3() {
             label="— select"
             color={riverSelectMode ? tierStyles[1].color : t.inkFaint}
             active={riverSelectMode}
-            onSelect={() => setActiveTool(riverSelectMode ? { type: 'river-paint' } : { type: 'river-select' })}
+            onSelect={() => setActiveTool(riverSelectMode ? { type: 'river-paint', tier: riverPaintTier } : { type: 'river-select' })}
           />
         )}
 

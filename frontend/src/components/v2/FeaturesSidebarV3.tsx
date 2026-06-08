@@ -178,7 +178,7 @@ function PlacedSettlementsFlyout({
 export function FeaturesSidebarV3() {
   const t = useTheme()
   const {
-    riverEditMode, riverNodeEditMode,
+    riverEditMode, riverPaintTier, riverNodeEditMode,
     riverSelectMode,
     riverTierStyles, riverStyle,
     selectedSegmentKeys, setSelectedSegmentKeys,
@@ -256,11 +256,11 @@ export function FeaturesSidebarV3() {
               key={tier}
               label={ts.label}
               color={ts.color}
-              active={riverEditMode}
+              active={riverEditMode && riverPaintTier === tier}
               shortcut={['Q', 'W', 'E'][i]}
               showCog
               cogOpen={flyout?.kind === kind}
-              onSelect={() => setActiveTool(riverEditMode ? { type: 'none' } : { type: 'river-paint' })}
+              onSelect={() => setActiveTool(riverEditMode && riverPaintTier === tier ? { type: 'none' } : { type: 'river-paint', tier })}
               onCog={() => open({ kind })}
             />
           )
@@ -270,7 +270,7 @@ export function FeaturesSidebarV3() {
             label="— select"
             color={riverSelectMode ? (riverTierStyles ?? DEFAULT_RIVER_TIER_STYLES)[1].color : t.inkFaint}
             active={riverSelectMode}
-            onSelect={() => setActiveTool(riverSelectMode ? { type: 'river-paint' } : { type: 'river-select' })}
+            onSelect={() => setActiveTool(riverSelectMode ? { type: 'river-paint', tier: riverPaintTier } : { type: 'river-select' })}
           />
         )}
 
