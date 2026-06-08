@@ -385,7 +385,6 @@ export const DEFAULT_TERRAIN_BLOB = {
   lobeThreshold: 0.08,
   lobeDirection: -1 as const,
   simplify: 0,
-  subdivide: 0.25,
 }
 
 export const DEFAULT_EDGE_BLOB = {
@@ -828,7 +827,6 @@ export const useMapStore = create<MapStore>()(persist((set, get) => ({
     terrainBlobLobeThreshold: s.terrainBlobLobeThreshold,
     terrainBlobLobeDirection: s.terrainBlobLobeDirection,
     terrainBlobSimplify: s.terrainBlobSimplify,
-    terrainBlobSubdivide: s.terrainBlobSubdivide,
     realisticCoastline: s.realisticCoastline,
     beachStrip: s.beachStrip,
     beachColor: s.beachColor,

@@ -97,7 +97,6 @@ function ShapeSettingsFlyout({ onClose }: { onClose: () => void }) {
     terrainBlobLobeThreshold, setTerrainBlobLobeThreshold,
     terrainBlobLobeDirection, setTerrainBlobLobeDirection,
     terrainBlobSimplify, setTerrainBlobSimplify,
-    terrainBlobSubdivide, setTerrainBlobSubdivide,
     terrainBlobFeather, setTerrainBlobFeather,
     terrainBlobOutlineEnabled, setTerrainBlobOutlineEnabled,
     terrainBlobOutlineColor, setTerrainBlobOutlineColor,
@@ -182,7 +181,6 @@ function ShapeSettingsFlyout({ onClose }: { onClose: () => void }) {
         setLocal(prev => ({ ...prev, ...values }))
       }} />
       <MiniSlider label="Simplify" display={terrainBlobSimplify === 0 ? 'off' : `${Math.round(terrainBlobSimplify * 100)}%`} value={Math.round(terrainBlobSimplify * 100)} min={0} max={100} step={1} onChange={v => setTerrainBlobSimplify(v / 100)} accentColor={t.rust} />
-      <MiniSlider label="Subdivide" display={`${Math.round(terrainBlobSubdivide * 100)}%`} value={Math.round(terrainBlobSubdivide * 100)} min={5} max={100} step={5} onChange={v => setTerrainBlobSubdivide(v / 100)} accentColor={t.rust} />
       <MiniSlider label="Corner Rounding" display={Math.round(local.smooth * 4) / 4} value={local.smooth} min={0} max={2} step={0.25} onChange={v => set('smooth', v)} accentColor={t.rust} />
       <MiniSlider label="Waviness" display={`${Math.round(local.bump * 100)}%`} value={Math.round(local.bump * 100)} min={0} max={60} step={1} onChange={v => set('bump', v / 100)} accentColor={t.rust} />
       <MiniSlider label="Inset" display={`${local.offset > 0 ? '+' : ''}${Math.round(local.offset * 100)}%`} value={Math.round(local.offset * 100)} min={-80} max={30} step={1} onChange={v => set('offset', v / 100)} accentColor={t.rust} />
