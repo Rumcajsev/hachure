@@ -1,6 +1,6 @@
 /** River and canal layer rendering. Pure canvas operations — no React or store imports. */
 
-import type { RiverStyleConfig, LabelBBox } from '../store/mapStore'
+import type { RiverStyleConfig, RiverTierStyle, LabelBBox } from '../store/mapStore'
 import { DEFAULT_STROKE_EFFECT } from '../store/mapStore'
 import { riverSmooth, applyWobble, drawVariableWidthStroke } from './riverChains'
 import { dashArray, drawLineGlow } from './strokeEffect'
@@ -22,17 +22,18 @@ export type ChainEntry = {
 export type RiverLabelEntry = { name: string; coords: [number, number][] }
 
 export type DrawRiversParams = {
-  riverChainData: ChainEntry[]
+  riverTierChainData: [ChainEntry[], ChainEntry[], ChainEntry[]]
   canalChainData: ChainEntry[]
   riverHopProps?: Record<string, HopProps>
   selectedHopKey?: string | null
   riverSegProps: SegProps
   canalSegProps: SegProps
-  riverStyle: RiverStyleConfig
+  riverTierStyles: [RiverTierStyle, RiverTierStyle, RiverTierStyle]
+  riverStyle?: RiverStyleConfig   // legacy fallback
   canalStyle: RiverStyleConfig
   selectedRiverKeys: Set<string>
   selectedCanalKeys: Set<string>
-  riverBaseHW: number
+  riverBaseHW: number   // base half-width before tier widthScale is applied
   canalBaseHW: number
   lakeProjCenters: { px: number; py: number }[]
   smoothPasses: number
@@ -90,7 +91,7 @@ function drawRiverLayer(
   rCtx: Ctx,
   chainData: ChainEntry[],
   segProps: SegProps,
-  style: RiverStyleConfig,
+  style: { color: string; effect?: RiverTierStyle['effect'] },
   selectedKeys: Set<string>,
   selectedHopKey: string | null | undefined,
   baseHW: number,
@@ -319,9 +320,9 @@ function drawRiverLabels(
 
 export function drawRivers(rCtx: Ctx, params: DrawRiversParams) {
   const {
-    riverChainData, canalChainData,
+    riverTierChainData, canalChainData,
     riverSegProps, canalSegProps,
-    riverStyle, canalStyle,
+    riverTierStyles, riverStyle, canalStyle,
     selectedRiverKeys, selectedCanalKeys,
     riverBaseHW, canalBaseHW,
     lakeProjCenters, smoothPasses, wobbleBroad, wobbleDetail, R,
@@ -334,8 +335,14 @@ export function drawRivers(rCtx: Ctx, params: DrawRiversParams) {
   drawRiverLayer(rCtx, canalChainData, canalSegProps, canalStyle, selectedCanalKeys,
     null, canalBaseHW, false, lakeProjCenters, R, smoothPasses, 0, 0, undefined, project)
 
-  drawRiverLayer(rCtx, riverChainData, riverSegProps, riverStyle, selectedRiverKeys,
-    selectedHopKey, riverBaseHW, true, lakeProjCenters, R, smoothPasses, wobbleBroad, wobbleDetail, riverHopProps, project)
+  // Draw river tiers back-to-front: stream (2) → river (1) → major (0)
+  for (const tier of [2, 1, 0] as const) {
+    const tierStyle = riverTierStyles?.[tier] ?? riverStyle ?? { color: '#5888b0' }
+    if ((tierStyle as RiverTierStyle).visible === false) continue
+    const tierBaseHW = riverBaseHW * ((tierStyle as RiverTierStyle).widthScale ?? 1)
+    drawRiverLayer(rCtx, riverTierChainData[tier], riverSegProps, tierStyle, selectedRiverKeys,
+      selectedHopKey, tierBaseHW, tier === 0, lakeProjCenters, R, smoothPasses, wobbleBroad, wobbleDetail, riverHopProps, project)
+  }
 
   if (showRiverLabels && riverLabelData && riverLabelData.length > 0 && waterLabelSpec) {
     drawRiverLabels(rCtx, riverLabelData, waterLabelSpec, project, labelOffsets, liveLabelOffset, labelBBoxOut)

@@ -64,7 +64,6 @@ export interface BlobOverride {
   textureScale?: number
   enabled?: boolean
   width?: number
-  feather?: number
   // Legacy fields — kept for migration; use effect instead
   outlineEnabled?: boolean
   outlineColor?: string
@@ -251,6 +250,32 @@ export const DEFAULT_STROKE_EFFECT: StrokeEffect = {
   fillDash:       'solid',
 }
 
+// ── River tiers ───────────────────────────────────────────────────────────────
+
+export type RiverTier = 0 | 1 | 2
+
+export interface RiverTierStyle {
+  label:      string
+  color:      string
+  widthScale: number   // multiplier on the base half-width
+  visible:    boolean
+  effect:     StrokeEffect
+}
+
+export const DEFAULT_RIVER_TIER_STYLES: [RiverTierStyle, RiverTierStyle, RiverTierStyle] = [
+  { label: 'Major River', color: WATER_COLOR, widthScale: 1.5, visible: true, effect: { ...DEFAULT_STROKE_EFFECT } },
+  { label: 'River',       color: WATER_COLOR, widthScale: 1.0, visible: true, effect: { ...DEFAULT_STROKE_EFFECT } },
+  { label: 'Stream',      color: '#5878a0',   widthScale: 0.55, visible: true, effect: { ...DEFAULT_STROKE_EFFECT } },
+]
+
+/** Maps OSM waterway type string to river tier (0=Major River, 1=River, 2=Stream) */
+export function waterwayTypeToTier(type: string): RiverTier {
+  if (type === 'river') return 0
+  if (type === 'stream') return 1
+  return 2
+}
+
+// Legacy — kept so old persisted state and canal style still load
 export interface RiverStyleConfig {
   color:  string
   effect: StrokeEffect
@@ -641,9 +666,14 @@ export function roadEdgeCanonicalKey(q1: number, r1: number, q2: number, r2: num
   return `${tier}:${a < b ? `${a}|${b}` : `${b}|${a}`}`
 }
 
+export interface RiverEdge {
+  q1: number; r1: number; q2: number; r2: number
+  tier?: RiverTier   // undefined = legacy, treated as tier 1
+}
+
 export interface OsmRiverWay {
   name: string
-  type: 'river' | 'canal'
+  type: string   // OSM waterway tag: 'river' | 'stream' | 'drain' | 'canal' | …
   coords: [number, number][]
   segments: [number, number][][]
   edges: { q1: number; r1: number; q2: number; r2: number }[]
@@ -684,7 +714,7 @@ export interface UndoSnapshot {
   terrainHexes: Array<{ q: number; r: number; terrain: string; manual_override: boolean; elevation_class: 'flat' | 'hills' | 'mountains' | null; elevation_manual_override: boolean }>
   roadEdges: RoadEdge[]
   railEdges: RailEdge[]
-  riverEdges: { q1: number; r1: number; q2: number; r2: number }[]
+  riverEdges: RiverEdge[]
   settlements: Settlement[]
 }
 
@@ -918,7 +948,7 @@ export const useMapStore = create<MapStore>()(persist((set, get) => ({
     mapTitle: s.mapTitle,
     labelOffsets: s.labelOffsets,
   }),
-  version: 74,
+  version: 75,
   migrate: migratePersisted,
   merge: (persisted, current) => rehydrateState({ ...current, ...(persisted as Partial<MapStore>) }),
 }))

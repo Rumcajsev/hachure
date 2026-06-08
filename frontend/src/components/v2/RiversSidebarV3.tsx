@@ -1,7 +1,9 @@
 import { useState, useEffect } from 'react'
 import {
   useMapStore, DEFAULT_RIVER_STYLE, DEFAULT_CANAL_STYLE, DEFAULT_STROKE_EFFECT,
+  DEFAULT_RIVER_TIER_STYLES,
 } from '../../store/mapStore'
+import type { RiverTier } from '../../store/mapStore'
 import { riverChainCache, computeTaperRanges } from '../../lib/riverChains'
 import {
   PALETTE_RIVER, PALETTE_RIVER_OUTLINE,
@@ -23,7 +25,9 @@ const RIVER_STROKE_GROUPS = [{ label: 'Dark', colors: [...PALETTE_RIVER_OUTLINE]
 const CANAL_FILL_GROUPS   = [{ label: 'Teal', colors: [...PALETTE_CANAL] }]
 const CANAL_STROKE_GROUPS = [{ label: 'Dark', colors: [...PALETTE_CANAL_OUTLINE] }]
 
-type FlyoutId = 'river' | 'canal' | 'osm' | 'segment' | 'river-labels' | null
+type FlyoutId = 'river-0' | 'river-1' | 'river-2' | 'canal' | 'osm' | 'segment' | 'river-labels' | null
+
+const TIER_COLORS = ['#6090c8', '#8090b8', '#a0a8c0'] as const
 
 // ── SubLabel ──────────────────────────────────────────────────────────────────
 
@@ -36,60 +40,87 @@ function SubLabel({ label }: { label: string }) {
   )
 }
 
-// ── RiverStyleFlyout ──────────────────────────────────────────────────────────
+// ── SectionToggle ─────────────────────────────────────────────────────────────
 
-export function RiverStyleFlyout({ onClose }: { onClose: () => void }) {
+function SectionToggle({ label, enabled, onChange, accentColor }: { label: string; enabled: boolean; onChange: (v: boolean) => void; accentColor?: string }) {
+  const t = useTheme()
+  return (
+    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '8px 14px 4px', borderTop: `1px solid ${t.line2}` }}>
+      <span style={{ fontFamily: t.mono, fontSize: 9, letterSpacing: 0.8, color: enabled ? (accentColor ?? t.ink2) : t.inkFaint, textTransform: 'uppercase', fontWeight: 600 }}>
+        {label}
+      </span>
+      <button
+        onClick={() => onChange(!enabled)}
+        style={{ width: 30, height: 16, flexShrink: 0, background: enabled ? t.ink : t.line, border: 'none', cursor: 'pointer', padding: 0, position: 'relative' }}
+      >
+        <div style={{ position: 'absolute', top: 3, left: enabled ? 15 : 3, width: 10, height: 10, background: t.surface, transition: 'left 0.12s ease' }} />
+      </button>
+    </div>
+  )
+}
+
+// ── RiverTierFlyout ───────────────────────────────────────────────────────────
+
+export function RiverTierFlyout({ tier, onClose }: { tier: RiverTier; onClose: () => void }) {
   const t = useTheme()
   const {
-    riverStyle, setRiverStyle,
-    riverWidthScale, setRiverWidthScale,
+    riverTierStyles, setRiverTierStyle,
     riverWiggleAmp, setRiverWiggleAmp,
     riverWiggleFreq, setRiverWiggleFreq,
     riverSmoothing, setRiverSmoothing,
     riverPathSmoothing, setRiverPathSmoothing,
   } = useMapStore()
 
+  const s = riverTierStyles?.[tier] ?? DEFAULT_RIVER_TIER_STYLES[tier]
+  const def = DEFAULT_RIVER_TIER_STYLES[tier]
+  const setS = (patch: Partial<typeof s>) => setRiverTierStyle(tier, patch)
+  const fx = s.effect ?? DEFAULT_STROKE_EFFECT
+  const setFx = (patch: Partial<typeof fx>) => setS({ effect: { ...fx, ...patch } })
+  const accentColor = TIER_COLORS[tier]
+
   const isModified =
-    riverStyle.color !== DEFAULT_RIVER_STYLE.color ||
-    JSON.stringify(riverStyle.effect) !== JSON.stringify(DEFAULT_RIVER_STYLE.effect)
+    s.color !== def.color || s.widthScale !== def.widthScale ||
+    JSON.stringify(s.effect) !== JSON.stringify(def.effect)
 
   return (
-    <FlyoutShell title="River Style" subtitle={isModified ? 'modified' : undefined} onClose={onClose}>
-      <SubLabel label="Colour" />
-      <BigColorSwatch value={riverStyle.color} onChange={c => setRiverStyle({ color: c })} groups={RIVER_FILL_GROUPS} />
+    <FlyoutShell title={s.label} subtitle={isModified ? 'modified' : undefined} onClose={onClose}>
+      {/* Always-on: colour + width */}
+      <BigColorSwatch value={s.color} onChange={c => setS({ color: c })} groups={RIVER_FILL_GROUPS} />
+      <MiniSlider label="Width" display={`${s.widthScale.toFixed(2)}×`} value={Math.round(s.widthScale * 100)} min={10} max={300} step={5} accentColor={accentColor} onChange={v => setS({ widthScale: v / 100 })} />
 
-      <div style={{ borderTop: `1px solid ${t.line2}` }}>
-        <SubLabel label="Width" />
-        <MiniSlider label="Scale" display={`${riverWidthScale.toFixed(1)}×`} value={Math.round(riverWidthScale * 10)} min={2} max={40} step={1} onChange={v => setRiverWidthScale(v / 10)} />
-      </div>
+      {/* Outline */}
+      <SectionToggle label="Outline" enabled={fx.outlineEnabled} onChange={v => setFx({ outlineEnabled: v })} accentColor={accentColor} />
+      {fx.outlineEnabled && (
+        <>
+          <BigColorSwatch value={fx.outlineColor} onChange={c => setFx({ outlineColor: c })} groups={RIVER_STROKE_GROUPS} />
+          <MiniSlider label="Width" display={`${fx.outlineWidth.toFixed(1)}px`} value={fx.outlineWidth * 10} min={1} max={60} step={1} accentColor={accentColor} onChange={v => setFx({ outlineWidth: v / 10 })} />
+        </>
+      )}
 
-      <div style={{ borderTop: `1px solid ${t.line2}` }}>
-        <SubLabel label="Wiggle" />
-        <MiniSlider label="Amplitude"  display={riverWiggleAmp.toFixed(2)}  value={Math.round(riverWiggleAmp * 100)} min={0}  max={100} step={1} onChange={v => setRiverWiggleAmp(v / 100)} />
-        <MiniSlider label="Frequency"  display={riverWiggleFreq.toFixed(1)} value={Math.round(riverWiggleFreq * 10)} min={5}  max={100} step={1} onChange={v => setRiverWiggleFreq(v / 10)} />
-      </div>
+      {/* Outer glow */}
+      <SectionToggle label="Outer glow" enabled={fx.glowEnabled} onChange={v => setFx({ glowEnabled: v })} accentColor={accentColor} />
+      {fx.glowEnabled && (
+        <>
+          <BigColorSwatch value={fx.glowColor} onChange={c => setFx({ glowColor: c })} groups={[{ label: 'Shadow', colors: ['rgba(0,0,0,0.15)', 'rgba(0,0,0,0.25)', 'rgba(20,40,80,0.25)', 'rgba(0,30,60,0.35)'] }]} />
+          <MiniSlider label="Blur"   display={`${fx.glowBlur}px`}   value={fx.glowBlur}   min={1} max={30} step={1} accentColor={accentColor} onChange={v => setFx({ glowBlur: v })} />
+          <MiniSlider label="Spread" display={`${fx.glowSpread}px`} value={fx.glowSpread} min={0} max={20} step={1} accentColor={accentColor} onChange={v => setFx({ glowSpread: v })} />
+        </>
+      )}
 
-      <div style={{ borderTop: `1px solid ${t.line2}` }}>
-        <SubLabel label="Smoothing" />
-        <MiniSlider label="Line smooth" display={String(riverSmoothing)}     value={riverSmoothing}     min={2} max={30} step={1} onChange={setRiverSmoothing} />
-        <MiniSlider label="Path smooth" display={String(riverPathSmoothing)} value={riverPathSmoothing} min={0} max={50} step={1} onChange={setRiverPathSmoothing} />
-      </div>
-
-      <div style={{ borderTop: `1px solid ${t.line2}` }}>
-        <StrokeEffectPanel
-          effect={riverStyle.effect ?? DEFAULT_STROKE_EFFECT}
-          onChange={patch => setRiverStyle({ effect: { ...(riverStyle.effect ?? DEFAULT_STROKE_EFFECT), ...patch } })}
-          colorGroups={[{ label: 'River', colors: [...RIVER_STROKE_GROUPS[0].colors] }]}
-        />
-      </div>
+      {/* Shape (global — shared across tiers) */}
+      <SectionToggle label="Shape (global)" enabled accentColor={accentColor} onChange={() => {}} />
+      <MiniSlider label="Amplitude"   display={riverWiggleAmp.toFixed(2)}  value={Math.round(riverWiggleAmp * 100)} min={0}  max={100} step={1} accentColor={accentColor} onChange={v => setRiverWiggleAmp(v / 100)} />
+      <MiniSlider label="Frequency"   display={riverWiggleFreq.toFixed(1)} value={Math.round(riverWiggleFreq * 10)} min={5}  max={100} step={1} accentColor={accentColor} onChange={v => setRiverWiggleFreq(v / 10)} />
+      <MiniSlider label="Line smooth" display={String(riverSmoothing)}     value={riverSmoothing}     min={2} max={30} step={1} accentColor={accentColor} onChange={setRiverSmoothing} />
+      <MiniSlider label="Path smooth" display={String(riverPathSmoothing)} value={riverPathSmoothing} min={0} max={50} step={1} accentColor={accentColor} onChange={setRiverPathSmoothing} />
 
       {isModified && (
-        <div style={{ padding: '8px 14px 0' }}>
+        <div style={{ margin: '8px 14px 0', borderTop: `1px solid ${t.line2}`, paddingTop: 8 }}>
           <button
-            onClick={() => setRiverStyle({ ...DEFAULT_RIVER_STYLE })}
-            style={{ background: 'none', border: `1px solid ${t.line}`, color: t.inkMute, cursor: 'pointer', fontFamily: t.mono, fontSize: 9, padding: '3px 8px', letterSpacing: 0.3 }}
+            onClick={() => setRiverTierStyle(tier, { ...def })}
+            style={{ width: '100%', padding: '4px 0', background: 'none', border: `1px solid ${t.line}`, color: t.inkMute, cursor: 'pointer', fontFamily: t.mono, fontSize: 9, letterSpacing: 0.5 }}
           >
-            ↺ Reset to defaults
+            Reset to default
           </button>
         </div>
       )}
@@ -442,9 +473,11 @@ export function RiversSidebarV3() {
     setActiveTool,
     selectedSegmentKeys, setSelectedSegmentKeys,
     selectedCanalSegmentKeys, setSelectedCanalSegmentKeys,
-    riverStyle, canalStyle,
+    riverTierStyles, riverStyle, canalStyle,
     dataSource,
   } = useMapStore()
+
+  const tierStyles = riverTierStyles ?? DEFAULT_RIVER_TIER_STYLES
 
   const [flyout, setFlyout] = useState<FlyoutId>(null)
   const [segmentMode, setSegmentMode] = useState<'river' | 'canal'>('river')
@@ -464,20 +497,23 @@ export function RiversSidebarV3() {
 
         <V2Divider label="Paint" />
 
-        <BrushRow
-          label="River"
-          color={riverStyle.color}
-          active={riverEditMode}
-          shortcut="1"
-          showCog
-          cogOpen={flyout === 'river'}
-          onSelect={() => setActiveTool(riverEditMode ? { type: 'none' } : { type: 'river-paint' })}
-          onCog={() => toggle('river')}
-        />
+        {([0, 1, 2] as const).map(tier => (
+          <BrushRow
+            key={tier}
+            label={tierStyles[tier].label}
+            color={tierStyles[tier].color}
+            active={riverEditMode}
+            shortcut={tier === 0 ? '1' : undefined}
+            showCog
+            cogOpen={flyout === `river-${tier}`}
+            onSelect={() => setActiveTool(riverEditMode ? { type: 'none' } : { type: 'river-paint' })}
+            onCog={() => toggle(`river-${tier}` as FlyoutId)}
+          />
+        ))}
         {riverEditMode && (
           <BrushRow
             label="— select"
-            color={riverSelectMode ? riverStyle.color : t.inkFaint}
+            color={riverSelectMode ? tierStyles[1].color : t.inkFaint}
             active={riverSelectMode}
             onSelect={() => setActiveTool(riverSelectMode ? { type: 'river-paint' } : { type: 'river-select' })}
           />
@@ -528,7 +564,9 @@ export function RiversSidebarV3() {
 
       </StripShell>
 
-      {flyout === 'river'        && <RiverStyleFlyout onClose={() => setFlyout(null)} />}
+      {flyout === 'river-0' && <RiverTierFlyout tier={0} onClose={() => setFlyout(null)} />}
+      {flyout === 'river-1' && <RiverTierFlyout tier={1} onClose={() => setFlyout(null)} />}
+      {flyout === 'river-2' && <RiverTierFlyout tier={2} onClose={() => setFlyout(null)} />}
       {flyout === 'canal'        && <CanalStyleFlyout onClose={() => setFlyout(null)} />}
       {flyout === 'osm'          && <OsmRiversFlyout  onClose={() => setFlyout(null)} />}
       {flyout === 'river-labels' && <RiverLabelFlyout onClose={() => setFlyout(null)} />}

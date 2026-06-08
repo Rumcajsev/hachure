@@ -874,9 +874,6 @@ export function migratePersisted(persisted: unknown, fromVersion: number): Recor
     // backgroundTerrain added to GeneratedHex — no migration needed,
     // existing hexes get undefined (no background) which is correct
   }
-  if (fromVersion < 67) {
-    if (s.terrainBlobFeather === undefined) s.terrainBlobFeather = 0
-  }
 if (fromVersion < 64) {
     if (s.roadCenterPull === undefined) s.roadCenterPull = 0
     if (Array.isArray(s.roadTierGeometry)) {
@@ -971,6 +968,30 @@ if (fromVersion < 64) {
     }
     // terrainBlobEffect
     if (!s.terrainBlobEffect) s.terrainBlobEffect = { ...DEFAULT_FX }
+  }
+  if (fromVersion < 75) {
+    const DEFAULT_FX = {
+      glowEnabled: false, glowColor: 'rgba(0,0,0,0.25)', glowBlur: 6, glowSpread: 3,
+      outlineEnabled: false, outlineColor: '#2a4a6a', outlineWidth: 2, outlineDash: 'solid', fillDash: 'solid',
+    }
+    const WATER_COLOR = '#3a6898'
+    if (!s.riverTierStyles) {
+      const widthScale = typeof s.riverWidthScale === 'number' ? s.riverWidthScale : 1.0
+      // Migrate old single riverStyle → tier 1 (River), tiers 0 and 2 use defaults
+      const oldColor = (s.riverStyle as Record<string, unknown> | undefined)?.color as string ?? WATER_COLOR
+      s.riverTierStyles = [
+        { label: 'Major River', color: oldColor, widthScale: widthScale * 1.5, visible: true, effect: { ...DEFAULT_FX } },
+        { label: 'River',       color: oldColor, widthScale: widthScale * 1.0, visible: true, effect: { ...DEFAULT_FX } },
+        { label: 'Stream',      color: '#5878a0', widthScale: widthScale * 0.55, visible: true, effect: { ...DEFAULT_FX } },
+      ]
+    }
+    // Tag existing riverEdges with tier 1 (River) so they keep rendering
+    const edges = s.riverEdges as Array<Record<string, unknown>> | undefined
+    if (edges) {
+      for (const e of edges) {
+        if (e.tier === undefined) e.tier = 1
+      }
+    }
   }
   if (fromVersion < 69) {
     const cp = s.classificationParams as Record<string, unknown> | undefined

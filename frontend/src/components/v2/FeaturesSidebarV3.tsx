@@ -1,12 +1,12 @@
 import { useState, useEffect } from 'react'
-import { useMapStore, type SettlementTier } from '../../store/mapStore'
+import { useMapStore, DEFAULT_RIVER_TIER_STYLES, type SettlementTier } from '../../store/mapStore'
 import { shouldSuppressShortcut } from '../../lib/keyboard'
 import { useTheme } from '../../context/ThemeContext'
 import {
   BrushRow, StripShell, FlyoutShell, V2Divider, TriggerRow, TGap, ToggleRow,
 } from './sidebar'
 import {
-  RiverStyleFlyout, CanalStyleFlyout, OsmRiversFlyout,
+  RiverTierFlyout, CanalStyleFlyout, OsmRiversFlyout,
   RiverSegmentFlyout, RiverLabelFlyout,
 } from './RiversSidebarV3'
 import {
@@ -39,7 +39,7 @@ const IMPORT_ICON = (
 
 type FlyoutState =
   | null
-  | { kind: 'river-style' }
+  | { kind: 'river-0' } | { kind: 'river-1' } | { kind: 'river-2' }
   | { kind: 'canal-style' }
   | { kind: 'osm-rivers' }
   | { kind: 'river-segment'; segMode: 'river' | 'canal' }
@@ -181,7 +181,7 @@ export function FeaturesSidebarV3() {
   const {
     riverEditMode, canalEditMode, riverNodeEditMode,
     riverSelectMode, canalSelectMode,
-    riverStyle, canalStyle,
+    riverTierStyles, riverStyle, canalStyle,
     selectedSegmentKeys, setSelectedSegmentKeys,
     selectedCanalSegmentKeys, setSelectedCanalSegmentKeys,
     roadPaintMode, roadPaintBrush, roadPaintEraser,
@@ -249,20 +249,27 @@ export function FeaturesSidebarV3() {
         {/* ── RIVERS ───────────────────────────────────────────────── */}
         <V2Divider label="Rivers" />
 
-        <BrushRow
-          label="River"
-          color={riverStyle.color}
-          active={riverEditMode}
-          shortcut="1"
-          showCog
-          cogOpen={flyout?.kind === 'river-style'}
-          onSelect={() => setActiveTool(riverEditMode ? { type: 'none' } : { type: 'river-paint' })}
-          onCog={() => open({ kind: 'river-style' })}
-        />
+        {([0, 1, 2] as const).map(tier => {
+          const ts = (riverTierStyles ?? DEFAULT_RIVER_TIER_STYLES)[tier]
+          const kind = `river-${tier}` as 'river-0' | 'river-1' | 'river-2'
+          return (
+            <BrushRow
+              key={tier}
+              label={ts.label}
+              color={ts.color}
+              active={riverEditMode}
+              shortcut={tier === 0 ? '1' : undefined}
+              showCog
+              cogOpen={flyout?.kind === kind}
+              onSelect={() => setActiveTool(riverEditMode ? { type: 'none' } : { type: 'river-paint' })}
+              onCog={() => open({ kind })}
+            />
+          )
+        })}
         {riverEditMode && (
           <BrushRow
             label="— select"
-            color={riverSelectMode ? riverStyle.color : t.inkFaint}
+            color={riverSelectMode ? (riverTierStyles ?? DEFAULT_RIVER_TIER_STYLES)[1].color : t.inkFaint}
             active={riverSelectMode}
             onSelect={() => setActiveTool(riverSelectMode ? { type: 'river-paint' } : { type: 'river-select' })}
           />
@@ -458,7 +465,9 @@ export function FeaturesSidebarV3() {
       </StripShell>
 
       {/* ── Flyouts ───────────────────────────────────────────────── */}
-      {flyout?.kind === 'river-style'       && <RiverStyleFlyout onClose={() => setFlyout(null)} />}
+      {flyout?.kind === 'river-0' && <RiverTierFlyout tier={0} onClose={() => setFlyout(null)} />}
+      {flyout?.kind === 'river-1' && <RiverTierFlyout tier={1} onClose={() => setFlyout(null)} />}
+      {flyout?.kind === 'river-2' && <RiverTierFlyout tier={2} onClose={() => setFlyout(null)} />}
       {flyout?.kind === 'canal-style'       && <CanalStyleFlyout onClose={() => setFlyout(null)} />}
       {flyout?.kind === 'osm-rivers'        && <OsmRiversFlyout  onClose={() => setFlyout(null)} />}
       {flyout?.kind === 'river-labels'      && <RiverLabelFlyout onClose={() => setFlyout(null)} />}

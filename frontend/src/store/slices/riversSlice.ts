@@ -1,5 +1,5 @@
-import type { MapStore, RiverStyleConfig, OsmRiverWay } from '../mapStore'
-import { DEFAULT_RIVER_STYLE, DEFAULT_CANAL_STYLE } from '../mapStore'
+import type { MapStore, RiverStyleConfig, RiverTierStyle, RiverTier, RiverEdge, OsmRiverWay } from '../mapStore'
+import { DEFAULT_RIVER_STYLE, DEFAULT_CANAL_STYLE, DEFAULT_RIVER_TIER_STYLES, waterwayTypeToTier } from '../mapStore'
 
 export type RiversSlice = {
   osmRiverWays: OsmRiverWay[]
@@ -11,8 +11,8 @@ export type RiversSlice = {
   toggleOsmRiver: (idx: number) => void
   setHoveredOsmRiverIdx: (idx: number | null) => void
   clearOsmRivers: () => void
-  riverEdges: { q1: number; r1: number; q2: number; r2: number }[]
-  canalEdges: { q1: number; r1: number; q2: number; r2: number }[]
+  riverEdges: RiverEdge[]
+  canalEdges: RiverEdge[]
   showRiverLabels: boolean
   riverLabelColor: string
   riverSegmentProps: Record<string, { width?: number; taper?: number; taperRange?: [number, number]; wiggleAmp?: number; wiggleFreq?: number; pathSmoothing?: number }>
@@ -21,11 +21,12 @@ export type RiversSlice = {
   canalSelectMode: boolean
   selectedSegmentKeys: string[]
   selectedCanalSegmentKeys: string[]
-  riverStyle: RiverStyleConfig
+  riverTierStyles: [RiverTierStyle, RiverTierStyle, RiverTierStyle]
+  riverStyle: RiverStyleConfig   // legacy, kept for migration
   canalStyle: RiverStyleConfig
   riverEditMode: boolean
   canalEditMode: boolean
-  riverWidthScale: number
+  riverWidthScale: number        // legacy, kept for migration
   canalWidthScale: number
   // riverFlowStyle: number  — defined but never wired to canvas or UI
   riverCurveSteps: number
@@ -57,7 +58,8 @@ export type RiversSlice = {
   setRiverSegmentPropMany: (keys: string[], prop: { width?: number; taper?: number; taperRange?: [number, number]; wiggleAmp?: number; wiggleFreq?: number }) => void
   clearRiverSegmentProp: (key: string) => void
   clearRiverSegmentPropMany: (keys: string[]) => void
-  setRiverStyle: (s: Partial<RiverStyleConfig>) => void
+  setRiverTierStyle: (tier: RiverTier, s: Partial<RiverTierStyle>) => void
+  setRiverStyle: (s: Partial<RiverStyleConfig>) => void   // legacy
   toggleCanalEdge: (q1: number, r1: number, q2: number, r2: number) => void
   setCanalSelectMode: (v: boolean) => void
   setSelectedCanalSegmentKeys: (keys: string[]) => void
@@ -152,9 +154,10 @@ export const createRiversSlice = (set: Set, get: () => MapStore): RiversSlice =>
     canalSelectMode: false,
     selectedSegmentKeys: [],
     selectedCanalSegmentKeys: [],
-    riverStyle: { ...DEFAULT_RIVER_STYLE },
+    riverTierStyles: DEFAULT_RIVER_TIER_STYLES.map(s => ({ ...s, effect: { ...s.effect } })) as [RiverTierStyle, RiverTierStyle, RiverTierStyle],
+    riverStyle: { ...DEFAULT_RIVER_STYLE },   // legacy
     canalStyle: { ...DEFAULT_CANAL_STYLE },
-    riverWidthScale: 1.0,
+    riverWidthScale: 1.0,   // legacy
     canalWidthScale: 0.45,
     // riverFlowStyle / riverWiggliness — detached
     riverCurveSteps: 3,
@@ -189,7 +192,7 @@ export const createRiversSlice = (set: Set, get: () => MapStore): RiversSlice =>
             hex_orientation: hexOrientation,
             R_m: generatedMetadata.outer_radius_m,
             hex_size_km: generatedMetadata.hex_size_km,
-            types: ['river', 'canal'],
+            types: ['river', 'stream', 'drain', 'canal'],
           }),
         })
         if (!resp.ok) throw new Error(await resp.text())
@@ -206,7 +209,7 @@ export const createRiversSlice = (set: Set, get: () => MapStore): RiversSlice =>
       if (!way) return
       get().pushUndoSnapshot()
 
-      const isRiver = way.type === 'river'
+      const isRiver = way.type !== 'canal'
       const edgesKey = isRiver ? 'riverEdges' : 'canalEdges'
       const propsKey = isRiver ? 'riverSegmentProps' : 'canalSegmentProps'
       const existingEdges = isRiver ? riverEdges : canalEdges
@@ -235,7 +238,8 @@ export const createRiversSlice = (set: Set, get: () => MapStore): RiversSlice =>
           const a = `${e.q1},${e.r1}`, b = `${e.q2},${e.r2}`
           return a < b ? `${a}|${b}` : `${b}|${a}`
         }))
-        const newEdges: { q1: number; r1: number; q2: number; r2: number }[] = []
+        const tier = isRiver ? waterwayTypeToTier(way.type) : undefined
+        const newEdges: RiverEdge[] = []
         const newProps: Record<string, { width: number }> = {}
         const edgeSet = new Set<string>()
         for (const e of way.edges) {
@@ -243,7 +247,7 @@ export const createRiversSlice = (set: Set, get: () => MapStore): RiversSlice =>
           const pairKey = a < b ? `${a}|${b}` : `${b}|${a}`
           if (existingPairs.has(pairKey) || edgeSet.has(pairKey)) continue
           edgeSet.add(pairKey)
-          newEdges.push(e)
+          newEdges.push({ ...e, ...(tier !== undefined ? { tier } : {}) })
           newProps[pairKey] = { width: way.width_multiplier }
         }
         set(s => ({
@@ -263,6 +267,11 @@ export const createRiversSlice = (set: Set, get: () => MapStore): RiversSlice =>
     setRiverSegmentPropMany: river.setPropMany,
     clearRiverSegmentProp: river.clearProp,
     clearRiverSegmentPropMany: river.clearPropMany,
+    setRiverTierStyle: (tier, s) => set(st => {
+      const styles = [...st.riverTierStyles] as [RiverTierStyle, RiverTierStyle, RiverTierStyle]
+      styles[tier] = { ...styles[tier], ...s }
+      return { riverTierStyles: styles }
+    }),
     setRiverStyle: (s) => set(st => ({ riverStyle: { ...st.riverStyle, ...s } })),
 
     toggleRiverEdge: (q1, r1, q2, r2) => {

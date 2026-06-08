@@ -168,7 +168,6 @@ export const TerrainViewCanvas = forwardRef<TerrainViewCanvasHandle, { surroundC
     terrainBlobSmooth, terrainBlobOffset, terrainBlobBump,
     terrainBlobSweepFreq, terrainBlobLobeFreq, terrainBlobLobeAmp, terrainBlobLobeThreshold, terrainBlobLobeDirection,
     terrainBlobSimplify,
-    terrainBlobFeather,
     terrainBlobOutlineEnabled, terrainBlobOutlineColor, terrainBlobOutlineWidth, terrainBlobEffect,
 terrainColors, terrainTextureScales, terrainTextureBlendModes, terrainTextureOpacities,
     terrainTextureTintColors, terrainTextureTintOpacities,
@@ -215,7 +214,7 @@ terrainColors, terrainTextureScales, terrainTextureBlendModes, terrainTextureOpa
     selectedSegmentKeys, selectedCanalSegmentKeys,
     setSelectedSegmentKeys, toggleSegmentSelection,
     setSelectedCanalSegmentKeys, toggleCanalSegmentSelection,
-    riverStyle, canalStyle,
+    riverTierStyles, riverStyle, canalStyle,
     riverWidthScale, canalWidthScale, riverCurveSteps, riverWobble, riverDetail,
     riverWiggleFreq, riverWiggleAmp, riverSmoothing, riverPathSmoothing,
     terrainBlobOverrides, setTerrainBlobOverride,
@@ -438,6 +437,7 @@ terrainColors, terrainTextureScales, terrainTextureBlendModes, terrainTextureOpa
   const setSelectedCanalSegmentKeysRef = useRef(setSelectedCanalSegmentKeys)
   const toggleSegmentSelectionRef = useRef(toggleSegmentSelection)
   const toggleCanalSegmentSelectionRef = useRef(toggleCanalSegmentSelection)
+  const riverTierStylesRef = useRef(riverTierStyles)
   const riverStyleRef = useRef(riverStyle)
   const canalStyleRef = useRef(canalStyle)
   const computedRiverChainsRef = useRef<{ vertices: [number,number][]; segKey: string }[]>([])
@@ -477,7 +477,6 @@ terrainColors, terrainTextureScales, terrainTextureBlendModes, terrainTextureOpa
   const terrainBlobLobeThresholdRef = useRef(terrainBlobLobeThreshold)
   const terrainBlobLobeDirectionRef = useRef(terrainBlobLobeDirection)
   const terrainBlobSimplifyRef = useRef(terrainBlobSimplify)
-  const terrainBlobFeatherRef = useRef(terrainBlobFeather)
   const terrainBlobOutlineEnabledRef = useRef(terrainBlobOutlineEnabled)
   const terrainBlobOutlineColorRef = useRef(terrainBlobOutlineColor)
   const terrainBlobOutlineWidthRef = useRef(terrainBlobOutlineWidth)
@@ -708,6 +707,7 @@ terrainColors, terrainTextureScales, terrainTextureBlendModes, terrainTextureOpa
   setSelectedCanalSegmentKeysRef.current = setSelectedCanalSegmentKeys
   toggleSegmentSelectionRef.current = toggleSegmentSelection
   toggleCanalSegmentSelectionRef.current = toggleCanalSegmentSelection
+  riverTierStylesRef.current = riverTierStyles
   riverStyleRef.current = riverStyle
   canalStyleRef.current = canalStyle
   riverWidthScaleRef.current = riverWidthScale
@@ -770,7 +770,6 @@ terrainColors, terrainTextureScales, terrainTextureBlendModes, terrainTextureOpa
   terrainBlobLobeThresholdRef.current = terrainBlobLobeThreshold
   terrainBlobLobeDirectionRef.current = terrainBlobLobeDirection
   terrainBlobSimplifyRef.current = terrainBlobSimplify
-  terrainBlobFeatherRef.current = terrainBlobFeather
   terrainBlobOutlineEnabledRef.current = terrainBlobOutlineEnabled
   terrainBlobOutlineColorRef.current = terrainBlobOutlineColor
   terrainBlobOutlineWidthRef.current = terrainBlobOutlineWidth
@@ -1697,7 +1696,6 @@ const roadV3TierGeomRef = useRef(roadV3TierGeom)
         lobeFreq: terrainBlobLobeFreqRef.current, lobeAmp: terrainBlobLobeAmpRef.current,
         lobeThreshold: terrainBlobLobeThresholdRef.current, lobeDirection: terrainBlobLobeDirectionRef.current,
       },
-      terrainBlobFeather: terrainBlobFeatherRef.current,
       terrainBlobOutlineEnabled: terrainBlobOutlineEnabledRef.current,
       terrainBlobOutlineColor: terrainBlobOutlineColorRef.current,
       terrainBlobOutlineWidth: terrainBlobOutlineWidthRef.current,
@@ -2028,13 +2026,23 @@ const roadV3TierGeomRef = useRef(roadV3TierGeom)
         py: verts.reduce((s, v) => s + v[1], 0) / 6,
       }))
 
+    // Split river edges into 3 tier buckets (undefined tier → tier 1 for legacy data)
+    const tierEdges: [typeof riverEdgesRef.current, typeof riverEdgesRef.current, typeof riverEdgesRef.current] = [[], [], []]
+    for (const e of riverEdgesRef.current) tierEdges[e.tier ?? 1].push(e)
+
+    let riverTierChainData: [import('../lib/drawRivers').ChainEntry[], import('../lib/drawRivers').ChainEntry[], import('../lib/drawRivers').ChainEntry[]]
     let riverChainData, canalChainData
     if (RIVER_V2) {
+      riverTierChainData = tierEdges.map(edges =>
+        buildRiverChainsV2(edges, hexesRef.current, riverChainOverridesRef.current, riverWiggleFreqRef.current, riverWiggleAmpRef.current, riverSmoothingRef.current, riverHopPropsRef.current, riverSegmentPropsRef.current, riverPathSmoothingRef.current)
+          .map(c => ({ vertices: c.chain, segKey: c.segKey, hopKeys: c.hopKeys, hopRanges: c.hopRanges }))
+      ) as typeof riverTierChainData
       const rv2 = buildRiverChainsV2(riverEdgesRef.current, hexesRef.current, riverChainOverridesRef.current, riverWiggleFreqRef.current, riverWiggleAmpRef.current, riverSmoothingRef.current, riverHopPropsRef.current, riverSegmentPropsRef.current, riverPathSmoothingRef.current)
       riverChainsV2Ref.current = rv2
       riverChainData = rv2.map(c => ({ vertices: c.chain, segKey: c.segKey, hopKeys: c.hopKeys, hopRanges: c.hopRanges }))
       canalChainData = buildRiverChainsV2(canalEdgesRef.current, hexesRef.current, riverChainOverridesRef.current, riverWiggleFreqRef.current, riverWiggleAmpRef.current, riverSmoothingRef.current, {}, {}, riverPathSmoothingRef.current).map(c => ({ vertices: c.chain, segKey: c.segKey }))
     } else {
+      riverTierChainData = tierEdges.map(edges => buildRiverChains(edges, hexesRef.current)) as typeof riverTierChainData
       riverChainsV2Ref.current = []
       riverChainData = buildRiverChains(riverEdgesRef.current, hexesRef.current)
       canalChainData = buildRiverChains(canalEdgesRef.current, hexesRef.current)
@@ -2071,15 +2079,17 @@ const roadV3TierGeomRef = useRef(roadV3TierGeom)
     }
 
     const riverParams = {
+      riverTierChainData,
       riverChainData,
       canalChainData,
       riverSegProps: riverSegmentPropsRef.current,
       canalSegProps: canalSegmentPropsRef.current,
+      riverTierStyles: riverTierStylesRef.current,
       riverStyle: riverStyleRef.current,
       canalStyle: canalStyleRef.current,
       selectedRiverKeys: new Set(selectedSegmentKeysRef.current),
       selectedCanalKeys: new Set(selectedCanalSegmentKeysRef.current),
-      riverBaseHW: 1.4 * riverWidthScaleRef.current * lineScale,
+      riverBaseHW: 1.4 * lineScale,
       canalBaseHW: 1.4 * canalWidthScaleRef.current * lineScale,
       lakeProjCenters,
       smoothPasses: RIVER_V2 ? 0 : riverCurveStepsRef.current,
@@ -2920,7 +2930,7 @@ const roadV3TierGeomRef = useRef(roadV3TierGeom)
   //   forestTextureVersion, frameDims, draw])
 
   // Mark terrain layer dirty when terrain-affecting data changes
-  useEffect(() => { terrainDirtyRef.current = true }, [defaultTerrainBlobs, defaultWaterBlobs, defaultElevationBlobs, terrainColors, terrainTextureScales, terrainTextureBlendModes, terrainTextureOpacities, terrainTextureTintColors, terrainTextureTintOpacities, terrainTextureFile, terrainTextureEnabled, terrainBlobOverrides, terrainTypeBlobStyles, waterOverrides, terrainRenderMode, hexEdgeMode, generatedHexes, realisticCoastline, coastlineDebugRaw, smoothedCoastlineBoundary, rawCoastlineBoundary, beachStrip, beachColor, beachWidth, hillsColor, mountainsColor, reliefShadingOpacity, coastlineDPEpsilon, coastlineChaikinPasses, edgeBlobPainted, edgeBlobOverrides, edgeBlobWidth, mapStyle, historicalIconParams, elevationTypeBlobStyles, terrainBlobFeather, terrainBlobOutlineEnabled, terrainBlobOutlineColor, terrainBlobOutlineWidth, terrainBlobEffect, elevationOverridesTerrain])
+  useEffect(() => { terrainDirtyRef.current = true }, [defaultTerrainBlobs, defaultWaterBlobs, defaultElevationBlobs, terrainColors, terrainTextureScales, terrainTextureBlendModes, terrainTextureOpacities, terrainTextureTintColors, terrainTextureTintOpacities, terrainTextureFile, terrainTextureEnabled, terrainBlobOverrides, terrainTypeBlobStyles, waterOverrides, terrainRenderMode, hexEdgeMode, generatedHexes, realisticCoastline, coastlineDebugRaw, smoothedCoastlineBoundary, rawCoastlineBoundary, beachStrip, beachColor, beachWidth, hillsColor, mountainsColor, reliefShadingOpacity, coastlineDPEpsilon, coastlineChaikinPasses, edgeBlobPainted, edgeBlobOverrides, edgeBlobWidth, mapStyle, historicalIconParams, elevationTypeBlobStyles, terrainBlobOutlineEnabled, terrainBlobOutlineColor, terrainBlobOutlineWidth, terrainBlobEffect, elevationOverridesTerrain])
   useEffect(() => { terrainDirtyRef.current = true; draw() }, [hillshadeDisabledTerrains, hillshadeDisabledElevClasses, contourDisabledTerrains, contourDisabledElevClasses]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // Decode heightmap PNG → ImageData when URL changes, then recompute derived canvases
@@ -3011,7 +3021,7 @@ const roadV3TierGeomRef = useRef(roadV3TierGeom)
 
   // Mark other layer caches dirty when their relevant data changes
   useEffect(() => { hexBorderDirtyRef.current = true }, [hexBorderMode, hexEdgeMode, hexBorderOpacity, hexBorderColor, hexBorderDifference, generatedHexes, excludedHexKeys, disabledHexKeys, autoDisabledOceanHexKeys])
-  useEffect(() => { riversDirtyRef.current = true }, [riverEdges, canalEdges, riverWidthScale, canalWidthScale, riverCurveSteps, riverWobble, riverDetail, riverWiggleFreq, riverWiggleAmp, riverSmoothing, riverPathSmoothing, showRiverLabels, riverLabelColor, riverSegmentProps, canalSegmentProps, riverSelectMode, canalSelectMode, selectedSegmentKeys, selectedCanalSegmentKeys, riverStyle, canalStyle, riverHopProps, selectedHopKey, labelOffsets])
+  useEffect(() => { riversDirtyRef.current = true }, [riverEdges, canalEdges, riverTierStyles, riverWidthScale, canalWidthScale, riverCurveSteps, riverWobble, riverDetail, riverWiggleFreq, riverWiggleAmp, riverSmoothing, riverPathSmoothing, showRiverLabels, riverLabelColor, riverSegmentProps, canalSegmentProps, riverSelectMode, canalSelectMode, selectedSegmentKeys, selectedCanalSegmentKeys, riverStyle, canalStyle, riverHopProps, selectedHopKey, labelOffsets])
   useEffect(() => { buildingsDirtyRef.current = true }, [urbanHexes, urbanStyle, settlements, settlementTierStyles, roadBaseData])
   useEffect(() => { bridgesDirtyRef.current = true }, [bridgesEnabled, smoothedRoadData, smoothedRoadDataV2, smoothedRailData, riverEdges, canalEdges, generatedHexes])
   useEffect(() => { roadsDirtyRef.current = true }, [smoothedRoadData, smoothedRailData, roadTierStyles, railStyle, roadSegmentProps, roadHopProps, selectedRoadSegmentKeys, selectedRoadHopKey, roadSelectMode, railControlOverrides, railWiggleAmp, railWiggleFreq, railSmoothing, railSegmentProps, railHopProps, selectedRailSegmentKeys, selectedRailHopKey, railSelectMode, showRawOsmRoads, mapStyle, roadClearanceTerrains, defaultTerrainBlobs])
