@@ -1193,7 +1193,6 @@ const roadV3TierGeomRef = useRef(roadV3TierGeom)
   const smoothedCoastlineBoundaryRef = useRef(smoothedCoastlineBoundary)
   smoothedCoastlineBoundaryRef.current = smoothedCoastlineBoundary
 
-  // River chains projected to canvas pixels — used for corridor cutting in blob topology.
   const riverChainsForRepulsion = useMemo(() => {
     if (!generatedMetadata || !paperDims) return []
     const { pw, ph, px, py } = paperDims
@@ -1289,8 +1288,7 @@ const roadV3TierGeomRef = useRef(roadV3TierGeom)
         ? rawPolys.map(p => douglasPeuckerClosed(p, terrainBlobSimplify * hexRadius))
         : rawPolys
 
-      // Build vertex handles and displaced polys simultaneously.
-      // Offsets applied to simplified vertices before shaping — no post-process warp needed.
+      // Build vertex handles from simplified poly corners — each vertex is one handle
       const ESNAP = Math.max(2, hexRadius * 0.015)
       const evk = (p: [number, number]) => `${Math.round(p[0]/ESNAP)},${Math.round(p[1]/ESNAP)}`
       const newHandleGroups = new Map<string, { edgeKey: string; cx: number; cy: number }[]>()
@@ -1337,9 +1335,18 @@ const roadV3TierGeomRef = useRef(roadV3TierGeom)
       let polysToShape = displacedPolys
       if (riverHW > 0 || roadHW > 0) {
         const seed = rawPolys[0] ? Math.abs(Math.round(rawPolys[0][0][0] * 73 + rawPolys[0][0][1] * 97)) : 0
+        const downsample = (pts: [number, number][], maxPts = 25): [number, number][] => {
+          if (pts.length <= maxPts) return pts
+          const step = Math.ceil(pts.length / maxPts)
+          const out: [number, number][] = []
+          for (let i = 0; i < pts.length; i += step) out.push(pts[i])
+          if (out[out.length - 1] !== pts[pts.length - 1]) out.push(pts[pts.length - 1])
+          return out
+        }
         if (riverHW > 0) {
           for (const chain of riverChainsForRepulsion) {
-            const corridor = buildCorridorPolygon(chain, riverHW, bump, sweepFreq, hexRadius, seed)
+            const sampled = downsample(chain)
+            const corridor = buildCorridorPolygon(sampled, riverHW, bump, sweepFreq, hexRadius, seed)
             if (corridor.length >= 3) polysToShape = polysToShape.flatMap(p => subtractPolygon(p, corridor))
           }
         }
@@ -1349,15 +1356,18 @@ const roadV3TierGeomRef = useRef(roadV3TierGeom)
             projectToCanvas(pt[0], pt[1], generatedMetadata, pw, ph, px, py) as [number, number]
           for (const c of smoothedRoadData.chains) {
             const chainPx = c.chain.map(proj)
-            const corridor = buildCorridorPolygon(chainPx, roadHW, bump, sweepFreq, hexRadius, seed + 1)
+            const sampled = downsample(chainPx)
+            const corridor = buildCorridorPolygon(sampled, roadHW, bump, sweepFreq, hexRadius, seed + 1)
             if (corridor.length >= 3) polysToShape = polysToShape.flatMap(p => subtractPolygon(p, corridor))
           }
         }
         if (polysToShape.length === 0) polysToShape = rawPolys
       }
 
-      // simplify:0 — polys already simplified and displaced, skip internal DP
-      const blobs = shapeTerrainBlobs([{ terrain, rawPolys: polysToShape, hexCenters }], smooth, offset, bump, sweepFreq, lobeFreq, lobeAmp, lobeThreshold, lobeDirection, hexRadius, blobSeeds, 0)
+      // polysToShape are already simplified+displaced — pass simplify:0 to skip internal DP,
+      // and empty hexCenters so resizeToHexAnchors is a no-op (displaced vertices must not
+      // be pulled back toward original hex anchors).
+      const blobs = shapeTerrainBlobs([{ terrain, rawPolys: polysToShape, hexCenters: [] }], smooth, offset, bump, sweepFreq, lobeFreq, lobeAmp, lobeThreshold, lobeDirection, hexRadius, blobSeeds, 0)
 
       perTerrainBlobCache.current.set(terrain, { hexKey, rawPolys, hexCenters, styleKey, blobs, handleGroups: newHandleGroups, simplifiedPolyGroups: newSimplifiedPolys })
       return blobs
