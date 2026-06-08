@@ -4,7 +4,7 @@ import 'maplibre-gl/dist/maplibre-gl.css'
 import { useMapStore, TERRAIN_COLORS, WATER_COLOR, TERRAIN_PRIORITY, hexTerrainLayers, edgeBlobCanonicalKey, WORLDCOVER_CLASSES, validColWidthsForRows, validRowHeightsForCols, cellPaperInfo, type GeneratedHex, type RoadTierStyle, type SettlementTier, type SettlementTierStyle } from '../store/mapStore'
 import { BlobOverrideFlyout } from './BlobOverrideFlyout'
 import { useTheme } from '../context/ThemeContext'
-import { hexAdjacent, catmullRom, offsetPolyline, pointInPolygon, distToSeg, douglasPeucker, chaikin } from '../lib/geometry'
+import { hexAdjacent, catmullRom, offsetPolyline, pointInPolygon, distToSeg, douglasPeucker, douglasPeuckerClosed, chaikin } from '../lib/geometry'
 import { mulberry32, makePermutation } from '../lib/noise'
 import { projectToCanvas, unprojectFromCanvas, computePaper, computeWorldcoverBbox } from '../lib/projection'
 import { coastalBlobTerrains, bleedPolygon, buildTerrainBlobsV2, buildTerrainBlobTopology, shapeTerrainBlobs, computeConnectedComponents } from '../lib/terrainBlobs'
@@ -527,8 +527,8 @@ terrainColors, terrainTextureScales, terrainTextureBlendModes, terrainTextureOpa
   const blobHandleOverridesRef = useRef(blobHandleOverrides)
   const setBlobHandleOverrideRef = useRef(setBlobHandleOverride)
   const setActiveBlobEditIdRef = useRef(setActiveBlobEditId)
-  // canonicalKey → { terrain, handles: { edgeKey, cx, cy }[] } — updated by blob useMemo
-  const blobHandleDataRef = useRef<Map<string, { terrain: string; handles: { edgeKey: string; cx: number; cy: number }[] }>>(new Map())
+  // canonicalKey → { terrain, handles, simplifiedPolys } — updated by blob useMemo
+  const blobHandleDataRef = useRef<Map<string, { terrain: string; handles: { edgeKey: string; cx: number; cy: number }[]; simplifiedPolys: [number, number][][] }>>(new Map())
   const activeToolRef = useRef(activeTool)
   const setHexHighlightRef = useRef(setHexHighlight)
   const clearHexHighlightRef = useRef(clearHexHighlight)
@@ -1194,7 +1194,7 @@ const roadV3TierGeomRef = useRef(roadV3TierGeom)
   smoothedCoastlineBoundaryRef.current = smoothedCoastlineBoundary
 
   const prevTerrainBlobsRef = useRef<{ terrain: string; polys: [number, number][][]; blobKeys: string[] }[]>([])
-  type TerrainBlobCacheEntry = { hexKey: string; rawPolys: [number, number][][]; hexCenters: [number, number][]; styleKey: string; blobs: { terrain: string; polys: [number, number][][]; blobKeys: string[] }[]; handleGroups?: Map<string, { edgeKey: string; cx: number; cy: number }[]> }
+  type TerrainBlobCacheEntry = { hexKey: string; rawPolys: [number, number][][]; hexCenters: [number, number][]; styleKey: string; blobs: { terrain: string; polys: [number, number][][]; blobKeys: string[] }[]; handleGroups?: Map<string, { edgeKey: string; cx: number; cy: number }[]>; simplifiedPolyGroups?: Map<string, [number, number][][]> }
   const perTerrainBlobCache = useRef(new Map<string, TerrainBlobCacheEntry>())
   const defaultTerrainBlobs = useMemo(() => {
     if (projectedHexes.length === 0 || hexRadius === 0) return []
@@ -1272,14 +1272,19 @@ const roadV3TierGeomRef = useRef(roadV3TierGeom)
         rawPolys = topo.find(e => e.terrain === terrain)?.rawPolys ?? []
       }
 
-      // Build boundary edge handles from rawPolys — each consecutive vertex pair is one
-      // boundary edge; its midpoint is the handle. edgeKey = sorted snapped vertex keys.
+      // Simplified polys — what handles are generated from and what the dashed overlay shows
+      const simplifiedPolys = terrainBlobSimplify > 0
+        ? rawPolys.map(p => douglasPeuckerClosed(p, terrainBlobSimplify * hexRadius))
+        : rawPolys
+
+      // Build vertex handles from simplified poly corners — each vertex is one handle
       const ESNAP = Math.max(2, hexRadius * 0.015)
       const evk = (p: [number, number]) => `${Math.round(p[0]/ESNAP)},${Math.round(p[1]/ESNAP)}`
       const newHandleGroups = new Map<string, { edgeKey: string; cx: number; cy: number }[]>()
-      for (const poly of rawPolys) {
+      const newSimplifiedPolys = new Map<string, [number, number][][]>()
+      for (const poly of simplifiedPolys) {
         if (poly.length < 3) continue
-        // Canonical key for this poly: nearest hex center to first vertex
+        // Canonical key: nearest hex center to first vertex
         const [fvx, fvy] = poly[0]
         let polyCk = '', bestD = Infinity
         for (const [hk, [hx, hy]] of hexOrigCenterByKey) {
@@ -1288,24 +1293,23 @@ const roadV3TierGeomRef = useRef(roadV3TierGeom)
         }
         if (!polyCk) continue
         if (!newHandleGroups.has(polyCk)) newHandleGroups.set(polyCk, [])
+        if (!newSimplifiedPolys.has(polyCk)) newSimplifiedPolys.set(polyCk, [])
+        newSimplifiedPolys.get(polyCk)!.push(poly)
         const group = newHandleGroups.get(polyCk)!
-        const n = poly.length
-        for (let i = 0; i < n; i++) {
-          const v1 = poly[i], v2 = poly[(i+1)%n]
-          const k1 = evk(v1), k2 = evk(v2)
-          const edgeKey = k1 < k2 ? `${k1}|${k2}` : `${k2}|${k1}`
-          const cx = (v1[0]+v2[0])/2, cy = (v1[1]+v2[1])/2
+        for (let i = 0; i < poly.length; i++) {
+          const v = poly[i]
+          const edgeKey = evk(v)
           const off = blobHandleOverrides[polyCk]?.[edgeKey]
-          group.push({ edgeKey, cx: cx + (off?.[0] ?? 0) * hexRadius, cy: cy + (off?.[1] ?? 0) * hexRadius })
+          group.push({ edgeKey, cx: v[0] + (off?.[0] ?? 0) * hexRadius, cy: v[1] + (off?.[1] ?? 0) * hexRadius })
         }
       }
       for (const [ck, handles] of newHandleGroups) {
-        blobHandleDataRef.current.set(ck, { terrain, handles })
+        blobHandleDataRef.current.set(ck, { terrain, handles, simplifiedPolys: newSimplifiedPolys.get(ck) ?? [] })
       }
 
       if (cached?.hexKey === hexKey && cached?.styleKey === styleKey) {
         for (const [ck, handles] of cached.handleGroups ?? []) {
-          blobHandleDataRef.current.set(ck, { terrain, handles })
+          blobHandleDataRef.current.set(ck, { terrain, handles, simplifiedPolys: cached.simplifiedPolyGroups?.get(ck) ?? [] })
         }
         return cached.blobs
       }
@@ -1313,8 +1317,8 @@ const roadV3TierGeomRef = useRef(roadV3TierGeom)
       const hexCenters = [...hexOrigCenterByKey.values()]
       const shapedBlobs = shapeTerrainBlobs([{ terrain, rawPolys, hexCenters }], smooth, offset, bump, sweepFreq, lobeFreq, lobeAmp, lobeThreshold, lobeDirection, hexRadius, blobSeeds, terrainBlobSimplify)
 
-      // Post-generation warp: displace final polygon vertices based on dragged edge handles.
-      // Anchor = original edge midpoint (pre-drag). Sigma = 0.6R → tight, local effect.
+      // Post-generation warp: displace final polygon vertices based on dragged vertex handles.
+      // Anchor = original vertex position (pre-drag). Sigma = 0.6R → tight, local effect.
       const warpHandles: { cx: number; cy: number; dx: number; dy: number }[] = []
       for (const [ck, hdArr] of newHandleGroups) {
         const offsets = blobHandleOverrides[ck]
@@ -1344,7 +1348,7 @@ const roadV3TierGeomRef = useRef(roadV3TierGeom)
         }),
       }))
 
-      perTerrainBlobCache.current.set(terrain, { hexKey, rawPolys, hexCenters, styleKey, blobs, handleGroups: newHandleGroups })
+      perTerrainBlobCache.current.set(terrain, { hexKey, rawPolys, hexCenters, styleKey, blobs, handleGroups: newHandleGroups, simplifiedPolyGroups: newSimplifiedPolys })
       return blobs
     })
     for (const t of perTerrainBlobCache.current.keys()) {
@@ -2453,41 +2457,44 @@ const roadV3TierGeomRef = useRef(roadV3TierGeom)
     if (!isExport && blobEditModeRef.current) {
       const activeId = activeBlobEditIdRef.current
       const handleData = blobHandleDataRef.current
-      const handleR = Math.max(2.5, hexRadiusRef.current * 0.06)
+      const zoom = zoomRef.current ?? 1
+      const handleR = Math.max(2, 3 / zoom)
+      const lw = 1 / zoom
       ctx.save()
+
+      // Draw dashed simplified polygon for active blob
+      if (activeId) {
+        const { simplifiedPolys: sPolys } = handleData.get(activeId) ?? {}
+        if (sPolys && sPolys.length > 0) {
+          ctx.save()
+          ctx.strokeStyle = 'rgba(255,255,255,0.5)'
+          ctx.lineWidth = lw
+          ctx.setLineDash([4 / zoom, 4 / zoom])
+          for (const poly of sPolys) {
+            if (poly.length < 3) continue
+            ctx.beginPath()
+            ctx.moveTo(poly[0][0], poly[0][1])
+            for (let i = 1; i < poly.length; i++) ctx.lineTo(poly[i][0], poly[i][1])
+            ctx.closePath()
+            ctx.stroke()
+          }
+          ctx.restore()
+        }
+      }
+
+      // Draw handles
       for (const [ck, { handles }] of handleData) {
         const isActive = ck === activeId
+        if (!isActive && activeId) continue  // only show handles for active blob
         for (const { edgeKey, cx, cy } of handles) {
           const hasOverride = !!(blobHandleOverridesRef.current[ck]?.[edgeKey])
           ctx.beginPath()
           ctx.arc(cx, cy, handleR, 0, Math.PI * 2)
-          ctx.fillStyle = hasOverride ? '#ff6b35' : (isActive ? 'rgba(255,255,255,0.85)' : 'rgba(255,255,255,0.35)')
+          ctx.fillStyle = hasOverride ? 'rgba(255,180,80,0.9)' : 'rgba(255,255,255,0.75)'
           ctx.fill()
-          ctx.lineWidth = isActive ? 2 : 1
-          ctx.strokeStyle = isActive ? '#1a6fbd' : 'rgba(80,120,200,0.6)'
+          ctx.lineWidth = lw
+          ctx.strokeStyle = 'rgba(80,80,80,0.6)'
           ctx.stroke()
-        }
-      }
-      // Draw selection ring around the specific polygon belonging to the active canonical key
-      if (activeId) {
-        const activeHandles = handleData.get(activeId)?.handles ?? []
-        if (activeHandles.length > 0) {
-          const { cx: hx, cy: hy } = activeHandles[0]
-          ctx.save()
-          ctx.strokeStyle = '#1a6fbd'
-          ctx.lineWidth = 2
-          ctx.setLineDash([6, 4])
-          for (const entry of defaultTerrainBlobsRef.current) {
-            for (const poly of entry.polys) {
-              if (poly.length < 3 || !pointInPolygon(hx, hy, poly)) continue
-              ctx.beginPath()
-              ctx.moveTo(poly[0][0], poly[0][1])
-              for (let i = 1; i < poly.length; i++) ctx.lineTo(poly[i][0], poly[i][1])
-              ctx.closePath()
-              ctx.stroke()
-            }
-          }
-          ctx.restore()
         }
       }
       ctx.restore()
