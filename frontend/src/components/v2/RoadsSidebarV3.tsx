@@ -4,9 +4,8 @@ import {
   DEFAULT_ROAD_TIER_STYLES, DEFAULT_RAIL_STYLE, DEFAULT_ROAD_GEOM, DEFAULT_RAIL_GEOM,
   DEFAULT_ROAD_V3_TIER_GEOM,
 } from '../../store/mapStore'
-import type { RoadDashStyle, RoadTierStyle, StrokeDash } from '../../store/mapStore'
+import type { RoadTierStyle, StrokeDash } from '../../store/mapStore'
 import { DEFAULT_STROKE_EFFECT } from '../../store/mapStore'
-import { StrokeEffectPanel } from './StrokeEffectPanel'
 import { buildRoadChains, buildRailChains } from '../../lib/roadChains'
 import { buildRoadChainsV3 } from '../../lib/roadChainsV3'
 import { drawRoadsAndRails } from '../../lib/drawRoadsRails'
@@ -352,11 +351,30 @@ export function RailShapeFlyout({ onClose }: { onClose: () => void }) {
 
 // ── RoadStyleFlyout ────────────────────────────────────────────────────────────
 
-const DASH_OPTIONS: { value: RoadDashStyle; label: string }[] = [
-  { value: 'solid', label: 'Solid' },
-  { value: 'dashed', label: 'Dashed' },
-  { value: 'dotted', label: 'Dotted' },
+const DASH_OPTIONS: { value: StrokeDash; label: string }[] = [
+  { value: 'solid',    label: '——' },
+  { value: 'dashed',   label: '- -' },
+  { value: 'dotted',   label: '···' },
+  { value: 'longdash', label: '— —' },
+  { value: 'dashdot',  label: '-·-' },
 ]
+
+function SectionToggle({ label, enabled, onChange, accentColor }: { label: string; enabled: boolean; onChange: (v: boolean) => void; accentColor?: string }) {
+  const t = useTheme()
+  return (
+    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '8px 12px 4px', borderTop: `1px solid ${t.line2}` }}>
+      <span style={{ fontFamily: t.mono, fontSize: 8.5, letterSpacing: 0.8, color: enabled ? (accentColor ?? t.ink2) : t.inkFaint, textTransform: 'uppercase', fontWeight: 600 }}>
+        {label}
+      </span>
+      <button
+        onClick={() => onChange(!enabled)}
+        style={{ width: 30, height: 16, flexShrink: 0, background: enabled ? t.ink : t.line, border: 'none', cursor: 'pointer', padding: 0, position: 'relative' }}
+      >
+        <div style={{ position: 'absolute', top: 3, left: enabled ? 15 : 3, width: 10, height: 10, background: t.surface, transition: 'left 0.12s ease' }} />
+      </button>
+    </div>
+  )
+}
 
 export function RoadStyleFlyout({ tier, onClose }: { tier: 0 | 1 | 2; onClose: () => void }) {
   const t = useTheme()
@@ -385,9 +403,13 @@ export function RoadStyleFlyout({ tier, onClose }: { tier: 0 | 1 | 2; onClose: (
     v3Geom.variationCharacter !== defV3.variationCharacter ||
     v3Geom.entryOvershoot !== defV3.entryOvershoot
 
+  const fx = s.effect ?? DEFAULT_STROKE_EFFECT
+  const setFx = (patch: Partial<typeof fx>) => setRoadTierStyle(tier, { effect: { ...fx, ...patch } })
+
   const isModified =
     s.outer !== def.outer || s.inner !== def.inner || s.outerW !== def.outerW ||
-    s.caseDash !== def.caseDash || s.fillDash !== def.fillDash
+    s.caseDash !== def.caseDash || s.fillDash !== def.fillDash ||
+    JSON.stringify(fx) !== JSON.stringify(def.effect ?? DEFAULT_STROKE_EFFECT)
 
   return (
     <FlyoutShell
@@ -396,39 +418,53 @@ export function RoadStyleFlyout({ tier, onClose }: { tier: 0 | 1 | 2; onClose: (
       onClose={onClose}
     >
       <HexPreview mode="road" tier={tier} />
+
+      {/* ── Always-on: thickness + surface + fill dash ── */}
       <MiniSlider label="Thickness" display={s.outerW.toFixed(1)} value={s.outerW * 10} min={5} max={100} step={5} accentColor={tierColor} onChange={v => setRoadTierStyle(tier, { outerW: v / 10 })} />
       <FSectionDivider />
       <FSectionLabel label="Surface" />
       <BigColorSwatch value={s.inner} onChange={v => setRoadTierStyle(tier, { inner: v })} groups={ROAD_SURFACE_GROUPS} />
       <FSectionLabel label="Fill stroke" />
-      <div style={{ padding: '4px 12px' }}>
-        <SegmentedControl options={DASH_OPTIONS} value={s.fillDash} onChange={v => setRoadTierStyle(tier, { fillDash: v })} />
-      </div>
-      <FSectionDivider />
-      <FSectionLabel label="Casing" />
-      <BigColorSwatch value={s.outer} onChange={v => setRoadTierStyle(tier, { outer: v })} groups={ROAD_CASING_GROUPS} />
-      <FSectionLabel label="Casing stroke" />
-      <div style={{ padding: '4px 12px' }}>
-        <SegmentedControl options={DASH_OPTIONS} value={s.caseDash} onChange={v => setRoadTierStyle(tier, { caseDash: v })} />
+      <div style={{ padding: '4px 12px 8px' }}>
+        <SegmentedControl options={DASH_OPTIONS} value={(fx.fillDash ?? s.fillDash) as StrokeDash} onChange={v => setFx({ fillDash: v as StrokeDash })} />
       </div>
 
-      <FSectionDivider />
-      <StrokeEffectPanel
-        effect={s.effect ?? DEFAULT_STROKE_EFFECT}
-        onChange={patch => setRoadTierStyle(tier, { effect: { ...(s.effect ?? DEFAULT_STROKE_EFFECT), ...patch } })}
-        colorGroups={[{ label: 'Dark', colors: ['rgba(0,0,0,0.15)', 'rgba(0,0,0,0.25)', 'rgba(0,0,0,0.4)', 'rgba(60,40,10,0.3)'] }]}
-        showFillDash={false}
-      />
+      {/* ── Outline (casing) ── */}
+      <SectionToggle label="Outline" enabled={fx.outlineEnabled} onChange={v => setFx({ outlineEnabled: v })} accentColor={tierColor} />
+      {fx.outlineEnabled && (
+        <>
+          <BigColorSwatch value={s.outer} onChange={v => setRoadTierStyle(tier, { outer: v })} groups={ROAD_CASING_GROUPS} />
+          <FSectionLabel label="Stroke" />
+          <div style={{ padding: '4px 12px 8px' }}>
+            <SegmentedControl options={DASH_OPTIONS} value={(fx.outlineDash ?? s.caseDash) as StrokeDash} onChange={v => setFx({ outlineDash: v as StrokeDash })} />
+          </div>
+        </>
+      )}
 
+      {/* ── Outer glow ── */}
+      <SectionToggle label="Outer glow" enabled={fx.glowEnabled} onChange={v => setFx({ glowEnabled: v })} accentColor={tierColor} />
+      {fx.glowEnabled && (
+        <>
+          <BigColorSwatch
+            value={fx.glowColor}
+            onChange={c => setFx({ glowColor: c })}
+            groups={[{ label: 'Shadow', colors: ['rgba(0,0,0,0.15)', 'rgba(0,0,0,0.25)', 'rgba(0,0,0,0.4)', 'rgba(60,40,10,0.3)', 'rgba(20,40,80,0.25)'] }]}
+          />
+          <MiniSlider label="Blur"   display={`${fx.glowBlur}px`}   value={fx.glowBlur}   min={1} max={30} step={1} accentColor={tierColor} onChange={v => setFx({ glowBlur: v })} />
+          <MiniSlider label="Spread" display={`${fx.glowSpread}px`} value={fx.glowSpread} min={0} max={20} step={1} accentColor={tierColor} onChange={v => setFx({ glowSpread: v })} />
+        </>
+      )}
+
+      {/* ── Geometry override ── */}
       {roadRenderVersion === 'v3' ? (
         <>
           <FSectionDivider />
           <FSectionLabel label="Shape (V3)" />
-          <MiniSlider label="Corner round"  display={`${Math.round(v3Geom.cornerRoundness * 100)}%`}  value={Math.round(v3Geom.cornerRoundness * 100)}  min={0} max={100} step={1}  accentColor={tierColor} onChange={v => setRoadV3TierGeom(tier, { cornerRoundness: v / 100 })} />
-          <MiniSlider label="Straightness"  display={`${Math.round(v3Geom.pathStraightness * 100)}%`} value={Math.round(v3Geom.pathStraightness * 100)} min={0} max={100} step={1}  accentColor={tierColor} onChange={v => setRoadV3TierGeom(tier, { pathStraightness: v / 100 })} />
-          <MiniSlider label="Variation"     display={`${Math.round(v3Geom.segmentVariation * 100)}%`} value={Math.round(v3Geom.segmentVariation * 100)} min={0} max={60}  step={1}  accentColor={tierColor} onChange={v => setRoadV3TierGeom(tier, { segmentVariation: v / 100 })} />
-          <MiniSlider label="Var character"    display={String(Math.round(v3Geom.variationCharacter))}        value={Math.round(v3Geom.variationCharacter)}           min={0} max={3}   step={1}  accentColor={tierColor} onChange={v => setRoadV3TierGeom(tier, { variationCharacter: v })} />
-          <MiniSlider label="Entry overshoot" display={`${Math.round(v3Geom.entryOvershoot * 100)}%`}        value={Math.round(v3Geom.entryOvershoot * 100)}         min={0} max={40}  step={1}  accentColor={tierColor} onChange={v => setRoadV3TierGeom(tier, { entryOvershoot: v / 100 })} />
+          <MiniSlider label="Corner round"    display={`${Math.round(v3Geom.cornerRoundness * 100)}%`}  value={Math.round(v3Geom.cornerRoundness * 100)}  min={0} max={100} step={1} accentColor={tierColor} onChange={v => setRoadV3TierGeom(tier, { cornerRoundness: v / 100 })} />
+          <MiniSlider label="Straightness"    display={`${Math.round(v3Geom.pathStraightness * 100)}%`} value={Math.round(v3Geom.pathStraightness * 100)} min={0} max={100} step={1} accentColor={tierColor} onChange={v => setRoadV3TierGeom(tier, { pathStraightness: v / 100 })} />
+          <MiniSlider label="Variation"       display={`${Math.round(v3Geom.segmentVariation * 100)}%`} value={Math.round(v3Geom.segmentVariation * 100)} min={0} max={60}  step={1} accentColor={tierColor} onChange={v => setRoadV3TierGeom(tier, { segmentVariation: v / 100 })} />
+          <MiniSlider label="Var character"   display={String(Math.round(v3Geom.variationCharacter))}   value={Math.round(v3Geom.variationCharacter)}       min={0} max={3}   step={1} accentColor={tierColor} onChange={v => setRoadV3TierGeom(tier, { variationCharacter: v })} />
+          <MiniSlider label="Entry overshoot" display={`${Math.round(v3Geom.entryOvershoot * 100)}%`}   value={Math.round(v3Geom.entryOvershoot * 100)}   min={0} max={40}  step={1} accentColor={tierColor} onChange={v => setRoadV3TierGeom(tier, { entryOvershoot: v / 100 })} />
           {v3Modified && (
             <div style={{ padding: '4px 12px 0' }}>
               <button onClick={() => resetRoadV3TierGeom(tier)} style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 0, fontFamily: t.mono, fontSize: 9, color: t.inkFaint, letterSpacing: 0.3 }}>
@@ -439,33 +475,21 @@ export function RoadStyleFlyout({ tier, onClose }: { tier: 0 | 1 | 2; onClose: (
         </>
       ) : (
         <>
-          <FSectionDivider />
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '6px 12px 4px' }}>
-            <span style={{ fontFamily: t.mono, fontSize: 8.5, letterSpacing: 0.8, color: t.inkFaint, textTransform: 'uppercase', fontWeight: 600 }}>Geometry override</span>
-            <button
-              onClick={() => {
-                if (overrideEnabled) clearRoadTierGeometry(tier)
-                else setRoadTierGeometry(tier, { ...globalGeom })
-              }}
-              style={{
-                width: 30, height: 16, flexShrink: 0,
-                background: overrideEnabled ? t.ink : t.line,
-                border: 'none', cursor: 'pointer', padding: 0, position: 'relative',
-              }}
-            >
-              <div style={{
-                position: 'absolute', top: 3, left: overrideEnabled ? 15 : 3,
-                width: 10, height: 10, background: t.surface, transition: 'left 0.12s ease',
-              }} />
-            </button>
-          </div>
-          <div style={{ opacity: overrideEnabled ? 1 : 0.35, pointerEvents: overrideEnabled ? 'auto' : 'none' }}>
-        <MiniSlider label="Wiggle amp"   display={`${Math.round(effectiveGeom.wiggleAmp * 100)}%`}    value={Math.round(effectiveGeom.wiggleAmp * 100)}    min={0} max={100} step={1} accentColor={tierColor} onChange={v => setRoadTierGeometry(tier, { wiggleAmp: v / 100 })} />
-        <MiniSlider label="Wiggle freq"  display={effectiveGeom.wiggleFreq.toFixed(1)}                 value={Math.round(effectiveGeom.wiggleFreq * 10)}    min={5} max={100} step={1} accentColor={tierColor} onChange={v => setRoadTierGeometry(tier, { wiggleFreq: v / 10 })} />
-        <MiniSlider label="Path smooth"  display={effectiveGeom.pathSmoothing}                         value={effectiveGeom.pathSmoothing}                  min={0} max={50}  step={1} accentColor={tierColor} onChange={v => setRoadTierGeometry(tier, { pathSmoothing: v })} />
-        <MiniSlider label="Line smooth"  display={effectiveGeom.smoothing}                             value={effectiveGeom.smoothing}                      min={0} max={30}  step={1} accentColor={tierColor} onChange={v => setRoadTierGeometry(tier, { smoothing: v })} />
-        <MiniSlider label="Center pull"  display={`${Math.round(effectiveGeom.centerPull * 100)}%`}   value={Math.round(effectiveGeom.centerPull * 100)}   min={0} max={100} step={1} accentColor={tierColor} onChange={v => setRoadTierGeometry(tier, { centerPull: v / 100 })} />
-          </div>
+          <SectionToggle
+            label="Geometry override"
+            enabled={overrideEnabled}
+            onChange={v => v ? setRoadTierGeometry(tier, { ...globalGeom }) : clearRoadTierGeometry(tier)}
+            accentColor={tierColor}
+          />
+          {overrideEnabled && (
+            <>
+              <MiniSlider label="Wiggle amp"  display={`${Math.round(effectiveGeom.wiggleAmp * 100)}%`}  value={Math.round(effectiveGeom.wiggleAmp * 100)}  min={0} max={100} step={1} accentColor={tierColor} onChange={v => setRoadTierGeometry(tier, { wiggleAmp: v / 100 })} />
+              <MiniSlider label="Wiggle freq" display={effectiveGeom.wiggleFreq.toFixed(1)}               value={Math.round(effectiveGeom.wiggleFreq * 10)}  min={5} max={100} step={1} accentColor={tierColor} onChange={v => setRoadTierGeometry(tier, { wiggleFreq: v / 10 })} />
+              <MiniSlider label="Path smooth" display={effectiveGeom.pathSmoothing}                       value={effectiveGeom.pathSmoothing}                min={0} max={50}  step={1} accentColor={tierColor} onChange={v => setRoadTierGeometry(tier, { pathSmoothing: v })} />
+              <MiniSlider label="Line smooth" display={effectiveGeom.smoothing}                           value={effectiveGeom.smoothing}                    min={0} max={30}  step={1} accentColor={tierColor} onChange={v => setRoadTierGeometry(tier, { smoothing: v })} />
+              <MiniSlider label="Center pull" display={`${Math.round(effectiveGeom.centerPull * 100)}%`} value={Math.round(effectiveGeom.centerPull * 100)} min={0} max={100} step={1} accentColor={tierColor} onChange={v => setRoadTierGeometry(tier, { centerPull: v / 100 })} />
+            </>
+          )}
         </>
       )}
 

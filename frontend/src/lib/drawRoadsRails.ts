@@ -175,10 +175,13 @@ export function drawRoadsAndRails(rCtx: Ctx, {
       }
     }
 
+    // Pass 1: casing (outline) — skipped if effect.outlineEnabled is explicitly false
     rCtx.lineJoin = 'round'
     for (const tier of [2, 1, 0] as const) {
       const s = tierStyles[tier]
-      const outlineDash = (s.effect ?? DEFAULT_STROKE_EFFECT).outlineDash ?? s.caseDash
+      const fx = s.effect ?? DEFAULT_STROKE_EFFECT
+      if (fx.outlineEnabled === false) continue
+      const outlineDash = fx.outlineDash ?? s.caseDash
       rCtx.lineCap = outlineDash === 'dashed' || outlineDash === 'dotted' ? 'butt' : 'round'
       rCtx.strokeStyle = s.outer
       rCtx.lineWidth = s.outerW
@@ -190,6 +193,8 @@ export function drawRoadsAndRails(rCtx: Ctx, {
     for (const { pos, tier } of junctions) {
       const [x, y] = project(pos[0], pos[1])
       const s = tierStyles[tier]
+      const fx = s.effect ?? DEFAULT_STROKE_EFFECT
+      if (fx.outlineEnabled === false) continue
       rCtx.beginPath(); rCtx.arc(x, y, s.outerW / 2, 0, Math.PI * 2)
       rCtx.fillStyle = s.outer; rCtx.fill()
     }
