@@ -7,7 +7,7 @@ import {
 } from './sidebar'
 import {
   RiverTierFlyout, CanalStyleFlyout, OsmRiversFlyout,
-  RiverSegmentFlyout, RiverLabelFlyout,
+  RiverSegmentFlyout, RiverLabelFlyout, GlobalShapeFlyout,
 } from './RiversSidebarV3'
 import {
   RoadStyleFlyout, RailStyleFlyout, RoadShapeFlyout, RailShapeFlyout,
@@ -43,6 +43,7 @@ type FlyoutState =
   | { kind: 'osm-rivers' }
   | { kind: 'river-segment'; segMode: 'river' | 'canal' }
   | { kind: 'river-labels' }
+  | { kind: 'river-shape' }
   | { kind: 'road-style'; tier: 0 | 1 | 2 }
   | { kind: 'rail-style' }
   | { kind: 'road-shape' }
@@ -291,7 +292,8 @@ export function FeaturesSidebarV3() {
         )}
 
         <TGap />
-        <TriggerRow label="Label style" active={flyout?.kind === 'river-labels'} onClick={() => open({ kind: 'river-labels' })} />
+        <TriggerRow label="Shape defaults" active={flyout?.kind === 'river-shape'} onClick={() => open({ kind: 'river-shape' })} />
+        <TriggerRow label="Label style"    active={flyout?.kind === 'river-labels'} onClick={() => open({ kind: 'river-labels' })} />
 
         {/* ── ROADS ────────────────────────────────────────────────── */}
         <V2Divider label="Roads" />
@@ -446,6 +448,7 @@ export function FeaturesSidebarV3() {
       {flyout?.kind === 'river-1' && <RiverTierFlyout tier={1} onClose={() => setFlyout(null)} />}
       {flyout?.kind === 'river-2' && <RiverTierFlyout tier={2} onClose={() => setFlyout(null)} />}
       {flyout?.kind === 'osm-rivers'        && <OsmRiversFlyout  onClose={() => setFlyout(null)} />}
+      {flyout?.kind === 'river-shape'       && <GlobalShapeFlyout onClose={() => setFlyout(null)} />}
       {flyout?.kind === 'river-labels'      && <RiverLabelFlyout onClose={() => setFlyout(null)} />}
       {flyout?.kind === 'river-segment'     && (
         <RiverSegmentFlyout
