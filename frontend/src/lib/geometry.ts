@@ -21,6 +21,21 @@ export function douglasPeucker(pts: [number, number][], epsilon: number): [numbe
   return [pts[0], pts[pts.length - 1]]
 }
 
+/** Douglas-Peucker for closed polygons — splits at the vertex farthest from the
+ *  first point, runs DP on both halves, then rejoins. */
+export function douglasPeuckerClosed(pts: [number, number][], epsilon: number): [number, number][] {
+  if (pts.length < 4 || epsilon <= 0) return pts
+  let maxDist = 0, splitIdx = 1
+  const [x0, y0] = pts[0]
+  for (let i = 1; i < pts.length; i++) {
+    const d = Math.hypot(pts[i][0] - x0, pts[i][1] - y0)
+    if (d > maxDist) { maxDist = d; splitIdx = i }
+  }
+  const half1 = douglasPeucker([...pts.slice(0, splitIdx + 1)], epsilon)
+  const half2 = douglasPeucker([...pts.slice(splitIdx), pts[0]], epsilon)
+  return [...half1.slice(0, -1), ...half2.slice(0, -1)]
+}
+
 export function hexAdjacent(q1: number, r1: number, q2: number, r2: number): boolean {
   const dq = q2 - q1, dr = r2 - r1
   return Math.max(Math.abs(dq), Math.abs(dr), Math.abs(dq + dr)) === 1

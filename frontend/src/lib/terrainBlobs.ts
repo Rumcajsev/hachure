@@ -1,7 +1,7 @@
 /** Terrain blob building and field-style rendering utilities.
  *  Depends on geometry, noise, and projection libs — no React, no store state. */
 
-import { chaikin, subdivideClosedPolygon, resampleSmoothQuad } from './geometry'
+import { chaikin, subdivideClosedPolygon, resampleSmoothQuad, douglasPeuckerClosed } from './geometry'
 import { makePermutation, perlinNoise2D, perturbXY, perturbNormal } from './noise'
 import { projectToCanvas } from './projection'
 import { hexTerrainLayers } from '../store/mapStore'
@@ -191,6 +191,7 @@ export function shapeTerrainBlobs(
   lobeDirection: number,
   R: number,
   blobSeeds: Record<string, number> = {},
+  simplify: number = 0,
 ): { terrain: string; polys: [number, number][][]; blobKeys: string[] }[] {
   const result: { terrain: string; polys: [number, number][][]; blobKeys: string[] }[] = []
 
@@ -207,7 +208,7 @@ export function shapeTerrainBlobs(
     const finalPolys = rawPolys.map((poly, i) => {
       const { seed } = rawSeeds[i]
 
-      let p: [number, number][] = poly
+      let p: [number, number][] = simplify > 0 ? douglasPeuckerClosed(poly, simplify * R) : poly
       const smoothPasses = Math.floor(smooth)
       const smoothRemainder = smooth - smoothPasses
       for (let pass = 0; pass < smoothPasses; pass++) p = preSmoothVar(p, 0.4)
@@ -250,12 +251,13 @@ export function buildTerrainBlobsV2(
   lobeThreshold: number,
   lobeDirection: number,
   R: number,
+  simplify: number = 0,
 ): { terrain: string; polys: [number, number][][] }[] {
   return shapeTerrainBlobs(
     buildTerrainBlobTopology(projected, R),
     smooth, offsetFraction, bumpFraction,
     sweepFreq, lobeFreq, lobeAmp, lobeThreshold, lobeDirection,
-    R,
+    R, {}, simplify,
   )
 }
 
