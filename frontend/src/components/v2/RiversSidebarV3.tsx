@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 import {
-  useMapStore, DEFAULT_RIVER_STYLE, DEFAULT_CANAL_STYLE,
+  useMapStore, DEFAULT_RIVER_STYLE, DEFAULT_CANAL_STYLE, DEFAULT_STROKE_EFFECT,
 } from '../../store/mapStore'
 import { riverChainCache, computeTaperRanges } from '../../lib/riverChains'
 import {
@@ -77,8 +77,8 @@ export function RiverStyleFlyout({ onClose }: { onClose: () => void }) {
 
       <div style={{ borderTop: `1px solid ${t.line2}` }}>
         <StrokeEffectPanel
-          effect={riverStyle.effect}
-          onChange={patch => setRiverStyle({ effect: { ...riverStyle.effect, ...patch } })}
+          effect={riverStyle.effect ?? DEFAULT_STROKE_EFFECT}
+          onChange={patch => setRiverStyle({ effect: { ...(riverStyle.effect ?? DEFAULT_STROKE_EFFECT), ...patch } })}
           colorGroups={[{ label: 'River', colors: [...RIVER_STROKE_GROUPS[0].colors] }]}
         />
       </div>
@@ -122,8 +122,8 @@ export function CanalStyleFlyout({ onClose }: { onClose: () => void }) {
 
       <div style={{ borderTop: `1px solid ${t.line2}` }}>
         <StrokeEffectPanel
-          effect={canalStyle.effect}
-          onChange={patch => setCanalStyle({ effect: { ...canalStyle.effect, ...patch } })}
+          effect={canalStyle.effect ?? DEFAULT_STROKE_EFFECT}
+          onChange={patch => setCanalStyle({ effect: { ...(canalStyle.effect ?? DEFAULT_STROKE_EFFECT), ...patch } })}
           colorGroups={[{ label: 'Canal', colors: [...CANAL_STROKE_GROUPS[0].colors] }]}
         />
       </div>
