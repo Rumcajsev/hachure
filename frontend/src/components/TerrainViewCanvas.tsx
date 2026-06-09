@@ -60,6 +60,65 @@ const OSM_OVERLAY_STYLE: maplibregl.StyleSpecification = {
 
 type CtxItem = { label: string; action: () => void; danger?: boolean; color?: string; dim?: boolean; icon?: 'edit' | 'dice' | 'erase'; highlightPolys?: [number,number][][]; highlightLines?: [number,number][][] }
 
+/** Parses a CSS hex color string (#rrggbb or #rgb) into {r,g,b}. */
+function parseHexColor(hex: string): { r: number; g: number; b: number } {
+  const s = hex.replace('#', '')
+  if (s.length === 3) {
+    return { r: parseInt(s[0] + s[0], 16), g: parseInt(s[1] + s[1], 16), b: parseInt(s[2] + s[2], 16) }
+  }
+  return { r: parseInt(s.slice(0, 2), 16), g: parseInt(s.slice(2, 4), 16), b: parseInt(s.slice(4, 6), 16) }
+}
+
+/**
+ * Returns a pixel-density sampler that reads from `ctx` (the main composited canvas,
+ * with terrain/roads/rivers already drawn). Candidate bboxes are in CSS paper-space
+ * coordinates. Off-canvas areas return 1.0 (fully occupied) so labels don't leak
+ * outside the map border.
+ */
+function makePixelSampler(
+  ctx: CanvasRenderingContext2D,
+  dpr: number,
+  zoom: number,
+  pan: { x: number; y: number },
+  cssW: number,
+  cssH: number,
+  bgHex: string,
+): (bx: number, by: number, bw: number, bh: number) => number {
+  const bg = parseHexColor(bgHex)
+  const threshold = 18
+  // CSS paper coord → physical canvas pixel
+  const toPx = (x: number, y: number): [number, number] => [
+    Math.round(dpr * (zoom * (x - cssW / 2) + cssW / 2 + pan.x)),
+    Math.round(dpr * (zoom * (y - cssH / 2) + cssH / 2 + pan.y)),
+  ]
+  const canvasW = ctx.canvas.width, canvasH = ctx.canvas.height
+
+  return (bx, by, bw, bh) => {
+    const [x0raw, y0raw] = toPx(bx, by)
+    const [x1raw, y1raw] = toPx(bx + bw, by + bh)
+    // Fully outside canvas → treat as occupied (edge penalty)
+    if (x1raw <= 0 || y1raw <= 0 || x0raw >= canvasW || y0raw >= canvasH) return 1.0
+    const x0 = Math.max(0, x0raw), y0 = Math.max(0, y0raw)
+    const x1 = Math.min(canvasW, x1raw), y1 = Math.min(canvasH, y1raw)
+    const rw = x1 - x0, rh = y1 - y0
+    if (rw <= 0 || rh <= 0) return 1.0
+    // Off-canvas fraction contributes as fully occupied — penalises edge candidates
+    const offFraction = 1 - (rw * rh) / Math.max(1, (x1raw - x0raw) * (y1raw - y0raw))
+    const data = ctx.getImageData(x0, y0, rw, rh).data
+    let ink = 0, total = 0
+    // Sample every 4th pixel for performance
+    for (let i = 0; i < data.length; i += 16) {
+      const a = data[i + 3]
+      if (a < 10) { total++; continue }
+      const diff = Math.abs(data[i] - bg.r) + Math.abs(data[i + 1] - bg.g) + Math.abs(data[i + 2] - bg.b)
+      if (diff > threshold) ink++
+      total++
+    }
+    const density = total === 0 ? 0 : ink / total
+    return Math.min(1, density + offFraction * 0.8)
+  }
+}
+
 function CtxIcon({ type, color }: { type: 'edit' | 'dice' | 'erase'; color: string }) {
   const s: React.CSSProperties = { width: 12, height: 12, flexShrink: 0, display: 'block' }
   if (type === 'edit') return (
@@ -274,7 +333,7 @@ terrainColors, terrainTextureScales, terrainTextureBlendModes, terrainTextureOpa
     blobSeeds, randomizeBlobSeed,
     blobEditMode, setBlobEditMode, activeBlobEditId, setActiveBlobEditId,
     blobHandleOverrides, setBlobHandleOverride,
-    labelOffsets, setLabelOffset, clearAllLabelOffsets,
+    labelOffsets, setLabelOffset, clearLabelOffset, clearAllLabelOffsets,
     worldcoverImageUrl, showWorldcoverOverlay,
     expandMode, setExpandMode, expandMap, expandFetchSteps,
   } = useMapStore()
@@ -2571,7 +2630,8 @@ const roadV3TierGeomRef = useRef(roadV3TierGeom)
           oCtx.rect(px, py, pw, ph)
           oCtx.clip()
           const activeRoadDataS = smoothedRoadDataV2Ref.current ?? smoothedRoadDataRef.current
-          _drawSettlements(oCtx, { settlements: settlementsRef.current, tierStyles: settlementTierStylesRef.current, labelSpecs: resolvedLabelSpecsRef.current, roadChains: activeRoadDataS.chains, roadJunctions: activeRoadDataS.junctions, railChains: smoothedRailDataRef.current.chains, project, hexCenterOf: (q, r) => { const h = hexesRef.current.find(h => h.q === q && h.r === r); return h ? project(h.center[0], h.center[1]) : null }, hexRadiusPx: hexRadiusRef.current, labelOffsets: labelOffsetsRef.current, liveLabelOffset: liveLabelOffsetRef.current ?? undefined, labelBBoxOut: labelBBoxCacheRef.current })
+          const pixelSampler = makePixelSampler(ctx, dpr, zoom, pan, cssW, cssH, mapBgColorRef.current)
+          _drawSettlements(oCtx, { settlements: settlementsRef.current, tierStyles: settlementTierStylesRef.current, labelSpecs: resolvedLabelSpecsRef.current, roadChains: activeRoadDataS.chains, roadJunctions: activeRoadDataS.junctions, railChains: smoothedRailDataRef.current.chains, project, hexCenterOf: (q, r) => { const h = hexesRef.current.find(h => h.q === q && h.r === r); return h ? project(h.center[0], h.center[1]) : null }, hexRadiusPx: hexRadiusRef.current, labelOffsets: labelOffsetsRef.current, liveLabelOffset: liveLabelOffsetRef.current ?? undefined, labelBBoxOut: labelBBoxCacheRef.current, pixelSampler })
           oCtx.restore()
           settlementsLayerRef.current = offscreen
           settlementsDirtyRef.current = false
@@ -3049,7 +3109,7 @@ const roadV3TierGeomRef = useRef(roadV3TierGeom)
   useEffect(() => { buildingsDirtyRef.current = true }, [urbanHexes, urbanStyle, settlements, settlementTierStyles, roadBaseData])
   useEffect(() => { bridgesDirtyRef.current = true }, [bridgesEnabled, smoothedRoadData, smoothedRoadDataV2, smoothedRailData, riverEdges, canalEdges, generatedHexes])
   useEffect(() => { roadsDirtyRef.current = true }, [smoothedRoadData, smoothedRailData, roadTierStyles, railStyle, roadSegmentProps, roadHopProps, selectedRoadSegmentKeys, selectedRoadHopKey, roadSelectMode, railControlOverrides, railWiggleAmp, railWiggleFreq, railSmoothing, railSegmentProps, railHopProps, selectedRailSegmentKeys, selectedRailHopKey, railSelectMode, showRawOsmRoads, mapStyle, roadClearanceTerrains, defaultTerrainBlobs])
-  useEffect(() => { settlementsDirtyRef.current = true }, [settlements, settlementTierStyles, labelPresetId, labelOverrides, smoothedRoadData, smoothedRailData, labelOffsets])
+  useEffect(() => { settlementsDirtyRef.current = true }, [settlements, settlementTierStyles, labelPresetId, labelOverrides, smoothedRoadData, smoothedRailData, labelOffsets, defaultTerrainBlobs, terrainBlobOverrides, riverEdges, canalEdges, highlights, highlightedHexes, mapBgColor])
   // When entering label-drag mode, rebuild label layers so the bbox cache is populated for hit-testing
   useEffect(() => {
     if (activeTool.type === 'label-drag') {
@@ -3282,6 +3342,8 @@ const roadV3TierGeomRef = useRef(roadV3TierGeom)
   setActiveToolRef.current = setActiveTool
   const setLabelOffsetRef = useRef(setLabelOffset)
   setLabelOffsetRef.current = setLabelOffset
+  const clearLabelOffsetRef = useRef(clearLabelOffset)
+  clearLabelOffsetRef.current = clearLabelOffset
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.key !== 'Escape') return
@@ -4296,6 +4358,21 @@ const roadV3TierGeomRef = useRef(roadV3TierGeom)
               label: tierLabels[tier],
               dim: (s.tier ?? 1) === tier,
               action: () => updateSettlementRef.current(idx, { tier }),
+            })
+          }
+          // Label drag / reset
+          const labelId = `settlement:${s.name}`
+          items.push({
+            label: 'Move label',
+            icon: 'edit' as const,
+            action: () => {
+              setActiveToolRef.current({ type: 'label-drag' })
+            },
+          })
+          if (labelOffsetsRef.current[labelId]) {
+            items.push({
+              label: 'Reset label position',
+              action: () => clearLabelOffsetRef.current(labelId),
             })
           }
           items.push({

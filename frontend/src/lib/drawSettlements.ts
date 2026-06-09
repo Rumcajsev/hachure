@@ -27,6 +27,12 @@ export type DrawSettlementsParams = {
   labelBBoxOut?: Record<string, LabelBBox>
   /** Scale factor for all pixel-based sizes — use lineScale during PDF export. */
   scale?: number
+  /**
+   * Pixel-density sampler: returns 0–1 fraction of non-background pixels in the
+   * given CSS-coordinate bbox. When provided, replaces the point-obstacle heuristic
+   * with actual rendered content. Omit for export paths.
+   */
+  pixelSampler?: (bx: number, by: number, bw: number, bh: number) => number
 }
 
 function closestPointOnSegment(
@@ -42,7 +48,7 @@ function closestPointOnSegment(
 
 export function drawSettlements(sCtx: Ctx, {
   settlements, tierStyles, labelSpecs, roadChains, railChains, roadJunctions, project, hexCenterOf, hexRadiusPx,
-  labelOffsets, liveLabelOffset, labelBBoxOut, scale = 1,
+  labelOffsets, liveLabelOffset, labelBBoxOut, scale = 1, pixelSampler,
 }: DrawSettlementsParams) {
   const placed = settlements.filter(s => s.included && s.hex_q !== null)
 
@@ -165,7 +171,11 @@ export function drawSettlements(sCtx: Ctx, {
     let best = cands[0]
     for (const c of cands) {
       const ex = c.bx - pad, ey = c.by - pad, ew = tw + pad * 2, eh = th + pad * 2
-      let score = c.bias + obsScore(ex, ey, ew, eh)
+      // Pixel-density scoring: fraction of non-background pixels (0–1) in the candidate
+      // region, sampled from the already-rendered canvas. Falls back to point-obstacle
+      // grid when no sampler is provided (export path, or first-frame).
+      const density = pixelSampler ? pixelSampler(ex, ey, ew, eh) : obsScore(ex, ey, ew, eh) / 20
+      let score = c.bias * 0.4 + density * 5
       for (const [plx, ply, plw, plh] of placedBoxes) {
         if (ex < plx + plw && ex + ew > plx && ey < ply + plh && ey + eh > ply) score += 8
       }
