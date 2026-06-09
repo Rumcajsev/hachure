@@ -385,6 +385,7 @@ function applyPerpendicularNoise(
   scaleBroad: number,
   scaleDetail: number,
   perm: Uint8Array,
+  interDist: number,
 ): [number, number][] {
   if (pts.length < 3) return pts
   // Accumulate arc-length parameterisation
@@ -402,9 +403,15 @@ function applyPerpendicularNoise(
     if (len < 1e-6) return pt
     // Unit perpendicular (rotated 90° CCW)
     const nx = -dy / len, ny = dx / len
-    // Endpoint taper: sine curve → 0 at both ends
-    const taper = Math.sin(Math.PI * lens[i] / total)
+    // Taper to zero only within a fixed distance from each endpoint (not proportionally),
+    // so short junction-to-junction segments get the same fade zone as long ones.
+    const fadeLen = Math.min(total * 0.25, interDist * 1.5)
     const s = lens[i]
+    const taper = Math.min(
+      fadeLen > 0 ? s / fadeLen : 1,
+      fadeLen > 0 ? (total - s) / fadeLen : 1,
+      1,
+    )
     const broad  = ampBroad  * perlinNoise2D(s * scaleBroad,  0.3, perm) * taper
     const detail = ampDetail * perlinNoise2D(s * scaleDetail, 0.7, perm) * taper
     return [pt[0] + nx * (broad + detail), pt[1] + ny * (broad + detail)] as [number, number]
@@ -509,7 +516,7 @@ export function buildRiverChainsV3(
   return rawSparse.map(({ pts, segKey }) => {
     const rounded   = chaikin(pts, cornerRounds)
     const dense     = densify(rounded, maxSpacing)
-    const chain     = applyPerpendicularNoise(dense, ampBroad, ampDetail, scaleBroad, scaleDetail, perm)
+    const chain     = applyPerpendicularNoise(dense, ampBroad, ampDetail, scaleBroad, scaleDetail, perm, interDist)
     return { segKey, chain }
   })
 }
