@@ -1,11 +1,13 @@
 import type { MapStore } from '../mapStore'
 
 export type LabelBBox = {
-  cx: number    // center x in CSS-pixel / project space
-  cy: number    // center y in CSS-pixel / project space
-  hw: number    // half-width
-  hh: number    // half-height
-  angle: number // rotation in radians (0 for most labels, non-zero for river labels)
+  cx: number     // label text centre x in CSS-pixel / project space
+  cy: number     // label text centre y
+  hw: number     // half-width
+  hh: number     // half-height
+  angle: number  // rotation in radians (0 for most labels, non-zero for river labels)
+  iconCx?: number // settlement icon centre x (set for settlement labels only)
+  iconCy?: number // settlement icon centre y
 }
 
 export type LabelOffsetsSlice = {

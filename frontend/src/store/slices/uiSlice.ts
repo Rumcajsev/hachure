@@ -879,6 +879,11 @@ export function migratePersisted(persisted: unknown, fromVersion: number): Recor
   if (fromVersion < 62) {
     if (s.labelOffsets === undefined) s.labelOffsets = {}
   }
+  if (fromVersion < 78) {
+    // labelOffsets semantics changed: offsets are now relative to icon centre (cx, cy)
+    // rather than the auto-placer's best candidate. Clear stale values.
+    s.labelOffsets = {}
+  }
   if (fromVersion < 63) {
     if (s.roadRenderVersion === undefined) s.roadRenderVersion = 'v2'
     if (s.roadV3TierGeom === undefined) s.roadV3TierGeom = [

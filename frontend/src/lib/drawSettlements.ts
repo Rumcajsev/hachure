@@ -166,6 +166,34 @@ export function drawSettlements(sCtx: Ctx, {
       { x: cx + gap, y: cy + gap, bx: cx + gap,      by: cy + gap,      align: 'left',   base: 'top',    bias: 0.3 },
     ]
 
+    // Manual offset takes precedence — stored as delta from the icon centre (cx, cy).
+    // When present, skip candidate selection entirely so the rendered position is
+    // independent of whatever the auto-placer would choose.
+    const oid = `settlement:${s.name}`
+    const off = liveLabelOffset?.id === oid ? liveLabelOffset : labelOffsets?.[oid]
+
+    if (off) {
+      // Absolute manual position: centre the label at (cx + dx, cy + dy).
+      const tx = cx + off.dx, ty = cy + off.dy
+      // Exclude the live-dragged label from placedBoxes so other labels don't
+      // shift around in response to cursor movement during label-follow mode.
+      const isLive = liveLabelOffset?.id === oid
+      if (!isLive) placedBoxes.push([tx - tw / 2, ty - th / 2, tw, th])
+      if (labelBBoxOut) labelBBoxOut[oid] = { cx: tx, cy: ty, hw: tw / 2 + 3, hh: th / 2 + 3, angle: 0, iconCx: cx, iconCy: cy }
+      sCtx.fillStyle = resolved.color
+      sCtx.font = font
+      sCtx.textAlign = 'center'
+      sCtx.textBaseline = 'middle'
+      if (resolved.letterSpacing > 0) {
+        sCtx.save()
+        ;(sCtx as CanvasRenderingContext2D & { letterSpacing?: string }).letterSpacing = `${resolved.letterSpacing}em`
+      }
+      sCtx.fillText(label, tx, ty)
+      if (resolved.letterSpacing > 0) sCtx.restore()
+      continue
+    }
+
+    // Auto-placement: score all 8 candidates and pick the emptiest one.
     const pad = 3 * scale
     let bestScore = Infinity
     let best = cands[0]
@@ -182,21 +210,17 @@ export function drawSettlements(sCtx: Ctx, {
       if (score < bestScore) { bestScore = score; best = c }
     }
 
-    // Apply manual offset (live drag takes precedence over persisted offset)
-    const oid = `settlement:${s.name}`
-    const off = liveLabelOffset?.id === oid ? liveLabelOffset : labelOffsets?.[oid]
-    const odx = off?.dx ?? 0
-    const ody = off?.dy ?? 0
-
     placedBoxes.push([best.bx, best.by, tw, th])
 
     if (labelBBoxOut) {
       labelBBoxOut[oid] = {
-        cx: best.bx + tw / 2 + odx,
-        cy: best.by + th / 2 + ody,
+        cx: best.bx + tw / 2,
+        cy: best.by + th / 2,
         hw: tw / 2 + 3,
         hh: th / 2 + 3,
         angle: 0,
+        iconCx: cx,
+        iconCy: cy,
       }
     }
 
@@ -208,7 +232,7 @@ export function drawSettlements(sCtx: Ctx, {
       sCtx.save()
       ;(sCtx as CanvasRenderingContext2D & { letterSpacing?: string }).letterSpacing = `${resolved.letterSpacing}em`
     }
-    sCtx.fillText(label, best.x + odx, best.y + ody)
+    sCtx.fillText(label, best.x, best.y)
     if (resolved.letterSpacing > 0) sCtx.restore()
   }
 }

@@ -3354,11 +3354,9 @@ const roadV3TierGeomRef = useRef(roadV3TierGeom)
       const tool = activeToolRef.current
       if (tool.type === 'label-follow') {
         const t = tool as { type: 'label-follow'; id: string; prevDx: number; prevDy: number }
-        if (t.prevDx !== 0 || t.prevDy !== 0) {
-          setLabelOffsetRef.current(t.id, t.prevDx, t.prevDy)
-        } else {
-          clearLabelOffsetRef.current(t.id)
-        }
+        // Restore previous offset (or clear if there was none before)
+        if (t.prevDx !== 0 || t.prevDy !== 0) setLabelOffsetRef.current(t.id, t.prevDx, t.prevDy)
+        else clearLabelOffsetRef.current(t.id)
         liveLabelOffsetRef.current = null
       }
       setActiveToolRef.current({ type: 'none' })
@@ -4391,12 +4389,13 @@ const roadV3TierGeomRef = useRef(roadV3TierGeom)
             label: 'Move label',
             icon: 'edit' as const,
             action: () => {
-              const bbox = labelBBoxCacheRef.current[labelId]
               const off = labelOffsetsRef.current[labelId] ?? { dx: 0, dy: 0 }
-              // naturalCx/Cy = where the auto-placer put the label centre (without manual offset)
-              const naturalCx = bbox ? bbox.cx - off.dx : lx2
-              const naturalCy = bbox ? bbox.cy - off.dy : ly2
-              setActiveToolRef.current({ type: 'label-follow', id: labelId, naturalCx, naturalCy, prevDx: off.dx, prevDy: off.dy })
+              const bbox = labelBBoxCacheRef.current[labelId]
+              // iconCx/iconCy stored in bbox by drawSettlements — the road-snapped icon centre.
+              // Fall back to hex centre (sx, sy) if bbox not yet populated.
+              const iconCx = bbox?.iconCx ?? sx
+              const iconCy = bbox?.iconCy ?? sy
+              setActiveToolRef.current({ type: 'label-follow', id: labelId, iconCx, iconCy, prevDx: off.dx, prevDy: off.dy })
             },
           })
           if (labelOffsetsRef.current[labelId]) {
@@ -5089,10 +5088,11 @@ const roadV3TierGeomRef = useRef(roadV3TierGeom)
   const onMouseMove = useCallback((e: React.MouseEvent<HTMLCanvasElement>) => {
     // Label-follow — label tracks cursor until confirmed with a click
     if (activeToolRef.current.type === 'label-follow') {
-      const tool = activeToolRef.current as { type: 'label-follow'; id: string; naturalCx: number; naturalCy: number; prevDx: number; prevDy: number }
+      const tool = activeToolRef.current as { type: 'label-follow'; id: string; iconCx: number; iconCy: number }
       const logical = clientToLogicalRef.current(e.clientX, e.clientY)
       if (logical) {
-        liveLabelOffsetRef.current = { id: tool.id, dx: logical.lx - tool.naturalCx, dy: logical.ly - tool.naturalCy }
+        // Offset is relative to icon centre so it's stable across auto-placement reruns
+        liveLabelOffsetRef.current = { id: tool.id, dx: logical.lx - tool.iconCx, dy: logical.ly - tool.iconCy }
         draw()
       }
       return

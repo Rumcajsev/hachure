@@ -125,8 +125,9 @@ export type ActiveTool =
   | { type: 'mega-hex-origin' }
   | { type: 'align-image' }
   | { type: 'label-drag' }
-  /** Label follows cursor until left-click confirms placement or Escape cancels. */
-  | { type: 'label-follow'; id: string; naturalCx: number; naturalCy: number; prevDx: number; prevDy: number }
+  /** Label follows cursor until left-click confirms placement or Escape cancels.
+   *  dx/dy are stored relative to the icon centre (cx, cy), not the auto-placer output. */
+  | { type: 'label-follow'; id: string; iconCx: number; iconCy: number; prevDx: number; prevDy: number }
 
 export type MapMode = 'single' | 'diptych'
 export type DiptychJoin = 'long' | 'short'
@@ -982,7 +983,7 @@ export const useMapStore = create<MapStore>()(persist((set, get) => ({
     mapTitle: s.mapTitle,
     labelOffsets: s.labelOffsets,
   }),
-  version: 77,
+  version: 78,
   migrate: migratePersisted,
   merge: (persisted, current) => rehydrateState({ ...current, ...(persisted as Partial<MapStore>) }),
 }))
