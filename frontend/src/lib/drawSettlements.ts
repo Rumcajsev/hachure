@@ -188,6 +188,12 @@ export function drawSettlements(sCtx: Ctx, {
         sCtx.save()
         ;(sCtx as CanvasRenderingContext2D & { letterSpacing?: string }).letterSpacing = `${resolved.letterSpacing}em`
       }
+      if (resolved.strokeWidth && resolved.strokeWidth > 0) {
+        sCtx.strokeStyle = resolved.strokeColor ?? '#ffffff'
+        sCtx.lineWidth = resolved.strokeWidth * scale
+        sCtx.lineJoin = 'round'
+        sCtx.strokeText(label, tx, ty)
+      }
       sCtx.fillText(label, tx, ty)
       if (resolved.letterSpacing > 0) sCtx.restore()
       continue
@@ -231,6 +237,12 @@ export function drawSettlements(sCtx: Ctx, {
     if (resolved.letterSpacing > 0) {
       sCtx.save()
       ;(sCtx as CanvasRenderingContext2D & { letterSpacing?: string }).letterSpacing = `${resolved.letterSpacing}em`
+    }
+    if (resolved.strokeWidth && resolved.strokeWidth > 0) {
+      sCtx.strokeStyle = resolved.strokeColor ?? '#ffffff'
+      sCtx.lineWidth = resolved.strokeWidth * scale
+      sCtx.lineJoin = 'round'
+      sCtx.strokeText(label, best.x, best.y)
     }
     sCtx.fillText(label, best.x, best.y)
     if (resolved.letterSpacing > 0) sCtx.restore()

@@ -5,7 +5,8 @@ import {
   MiniSlider, ToggleRow, SegmentedControl,
   StripShell, FlyoutShell, V2Divider, TriggerRow, TGap,
 } from './sidebar'
-import { LABEL_PRESETS, resolveLabels } from '../../lib/labelPresets'
+import { LABEL_PRESETS, LabelCategory, resolveLabels } from '../../lib/labelPresets'
+import { LabelSpecEditorRows } from './LabelSpecEditor'
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 
@@ -577,12 +578,111 @@ function DocumentFlyout({ onClose }: { onClose: () => void }) {
   )
 }
 
+// ── Label category metadata ───────────────────────────────────────────────────
+
+const LABEL_CATEGORY_META: { cat: LabelCategory; label: string; preview: string }[] = [
+  { cat: 'cityMajor', label: 'City (major)', preview: 'Berlin' },
+  { cat: 'cityMinor', label: 'City (minor)', preview: 'Leipzig' },
+  { cat: 'town',      label: 'Town',         preview: 'Goslar' },
+  { cat: 'village',   label: 'Village',      preview: 'Wesel' },
+  { cat: 'water',     label: 'Water',        preview: 'Rhône' },
+  { cat: 'terrain',   label: 'Terrain',      preview: 'Forest' },
+  { cat: 'hexRef',    label: 'Hex ref',      preview: 'A-1' },
+]
+
+// ── LabelCategorySubview ──────────────────────────────────────────────────────
+
+function LabelCategorySubview({ onBack }: { onBack: () => void }) {
+  const t = useTheme()
+  const { labelPresetId, labelOverrides, setLabelCategoryOverride, resetLabelCategoryOverride } = useMapStore()
+  const [openCat, setOpenCat] = useState<LabelCategory | null>(null)
+
+  return (
+    <>
+      <div style={{ padding: '6px 14px 4px', display: 'flex', alignItems: 'center', gap: 8 }}>
+        <button
+          onClick={onBack}
+          style={{ background: 'none', border: 'none', color: t.inkMute, cursor: 'pointer', fontFamily: t.mono, fontSize: 11, padding: '2px 4px 2px 0' }}
+        >
+          ←
+        </button>
+        <span style={{ fontFamily: t.mono, fontSize: 9, letterSpacing: 0.8, color: t.inkFaint, textTransform: 'uppercase', fontWeight: 600 }}>
+          Customize labels
+        </span>
+      </div>
+
+      <div style={{ display: 'flex', flexDirection: 'column' }}>
+        {LABEL_CATEGORY_META.map(({ cat, label, preview }) => {
+          const resolved = resolveLabels(labelPresetId, labelOverrides)[cat]
+          const hasOverride = !!(labelOverrides[cat] && Object.keys(labelOverrides[cat]!).length > 0)
+          const isOpen = openCat === cat
+
+          return (
+            <div key={cat} style={{ borderTop: `1px solid ${t.line2}` }}>
+              <button
+                onClick={() => setOpenCat(isOpen ? null : cat)}
+                style={{
+                  width: '100%', display: 'flex', alignItems: 'baseline', gap: 8,
+                  padding: '5px 14px', background: 'none', border: 'none', cursor: 'pointer', textAlign: 'left',
+                }}
+              >
+                <span style={{ fontFamily: t.mono, fontSize: 9, color: t.inkFaint, width: 8, flexShrink: 0 }}>
+                  {isOpen ? '▼' : '▶'}
+                </span>
+                <span style={{ fontFamily: t.mono, fontSize: 9.5, color: t.inkMute, width: 76, flexShrink: 0 }}>
+                  {label}
+                </span>
+                <span style={{
+                  fontFamily: resolved.family,
+                  fontSize: 11,
+                  fontStyle: resolved.italic ? 'italic' : 'normal',
+                  fontWeight: resolved.weight,
+                  color: resolved.color,
+                  textTransform: resolved.uppercase ? 'uppercase' : 'none',
+                  letterSpacing: `${Math.min(resolved.letterSpacing, 0.12)}em`,
+                  flex: 1, overflow: 'hidden', whiteSpace: 'nowrap', textOverflow: 'ellipsis',
+                }}>
+                  {preview}
+                </span>
+                {hasOverride && (
+                  <span style={{ width: 6, height: 6, borderRadius: '50%', background: '#7de0a0', flexShrink: 0, alignSelf: 'center' }} />
+                )}
+              </button>
+
+              {isOpen && (
+                <div style={{ padding: '2px 14px 12px' }}>
+                  <LabelSpecEditorRows
+                    spec={resolved}
+                    previewText={preview}
+                    onChange={p => setLabelCategoryOverride(cat, p)}
+                    onReset={() => resetLabelCategoryOverride(cat)}
+                    hasOverride={hasOverride}
+                  />
+                </div>
+              )}
+            </div>
+          )
+        })}
+      </div>
+    </>
+  )
+}
+
 // ── TypographyFlyout ──────────────────────────────────────────────────────────
 
 function TypographyFlyout({ onClose }: { onClose: () => void }) {
   const t = useTheme()
   const { labelPresetId, setLabelPresetId, labelOverrides, resetAllLabelOverrides } = useMapStore()
   const hasAnyOverride = Object.values(labelOverrides).some(v => v && Object.keys(v).length > 0)
+  const [view, setView] = useState<'presets' | 'customize'>('presets')
+
+  if (view === 'customize') {
+    return (
+      <FlyoutShell title="Typography" onClose={onClose} width={290}>
+        <LabelCategorySubview onBack={() => setView('presets')} />
+      </FlyoutShell>
+    )
+  }
 
   return (
     <FlyoutShell title="Typography" onClose={onClose} width={290}>
@@ -608,59 +708,72 @@ function TypographyFlyout({ onClose }: { onClose: () => void }) {
           const fg = active ? t.surface : undefined
           const fgMuted = active ? `${t.surface}bb` : undefined
           return (
-            <button
-              key={preset.id}
-              onClick={() => setLabelPresetId(preset.id)}
-              style={{
-                display: 'flex', alignItems: 'baseline',
-                padding: '5px 10px', gap: 10,
-                background: active ? t.ink : 'transparent',
-                border: `1px solid ${active ? t.ink : t.line}`,
-                cursor: 'pointer', textAlign: 'left',
-              }}
-            >
-              {/* Name rendered in the preset's own city font */}
-              <span style={{
-                fontFamily: nameStyle.family,
-                fontSize: 13,
-                fontStyle: nameStyle.italic ? 'italic' : 'normal',
-                fontWeight: nameStyle.weight,
-                color: fg ?? nameStyle.color,
-                textTransform: nameStyle.uppercase ? 'uppercase' : 'none',
-                letterSpacing: `${Math.min(nameStyle.letterSpacing, 0.12)}em`,
-                flex: '1 1 0',
-                minWidth: 0,
-                overflow: 'hidden', whiteSpace: 'nowrap', textOverflow: 'ellipsis',
-              }}>
-                {preset.name}
-              </span>
-              {/* Two short samples */}
-              <span style={{ display: 'flex', gap: 6, alignItems: 'baseline', marginLeft: 'auto', flexShrink: 0 }}>
+            <div key={preset.id} style={{ position: 'relative', display: 'flex', alignItems: 'stretch' }}>
+              <button
+                onClick={() => setLabelPresetId(preset.id)}
+                style={{
+                  flex: 1, display: 'flex', alignItems: 'baseline',
+                  padding: '5px 10px', gap: 10,
+                  background: active ? t.ink : 'transparent',
+                  border: `1px solid ${active ? t.ink : t.line}`,
+                  borderRight: active ? `1px solid ${t.ink}` : `1px solid ${t.line}`,
+                  cursor: 'pointer', textAlign: 'left',
+                }}
+              >
                 <span style={{
                   fontFamily: nameStyle.family,
-                  fontSize: 10,
-                  fontWeight: nameStyle.weight,
+                  fontSize: 13,
                   fontStyle: nameStyle.italic ? 'italic' : 'normal',
+                  fontWeight: nameStyle.weight,
                   color: fg ?? nameStyle.color,
                   textTransform: nameStyle.uppercase ? 'uppercase' : 'none',
-                  letterSpacing: `${Math.min(nameStyle.letterSpacing, 0.08)}em`,
-                  whiteSpace: 'nowrap',
+                  letterSpacing: `${Math.min(nameStyle.letterSpacing, 0.12)}em`,
+                  flex: '1 1 0',
+                  minWidth: 0,
+                  overflow: 'hidden', whiteSpace: 'nowrap', textOverflow: 'ellipsis',
                 }}>
-                  Lyon
+                  {preset.name}
                 </span>
-                <span style={{
-                  fontFamily: waterStyle.family,
-                  fontSize: 10,
-                  fontWeight: waterStyle.weight,
-                  fontStyle: 'italic',
-                  color: fgMuted ?? waterStyle.color,
-                  letterSpacing: `${Math.min(waterStyle.letterSpacing, 0.08)}em`,
-                  whiteSpace: 'nowrap',
-                }}>
-                  Rhône
+                <span style={{ display: 'flex', gap: 6, alignItems: 'baseline', marginLeft: 'auto', flexShrink: 0 }}>
+                  <span style={{
+                    fontFamily: nameStyle.family,
+                    fontSize: 10,
+                    fontWeight: nameStyle.weight,
+                    fontStyle: nameStyle.italic ? 'italic' : 'normal',
+                    color: fg ?? nameStyle.color,
+                    textTransform: nameStyle.uppercase ? 'uppercase' : 'none',
+                    letterSpacing: `${Math.min(nameStyle.letterSpacing, 0.08)}em`,
+                    whiteSpace: 'nowrap',
+                  }}>
+                    Lyon
+                  </span>
+                  <span style={{
+                    fontFamily: waterStyle.family,
+                    fontSize: 10,
+                    fontWeight: waterStyle.weight,
+                    fontStyle: 'italic',
+                    color: fgMuted ?? waterStyle.color,
+                    letterSpacing: `${Math.min(waterStyle.letterSpacing, 0.08)}em`,
+                    whiteSpace: 'nowrap',
+                  }}>
+                    Rhône
+                  </span>
                 </span>
-              </span>
-            </button>
+              </button>
+              {active && (
+                <button
+                  onClick={() => setView('customize')}
+                  title="Customize label categories"
+                  style={{
+                    background: t.ink, border: `1px solid ${t.ink}`, borderLeft: `1px solid rgba(255,255,255,0.15)`,
+                    color: t.surface, cursor: 'pointer', padding: '0 8px', fontSize: 11, opacity: 0.7,
+                    display: 'flex', alignItems: 'center',
+                  }}
+                >
+                  ⚙
+                </button>
+              )}
+            </div>
           )
         })}
       </div>

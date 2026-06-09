@@ -17,6 +17,8 @@ export interface LabelSpec {
   uppercase: boolean
   letterSpacing: number  // em
   color: string
+  strokeColor?: string
+  strokeWidth?: number   // px at base font size
 }
 
 export interface LabelPreset {

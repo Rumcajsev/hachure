@@ -91,11 +91,39 @@ export function LabelSpecEditorRows({
       </div>
 
       <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+        <span style={{ fontFamily: t.mono, fontSize: 9, color: t.inkFaint, width: 52, flexShrink: 0, textTransform: 'uppercase', letterSpacing: 0.5 }}>Weight</span>
+        <div style={{ display: 'flex', gap: 2 }}>
+          {([300, 400, 600, 700] as const).map(w => (
+            <button key={w} onClick={() => onChange({ weight: w })} style={{
+              padding: '2px 7px', fontFamily: t.mono, fontSize: 9,
+              background: spec.weight === w ? t.ink : 'transparent',
+              color: spec.weight === w ? t.surface : t.inkMute,
+              border: `1px solid ${spec.weight === w ? t.ink : t.line}`,
+              cursor: 'pointer', fontWeight: w,
+            }}>
+              {w === 300 ? 'Thin' : w === 400 ? 'Reg' : w === 600 ? 'Semi' : 'Bold'}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
         <span style={{ fontFamily: t.mono, fontSize: 9, color: t.inkFaint, width: 52, flexShrink: 0, textTransform: 'uppercase', letterSpacing: 0.5 }}>Spacing</span>
         <input type="range" min={0} max={0.5} step={0.01} value={spec.letterSpacing}
           onChange={e => onChange({ letterSpacing: parseFloat(e.target.value) })}
           style={{ flex: 1 }} />
         <span style={{ fontFamily: t.mono, fontSize: 9.5, color: t.inkMute, width: 34 }}>{spec.letterSpacing.toFixed(2)}em</span>
+      </div>
+
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+        <span style={{ fontFamily: t.mono, fontSize: 9, color: t.inkFaint, width: 52, flexShrink: 0, textTransform: 'uppercase', letterSpacing: 0.5 }}>Stroke</span>
+        <input type="color" value={spec.strokeColor ?? '#ffffff'}
+          onChange={e => onChange({ strokeColor: e.target.value })}
+          style={{ width: 26, height: 22, border: 'none', background: 'none', cursor: 'pointer', padding: 0 }} />
+        <input type="range" min={0} max={6} step={0.1} value={spec.strokeWidth ?? 0}
+          onChange={e => onChange({ strokeWidth: parseFloat(e.target.value) })}
+          style={{ flex: 1 }} />
+        <span style={{ fontFamily: t.mono, fontSize: 9.5, color: t.inkMute, width: 28 }}>{(spec.strokeWidth ?? 0).toFixed(1)}px</span>
       </div>
 
       <div style={{
@@ -107,6 +135,7 @@ export function LabelSpecEditorRows({
         color: spec.color,
         letterSpacing: `${spec.letterSpacing}em`,
         textTransform: spec.uppercase ? 'uppercase' : 'none',
+        WebkitTextStroke: spec.strokeWidth ? `${spec.strokeWidth * 0.5}px ${spec.strokeColor ?? '#ffffff'}` : undefined,
       }}>
         {previewText}
       </div>

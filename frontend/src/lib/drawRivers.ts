@@ -307,9 +307,17 @@ function drawRiverLabels(
     rCtx.save()
     rCtx.translate(fx, fy)
     rCtx.rotate(angle)
-    rCtx.strokeStyle = 'rgba(255,255,255,0.7)'
-    rCtx.lineWidth = 2.5
-    rCtx.strokeText(label, 0, 0)
+    const strokeW = spec.strokeWidth ?? 0
+    if (strokeW > 0) {
+      rCtx.strokeStyle = spec.strokeColor ?? 'rgba(255,255,255,0.7)'
+      rCtx.lineWidth = strokeW
+      rCtx.lineJoin = 'round'
+      rCtx.strokeText(label, 0, 0)
+    } else {
+      rCtx.strokeStyle = 'rgba(255,255,255,0.7)'
+      rCtx.lineWidth = 2.5
+      rCtx.strokeText(label, 0, 0)
+    }
     rCtx.fillStyle = spec.color
     rCtx.fillText(label, 0, 0)
     rCtx.restore()
