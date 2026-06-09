@@ -377,23 +377,26 @@ function densify(pts: [number, number][], maxDist: number): [number, number][] {
   return out
 }
 
-/** Two-band perpendicular Perlin noise, tapering to zero at both endpoints. */
-function applyPerpendicularNoise(
+/** Sine-dominated meander: rhythmic left-right-left-right like real rivers.
+ *  A small Perlin detail layer (~20% of amp) adds organic variation without chaos.
+ *  Phase is seeded from the chain's first vertex so connected chains stay in sync
+ *  across junctions rather than each resetting to 0. */
+function applyMeanderNoise(
   pts: [number, number][],
-  ampBroad: number,
-  ampDetail: number,
-  scaleBroad: number,
-  scaleDetail: number,
+  amp: number,
+  meanderFreq: number,   // cycles per unit arc-length
   perm: Uint8Array,
   interDist: number,
+  phaseOffset: number,   // seeded from start vertex
 ): [number, number][] {
   if (pts.length < 3) return pts
-  // Accumulate arc-length parameterisation
   const lens: number[] = [0]
   for (let i = 1; i < pts.length; i++)
     lens.push(lens[i - 1] + Math.hypot(pts[i][0] - pts[i - 1][0], pts[i][1] - pts[i - 1][1]))
   const total = lens[lens.length - 1]
   if (total < 1e-6) return pts
+
+  const detailFreq = meanderFreq * 3.5   // higher-freq detail, much quieter
 
   return pts.map((pt, i) => {
     if (i === 0 || i === pts.length - 1) return pt
@@ -401,10 +404,9 @@ function applyPerpendicularNoise(
     const dx = next[0] - prev[0], dy = next[1] - prev[1]
     const len = Math.hypot(dx, dy)
     if (len < 1e-6) return pt
-    // Unit perpendicular (rotated 90° CCW)
     const nx = -dy / len, ny = dx / len
-    // Taper to zero only within a fixed distance from each endpoint (not proportionally),
-    // so short junction-to-junction segments get the same fade zone as long ones.
+
+    // Fixed-distance taper at endpoints only
     const fadeLen = Math.min(total * 0.25, interDist * 1.5)
     const s = lens[i]
     const taper = Math.min(
@@ -412,9 +414,13 @@ function applyPerpendicularNoise(
       fadeLen > 0 ? (total - s) / fadeLen : 1,
       1,
     )
-    const broad  = ampBroad  * perlinNoise2D(s * scaleBroad,  0.3, perm) * taper
-    const detail = ampDetail * perlinNoise2D(s * scaleDetail, 0.7, perm) * taper
-    return [pt[0] + nx * (broad + detail), pt[1] + ny * (broad + detail)] as [number, number]
+
+    // Dominant sine meander + small Perlin detail
+    const meander = amp * Math.sin(s * meanderFreq * 2 * Math.PI + phaseOffset)
+    const detail  = amp * 0.18 * perlinNoise2D(s * detailFreq, 0.5, perm)
+    const disp    = (meander + detail) * taper
+
+    return [pt[0] + nx * disp, pt[1] + ny * disp] as [number, number]
   })
 }
 
@@ -505,18 +511,20 @@ export function buildRiverChainsV3(
   }
   const interDist = distSamples > 0 ? totalDist / distSamples : 1e-4
 
-  const maxSpacing  = interDist * pointSpacingFactor
-  const ampBroad    = noiseAmp * interDist
-  const ampDetail   = noiseAmp * interDist * 0.35
-  const scaleBroad  = (1 / (interDist * 4.0)) / noiseScale
-  const scaleDetail = (1 / (interDist * 1.3)) / noiseScale
+  const maxSpacing   = interDist * pointSpacingFactor
+  const amp          = noiseAmp * interDist
+  // noiseScale stretches the meander wavelength: 1.0 = one full bend per ~6 hex-edge spacings
+  const meanderFreq  = (1 / (interDist * 6.0)) / noiseScale
 
   const perm = makePermutation(42)
 
   return rawSparse.map(({ pts, segKey }) => {
-    const rounded   = chaikin(pts, cornerRounds)
-    const dense     = densify(rounded, maxSpacing)
-    const chain     = applyPerpendicularNoise(dense, ampBroad, ampDetail, scaleBroad, scaleDetail, perm, interDist)
+    // Seed phase from the start vertex so chains that share a junction
+    // start their sine at a compatible point rather than always 0.
+    const phase = pts[0][0] * 127.1 + pts[0][1] * 311.7
+    const rounded = chaikin(pts, cornerRounds)
+    const dense   = densify(rounded, maxSpacing)
+    const chain   = applyMeanderNoise(dense, amp, meanderFreq, perm, interDist, phase)
     return { segKey, chain }
   })
 }
