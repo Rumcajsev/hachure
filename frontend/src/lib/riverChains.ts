@@ -377,21 +377,9 @@ function densify(pts: [number, number][], maxDist: number): [number, number][] {
   return out
 }
 
-/** Sine-dominated meander with three independent variation axes and regional coherence.
- *
- *  KEY SCALING RULE: all arc-length Perlin inputs use s/interDist (normalised),
- *  so frequencies are independent of coordinate system. Perlin has period ~1,
- *  so a frequency of 0.3/interDist means one full noise cycle per ~3 hex-edge spacings.
- *
- *  ampVariation (0–1): slow envelope modulates bend depth. Some bends full amplitude,
- *    some shallow, occasionally near-zero (skipped bend).
- *
- *  scaleVariation (0–1): varies the meander wavelength along the path. Sections with
- *    higher local scale meander more lazily; lower scale = tighter bends. Creates the
- *    "sometimes bunched, sometimes spread" feel.
- *
- *  Regional coherence (always on, weight 0.25): slow 2D Perlin sampled at actual
- *  geographic position — nearby rivers share the same regional drift character. */
+/** Sine-dominated meander with regional coherence.
+ *  Regional coherence (weight 0.25): slow 2D Perlin sampled at actual geographic
+ *  position — nearby rivers share the same regional drift character. */
 function applyMeanderNoise(
   pts: [number, number][],
   amp: number,
@@ -400,8 +388,6 @@ function applyMeanderNoise(
   permB: Uint8Array,
   interDist: number,
   phaseOffset: number,
-  ampVariation: number,
-  scaleVariation: number,
 ): [number, number][] {
   if (pts.length < 3) return pts
   const lens: number[] = [0]
@@ -410,27 +396,15 @@ function applyMeanderNoise(
   const total = lens[lens.length - 1]
   if (total < 1e-6) return pts
 
-  // Normalised arc-length: Perlin inputs span [0, total/interDist]
-  // One noise period = interDist, so frequency N means N cycles per interDist.
   const sn = (s: number) => s / interDist
+  const detailFreq   = 3.5 * (meanderFreq * interDist)
+  const regionalFreq = 0.08 / interDist
 
-  const ampEnvFreq   = 0.30   // amplitude envelope: ~1 variation per 3 hex-edge spacings
-  const scaleEnvFreq = 0.18   // scale envelope: slower — ~1 variation per 5-6 spacings
-  const detailFreq   = 3.5 * (meanderFreq * interDist)  // fine detail, tied to meander freq
-  const regionalFreq = 0.08 / interDist                  // geographic field, very slow
-
-  // Pre-compute phase with spatially-varying wavelength (scaleVariation)
+  // Pre-compute accumulated phase
   const phases: number[] = new Array(pts.length).fill(phaseOffset)
   let accumPhase = phaseOffset
   for (let i = 1; i < pts.length; i++) {
-    const s = lens[i]
-    // localScale in [1 - scaleVariation*0.6, 1 + scaleVariation*0.6]
-    const localScale = scaleVariation > 0
-      ? 1 + scaleVariation * 0.6 * perlinNoise2D(sn(s) * scaleEnvFreq, 0.2, perm)
-      : 1
-    const ds = lens[i] - lens[i - 1]
-    // Higher localScale → longer wavelength → phase advances more slowly
-    accumPhase += meanderFreq * 2 * Math.PI * ds / Math.max(localScale, 0.2)
+    accumPhase += meanderFreq * 2 * Math.PI * (lens[i] - lens[i - 1])
     phases[i] = accumPhase
   }
 
@@ -450,17 +424,10 @@ function applyMeanderNoise(
       1,
     )
 
-    // Amplitude envelope: raw Perlin is [-1,1]; clamp positive half → [0,1] dip range
-    const envelope = ampVariation > 0
-      ? 1 - ampVariation * 0.85 * Math.max(0, perlinNoise2D(sn(s) * ampEnvFreq, 0.9, perm))
-      : 1
-
-    // Regional coherence: slow 2D field at actual geo position (always on, weight 0.25)
     const regional = perlinNoise2D(pt[0] * regionalFreq, pt[1] * regionalFreq, permB)
-
-    const meander = amp * envelope * (Math.sin(phases[i]) + 0.25 * regional)
-    const detail  = amp * 0.15 * perlinNoise2D(sn(s) * detailFreq, 0.5, perm)
-    const disp    = (meander + detail) * taper
+    const meander  = amp * (Math.sin(phases[i]) + 0.25 * regional)
+    const detail   = amp * 0.15 * perlinNoise2D(sn(s) * detailFreq, 0.5, perm)
+    const disp     = (meander + detail) * taper
 
     return [pt[0] + nx * disp, pt[1] + ny * disp] as [number, number]
   })
@@ -473,10 +440,6 @@ export function buildRiverChainsV3(
   pointSpacingFactor = 0.12,
   noiseAmp = 0.35,
   noiseScale = 1.0,
-  /** 0=every bend same depth, 1=slow modulation — some bends shallow/skipped */
-  ampVariation = 0,
-  /** 0=uniform wavelength, 1=wavelength varies along path — bends bunch and spread */
-  scaleVariation = 0,
 ): RiverChainV3[] {
   const hexMap = new Map<string, GeneratedHex>()
   for (const h of hexes) hexMap.set(`${h.q},${h.r}`, h)
@@ -565,7 +528,7 @@ export function buildRiverChainsV3(
     const phase   = pts[0][0] * 127.1 + pts[0][1] * 311.7
     const rounded = chaikin(pts, cornerRounds)
     const dense   = densify(rounded, maxSpacing)
-    const chain   = applyMeanderNoise(dense, amp, meanderFreq, perm, permB, interDist, phase, ampVariation, scaleVariation)
+    const chain   = applyMeanderNoise(dense, amp, meanderFreq, perm, permB, interDist, phase)
     return { segKey, chain }
   })
 }
