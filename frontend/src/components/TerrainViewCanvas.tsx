@@ -7,7 +7,7 @@ import { useTheme } from '../context/ThemeContext'
 import { hexAdjacent, catmullRom, offsetPolyline, pointInPolygon, distToSeg, douglasPeucker, douglasPeuckerClosed, chaikin } from '../lib/geometry'
 import { mulberry32, makePermutation } from '../lib/noise'
 import { projectToCanvas, unprojectFromCanvas, computePaper, computeWorldcoverBbox } from '../lib/projection'
-import { coastalBlobTerrains, bleedPolygon, buildTerrainBlobsV2, buildTerrainBlobTopology, shapeTerrainBlobs, computeConnectedComponents } from '../lib/terrainBlobs'
+import { coastalBlobTerrains, bleedPolygon, buildTerrainBlobsV2, buildTerrainBlobTopology, shapeTerrainBlobs, shapeInputPolygon, computeConnectedComponents } from '../lib/terrainBlobs'
 import type { BlobTopologyEntry } from '../lib/terrainBlobs'
 import { findEdgeChains as findEdgeChainsSync } from '../lib/edgeBlobs'
 import { riverChainCache, buildRiverChains, buildRiverChainsV2 } from '../lib/riverChains'
@@ -58,7 +58,7 @@ const OSM_OVERLAY_STYLE: maplibregl.StyleSpecification = {
   layers: [{ id: 'osm', type: 'raster', source: 'osm' }],
 }
 
-type CtxItem = { label: string; action: () => void; danger?: boolean; color?: string; dim?: boolean; icon?: 'edit' | 'dice' | 'erase'; highlightPolys?: [number,number][][] }
+type CtxItem = { label: string; action: () => void; danger?: boolean; color?: string; dim?: boolean; icon?: 'edit' | 'dice' | 'erase'; highlightPolys?: [number,number][][]; highlightLines?: [number,number][][] }
 
 function CtxIcon({ type, color }: { type: 'edit' | 'dice' | 'erase'; color: string }) {
   const s: React.CSSProperties = { width: 12, height: 12, flexShrink: 0, display: 'block' }
@@ -167,7 +167,7 @@ export const TerrainViewCanvas = forwardRef<TerrainViewCanvasHandle, { surroundC
     hexBorderMode, hexEdgeMode, hexBorderOpacity, hexBorderColor, hexBorderDifference,
     terrainBlobSmooth, terrainBlobOffset, terrainBlobBump,
     terrainBlobSweepFreq, terrainBlobLobeFreq, terrainBlobLobeAmp, terrainBlobLobeThreshold, terrainBlobLobeDirection,
-    terrainBlobSimplify,
+    terrainBlobSimplify, terrainBlobTopoStyle,
     terrainBlobOutlineEnabled, terrainBlobOutlineColor, terrainBlobOutlineWidth, terrainBlobEffect,
 terrainColors, terrainTextureScales, terrainTextureBlendModes, terrainTextureOpacities,
     terrainTextureTintColors, terrainTextureTintOpacities,
@@ -240,7 +240,7 @@ terrainColors, terrainTextureScales, terrainTextureBlendModes, terrainTextureOpa
     terrainRenderMode,
     settlements, settlementTierStyles, settlementPlaceTier, addSettlement, placeSettlementAtHex,
     labelPresetId, labelOverrides,
-    settlementMoveIndex, setSettlementMoveIndex, updateSettlement,
+    settlementMoveIndex, setSettlementMoveIndex, updateSettlement, deleteSettlement,
     urbanHexes, urbanStyle, urbanPaintMode, toggleUrbanHex,
     highlights, highlightedHexes, highlightLines, highlightEdgePaths,
     activeHighlightId, highlightPaintMode, highlightLineEraser,
@@ -477,6 +477,7 @@ terrainColors, terrainTextureScales, terrainTextureBlendModes, terrainTextureOpa
   const terrainBlobLobeThresholdRef = useRef(terrainBlobLobeThreshold)
   const terrainBlobLobeDirectionRef = useRef(terrainBlobLobeDirection)
   const terrainBlobSimplifyRef = useRef(terrainBlobSimplify)
+  const terrainBlobTopoStyleRef = useRef(terrainBlobTopoStyle)
   const terrainBlobOutlineEnabledRef = useRef(terrainBlobOutlineEnabled)
   const terrainBlobOutlineColorRef = useRef(terrainBlobOutlineColor)
   const terrainBlobOutlineWidthRef = useRef(terrainBlobOutlineWidth)
@@ -510,6 +511,7 @@ terrainColors, terrainTextureScales, terrainTextureBlendModes, terrainTextureOpa
   const settlementMoveIndexRef = useRef(settlementMoveIndex)
   const setSettlementMoveIndexRef = useRef(setSettlementMoveIndex)
   const updateSettlementRef = useRef(updateSettlement)
+  const deleteSettlementRef = useRef(deleteSettlement)
   const urbanHexesRef = useRef(urbanHexes)
   const urbanStyleRef = useRef(urbanStyle)
   const urbanPaintModeRef = useRef(urbanPaintMode)
@@ -770,6 +772,7 @@ terrainColors, terrainTextureScales, terrainTextureBlendModes, terrainTextureOpa
   terrainBlobLobeThresholdRef.current = terrainBlobLobeThreshold
   terrainBlobLobeDirectionRef.current = terrainBlobLobeDirection
   terrainBlobSimplifyRef.current = terrainBlobSimplify
+  terrainBlobTopoStyleRef.current = terrainBlobTopoStyle
   terrainBlobOutlineEnabledRef.current = terrainBlobOutlineEnabled
   terrainBlobOutlineColorRef.current = terrainBlobOutlineColor
   terrainBlobOutlineWidthRef.current = terrainBlobOutlineWidth
@@ -860,6 +863,7 @@ terrainColors, terrainTextureScales, terrainTextureBlendModes, terrainTextureOpa
   settlementMoveIndexRef.current = settlementMoveIndex
   setSettlementMoveIndexRef.current = setSettlementMoveIndex
   updateSettlementRef.current = updateSettlement
+  deleteSettlementRef.current = deleteSettlement
 
   const hexIdx = useMemo(
     () => new Map(generatedHexes.map(h => [`${h.q},${h.r}`, h])),
@@ -1262,7 +1266,7 @@ const roadV3TierGeomRef = useRef(roadV3TierGeom)
         const h = blobHandleOverrides[ck]
         return h && Object.keys(h).length > 0 ? `${ck}:${JSON.stringify(h)}` : ''
       }).filter(Boolean).join('~')
-      const styleKey = `${smooth}|${offset}|${bump}|${sweepFreq}|${lobeFreq}|${lobeAmp}|${lobeThreshold}|${lobeDirection}|${terrainBlobSimplify}|${hexRadius}|${JSON.stringify(blobSeeds)}|${handleKey}`
+      const styleKey = `${smooth}|${offset}|${bump}|${sweepFreq}|${lobeFreq}|${lobeAmp}|${lobeThreshold}|${lobeDirection}|${terrainBlobSimplify}|${terrainBlobTopoStyle}|${hexRadius}|${JSON.stringify(blobSeeds)}|${handleKey}`
       const cached = perTerrainBlobCache.current.get(terrain)
 
       // Compute rawPolys (topology cache)
@@ -1275,9 +1279,10 @@ const roadV3TierGeomRef = useRef(roadV3TierGeom)
       }
 
       // Simplified polys — what handles are generated from and what the dashed overlay shows
-      const simplifiedPolys = terrainBlobSimplify > 0
-        ? rawPolys.map(p => douglasPeuckerClosed(p, terrainBlobSimplify * hexRadius))
-        : rawPolys
+      const simplifiedPolys = rawPolys.map(p => {
+        const seed = Math.abs(Math.round(p[0][0] * 73 + p[0][1] * 97))
+        return shapeInputPolygon(p, terrainBlobSimplify, terrainBlobTopoStyle, hexRadius, seed)
+      })
 
       // Build vertex handles from simplified poly corners — each vertex is one handle
       const ESNAP = Math.max(2, hexRadius * 0.015)
@@ -1321,7 +1326,7 @@ const roadV3TierGeomRef = useRef(roadV3TierGeom)
       }
 
       const hexCenters = [...hexOrigCenterByKey.values()]
-      const blobs = shapeTerrainBlobs([{ terrain, rawPolys: displacedPolys, hexCenters: [] }], smooth, offset, bump, sweepFreq, lobeFreq, lobeAmp, lobeThreshold, lobeDirection, hexRadius, blobSeeds, 0)
+      const blobs = shapeTerrainBlobs([{ terrain, rawPolys: displacedPolys, hexCenters }], smooth, offset, bump, sweepFreq, lobeFreq, lobeAmp, lobeThreshold, lobeDirection, hexRadius, blobSeeds)
 
       perTerrainBlobCache.current.set(terrain, { hexKey, rawPolys, hexCenters, styleKey, blobs, handleGroups: newHandleGroups, simplifiedPolyGroups: newSimplifiedPolys })
       return blobs
@@ -1331,7 +1336,7 @@ const roadV3TierGeomRef = useRef(roadV3TierGeom)
     }
     prevTerrainBlobsRef.current = result
     return result
-  }, [isTerrainPainting, projectedHexes, blobComponentsByTerrain, terrainBlobOverrides, terrainTypeBlobStyles, terrainBlobSmooth, terrainBlobOffset, terrainBlobBump, terrainBlobSweepFreq, terrainBlobLobeFreq, terrainBlobLobeAmp, terrainBlobLobeThreshold, terrainBlobLobeDirection, terrainBlobSimplify, hexRadius, realisticCoastline, blobSeeds, elevationOverridesTerrain, blobHandleOverrides])
+  }, [isTerrainPainting, projectedHexes, blobComponentsByTerrain, terrainBlobOverrides, terrainTypeBlobStyles, terrainBlobSmooth, terrainBlobOffset, terrainBlobBump, terrainBlobSweepFreq, terrainBlobLobeFreq, terrainBlobLobeAmp, terrainBlobLobeThreshold, terrainBlobLobeDirection, terrainBlobSimplify, terrainBlobTopoStyle, hexRadius, realisticCoastline, blobSeeds, elevationOverridesTerrain, blobHandleOverrides])
   const defaultTerrainBlobsRef = useRef(defaultTerrainBlobs)
   defaultTerrainBlobsRef.current = defaultTerrainBlobs
 
@@ -1362,13 +1367,13 @@ const roadV3TierGeomRef = useRef(roadV3TierGeom)
       const hexKey = `eot:${elevationOverridesTerrain}|` + bgProjected.map(p => `${p.hex.q},${p.hex.r}`).join('|')
       const cached = backgroundBlobCache.current.get(terrain)
       if (cached?.hexKey === hexKey) return cached.blobs
-      const blobs = buildTerrainBlobsV2(bgProjected, terrainBlobSmooth, terrainBlobOffset, terrainBlobBump, terrainBlobSweepFreq, terrainBlobLobeFreq, terrainBlobLobeAmp, terrainBlobLobeThreshold, terrainBlobLobeDirection, hexRadius, terrainBlobSimplify)
+      const blobs = buildTerrainBlobsV2(bgProjected, terrainBlobSmooth, terrainBlobOffset, terrainBlobBump, terrainBlobSweepFreq, terrainBlobLobeFreq, terrainBlobLobeAmp, terrainBlobLobeThreshold, terrainBlobLobeDirection, hexRadius, terrainBlobSimplify, terrainBlobTopoStyle)
       backgroundBlobCache.current.set(terrain, { hexKey, blobs })
       return blobs
     })
     prevBackgroundBlobsRef.current = result
     return result
-  }, [isTerrainPainting, projectedHexes, hexRadius, terrainLayersEnabled, terrainBlobSmooth, terrainBlobOffset, terrainBlobBump, terrainBlobSweepFreq, terrainBlobLobeFreq, terrainBlobLobeAmp, terrainBlobLobeThreshold, terrainBlobLobeDirection, terrainBlobSimplify, elevationOverridesTerrain])
+  }, [isTerrainPainting, projectedHexes, hexRadius, terrainLayersEnabled, terrainBlobSmooth, terrainBlobOffset, terrainBlobBump, terrainBlobSweepFreq, terrainBlobLobeFreq, terrainBlobLobeAmp, terrainBlobLobeThreshold, terrainBlobLobeDirection, terrainBlobSimplify, terrainBlobTopoStyle, elevationOverridesTerrain])
   const defaultBackgroundBlobsRef = useRef(defaultBackgroundBlobs)
   defaultBackgroundBlobsRef.current = defaultBackgroundBlobs
 
@@ -1390,7 +1395,7 @@ const roadV3TierGeomRef = useRef(roadV3TierGeom)
       return prevLakeBlobsRef.current
     }
     const hexKey = defaultWaterProjected.map(p => `${p.hex.q},${p.hex.r}`).join('|')
-    const styleKey = `${terrainBlobSmooth}|${terrainBlobOffset}|${terrainBlobBump}|${terrainBlobSweepFreq}|${terrainBlobLobeFreq}|${terrainBlobLobeAmp}|${terrainBlobLobeThreshold}|${terrainBlobLobeDirection}|${terrainBlobSimplify}|${hexRadius}`
+    const styleKey = `${terrainBlobSmooth}|${terrainBlobOffset}|${terrainBlobBump}|${terrainBlobSweepFreq}|${terrainBlobLobeFreq}|${terrainBlobLobeAmp}|${terrainBlobLobeThreshold}|${terrainBlobLobeDirection}|${terrainBlobSimplify}|${terrainBlobTopoStyle}|${hexRadius}`
     if (lakeBlobCache.current?.hexKey === hexKey && lakeBlobCache.current?.styleKey === styleKey) {
       return lakeBlobCache.current.blobs
     }
@@ -1405,11 +1410,15 @@ const roadV3TierGeomRef = useRef(roadV3TierGeom)
       waterRawPolys = entry?.rawPolys ?? []
       waterHexCenters = entry?.hexCenters ?? []
     }
-    const result = shapeTerrainBlobs([{ terrain: 'water', rawPolys: waterRawPolys, hexCenters: waterHexCenters }], terrainBlobSmooth, terrainBlobOffset, terrainBlobBump, terrainBlobSweepFreq, terrainBlobLobeFreq, terrainBlobLobeAmp, terrainBlobLobeThreshold, terrainBlobLobeDirection, hexRadius, {}, terrainBlobSimplify)
+    const shapedWaterPolys = waterRawPolys.map(p => {
+      const seed = Math.abs(Math.round(p[0][0] * 73 + p[0][1] * 97))
+      return shapeInputPolygon(p, terrainBlobSimplify, terrainBlobTopoStyle, hexRadius, seed)
+    })
+    const result = shapeTerrainBlobs([{ terrain: 'water', rawPolys: shapedWaterPolys, hexCenters: waterHexCenters }], terrainBlobSmooth, terrainBlobOffset, terrainBlobBump, terrainBlobSweepFreq, terrainBlobLobeFreq, terrainBlobLobeAmp, terrainBlobLobeThreshold, terrainBlobLobeDirection, hexRadius, {})
     lakeBlobCache.current = { hexKey, rawPolys: waterRawPolys, hexCenters: waterHexCenters, styleKey, blobs: result }
     prevLakeBlobsRef.current = result
     return result
-  }, [isTerrainPainting, projectedHexes, blobComponents, waterOverrides, terrainBlobSmooth, terrainBlobOffset, terrainBlobBump, terrainBlobSweepFreq, terrainBlobLobeFreq, terrainBlobLobeAmp, terrainBlobLobeThreshold, terrainBlobLobeDirection, terrainBlobSimplify, hexRadius])
+  }, [isTerrainPainting, projectedHexes, blobComponents, waterOverrides, terrainBlobSmooth, terrainBlobOffset, terrainBlobBump, terrainBlobSweepFreq, terrainBlobLobeFreq, terrainBlobLobeAmp, terrainBlobLobeThreshold, terrainBlobLobeDirection, terrainBlobSimplify, terrainBlobTopoStyle, hexRadius])
   const defaultWaterBlobsRef = useRef(defaultWaterBlobs)
   defaultWaterBlobsRef.current = defaultWaterBlobs
 
@@ -1421,7 +1430,7 @@ const roadV3TierGeomRef = useRef(roadV3TierGeom)
     const hexKey = `imp:${elevationImportEnabled}|` + projectedHexes.map(p => { const h = p.hex as GeneratedHex; return `${h.q},${h.r}:${h.elevation_class ?? ''}:${h.elevation_background ?? ''}:${h.elevation_manual_override ? '1' : '0'}` }).join('|')
     const hillsStyle = elevationTypeBlobStyles['hills']
     const mountainsStyle = elevationTypeBlobStyles['mountains']
-    const styleKey = `${terrainBlobSmooth}|${terrainBlobOffset}|${terrainBlobBump}|${terrainBlobSweepFreq}|${terrainBlobLobeFreq}|${terrainBlobLobeAmp}|${terrainBlobLobeThreshold}|${terrainBlobLobeDirection}|${terrainBlobSimplify}|${hexRadius}|${JSON.stringify(hillsStyle)}|${JSON.stringify(mountainsStyle)}`
+    const styleKey = `${terrainBlobSmooth}|${terrainBlobOffset}|${terrainBlobBump}|${terrainBlobSweepFreq}|${terrainBlobLobeFreq}|${terrainBlobLobeAmp}|${terrainBlobLobeThreshold}|${terrainBlobLobeDirection}|${terrainBlobSimplify}|${terrainBlobTopoStyle}|${hexRadius}|${JSON.stringify(hillsStyle)}|${JSON.stringify(mountainsStyle)}`
     if (elevationBlobsCache.current?.hexKey === hexKey && elevationBlobsCache.current?.styleKey === styleKey) {
       return elevationBlobsCache.current.blobs
     }
@@ -1436,6 +1445,7 @@ const roadV3TierGeomRef = useRef(roadV3TierGeom)
       const lobeAmp       = useCustom ? (clsStyle?.lobeAmp       ?? terrainBlobLobeAmp)       : terrainBlobLobeAmp
       const lobeThreshold = useCustom ? (clsStyle?.lobeThreshold ?? terrainBlobLobeThreshold) : terrainBlobLobeThreshold
       const lobeDirection = useCustom ? (clsStyle?.lobeDirection ?? terrainBlobLobeDirection) : terrainBlobLobeDirection
+      const simplifyVal   = useCustom ? (clsStyle?.simplify      ?? terrainBlobSimplify)      : terrainBlobSimplify
       const elevProjected = projectedHexes
         .filter(p => {
           const h = p.hex as GeneratedHex
@@ -1448,7 +1458,14 @@ const roadV3TierGeomRef = useRef(roadV3TierGeom)
         ? cachedTopo
         : (buildTerrainBlobTopology(elevProjected, hexRadius).find(e => e.terrain === cls) ?? null)
       if (!topoEntry) return { topo: null, polys: [] as [number, number][][] }
-      const shaped = shapeTerrainBlobs([topoEntry], smooth, offset, bump, sweepFreq, lobeFreq, lobeAmp, lobeThreshold, lobeDirection, hexRadius, {}, terrainBlobSimplify)
+      const shapedEntry = {
+        ...topoEntry,
+        rawPolys: topoEntry.rawPolys.map(p => {
+          const seed = Math.abs(Math.round(p[0][0] * 73 + p[0][1] * 97))
+          return shapeInputPolygon(p, simplifyVal, terrainBlobTopoStyle, hexRadius, seed)
+        }),
+      }
+      const shaped = shapeTerrainBlobs([shapedEntry], smooth, offset, bump, sweepFreq, lobeFreq, lobeAmp, lobeThreshold, lobeDirection, hexRadius, {})
       return { topo: topoEntry, polys: shaped.find(b => b.terrain === cls)?.polys ?? [] }
     }
     const hillsResult = makePolys('hills', elevationBlobsCache.current?.topoHills)
@@ -1457,7 +1474,7 @@ const roadV3TierGeomRef = useRef(roadV3TierGeom)
     elevationBlobsCache.current = { hexKey, topoHills: hillsResult.topo, topoMountains: mountainsResult.topo, styleKey, blobs }
     prevElevationBlobsRef.current = blobs
     return blobs
-  }, [isTerrainPainting, projectedHexes, terrainBlobSmooth, terrainBlobOffset, terrainBlobBump, terrainBlobSweepFreq, terrainBlobLobeFreq, terrainBlobLobeAmp, terrainBlobLobeThreshold, terrainBlobLobeDirection, terrainBlobSimplify, hexRadius, elevationTypeBlobStyles, elevationImportEnabled])
+  }, [isTerrainPainting, projectedHexes, terrainBlobSmooth, terrainBlobOffset, terrainBlobBump, terrainBlobSweepFreq, terrainBlobLobeFreq, terrainBlobLobeAmp, terrainBlobLobeThreshold, terrainBlobLobeDirection, terrainBlobSimplify, terrainBlobTopoStyle, hexRadius, elevationTypeBlobStyles, elevationImportEnabled])
   const defaultElevationBlobsRef = useRef(defaultElevationBlobs)
   defaultElevationBlobsRef.current = defaultElevationBlobs
 
@@ -1695,6 +1712,7 @@ const roadV3TierGeomRef = useRef(roadV3TierGeom)
         bump: terrainBlobBumpRef.current, sweepFreq: terrainBlobSweepFreqRef.current,
         lobeFreq: terrainBlobLobeFreqRef.current, lobeAmp: terrainBlobLobeAmpRef.current,
         lobeThreshold: terrainBlobLobeThresholdRef.current, lobeDirection: terrainBlobLobeDirectionRef.current,
+        simplify: terrainBlobSimplifyRef.current, topoStyle: terrainBlobTopoStyleRef.current,
       },
       terrainBlobOutlineEnabled: terrainBlobOutlineEnabledRef.current,
       terrainBlobOutlineColor: terrainBlobOutlineColorRef.current,
@@ -1836,7 +1854,7 @@ const roadV3TierGeomRef = useRef(roadV3TierGeom)
             tsRef?.lobeThreshold   ?? terrainBlobLobeThresholdRef.current,
             tsRef?.lobeDirection   ?? terrainBlobLobeDirectionRef.current,
             R,
-            terrainBlobSimplifyRef.current,
+            tsRef?.simplify        ?? terrainBlobSimplifyRef.current,
           )
         })
         const waterOverriddenKeys = new Set(Object.keys(waterOverridesRef.current))
@@ -4198,6 +4216,7 @@ const roadV3TierGeomRef = useRef(roadV3TierGeom)
 
   // Context menu
   const [ctxMenu, setCtxMenu] = useState<{ x: number; y: number; items: CtxItem[] } | null>(null)
+  const [settlementRename, setSettlementRename] = useState<{ index: number; name: string; x: number; y: number } | null>(null)
   const [blobFlyout, setBlobFlyout] = useState<{
     type: 'terrain' | 'water' | 'edge'
     canonicalKey: string
@@ -4234,7 +4253,62 @@ const roadV3TierGeomRef = useRef(roadV3TierGeom)
       const hex = findHexAtClient(e.clientX, e.clientY)
       const items: CtxItem[] = []
 
-      if (hex && activePanelRef.current === 'roads') {
+      // ── Shared projection helpers ──────────────────────────────────────────
+      const meta2 = metaRef.current
+      const logical2 = meta2 ? clientToLogicalRef.current(e.clientX, e.clientY) : null
+      const lx2 = logical2?.lx ?? 0, ly2 = logical2?.ly ?? 0
+      const cssW2 = logical2?.cssW ?? 0, cssH2 = logical2?.cssH ?? 0
+      const { pw: pw2, ph: ph2, px: px2, py: py2 } = meta2 && cssW2 > 0
+        ? computePaper(cssW2, cssH2, meta2)
+        : { pw: 0, ph: 0, px: 0, py: 0 }
+      const R2 = hexRadiusRef.current
+      const projectPt = (lon: number, lat: number): [number, number] =>
+        meta2 && cssW2 > 0 ? projectToCanvas(lon, lat, meta2, pw2, ph2, px2, py2) : [0, 0]
+      const chainPixels = (chain: [number, number][]) =>
+        chain.map(([lon, lat]) => projectPt(lon, lat)) as [number, number][]
+
+      // ── SETTLEMENT section ─────────────────────────────────────────────────
+      if (meta2 && cssW2 > 0) {
+        let nearestIdx = -1, nearestDist = R2 * 0.8
+        for (let i = 0; i < settlementsRef.current.length; i++) {
+          const s = settlementsRef.current[i]
+          if (!s.included) continue
+          const h = hexesRef.current.find(hx => hx.q === s.hex_q && hx.r === s.hex_r)
+          if (!h) continue
+          const [sx, sy] = projectPt(h.center[0], h.center[1])
+          const d = Math.hypot(lx2 - sx, ly2 - sy)
+          if (d < nearestDist) { nearestDist = d; nearestIdx = i }
+        }
+        if (nearestIdx >= 0) {
+          const s = settlementsRef.current[nearestIdx]
+          const idx = nearestIdx
+          const h = hexesRef.current.find(hx => hx.q === s.hex_q && hx.r === s.hex_r)
+          const [sx, sy] = h ? projectPt(h.center[0], h.center[1]) : [e.clientX, e.clientY]
+          items.push({ label: 'Settlement', action: () => {}, dim: true })
+          items.push({
+            label: 'Rename…',
+            icon: 'edit' as const,
+            action: () => setSettlementRename({ index: idx, name: s.name, x: e.clientX, y: e.clientY }),
+          })
+          const tierLabels: Record<number, string> = { 1: 'Tier I', 2: 'Tier II', 3: 'Tier III', 4: 'Tier IV' }
+          for (const tier of [1, 2, 3, 4] as const) {
+            items.push({
+              label: tierLabels[tier],
+              dim: (s.tier ?? 1) === tier,
+              action: () => updateSettlementRef.current(idx, { tier }),
+            })
+          }
+          items.push({
+            label: 'Remove settlement',
+            danger: true,
+            action: () => deleteSettlementRef.current(idx),
+          })
+          items.push({ label: '─', action: () => {} })
+        }
+      }
+
+      // ── ROAD junction / node section ───────────────────────────────────────
+      if (hex) {
         const hexKey = `${hex.q},${hex.r}`
         const overrides = roadControlOverridesRef.current
         const allKeys = Object.keys(overrides)
@@ -4243,29 +4317,25 @@ const roadV3TierGeomRef = useRef(roadV3TierGeom)
           (k.startsWith('jt|') && k.split('|')[1] === hexKey) ||
           (k.startsWith(`em|`) && (k.includes(`|${hexKey}|`) || k.endsWith(`|${hexKey}`)))
         )
-        const isJunction = touchingKeys.some(k => k.startsWith('ja|'))
         const hasOverrides = touchingKeys.length > 0
 
         if (hasOverrides) {
           items.push({
-            label: 'Revert to default',
+            label: 'Revert road node',
             action: () => touchingKeys.forEach(k => deleteRoadControlOverrideRef.current(k)),
             danger: true,
           })
         }
 
-        // Revert shape: available when the hovered chain has a manual shape override
-        const hovChainId = hoveredChainRef.current?.id
+        const hovChainId = hoveredChainRef.current?.kind === 'road' ? hoveredChainRef.current?.id : null
         if (hovChainId && roadChainOverridesRef.current[hovChainId]) {
           items.push({
-            label: 'Revert shape',
+            label: 'Revert road shape',
             action: () => { deleteRoadChainOverrideRef.current(hovChainId); roadsDirtyRef.current = true },
             danger: true,
           })
         }
 
-        // Dissolve junction: create an individual jt| arm override for every road arm,
-        // all starting at the current junction centre — then each can be dragged freely.
         const h = hexesRef.current.find(hx => hx.q === hex.q && hx.r === hex.r)
         const armNeighbors = [...new Set(
           roadEdgesRef.current
@@ -4295,19 +4365,15 @@ const roadV3TierGeomRef = useRef(roadV3TierGeom)
               },
             })
           } else {
-            // Junction is fully dissolved — offer to dissolve any connected groups
             const jtCpsForHex = (smoothedRoadDataRef.current.controlPoints ?? [])
               .filter(cp => cp.key.startsWith('jt|') && cp.key.split('|')[1] === hexKey)
-            const meta = metaRef.current
-            const { w: cssW2, h: cssH2 } = frameDimsRef.current
-            if (meta && cssW2 > 0) {
-              const { pw, ph, px, py } = computePaper(cssW2, cssH2, meta)
+            if (meta2 && cssW2 > 0) {
               const groups: { keys: string[]; pos: [number, number] }[] = []
               for (const cp of jtCpsForHex) {
-                const [cx, cy] = projectToCanvas(cp.pos[0], cp.pos[1], meta, pw, ph, px, py)
+                const [cx, cy] = projectPt(cp.pos[0], cp.pos[1])
                 let merged = false
                 for (const g of groups) {
-                  const [gx, gy] = projectToCanvas(g.pos[0], g.pos[1], meta, pw, ph, px, py)
+                  const [gx, gy] = projectPt(g.pos[0], g.pos[1])
                   if (Math.hypot(cx - gx, cy - gy) < 2) { g.keys.push(cp.key); merged = true; break }
                 }
                 if (!merged) groups.push({ keys: [cp.key], pos: cp.pos })
@@ -4333,143 +4399,127 @@ const roadV3TierGeomRef = useRef(roadV3TierGeom)
             }
           }
         }
-
-
       }
 
-      // Road segment/hop editing via right-click
-      if (activePanelRef.current === 'roads' && !roadNodeEditModeRef.current) {
-        const meta2 = metaRef.current
-        const logical2 = meta2 ? clientToLogicalRef.current(e.clientX, e.clientY) : null
-        if (meta2 && logical2) {
-          const { lx: lx2, ly: ly2, cssW: cssW2, cssH: cssH2 } = logical2
-          const { pw: pw2, ph: ph2, px: px2, py: py2 } = computePaper(cssW2, cssH2, meta2)
-          const R2 = hexRadiusRef.current
-          const roadChains = smoothedRoadDataRef.current.chains
-
-          let bestChain: typeof roadChains[0] | null = null
-          let bestDist = Infinity
-          for (const chain of roadChains) {
-            if (chain.id.startsWith('stub|')) continue
-            const pxPts = chain.chain.map(([lon, lat]) => projectToCanvas(lon, lat, meta2, pw2, ph2, px2, py2)) as [number, number][]
-            for (let i = 0; i < pxPts.length - 1; i++) {
-              const [ax, ay] = pxPts[i], [bx, by] = pxPts[i + 1]
-              const dx = bx - ax, dy = by - ay, len2 = dx * dx + dy * dy
-              const t = len2 > 0 ? Math.max(0, Math.min(1, ((lx2 - ax) * dx + (ly2 - ay) * dy) / len2)) : 0
-              const dist = Math.hypot(lx2 - (ax + t * dx), ly2 - (ay + t * dy))
-              if (dist < bestDist) { bestDist = dist; bestChain = chain }
-            }
+      // ── ROAD segment / hop (panel-agnostic) ───────────────────────────────
+      if (meta2 && cssW2 > 0 && !roadNodeEditModeRef.current) {
+        const roadChains = smoothedRoadDataRef.current.chains
+        let bestChain: typeof roadChains[0] | null = null
+        let bestDist = Infinity
+        for (const chain of roadChains) {
+          if (chain.id.startsWith('stub|')) continue
+          const pxPts = chainPixels(chain.chain)
+          for (let i = 0; i < pxPts.length - 1; i++) {
+            const [ax, ay] = pxPts[i], [bx, by] = pxPts[i + 1]
+            const dx = bx - ax, dy = by - ay, len2 = dx * dx + dy * dy
+            const t = len2 > 0 ? Math.max(0, Math.min(1, ((lx2 - ax) * dx + (ly2 - ay) * dy) / len2)) : 0
+            const dist = Math.hypot(lx2 - (ax + t * dx), ly2 - (ay + t * dy))
+            if (dist < bestDist) { bestDist = dist; bestChain = chain }
           }
-
-          if (bestDist < R2 * 0.7 && bestChain) {
-            const pxPts = bestChain.chain.map(([lon, lat]) => projectToCanvas(lon, lat, meta2, pw2, ph2, px2, py2)) as [number, number][]
-            let bestHopKey: string | null = null, bestHopDist = Infinity
-            if (bestChain.hopKeys && bestChain.hopRanges) {
-              for (let h = 0; h < bestChain.hopKeys.length; h++) {
-                const [hs, he] = bestChain.hopRanges[h]
-                for (let i = hs; i < he; i++) {
-                  const [ax, ay] = pxPts[i], [bx, by] = pxPts[i + 1]
-                  const dx = bx - ax, dy = by - ay, len2 = dx * dx + dy * dy
-                  const t = len2 > 0 ? Math.max(0, Math.min(1, ((lx2 - ax) * dx + (ly2 - ay) * dy) / len2)) : 0
-                  const dist = Math.hypot(lx2 - (ax + t * dx), ly2 - (ay + t * dy))
-                  if (dist < bestHopDist) { bestHopDist = dist; bestHopKey = bestChain!.hopKeys![h] }
-                }
+        }
+        if (bestDist < R2 * 0.7 && bestChain) {
+          const pxPts = chainPixels(bestChain.chain)
+          let bestHopKey: string | null = null, bestHopDist = Infinity
+          if (bestChain.hopKeys && bestChain.hopRanges) {
+            for (let h = 0; h < bestChain.hopKeys.length; h++) {
+              const [hs, he] = bestChain.hopRanges[h]
+              for (let i = hs; i < he; i++) {
+                const [ax, ay] = pxPts[i], [bx, by] = pxPts[i + 1]
+                const dx = bx - ax, dy = by - ay, len2 = dx * dx + dy * dy
+                const t = len2 > 0 ? Math.max(0, Math.min(1, ((lx2 - ax) * dx + (ly2 - ay) * dy) / len2)) : 0
+                const dist = Math.hypot(lx2 - (ax + t * dx), ly2 - (ay + t * dy))
+                if (dist < bestHopDist) { bestHopDist = dist; bestHopKey = bestChain!.hopKeys![h] }
               }
             }
-
-            const cap = bestChain, capHop = bestHopKey
-            if (items.length > 0) items.push({ label: '─', action: () => {} })
+          }
+          const cap = bestChain, capHop = bestHopKey
+          if (items.length > 0) items.push({ label: '─', action: () => {} })
+          items.push({ label: 'Road', action: () => {}, dim: true })
+          items.push({
+            label: 'Edit segment',
+            highlightLines: [pxPts],
+            action: () => {
+              setActiveToolRef.current({ type: 'road-select' })
+              setSelectedRoadSegmentKeysRef.current([cap.id])
+              setSelectedRoadHopKeyRef.current(null)
+            },
+          })
+          if (capHop) {
             items.push({
-              label: 'Edit segment',
+              label: 'Edit hop here',
+              highlightLines: [pxPts],
               action: () => {
                 setActiveToolRef.current({ type: 'road-select' })
                 setSelectedRoadSegmentKeysRef.current([cap.id])
-                setSelectedRoadHopKeyRef.current(null)
+                setSelectedRoadHopKeyRef.current(capHop)
               },
             })
-            if (capHop) {
-              items.push({
-                label: 'Edit hop here',
-                action: () => {
-                  setActiveToolRef.current({ type: 'road-select' })
-                  setSelectedRoadSegmentKeysRef.current([cap.id])
-                  setSelectedRoadHopKeyRef.current(capHop)
-                },
-              })
-            }
           }
         }
         if (roadSelectModeRef.current) {
           if (items.length > 0) items.push({ label: '─', action: () => {} })
-          items.push({ label: 'Exit editing', action: () => setActiveToolRef.current({ type: 'none' }) })
+          items.push({ label: 'Exit road editing', action: () => setActiveToolRef.current({ type: 'none' }) })
         }
       }
 
-      // Rail segment/hop editing via right-click
-      if (activePanelRef.current === 'roads' && !railNodeEditModeRef.current) {
-        const meta2 = metaRef.current
-        const logical2 = meta2 ? clientToLogicalRef.current(e.clientX, e.clientY) : null
-        if (meta2 && logical2) {
-          const { lx: lx2, ly: ly2, cssW: cssW2, cssH: cssH2 } = logical2
-          const { pw: pw2, ph: ph2, px: px2, py: py2 } = computePaper(cssW2, cssH2, meta2)
-          const R2 = hexRadiusRef.current
-          const railChains = smoothedRailDataRef.current.chains
-
-          let bestRailChain: typeof railChains[0] | null = null
-          let bestRailDist = Infinity
-          for (const chain of railChains) {
-            const pxPts = chain.chain.map(([lon, lat]) => projectToCanvas(lon, lat, meta2, pw2, ph2, px2, py2)) as [number, number][]
-            for (let i = 0; i < pxPts.length - 1; i++) {
-              const [ax, ay] = pxPts[i], [bx, by] = pxPts[i + 1]
-              const dx = bx - ax, dy = by - ay, len2 = dx * dx + dy * dy
-              const t = len2 > 0 ? Math.max(0, Math.min(1, ((lx2 - ax) * dx + (ly2 - ay) * dy) / len2)) : 0
-              const dist = Math.hypot(lx2 - (ax + t * dx), ly2 - (ay + t * dy))
-              if (dist < bestRailDist) { bestRailDist = dist; bestRailChain = chain }
-            }
+      // ── RAIL segment / hop (panel-agnostic) ───────────────────────────────
+      if (meta2 && cssW2 > 0 && !railNodeEditModeRef.current) {
+        const railChains = smoothedRailDataRef.current.chains
+        let bestRailChain: typeof railChains[0] | null = null
+        let bestRailDist = Infinity
+        for (const chain of railChains) {
+          const pxPts = chainPixels(chain.chain)
+          for (let i = 0; i < pxPts.length - 1; i++) {
+            const [ax, ay] = pxPts[i], [bx, by] = pxPts[i + 1]
+            const dx = bx - ax, dy = by - ay, len2 = dx * dx + dy * dy
+            const t = len2 > 0 ? Math.max(0, Math.min(1, ((lx2 - ax) * dx + (ly2 - ay) * dy) / len2)) : 0
+            const dist = Math.hypot(lx2 - (ax + t * dx), ly2 - (ay + t * dy))
+            if (dist < bestRailDist) { bestRailDist = dist; bestRailChain = chain }
           }
-
-          if (bestRailDist < R2 * 0.7 && bestRailChain) {
-            const pxPts = bestRailChain.chain.map(([lon, lat]) => projectToCanvas(lon, lat, meta2, pw2, ph2, px2, py2)) as [number, number][]
-            let bestHopKey: string | null = null, bestHopDist = Infinity
-            if (bestRailChain.hopKeys && bestRailChain.hopRanges) {
-              for (let h = 0; h < bestRailChain.hopKeys.length; h++) {
-                const [hs, he] = bestRailChain.hopRanges[h]
-                for (let i = hs; i < he; i++) {
-                  const [ax, ay] = pxPts[i], [bx, by] = pxPts[i + 1]
-                  const dx = bx - ax, dy = by - ay, len2 = dx * dx + dy * dy
-                  const t = len2 > 0 ? Math.max(0, Math.min(1, ((lx2 - ax) * dx + (ly2 - ay) * dy) / len2)) : 0
-                  const dist = Math.hypot(lx2 - (ax + t * dx), ly2 - (ay + t * dy))
-                  if (dist < bestHopDist) { bestHopDist = dist; bestHopKey = bestRailChain!.hopKeys![h] }
-                }
+        }
+        if (bestRailDist < R2 * 0.7 && bestRailChain) {
+          const pxPts = chainPixels(bestRailChain.chain)
+          let bestHopKey: string | null = null, bestHopDist = Infinity
+          if (bestRailChain.hopKeys && bestRailChain.hopRanges) {
+            for (let h = 0; h < bestRailChain.hopKeys.length; h++) {
+              const [hs, he] = bestRailChain.hopRanges[h]
+              for (let i = hs; i < he; i++) {
+                const [ax, ay] = pxPts[i], [bx, by] = pxPts[i + 1]
+                const dx = bx - ax, dy = by - ay, len2 = dx * dx + dy * dy
+                const t = len2 > 0 ? Math.max(0, Math.min(1, ((lx2 - ax) * dx + (ly2 - ay) * dy) / len2)) : 0
+                const dist = Math.hypot(lx2 - (ax + t * dx), ly2 - (ay + t * dy))
+                if (dist < bestHopDist) { bestHopDist = dist; bestHopKey = bestRailChain!.hopKeys![h] }
               }
             }
-
-            const cap = bestRailChain, capHop = bestHopKey
-            if (items.length > 0) items.push({ label: '─', action: () => {} })
+          }
+          const cap = bestRailChain, capHop = bestHopKey
+          if (items.length > 0) items.push({ label: '─', action: () => {} })
+          items.push({ label: 'Rail', action: () => {}, dim: true })
+          items.push({
+            label: 'Edit rail segment',
+            highlightLines: [pxPts],
+            action: () => {
+              setActiveToolRef.current({ type: 'rail-select' })
+              setSelectedRailSegmentKeysRef.current([cap.id])
+              setSelectedRailHopKeyRef.current(null)
+            },
+          })
+          if (capHop) {
             items.push({
-              label: 'Edit rail segment',
+              label: 'Edit rail hop here',
+              highlightLines: [pxPts],
               action: () => {
                 setActiveToolRef.current({ type: 'rail-select' })
                 setSelectedRailSegmentKeysRef.current([cap.id])
-                setSelectedRailHopKeyRef.current(null)
+                setSelectedRailHopKeyRef.current(capHop)
               },
             })
-            if (capHop) {
-              items.push({
-                label: 'Edit rail hop here',
-                action: () => {
-                  setActiveToolRef.current({ type: 'rail-select' })
-                  setSelectedRailSegmentKeysRef.current([cap.id])
-                  setSelectedRailHopKeyRef.current(capHop)
-                },
-              })
-            }
           }
         }
       }
 
-      // Rail node overrides revert in right-click
-      if (hex && activePanelRef.current === 'roads' && railNodeEditModeRef.current) {
+      // ── RAIL node overrides revert ─────────────────────────────────────────
+      if (hex && railNodeEditModeRef.current) {
         const hexKey = `${hex.q},${hex.r}`
         const railOverrides = railControlOverridesRef.current
         const railTouchingKeys = Object.keys(railOverrides).filter(k =>
@@ -4478,7 +4528,7 @@ const roadV3TierGeomRef = useRef(roadV3TierGeom)
         )
         if (railTouchingKeys.length > 0) {
           items.push({
-            label: 'Revert rail to default',
+            label: 'Revert rail node',
             action: () => railTouchingKeys.forEach(k => deleteRailControlOverrideRef.current(k)),
             danger: true,
           })
@@ -4493,74 +4543,67 @@ const roadV3TierGeomRef = useRef(roadV3TierGeom)
         }
       }
 
-      // River segment/hop editing — right-click near a river when in rivers panel
-      if (activePanelRef.current === 'rivers' && riverChainsV2Ref.current.length > 0) {
-        const meta2 = metaRef.current
-        const logical2 = meta2 ? clientToLogicalRef.current(e.clientX, e.clientY) : null
-        if (meta2 && logical2) {
-          const { lx: lx2, ly: ly2, cssW: cssW2, cssH: cssH2 } = logical2
-          const { pw: pw2, ph: ph2, px: px2, py: py2 } = computePaper(cssW2, cssH2, meta2)
-          const R2 = hexRadiusRef.current
-
-          let bestChain: typeof riverChainsV2Ref.current[0] | null = null
-          let bestSegDist = Infinity
-          for (const chain of riverChainsV2Ref.current) {
-            const pxPts = chain.chain.map(([lon, lat]) => projectToCanvas(lon, lat, meta2, pw2, ph2, px2, py2)) as [number, number][]
-            for (let i = 0; i < pxPts.length - 1; i++) {
+      // ── RIVER segment / hop (panel-agnostic) ──────────────────────────────
+      if (meta2 && cssW2 > 0 && riverChainsV2Ref.current.length > 0) {
+        let bestChain: typeof riverChainsV2Ref.current[0] | null = null
+        let bestSegDist = Infinity
+        for (const chain of riverChainsV2Ref.current) {
+          const pxPts = chainPixels(chain.chain)
+          for (let i = 0; i < pxPts.length - 1; i++) {
+            const [ax, ay] = pxPts[i], [bx, by] = pxPts[i + 1]
+            const dx = bx - ax, dy = by - ay, len2 = dx * dx + dy * dy
+            const t = len2 > 0 ? Math.max(0, Math.min(1, ((lx2 - ax) * dx + (ly2 - ay) * dy) / len2)) : 0
+            const dist = Math.hypot(lx2 - (ax + t * dx), ly2 - (ay + t * dy))
+            if (dist < bestSegDist) { bestSegDist = dist; bestChain = chain }
+          }
+        }
+        if (bestSegDist < R2 * 0.7 && bestChain) {
+          const pxPts = chainPixels(bestChain.chain)
+          let bestHopKey: string | null = null, bestHopDist = Infinity
+          for (let h = 0; h < bestChain.hopKeys.length; h++) {
+            const [hs, he] = bestChain.hopRanges[h]
+            for (let i = hs; i < he; i++) {
               const [ax, ay] = pxPts[i], [bx, by] = pxPts[i + 1]
               const dx = bx - ax, dy = by - ay, len2 = dx * dx + dy * dy
               const t = len2 > 0 ? Math.max(0, Math.min(1, ((lx2 - ax) * dx + (ly2 - ay) * dy) / len2)) : 0
               const dist = Math.hypot(lx2 - (ax + t * dx), ly2 - (ay + t * dy))
-              if (dist < bestSegDist) { bestSegDist = dist; bestChain = chain }
+              if (dist < bestHopDist) { bestHopDist = dist; bestHopKey = bestChain.hopKeys[h] }
             }
           }
-
-          if (bestSegDist < R2 * 0.7 && bestChain) {
-            const pxPts = bestChain.chain.map(([lon, lat]) => projectToCanvas(lon, lat, meta2, pw2, ph2, px2, py2)) as [number, number][]
-            let bestHopKey: string | null = null, bestHopDist = Infinity
-            for (let h = 0; h < bestChain.hopKeys.length; h++) {
-              const [hs, he] = bestChain.hopRanges[h]
-              for (let i = hs; i < he; i++) {
-                const [ax, ay] = pxPts[i], [bx, by] = pxPts[i + 1]
-                const dx = bx - ax, dy = by - ay, len2 = dx * dx + dy * dy
-                const t = len2 > 0 ? Math.max(0, Math.min(1, ((lx2 - ax) * dx + (ly2 - ay) * dy) / len2)) : 0
-                const dist = Math.hypot(lx2 - (ax + t * dx), ly2 - (ay + t * dy))
-                if (dist < bestHopDist) { bestHopDist = dist; bestHopKey = bestChain.hopKeys[h] }
-              }
-            }
-
-            const capturedChain = bestChain, capturedHopKey = bestHopKey
-            if (items.length > 0) items.push({ label: '─', action: () => {} })
+          const capturedChain = bestChain, capturedHopKey = bestHopKey
+          if (items.length > 0) items.push({ label: '─', action: () => {} })
+          items.push({ label: 'River', action: () => {}, dim: true })
+          items.push({
+            label: 'Edit segment',
+            highlightLines: [pxPts],
+            action: () => {
+              setActiveToolRef.current({ type: 'river-select' })
+              setSelectedSegmentKeysRef.current([capturedChain.segKey])
+              setSelectedHopKeyRef.current(null)
+            },
+          })
+          if (capturedHopKey) {
             items.push({
-              label: 'Edit segment',
+              label: 'Edit hop here',
+              highlightLines: [pxPts],
               action: () => {
                 setActiveToolRef.current({ type: 'river-select' })
                 setSelectedSegmentKeysRef.current([capturedChain.segKey])
-                setSelectedHopKeyRef.current(null)
+                setSelectedHopKeyRef.current(capturedHopKey)
               },
             })
-            if (capturedHopKey) {
-              items.push({
-                label: 'Edit hop here',
-                action: () => {
-                  setActiveToolRef.current({ type: 'river-select' })
-                  setSelectedSegmentKeysRef.current([capturedChain.segKey])
-                  setSelectedHopKeyRef.current(capturedHopKey)
-                },
-              })
-            }
           }
         }
       }
       if (riverEditModeRef.current) {
         if (items.length > 0) items.push({ label: '─', action: () => {} })
         items.push({
-          label: 'Exit editing',
+          label: 'Exit river editing',
           action: () => setActiveToolRef.current({ type: 'none' }),
         })
       }
 
-      // Blob/lake/river editing — available in any panel
+      // ── TERRAIN blob / hex section ─────────────────────────────────────────
       if (hex) {
         const hexKey = `${hex.q},${hex.r}`
         const storedHexForBlob = hexesRef.current.find(h => h.q === hex.q && h.r === hex.r)
@@ -4570,6 +4613,7 @@ const roadV3TierGeomRef = useRef(roadV3TierGeom)
             const waterPolys = defaultWaterBlobsRef.current.find(b => b.terrain === 'water')?.polys ?? []
             const logical3 = clientToLogicalRef.current(e.clientX, e.clientY)
             const hitWaterPoly = logical3 ? waterPolys.filter(p => pointInPolygon(logical3.lx, logical3.ly, p)) : []
+            items.push({ label: 'Terrain', action: () => {}, dim: true })
             items.push({
               label: 'Edit water…',
               icon: 'edit' as const,
@@ -4580,12 +4624,14 @@ const roadV3TierGeomRef = useRef(roadV3TierGeom)
         } else if (storedHexForBlob) {
           const editableLayers = hexTerrainLayers(storedHexForBlob).filter(t => t !== 'water')
           const logical3 = clientToLogicalRef.current(e.clientX, e.clientY)
+          let addedHeader = false
           for (const t of editableLayers) {
             const componentMap = blobComponentsByTerrainRef.current.get(t)
             const canonicalKey = componentMap?.get(hexKey)
             if (!canonicalKey) continue
             const terrainPolys = defaultTerrainBlobsRef.current.find(b => b.terrain === t)?.polys ?? []
             const hitTerrainPoly = logical3 ? terrainPolys.filter(p => pointInPolygon(logical3.lx, logical3.ly, p)) : []
+            if (!addedHeader) { items.push({ label: 'Terrain', action: () => {}, dim: true }); addedHeader = true }
             items.push({
               label: `Edit ${t.replace(/_/g, ' ')} blob…`,
               icon: 'edit' as const,
@@ -4594,114 +4640,16 @@ const roadV3TierGeomRef = useRef(roadV3TierGeom)
             })
           }
         }
-        // Edge blob chains near click point
-        if (Object.keys(edgeBlobPaintedRef.current).length > 0) {
-          const meta3 = metaRef.current
-          const logical3 = meta3 ? clientToLogicalRef.current(e.clientX, e.clientY) : null
-          if (meta3 && logical3) {
-            const { lx: lx3, ly: ly3, cssW: cW3, cssH: cH3 } = logical3
-            const { pw: pw3, ph: ph3, px: px3, py: py3 } = computePaper(cW3, cH3, meta3)
-            const R3 = hexRadiusRef.current
-            const threshold3 = R3 * 0.35
-            const hexMap3 = new Map<string, GeneratedHex>()
-            for (const h of hexesRef.current) hexMap3.set(`${h.q},${h.r}`, h)
-            const HEX_DIRS3: [number, number][] = [[1, 0], [1, -1], [0, -1], [-1, 0], [-1, 1], [0, 1]]
-            const SNAP3 = 2
-            const vk3 = (p: [number, number]) => `${Math.round(p[0] / SNAP3)},${Math.round(p[1] / SNAP3)}`
-            let nearestEdgeKey: string | null = null
-            let nearestEdgeDist = threshold3
-            for (const h of hexesRef.current) {
-              const hv = h.vertices.map(([lon, lat]) => projectToCanvas(lon, lat, meta3, pw3, ph3, px3, py3) as [number, number])
-              const cx3 = hv.reduce((s, v) => s + v[0], 0) / 6
-              const cy3 = hv.reduce((s, v) => s + v[1], 0) / 6
-              if (Math.hypot(lx3 - cx3, ly3 - cy3) > R3 * 2) continue
-              for (const [dq3, dr3] of HEX_DIRS3) {
-                const nq3 = h.q + dq3, nr3 = h.r + dr3
-                if (!hexMap3.has(`${nq3},${nr3}`)) continue
-                const ek3 = edgeBlobCanonicalKey(h.q, h.r, nq3, nr3)
-                if (!edgeBlobPaintedRef.current[ek3]) continue
-                const nv = hexMap3.get(`${nq3},${nr3}`)!.vertices.map(([lon, lat]) => projectToCanvas(lon, lat, meta3, pw3, ph3, px3, py3) as [number, number])
-                const nkeys3 = new Set(nv.map(vk3))
-                const shared3 = hv.filter(v => nkeys3.has(vk3(v)))
-                if (shared3.length < 2) continue
-                const d3 = distToSeg([lx3, ly3], shared3[0], shared3[1])
-                if (d3 < nearestEdgeDist) { nearestEdgeDist = d3; nearestEdgeKey = ek3 }
-              }
-            }
-            if (nearestEdgeKey) {
-              const ek = nearestEdgeKey
-              const terrain3 = edgeBlobPaintedRef.current[ek]
-              // Find chain key for this edge
-              const chains3 = findEdgeChainsSync(edgeBlobPaintedRef.current, hexVertMapRef.current)
-              const chain3 = chains3.find(c => c.edgeKeys.includes(ek))
-              const chainKey3 = chain3?.chainKey ?? ek
-              items.push({
-                label: `Edit edge ${terrain3?.replace(/_/g, ' ') ?? 'blob'}…`,
-                icon: 'edit' as const,
-                action: () => setBlobFlyout({ type: 'edge', canonicalKey: chainKey3, terrain: terrain3, x: e.clientX, y: e.clientY }),
-              })
-              items.push({
-                label: 'Erase edge blob',
-                icon: 'erase' as const,
-                action: () => eraseEdgeBlobRef.current(ek),
-                danger: true,
-              })
-            }
-          }
-        }
-        if (items.length > 0) items.push({ label: '─', action: () => {} })
-      }
 
-
-      // Bridge tier assignment — right-click near any detected bridge
-      if (bridgesEnabledRef.current && detectedBridgesRef.current.length > 0) {
-        const meta2 = metaRef.current
-        const logical2 = meta2 ? clientToLogicalRef.current(e.clientX, e.clientY) : null
-        if (meta2 && logical2) {
-          const { lx: lx2, ly: ly2, cssW: cssW2, cssH: cssH2 } = logical2
-          const { pw: pw2, ph: ph2, px: px2, py: py2 } = computePaper(cssW2, cssH2, meta2)
-          const R2 = hexRadiusRef.current
-
-          let nearestBridge: BridgePoint | null = null
-          let nearestDist = Infinity
-          for (const bridge of detectedBridgesRef.current) {
-            const [bx, by] = projectToCanvas(bridge.pos[0], bridge.pos[1], meta2, pw2, ph2, px2, py2)
-            const dist = Math.hypot(lx2 - bx, ly2 - by)
-            if (dist < nearestDist) { nearestDist = dist; nearestBridge = bridge }
-          }
-
-          if (nearestBridge && nearestDist < R2 * 0.6) {
-            const captured = nearestBridge
-            const currentTierId = bridgeOverridesRef.current[captured.id]
-            if (items.length > 0) items.push({ label: '─', action: () => {} })
-            items.push({ label: 'Bridge tier', action: () => {}, dim: true })
-            items.push({
-              label: 'Default (no marker)',
-              action: () => clearBridgeOverrideRef.current(captured.id),
-              dim: !currentTierId,
-            })
-            for (const tier of bridgeTiersRef.current) {
-              items.push({
-                label: tier.label,
-                color: tier.color,
-                action: () => setBridgeOverrideRef.current(captured.id, tier.id),
-                dim: tier.id === currentTierId,
-              })
-            }
-          }
-        }
-      }
-
-      // Terrain blob randomize
-      if (activePanelRef.current === 'terrain') {
-        const logical2 = clientToLogicalRef.current(e.clientX, e.clientY)
-        if (logical2) {
-          const { lx: lx2, ly: ly2 } = logical2
+        // Terrain blob randomize (always available)
+        const logical2b = clientToLogicalRef.current(e.clientX, e.clientY)
+        if (logical2b) {
+          const { lx: lx2b, ly: ly2b } = logical2b
           const allBlobs = defaultTerrainBlobsRef.current
           let hitBlobKey: string | null = null
           outer: for (const entry of allBlobs) {
             for (let i = 0; i < entry.polys.length; i++) {
-              if (pointInPolygon(lx2, ly2, entry.polys[i])) {
+              if (pointInPolygon(lx2b, ly2b, entry.polys[i])) {
                 hitBlobKey = entry.blobKeys[i] ?? null
                 break outer
               }
@@ -4717,8 +4665,87 @@ const roadV3TierGeomRef = useRef(roadV3TierGeom)
               }
               return []
             })()
-            if (items.length > 0) items.push({ label: '─', action: () => {} })
             items.push({ label: 'Randomize blob', icon: 'dice' as const, highlightPolys: hitPoly, action: () => randomizeBlobSeedRef.current(captured) })
+          }
+        }
+
+        // Edge blob chains near click point
+        if (Object.keys(edgeBlobPaintedRef.current).length > 0 && meta2 && logical2) {
+          const R3 = hexRadiusRef.current
+          const threshold3 = R3 * 0.35
+          const hexMap3 = new Map<string, GeneratedHex>()
+          for (const h of hexesRef.current) hexMap3.set(`${h.q},${h.r}`, h)
+          const HEX_DIRS3: [number, number][] = [[1, 0], [1, -1], [0, -1], [-1, 0], [-1, 1], [0, 1]]
+          const SNAP3 = 2
+          const vk3 = (p: [number, number]) => `${Math.round(p[0] / SNAP3)},${Math.round(p[1] / SNAP3)}`
+          let nearestEdgeKey: string | null = null
+          let nearestEdgeDist = threshold3
+          for (const h of hexesRef.current) {
+            const hv = h.vertices.map(([lon, lat]) => projectPt(lon, lat))
+            const cx3 = hv.reduce((s, v) => s + v[0], 0) / 6
+            const cy3 = hv.reduce((s, v) => s + v[1], 0) / 6
+            if (Math.hypot(lx2 - cx3, ly2 - cy3) > R3 * 2) continue
+            for (const [dq3, dr3] of HEX_DIRS3) {
+              const nq3 = h.q + dq3, nr3 = h.r + dr3
+              if (!hexMap3.has(`${nq3},${nr3}`)) continue
+              const ek3 = edgeBlobCanonicalKey(h.q, h.r, nq3, nr3)
+              if (!edgeBlobPaintedRef.current[ek3]) continue
+              const nv = hexMap3.get(`${nq3},${nr3}`)!.vertices.map(([lon, lat]) => projectPt(lon, lat))
+              const nkeys3 = new Set(nv.map(vk3))
+              const shared3 = hv.filter(v => nkeys3.has(vk3(v)))
+              if (shared3.length < 2) continue
+              const d3 = distToSeg([lx2, ly2], shared3[0], shared3[1])
+              if (d3 < nearestEdgeDist) { nearestEdgeDist = d3; nearestEdgeKey = ek3 }
+            }
+          }
+          if (nearestEdgeKey) {
+            const ek = nearestEdgeKey
+            const terrain3 = edgeBlobPaintedRef.current[ek]
+            const chains3 = findEdgeChainsSync(edgeBlobPaintedRef.current, hexVertMapRef.current)
+            const chain3 = chains3.find(c => c.edgeKeys.includes(ek))
+            const chainKey3 = chain3?.chainKey ?? ek
+            items.push({
+              label: `Edit edge ${terrain3?.replace(/_/g, ' ') ?? 'blob'}…`,
+              icon: 'edit' as const,
+              action: () => setBlobFlyout({ type: 'edge', canonicalKey: chainKey3, terrain: terrain3, x: e.clientX, y: e.clientY }),
+            })
+            items.push({
+              label: 'Erase edge blob',
+              icon: 'erase' as const,
+              action: () => eraseEdgeBlobRef.current(ek),
+              danger: true,
+            })
+          }
+        }
+        if (items.length > 0) items.push({ label: '─', action: () => {} })
+      }
+
+      // ── BRIDGE section ─────────────────────────────────────────────────────
+      if (bridgesEnabledRef.current && detectedBridgesRef.current.length > 0 && meta2 && cssW2 > 0) {
+        let nearestBridge: BridgePoint | null = null
+        let nearestDist = Infinity
+        for (const bridge of detectedBridgesRef.current) {
+          const [bx, by] = projectPt(bridge.pos[0], bridge.pos[1])
+          const dist = Math.hypot(lx2 - bx, ly2 - by)
+          if (dist < nearestDist) { nearestDist = dist; nearestBridge = bridge }
+        }
+        if (nearestBridge && nearestDist < R2 * 0.6) {
+          const captured = nearestBridge
+          const currentTierId = bridgeOverridesRef.current[captured.id]
+          if (items.length > 0) items.push({ label: '─', action: () => {} })
+          items.push({ label: 'Bridge tier', action: () => {}, dim: true })
+          items.push({
+            label: 'Default (no marker)',
+            action: () => clearBridgeOverrideRef.current(captured.id),
+            dim: !currentTierId,
+          })
+          for (const tier of bridgeTiersRef.current) {
+            items.push({
+              label: tier.label,
+              color: tier.color,
+              action: () => setBridgeOverrideRef.current(captured.id, tier.id),
+              dim: tier.id === currentTierId,
+            })
           }
         }
       }
@@ -5485,11 +5512,11 @@ const roadV3TierGeomRef = useRef(roadV3TierGeom)
             return
           }
         }
-        if (activePanelRef.current === 'settlements' && urbanPaintModeRef.current !== null) {
+        if (activePanelRef.current === 'features' && urbanPaintModeRef.current !== null) {
           toggleUrbanHexRef.current(hex.q, hex.r)
           return
         }
-        if (activePanelRef.current === 'settlements') {
+        if (activePanelRef.current === 'features') {
           const moveIdx = settlementMoveIndexRef.current
           if (moveIdx !== null) {
             updateSettlementRef.current(moveIdx, { hex_q: hex.q, hex_r: hex.r })
@@ -5801,7 +5828,7 @@ const roadV3TierGeomRef = useRef(roadV3TierGeom)
     }
   }, [])
 
-  const drawHighlightPolys = useCallback((polys: [number,number][][]) => {
+  const drawHighlightPolys = useCallback((polys: [number,number][][], lines?: [number,number][][]) => {
     const hlCanvas = highlightCanvasRef.current
     if (!hlCanvas) return
     const { w: cssW, h: cssH } = frameDimsRef.current
@@ -5823,15 +5850,28 @@ const roadV3TierGeomRef = useRef(roadV3TierGeom)
       ctx.closePath()
       ctx.fillStyle = 'rgba(255,255,255,0.18)'
       ctx.fill()
-      // glow pass
       ctx.strokeStyle = 'rgba(255,255,255,0.25)'
       ctx.lineWidth = 5 / zoom
       ctx.setLineDash([])
       ctx.stroke()
-      // crisp dashed outline on top
       ctx.strokeStyle = 'rgba(255,255,255,0.95)'
       ctx.lineWidth = 1.5 / zoom
       ctx.setLineDash([5 / zoom, 3 / zoom])
+      ctx.stroke()
+      ctx.setLineDash([])
+    }
+    for (const line of (lines ?? [])) {
+      if (line.length < 2) continue
+      ctx.beginPath()
+      ctx.moveTo(line[0][0], line[0][1])
+      for (let i = 1; i < line.length; i++) ctx.lineTo(line[i][0], line[i][1])
+      ctx.strokeStyle = 'rgba(255,255,255,0.3)'
+      ctx.lineWidth = 8 / zoom
+      ctx.setLineDash([])
+      ctx.stroke()
+      ctx.strokeStyle = 'rgba(255,255,255,0.95)'
+      ctx.lineWidth = 2 / zoom
+      ctx.setLineDash([6 / zoom, 4 / zoom])
       ctx.stroke()
       ctx.setLineDash([])
     }
@@ -6125,7 +6165,7 @@ const roadV3TierGeomRef = useRef(roadV3TierGeom)
               }}
               onMouseEnter={e => {
                 if (!item.dim) e.currentTarget.style.background = t.paper
-                if (item.highlightPolys?.length) drawHighlightPolys(item.highlightPolys)
+                if (item.highlightPolys?.length || item.highlightLines?.length) drawHighlightPolys(item.highlightPolys ?? [], item.highlightLines)
               }}
               onMouseLeave={e => {
                 e.currentTarget.style.background = 'transparent'
@@ -6139,6 +6179,41 @@ const roadV3TierGeomRef = useRef(roadV3TierGeom)
               <span style={{ textTransform: 'capitalize' }}>{item.label}</span>
             </div>
           ))}
+        </div>
+      )}
+      {settlementRename && (
+        <div
+          style={{
+            position: 'fixed',
+            left: Math.min(settlementRename.x, window.innerWidth - 220),
+            top: Math.min(settlementRename.y, window.innerHeight - 60),
+            background: t.surface, border: `1px solid ${t.line}`,
+            borderRadius: 6, padding: '6px 8px', zIndex: 201,
+            boxShadow: t.shadowFlyout, display: 'flex', alignItems: 'center', gap: 6,
+          }}
+          onClick={e => e.stopPropagation()}
+        >
+          <input
+            autoFocus
+            value={settlementRename.name}
+            onChange={e => setSettlementRename(r => r ? { ...r, name: e.target.value } : r)}
+            onKeyDown={e => {
+              if (e.key === 'Enter') {
+                if (settlementRename.name.trim()) updateSettlement(settlementRename.index, { name: settlementRename.name.trim() })
+                setSettlementRename(null)
+              }
+              if (e.key === 'Escape') setSettlementRename(null)
+            }}
+            onBlur={() => {
+              if (settlementRename.name.trim()) updateSettlement(settlementRename.index, { name: settlementRename.name.trim() })
+              setSettlementRename(null)
+            }}
+            style={{
+              background: t.paper, border: `1px solid ${t.line2}`, borderRadius: 4,
+              color: t.ink, fontFamily: t.mono, fontSize: 12,
+              padding: '3px 6px', width: 160, outline: 'none',
+            }}
+          />
         </div>
       )}
     </div>
