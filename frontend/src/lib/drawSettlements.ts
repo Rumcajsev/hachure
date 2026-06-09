@@ -28,11 +28,12 @@ export type DrawSettlementsParams = {
   /** Scale factor for all pixel-based sizes — use lineScale during PDF export. */
   scale?: number
   /**
-   * Pixel-density sampler: returns 0–1 fraction of non-background pixels in the
-   * given CSS-coordinate bbox. When provided, replaces the point-obstacle heuristic
-   * with actual rendered content. Omit for export paths.
+   * Batch pixel-density sampler. Given an array of CSS-coordinate bboxes (all candidates
+   * for one settlement), returns a matching array of 0–1 ink-density values. Doing one
+   * read per settlement (instead of one per candidate) is the key perf win.
+   * Omit for export paths.
    */
-  pixelSampler?: (bx: number, by: number, bw: number, bh: number) => number
+  pixelSampler?: (candidates: Array<[number, number, number, number]>) => number[]
 }
 
 function closestPointOnSegment(
@@ -201,14 +202,15 @@ export function drawSettlements(sCtx: Ctx, {
 
     // Auto-placement: score all 8 candidates and pick the emptiest one.
     const pad = 3 * scale
+    // Batch-sample pixel density for all candidates with a single getImageData read.
+    const candBBoxes = cands.map(c => [c.bx - pad, c.by - pad, tw + pad * 2, th + pad * 2] as [number, number, number, number])
+    const densities = pixelSampler ? pixelSampler(candBBoxes) : null
     let bestScore = Infinity
     let best = cands[0]
-    for (const c of cands) {
-      const ex = c.bx - pad, ey = c.by - pad, ew = tw + pad * 2, eh = th + pad * 2
-      // Pixel-density scoring: fraction of non-background pixels (0–1) in the candidate
-      // region, sampled from the already-rendered canvas. Falls back to point-obstacle
-      // grid when no sampler is provided (export path, or first-frame).
-      const density = pixelSampler ? pixelSampler(ex, ey, ew, eh) : obsScore(ex, ey, ew, eh) / 20
+    for (let ci = 0; ci < cands.length; ci++) {
+      const c = cands[ci]
+      const [ex, ey, ew, eh] = candBBoxes[ci]
+      const density = densities ? densities[ci] : obsScore(ex, ey, ew, eh) / 20
       let score = c.bias * 0.4 + density * 5
       for (const [plx, ply, plw, plh] of placedBoxes) {
         if (ex < plx + plw && ex + ew > plx && ey < ply + plh && ey + eh > ply) score += 8

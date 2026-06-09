@@ -75,6 +75,12 @@ function parseHexColor(hex: string): { r: number; g: number; b: number } {
  * coordinates. Off-canvas areas return 1.0 (fully occupied) so labels don't leak
  * outside the map border.
  */
+/**
+ * Returns a batch pixel-density sampler. For each settlement, call it with all 8
+ * candidate bboxes at once — it does ONE getImageData covering their union (capped
+ * at MAX_SAMPLE_PX to avoid blowup at high zoom), then derives each candidate's
+ * density from that single read.
+ */
 function makePixelSampler(
   ctx: CanvasRenderingContext2D,
   dpr: number,
@@ -83,39 +89,88 @@ function makePixelSampler(
   cssW: number,
   cssH: number,
   bgHex: string,
-): (bx: number, by: number, bw: number, bh: number) => number {
+): (candidates: Array<[number, number, number, number]>) => number[] {
   const bg = parseHexColor(bgHex)
   const threshold = 18
-  // CSS paper coord → physical canvas pixel
-  const toPx = (x: number, y: number): [number, number] => [
-    Math.round(dpr * (zoom * (x - cssW / 2) + cssW / 2 + pan.x)),
-    Math.round(dpr * (zoom * (y - cssH / 2) + cssH / 2 + pan.y)),
-  ]
+  // Max physical pixels per dimension for the union read — keeps getImageData fast
+  // regardless of zoom level.
+  const MAX_SAMPLE_PX = 240
   const canvasW = ctx.canvas.width, canvasH = ctx.canvas.height
 
-  return (bx, by, bw, bh) => {
-    const [x0raw, y0raw] = toPx(bx, by)
-    const [x1raw, y1raw] = toPx(bx + bw, by + bh)
-    // Fully outside canvas → treat as occupied (edge penalty)
-    if (x1raw <= 0 || y1raw <= 0 || x0raw >= canvasW || y0raw >= canvasH) return 1.0
-    const x0 = Math.max(0, x0raw), y0 = Math.max(0, y0raw)
-    const x1 = Math.min(canvasW, x1raw), y1 = Math.min(canvasH, y1raw)
-    const rw = x1 - x0, rh = y1 - y0
-    if (rw <= 0 || rh <= 0) return 1.0
-    // Off-canvas fraction contributes as fully occupied — penalises edge candidates
-    const offFraction = 1 - (rw * rh) / Math.max(1, (x1raw - x0raw) * (y1raw - y0raw))
-    const data = ctx.getImageData(x0, y0, rw, rh).data
-    let ink = 0, total = 0
-    // Sample every 4th pixel for performance
-    for (let i = 0; i < data.length; i += 16) {
-      const a = data[i + 3]
-      if (a < 10) { total++; continue }
-      const diff = Math.abs(data[i] - bg.r) + Math.abs(data[i + 1] - bg.g) + Math.abs(data[i + 2] - bg.b)
-      if (diff > threshold) ink++
-      total++
+  // CSS paper coord → physical canvas pixel (unrounded, for sub-pixel accuracy)
+  const toPhys = (x: number, y: number): [number, number] => [
+    dpr * (zoom * (x - cssW / 2) + cssW / 2 + pan.x),
+    dpr * (zoom * (y - cssH / 2) + cssH / 2 + pan.y),
+  ]
+
+  return (candidates) => {
+    // --- 1. Compute the union bbox of all candidates in physical pixels ---
+    let ux0 = Infinity, uy0 = Infinity, ux1 = -Infinity, uy1 = -Infinity
+    for (const [bx, by, bw, bh] of candidates) {
+      const [px0, py0] = toPhys(bx, by)
+      const [px1, py1] = toPhys(bx + bw, by + bh)
+      if (px0 < ux0) ux0 = px0
+      if (py0 < uy0) uy0 = py0
+      if (px1 > ux1) ux1 = px1
+      if (py1 > uy1) uy1 = py1
     }
-    const density = total === 0 ? 0 : ink / total
-    return Math.min(1, density + offFraction * 0.8)
+    ux0 = Math.round(ux0); uy0 = Math.round(uy0)
+    ux1 = Math.round(ux1); uy1 = Math.round(uy1)
+    const uW = ux1 - ux0, uH = uy1 - uy0
+    if (uW <= 0 || uH <= 0) return candidates.map(() => 0)
+
+    // --- 2. Clamp to canvas and cap size (prevents blowup at high zoom) ---
+    const scale = Math.min(1, MAX_SAMPLE_PX / Math.max(uW, uH))
+    const sW = Math.max(1, Math.round(uW * scale))
+    const sH = Math.max(1, Math.round(uH * scale))
+    const rx0 = Math.max(0, Math.min(canvasW - sW, ux0))
+    const ry0 = Math.max(0, Math.min(canvasH - sH, uy0))
+    const rx1 = rx0 + sW, ry1 = ry0 + sH
+
+    let imgData: ImageData
+    try { imgData = ctx.getImageData(rx0, ry0, sW, sH) } catch { return candidates.map(() => 0) }
+    const data = imgData.data
+
+    // Maps a physical pixel coordinate to a position in the read buffer (rx0,ry0)...(rx1,ry1)
+    // The buffer covers (ux0,uy0) at scale `scale` relative to the full union region.
+    const toBuffer = (px: number, py: number): [number, number] => [
+      rx0 + Math.round((px - ux0) * scale),
+      ry0 + Math.round((py - uy0) * scale),
+    ]
+
+    // --- 3. For each candidate, count non-background pixels in its sub-region ---
+    return candidates.map(([bx, by, bw, bh]) => {
+      const [px0r, py0r] = toPhys(bx, by)
+      const [px1r, py1r] = toPhys(bx + bw, by + bh)
+      const fullW = px1r - px0r, fullH = py1r - py0r
+      if (fullW <= 0 || fullH <= 0) return 1.0
+
+      const [bx0, by0] = toBuffer(px0r, py0r)
+      const [bx1, by1] = toBuffer(px1r, py1r)
+      const cx0 = Math.max(rx0, bx0), cy0 = Math.max(ry0, by0)
+      const cx1 = Math.min(rx1, bx1), cy1 = Math.min(ry1, by1)
+      // Fraction of the candidate that is off the read buffer → occupancy penalty
+      const sampledArea = Math.max(0, cx1 - cx0) * Math.max(0, cy1 - cy0)
+      const fullSampledArea = Math.max(1, (bx1 - bx0) * (by1 - by0))
+      const offFrac = 1 - sampledArea / fullSampledArea
+
+      let ink = 0, total = 0
+      const stride = sW * 4
+      for (let py = cy0; py < cy1; py += 2) {
+        const row = (py - ry0) * stride
+        for (let px = cx0; px < cx1; px += 2) {
+          const i = row + (px - rx0) * 4
+          if (i + 3 >= data.length) continue
+          const a = data[i + 3]
+          if (a < 10) { total++; continue }
+          const diff = Math.abs(data[i] - bg.r) + Math.abs(data[i + 1] - bg.g) + Math.abs(data[i + 2] - bg.b)
+          if (diff > threshold) ink++
+          total++
+        }
+      }
+      const density = total === 0 ? 0 : ink / total
+      return Math.min(1, density + offFrac * 0.8)
+    })
   }
 }
 
