@@ -377,17 +377,25 @@ function densify(pts: [number, number][], maxDist: number): [number, number][] {
   return out
 }
 
-/** Sine-dominated meander: rhythmic left-right-left-right like real rivers.
- *  A small Perlin detail layer (~20% of amp) adds organic variation without chaos.
- *  Phase is seeded from the chain's first vertex so connected chains stay in sync
- *  across junctions rather than each resetting to 0. */
+/** Sine-dominated meander with optional amplitude envelope and frequency jitter.
+ *
+ *  ampVariation (0–1): slow Perlin modulates bend depth — some bends full, some
+ *    shallow, occasionally near-zero (skipped bend). 0 = every bend identical.
+ *
+ *  freqVariation (0–1): accumulated phase advances at a varying rate so bends
+ *    bunch up or spread out along the path. 0 = perfectly even spacing.
+ *
+ *  Phase is seeded from the chain's first vertex so connected chains stay in
+ *  sync across junctions. */
 function applyMeanderNoise(
   pts: [number, number][],
   amp: number,
-  meanderFreq: number,   // cycles per unit arc-length
+  meanderFreq: number,
   perm: Uint8Array,
   interDist: number,
-  phaseOffset: number,   // seeded from start vertex
+  phaseOffset: number,
+  ampVariation: number,    // 0 = uniform depth, 1 = fully modulated
+  freqVariation: number,   // 0 = even spacing, 1 = max bunching/spreading
 ): [number, number][] {
   if (pts.length < 3) return pts
   const lens: number[] = [0]
@@ -396,7 +404,22 @@ function applyMeanderNoise(
   const total = lens[lens.length - 1]
   if (total < 1e-6) return pts
 
-  const detailFreq = meanderFreq * 3.5   // higher-freq detail, much quieter
+  // Slow Perlin frequencies for the two modulation bands
+  const ampEnvFreq  = meanderFreq * 0.4   // varies every ~2-3 bends
+  const freqJitFreq = meanderFreq * 0.25  // even slower — varies over long stretches
+  const detailFreq  = meanderFreq * 3.5
+
+  // Pre-compute accumulated phase for frequency jitter (must be done in order)
+  const phases: number[] = new Array(pts.length).fill(0)
+  let accumPhase = phaseOffset
+  for (let i = 1; i < pts.length; i++) {
+    const s = lens[i]
+    // freqMod in [1-freqVariation*0.5, 1+freqVariation*0.5]
+    const freqMod = 1 + freqVariation * 0.5 * perlinNoise2D(s * freqJitFreq, 0.1, perm)
+    const ds = lens[i] - lens[i - 1]
+    accumPhase += meanderFreq * 2 * Math.PI * ds * freqMod
+    phases[i] = accumPhase
+  }
 
   return pts.map((pt, i) => {
     if (i === 0 || i === pts.length - 1) return pt
@@ -406,7 +429,6 @@ function applyMeanderNoise(
     if (len < 1e-6) return pt
     const nx = -dy / len, ny = dx / len
 
-    // Fixed-distance taper at endpoints only
     const fadeLen = Math.min(total * 0.25, interDist * 1.5)
     const s = lens[i]
     const taper = Math.min(
@@ -415,10 +437,11 @@ function applyMeanderNoise(
       1,
     )
 
-    // Dominant sine meander + small Perlin detail
-    const meander = amp * Math.sin(s * meanderFreq * 2 * Math.PI + phaseOffset)
-    const detail  = amp * 0.18 * perlinNoise2D(s * detailFreq, 0.5, perm)
-    const disp    = (meander + detail) * taper
+    // Amplitude envelope: slow Perlin in [1-ampVariation*0.7, 1]
+    const envelope = 1 - ampVariation * 0.7 * Math.max(0, perlinNoise2D(s * ampEnvFreq, 0.9, perm))
+    const meander  = amp * envelope * Math.sin(phases[i])
+    const detail   = amp * 0.18 * perlinNoise2D(s * detailFreq, 0.5, perm)
+    const disp     = (meander + detail) * taper
 
     return [pt[0] + nx * disp, pt[1] + ny * disp] as [number, number]
   })
@@ -427,14 +450,14 @@ function applyMeanderNoise(
 export function buildRiverChainsV3(
   edges: { q1: number; r1: number; q2: number; r2: number }[],
   hexes: GeneratedHex[],
-  /** Chaikin iterations — 0=hard hex corners, 2=smooth arcs */
   cornerRounds = 2,
-  /** Target point spacing after densification, as a fraction of the measured inter-hex-corner distance */
-  pointSpacingFactor = 0.15,
-  /** Broad-band noise amplitude as a fraction of the inter-hex-corner distance */
+  pointSpacingFactor = 0.12,
   noiseAmp = 0.35,
-  /** Scales the noise wavelength — 1=natural, <1=tighter, >1=lazier */
   noiseScale = 1.0,
+  /** 0=every bend same depth, 1=slow modulation — some bends shallow/skipped */
+  ampVariation = 0,
+  /** 0=even bend spacing, 1=bends bunch and spread along the path */
+  freqVariation = 0,
 ): RiverChainV3[] {
   const hexMap = new Map<string, GeneratedHex>()
   for (const h of hexes) hexMap.set(`${h.q},${h.r}`, h)
@@ -524,7 +547,7 @@ export function buildRiverChainsV3(
     const phase = pts[0][0] * 127.1 + pts[0][1] * 311.7
     const rounded = chaikin(pts, cornerRounds)
     const dense   = densify(rounded, maxSpacing)
-    const chain   = applyMeanderNoise(dense, amp, meanderFreq, perm, interDist, phase)
+    const chain   = applyMeanderNoise(dense, amp, meanderFreq, perm, interDist, phase, ampVariation, freqVariation)
     return { segKey, chain }
   })
 }
