@@ -982,6 +982,8 @@ export const useMapStore = create<MapStore>()(persist((set, get) => ({
     mapImageOpacity: s.mapImageOpacity,
     mapTitle: s.mapTitle,
     labelOffsets: s.labelOffsets,
+    labelPresetId: s.labelPresetId,
+    labelOverrides: s.labelOverrides,
   }),
   version: 78,
   migrate: migratePersisted,
