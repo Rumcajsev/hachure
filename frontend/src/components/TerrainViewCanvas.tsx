@@ -1635,8 +1635,7 @@ const roadV3TierGeomRef = useRef(roadV3TierGeom)
     // Reset bbox cache so it's freshly populated by this draw pass
     if (!exportTarget) labelBBoxCacheRef.current = {}
 
-    // When a label is being live-dragged, force the appropriate layer to rebuild
-    // so the new position is rendered and the bbox is accurate for hit-testing
+    // When a label is live-dragged, force the appropriate layer to rebuild.
     const live = liveLabelOffsetRef.current
     if (!exportTarget && live) {
       if (live.id.startsWith('river:')) riversDirtyRef.current = true
@@ -2630,7 +2629,10 @@ const roadV3TierGeomRef = useRef(roadV3TierGeom)
           oCtx.rect(px, py, pw, ph)
           oCtx.clip()
           const activeRoadDataS = smoothedRoadDataV2Ref.current ?? smoothedRoadDataRef.current
-          const pixelSampler = makePixelSampler(ctx, dpr, zoom, pan, cssW, cssH, mapBgColorRef.current)
+          // Skip the pixel sampler during live-drag repaints — it's only useful for
+          // initial auto-placement, not when repainting because a label is being moved.
+          const isLiveDrag = liveLabelOffsetRef.current?.id.startsWith('settlement:') ?? false
+          const pixelSampler = isLiveDrag ? undefined : makePixelSampler(ctx, dpr, zoom, pan, cssW, cssH, mapBgColorRef.current)
           _drawSettlements(oCtx, { settlements: settlementsRef.current, tierStyles: settlementTierStylesRef.current, labelSpecs: resolvedLabelSpecsRef.current, roadChains: activeRoadDataS.chains, roadJunctions: activeRoadDataS.junctions, railChains: smoothedRailDataRef.current.chains, project, hexCenterOf: (q, r) => { const h = hexesRef.current.find(h => h.q === q && h.r === r); return h ? project(h.center[0], h.center[1]) : null }, hexRadiusPx: hexRadiusRef.current, labelOffsets: labelOffsetsRef.current, liveLabelOffset: liveLabelOffsetRef.current ?? undefined, labelBBoxOut: labelBBoxCacheRef.current, pixelSampler })
           oCtx.restore()
           settlementsLayerRef.current = offscreen
