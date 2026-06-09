@@ -5,7 +5,8 @@ import {
   MiniSlider, ToggleRow, SegmentedControl,
   StripShell, FlyoutShell, V2Divider, TriggerRow, TGap,
 } from './sidebar'
-import { LABEL_PRESETS, LabelCategory, resolveLabels } from '../../lib/labelPresets'
+import { LABEL_PRESETS, resolveLabels } from '../../lib/labelPresets'
+import type { LabelCategory } from '../../lib/labelPresets'
 import { LabelSpecEditorRows } from './LabelSpecEditor'
 
 // ── Constants ─────────────────────────────────────────────────────────────────
