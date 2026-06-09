@@ -44,7 +44,7 @@ export type RiversSlice = {
   riverNoiseAmp: number
   riverNoiseScale: number
   riverAmpVariation: number
-  riverFreqVariation: number
+  riverScaleVariation: number
   riverNodeEditMode: boolean
   riverChainOverrides: Record<string, [number, number][]>
   riverHopProps: Record<string, { wiggleAmp?: number; wiggleFreq?: number; width?: number; taper?: number }>
@@ -94,7 +94,7 @@ export type RiversSlice = {
   setRiverNoiseAmp: (v: number) => void
   setRiverNoiseScale: (v: number) => void
   setRiverAmpVariation: (v: number) => void
-  setRiverFreqVariation: (v: number) => void
+  setRiverScaleVariation: (v: number) => void
 }
 
 type Set = (partial: Partial<MapStore> | ((s: MapStore) => Partial<MapStore>)) => void
@@ -188,7 +188,7 @@ export const createRiversSlice = (set: Set, get: () => MapStore): RiversSlice =>
     riverNoiseAmp: 0.35,
     riverNoiseScale: 1.0,
     riverAmpVariation: 0,
-    riverFreqVariation: 0,
+    riverScaleVariation: 0,
     riverNodeEditMode: false,
     riverChainOverrides: {},
     riverHopProps: {},
@@ -335,7 +335,7 @@ export const createRiversSlice = (set: Set, get: () => MapStore): RiversSlice =>
     setRiverNoiseAmp: (v) => set({ riverNoiseAmp: v }),
     setRiverNoiseScale: (v) => set({ riverNoiseScale: v }),
     setRiverAmpVariation: (v) => set({ riverAmpVariation: v }),
-    setRiverFreqVariation: (v) => set({ riverFreqVariation: v }),
+    setRiverScaleVariation: (v) => set({ riverScaleVariation: v }),
     setRiverChainOverride: (segKey, pts) => set(s => ({ riverChainOverrides: { ...s.riverChainOverrides, [segKey]: pts } })),
     deleteRiverChainOverride: (segKey) => set(s => { const { [segKey]: _, ...rest } = s.riverChainOverrides; return { riverChainOverrides: rest } }),
     clearRiverChainOverrides: () => set({ riverChainOverrides: {} }),

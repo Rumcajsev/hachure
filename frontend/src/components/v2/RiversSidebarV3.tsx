@@ -72,16 +72,16 @@ export function GlobalShapeFlyout({ onClose }: { onClose: () => void }) {
     riverNoiseAmp, setRiverNoiseAmp,
     riverNoiseScale, setRiverNoiseScale,
     riverAmpVariation, setRiverAmpVariation,
-    riverFreqVariation, setRiverFreqVariation,
+    riverScaleVariation, setRiverScaleVariation,
   } = useMapStore()
   return (
     <FlyoutShell title="Shape defaults" subtitle="applied to all tiers unless overridden" onClose={onClose}>
       <MiniSlider label="Corner rounds"  display={String(riverCornerRounds)}         value={riverCornerRounds}                    min={0} max={5}   step={1} onChange={setRiverCornerRounds} />
       <MiniSlider label="Point spacing"  display={riverPointSpacing.toFixed(2)}      value={Math.round(riverPointSpacing * 100)}   min={3} max={30}  step={1} onChange={v => setRiverPointSpacing(v / 100)} />
       <MiniSlider label="Noise amp"      display={riverNoiseAmp.toFixed(2)}          value={Math.round(riverNoiseAmp * 100)}       min={0} max={100} step={1} onChange={v => setRiverNoiseAmp(v / 100)} />
-      <MiniSlider label="Noise scale"    display={riverNoiseScale.toFixed(1)}        value={Math.round(riverNoiseScale * 10)}      min={2} max={40}  step={1} onChange={v => setRiverNoiseScale(v / 10)} />
+      <MiniSlider label="Noise scale"     display={riverNoiseScale.toFixed(2)}        value={Math.round(riverNoiseScale * 100)}     min={0} max={400} step={1} onChange={v => setRiverNoiseScale(v / 100)} />
       <MiniSlider label="Amp variation"  display={riverAmpVariation.toFixed(2)}      value={Math.round(riverAmpVariation * 100)}   min={0} max={100} step={1} onChange={v => setRiverAmpVariation(v / 100)} />
-      <MiniSlider label="Freq variation" display={riverFreqVariation.toFixed(2)}     value={Math.round(riverFreqVariation * 100)}  min={0} max={100} step={1} onChange={v => setRiverFreqVariation(v / 100)} />
+      <MiniSlider label="Scale variation" display={riverScaleVariation.toFixed(2)}   value={Math.round(riverScaleVariation * 100)} min={0} max={100} step={1} onChange={v => setRiverScaleVariation(v / 100)} />
       <MiniSlider label="Wiggle amp"  display={riverWiggleAmp.toFixed(2)}  value={Math.round(riverWiggleAmp * 100)} min={0} max={100} step={1} onChange={v => setRiverWiggleAmp(v / 100)} />
       <MiniSlider label="Wiggle freq" display={riverWiggleFreq.toFixed(1)} value={Math.round(riverWiggleFreq * 10)} min={5} max={100} step={1} onChange={v => setRiverWiggleFreq(v / 10)} />
       <MiniSlider label="Line smooth" display={String(riverSmoothing)}     value={riverSmoothing}     min={2} max={30} step={1} onChange={setRiverSmoothing} />
