@@ -11,7 +11,7 @@ const TABS = [
   { id: 'display',    label: 'Display'  },
 ] as const
 
-export function EditorTopBar({ onExportPDF, onGoHome }: { onExportPDF: (mode: 'sheets' | 'combined') => Promise<void>; onGoHome: () => void }) {
+export function EditorTopBar({ onExportPDF, onGoHome, hideTabs }: { onExportPDF: (mode: 'sheets' | 'combined') => Promise<void>; onGoHome: () => void; hideTabs?: boolean }) {
   const t = useTheme()
   const {
     paperSize, generatedHexes, generatedMetadata, pageGrid,
@@ -288,7 +288,7 @@ export function EditorTopBar({ onExportPDF, onGoHome }: { onExportPDF: (mode: 's
 
       {/* Center: tabs */}
       <div style={{ flex: 1, display: 'flex', alignItems: 'stretch', justifyContent: 'center' }}>
-        {TABS.map(tab => {
+        {!hideTabs && TABS.map(tab => {
           const active = activePanel === tab.id
           return (
             <button

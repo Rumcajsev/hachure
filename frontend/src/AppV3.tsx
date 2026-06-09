@@ -160,7 +160,7 @@ function AppV3Inner({ screen, setScreen, isDark, setIsDark }: {
         fontFamily: t.sans,
         color: t.ink,
       }}>
-        <EditorTopBar onExportPDF={handleExportPDF} onGoHome={() => setScreen('landing')} />
+        <EditorTopBar onExportPDF={handleExportPDF} onGoHome={() => setScreen('landing')} hideTabs />
 
         {generateStatus === 'loading' && generateProgress && (
           <div style={{ height: 2, background: t.paper2, flexShrink: 0 }}>
@@ -186,7 +186,7 @@ function AppV3Inner({ screen, setScreen, isDark, setIsDark }: {
           )}
 
           {/* Centre: canvas fills the remaining space */}
-          <div style={{ flex: 1, position: 'relative', overflow: 'hidden' }}>
+          <div style={{ flex: 1, display: 'flex', position: 'relative', overflow: 'hidden' }}>
             <TerrainViewCanvas ref={canvasHandleRef} surroundColor={surroundColor} />
             <CanvasToolbar />
             <BottomDock canvasRef={canvasHandleRef} />
