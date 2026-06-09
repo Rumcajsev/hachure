@@ -61,6 +61,7 @@ export interface BlobOverride {
   lobeAmp?: number
   lobeThreshold?: number
   lobeDirection?: number
+  simplify?: number
   textureScale?: number
   enabled?: boolean
   width?: number
@@ -124,6 +125,8 @@ export type ActiveTool =
   | { type: 'mega-hex-origin' }
   | { type: 'align-image' }
   | { type: 'label-drag' }
+  /** Label follows cursor until left-click confirms placement or Escape cancels. */
+  | { type: 'label-follow'; id: string; naturalCx: number; naturalCy: number; prevDx: number; prevDy: number }
 
 export type MapMode = 'single' | 'diptych'
 export type DiptychJoin = 'long' | 'short'
@@ -449,6 +452,7 @@ export const DEFAULT_TERRAIN_BLOB = {
   lobeThreshold: 0.08,
   lobeDirection: -1 as const,
   simplify: 0,
+  topoStyle: 0,
 }
 
 export const DEFAULT_EDGE_BLOB = {
@@ -831,17 +835,23 @@ export const useMapStore = create<MapStore>()(persist((set, get) => ({
     contourSmoothPasses: s.contourSmoothPasses,
     contourLineWidth: s.contourLineWidth,
     activePanel: s.activePanel,
+    mapStyle: s.mapStyle,
     hexBorderMode: s.hexBorderMode,
+    hexBorderOpacity: s.hexBorderOpacity,
+    hexBorderColor: s.hexBorderColor,
+    hexBorderDifference: s.hexBorderDifference,
     terrainDisplacement: s.terrainDisplacement,
     terrainNoiseFrequency: s.terrainNoiseFrequency,
     terrainNoiseSeed: s.terrainNoiseSeed,
     terrainNoiseOctaves: s.terrainNoiseOctaves,
     illustratedStyle: s.illustratedStyle,
+    riverTierStyles: s.riverTierStyles,
     riverWidthScale: s.riverWidthScale,
     canalWidthScale: s.canalWidthScale,
     riverWiggleAmp: s.riverWiggleAmp,
     riverWiggleFreq: s.riverWiggleFreq,
     riverSmoothing: s.riverSmoothing,
+    riverPathSmoothing: s.riverPathSmoothing,
     roadWiggleAmp: s.roadWiggleAmp,
     roadWiggleFreq: s.roadWiggleFreq,
     roadSmoothing: s.roadSmoothing,
@@ -896,13 +906,32 @@ export const useMapStore = create<MapStore>()(persist((set, get) => ({
     terrainBlobLobeThreshold: s.terrainBlobLobeThreshold,
     terrainBlobLobeDirection: s.terrainBlobLobeDirection,
     terrainBlobSimplify: s.terrainBlobSimplify,
+    terrainBlobTopoStyle: s.terrainBlobTopoStyle,
+    terrainBlobOutlineEnabled: s.terrainBlobOutlineEnabled,
+    terrainBlobOutlineColor: s.terrainBlobOutlineColor,
+    terrainBlobOutlineWidth: s.terrainBlobOutlineWidth,
+    terrainBlobEffect: s.terrainBlobEffect,
     realisticCoastline: s.realisticCoastline,
     beachStrip: s.beachStrip,
     beachColor: s.beachColor,
     beachWidth: s.beachWidth,
+    hillsColor: s.hillsColor,
+    mountainsColor: s.mountainsColor,
+    reliefShadingOpacity: s.reliefShadingOpacity,
+    coastlineDPEpsilon: s.coastlineDPEpsilon,
+    coastlineChaikinPasses: s.coastlineChaikinPasses,
     terrainColors: s.terrainColors,
     terrainTextureScales: s.terrainTextureScales,
+    terrainTextureBlendModes: s.terrainTextureBlendModes,
+    terrainTextureOpacities: s.terrainTextureOpacities,
+    terrainTextureTintColors: s.terrainTextureTintColors,
+    terrainTextureTintOpacities: s.terrainTextureTintOpacities,
+    terrainTextureFile: s.terrainTextureFile,
+    terrainTextureEnabled: s.terrainTextureEnabled,
     terrainRenderMode: s.terrainRenderMode,
+    customTerrains: s.customTerrains,
+    blobSeeds: s.blobSeeds,
+    blobHandleOverrides: s.blobHandleOverrides,
     waterBlobSmooth: s.waterBlobSmooth,
     waterBlobOffset: s.waterBlobOffset,
     waterBlobBump: s.waterBlobBump,

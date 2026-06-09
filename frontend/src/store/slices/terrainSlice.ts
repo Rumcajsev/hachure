@@ -30,7 +30,7 @@ export type TerrainSlice = {
   terrainBlobLobeThreshold: number
   terrainBlobLobeDirection: number
   terrainBlobSimplify: number
-  terrainBlobFeather: number
+  terrainBlobTopoStyle: number
   terrainBlobOutlineEnabled: boolean
   terrainBlobOutlineColor: string
   terrainBlobOutlineWidth: number
@@ -100,7 +100,7 @@ export type TerrainSlice = {
   setTerrainBlobLobeThreshold: (v: number) => void
   setTerrainBlobLobeDirection: (v: number) => void
   setTerrainBlobSimplify: (v: number) => void
-  setTerrainBlobFeather: (v: number) => void
+  setTerrainBlobTopoStyle: (v: number) => void
   setTerrainBlobOutlineEnabled: (v: boolean) => void
   setTerrainBlobOutlineColor: (v: string) => void
   setTerrainBlobOutlineWidth: (v: number) => void
@@ -192,7 +192,7 @@ export const createTerrainSlice = (set: Set, get: () => MapStore): TerrainSlice 
   terrainBlobLobeThreshold: DEFAULT_TERRAIN_BLOB.lobeThreshold,
   terrainBlobLobeDirection: DEFAULT_TERRAIN_BLOB.lobeDirection,
   terrainBlobSimplify: DEFAULT_TERRAIN_BLOB.simplify,
-  terrainBlobFeather: 0,
+  terrainBlobTopoStyle: DEFAULT_TERRAIN_BLOB.topoStyle,
   terrainBlobOutlineEnabled: false,
   terrainBlobOutlineColor: '#000000',
   terrainBlobOutlineWidth: 1,
@@ -892,7 +892,7 @@ export const createTerrainSlice = (set: Set, get: () => MapStore): TerrainSlice 
   setTerrainBlobLobeThreshold: (v) => set({ terrainBlobLobeThreshold: v }),
   setTerrainBlobLobeDirection: (v) => set({ terrainBlobLobeDirection: v }),
   setTerrainBlobSimplify: (v) => set({ terrainBlobSimplify: v }),
-  setTerrainBlobFeather: (v) => set({ terrainBlobFeather: v }),
+  setTerrainBlobTopoStyle: (v) => set({ terrainBlobTopoStyle: v }),
   setTerrainBlobOutlineEnabled: (v) => set({ terrainBlobOutlineEnabled: v }),
   setTerrainBlobOutlineColor: (v) => set({ terrainBlobOutlineColor: v }),
   setTerrainBlobOutlineWidth: (v) => set({ terrainBlobOutlineWidth: v }),

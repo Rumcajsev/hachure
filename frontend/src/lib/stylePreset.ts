@@ -21,7 +21,7 @@ export const STYLE_PRESET_KEYS: string[] = [
   'woodsHexStyle', 'blobSize', 'blobCount',
   'illustratedStyle', 'realisticCoastline', 'beachStrip', 'beachColor', 'beachWidth',
   'terrainTypeBlobStyles',
-  'terrainBlobSmooth', 'terrainBlobOffset', 'terrainBlobBump', 'terrainBlobFeather',
+  'terrainBlobSmooth', 'terrainBlobOffset', 'terrainBlobBump',
   'terrainBlobSweepFreq', 'terrainBlobLobeFreq', 'terrainBlobLobeAmp',
   'terrainBlobLobeThreshold', 'terrainBlobLobeDirection',
   'terrainEdgePaintEnabled',

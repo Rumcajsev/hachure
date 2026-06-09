@@ -3348,6 +3348,17 @@ const roadV3TierGeomRef = useRef(roadV3TierGeom)
     const onKey = (e: KeyboardEvent) => {
       if (e.key !== 'Escape') return
       if (shouldSuppressShortcut(e)) return
+      // Restore previous offset if cancelling a label-follow
+      const tool = activeToolRef.current
+      if (tool.type === 'label-follow') {
+        const t = tool as { type: 'label-follow'; id: string; prevDx: number; prevDy: number }
+        if (t.prevDx !== 0 || t.prevDy !== 0) {
+          setLabelOffsetRef.current(t.id, t.prevDx, t.prevDy)
+        } else {
+          clearLabelOffsetRef.current(t.id)
+        }
+        liveLabelOffsetRef.current = null
+      }
       setActiveToolRef.current({ type: 'none' })
     }
     window.addEventListener('keydown', onKey)
@@ -4332,14 +4343,26 @@ const roadV3TierGeomRef = useRef(roadV3TierGeom)
       // ── SETTLEMENT section ─────────────────────────────────────────────────
       if (meta2 && cssW2 > 0) {
         let nearestIdx = -1, nearestDist = R2 * 0.8
+        // First check if the click landed directly on a label bbox (higher priority than icon proximity)
         for (let i = 0; i < settlementsRef.current.length; i++) {
           const s = settlementsRef.current[i]
           if (!s.included) continue
-          const h = hexesRef.current.find(hx => hx.q === s.hex_q && hx.r === s.hex_r)
-          if (!h) continue
-          const [sx, sy] = projectPt(h.center[0], h.center[1])
-          const d = Math.hypot(lx2 - sx, ly2 - sy)
-          if (d < nearestDist) { nearestDist = d; nearestIdx = i }
+          const bbox = labelBBoxCacheRef.current[`settlement:${s.name}`]
+          if (!bbox) continue
+          const rx = Math.abs(lx2 - bbox.cx), ry = Math.abs(ly2 - bbox.cy)
+          if (rx <= bbox.hw + 6 && ry <= bbox.hh + 6) { nearestIdx = i; nearestDist = 0; break }
+        }
+        // Fall back to nearest icon if no label was hit
+        if (nearestIdx < 0) {
+          for (let i = 0; i < settlementsRef.current.length; i++) {
+            const s = settlementsRef.current[i]
+            if (!s.included) continue
+            const h = hexesRef.current.find(hx => hx.q === s.hex_q && hx.r === s.hex_r)
+            if (!h) continue
+            const [sx, sy] = projectPt(h.center[0], h.center[1])
+            const d = Math.hypot(lx2 - sx, ly2 - sy)
+            if (d < nearestDist) { nearestDist = d; nearestIdx = i }
+          }
         }
         if (nearestIdx >= 0) {
           const s = settlementsRef.current[nearestIdx]
@@ -4360,13 +4383,18 @@ const roadV3TierGeomRef = useRef(roadV3TierGeom)
               action: () => updateSettlementRef.current(idx, { tier }),
             })
           }
-          // Label drag / reset
+          // Label follow / reset
           const labelId = `settlement:${s.name}`
           items.push({
             label: 'Move label',
             icon: 'edit' as const,
             action: () => {
-              setActiveToolRef.current({ type: 'label-drag' })
+              const bbox = labelBBoxCacheRef.current[labelId]
+              const off = labelOffsetsRef.current[labelId] ?? { dx: 0, dy: 0 }
+              // naturalCx/Cy = where the auto-placer put the label centre (without manual offset)
+              const naturalCx = bbox ? bbox.cx - off.dx : lx2
+              const naturalCy = bbox ? bbox.cy - off.dy : ly2
+              setActiveToolRef.current({ type: 'label-follow', id: labelId, naturalCx, naturalCy, prevDx: off.dx, prevDy: off.dy })
             },
           })
           if (labelOffsetsRef.current[labelId]) {
@@ -5057,6 +5085,16 @@ const roadV3TierGeomRef = useRef(roadV3TierGeom)
   }, [isEdgePaintActive])
 
   const onMouseMove = useCallback((e: React.MouseEvent<HTMLCanvasElement>) => {
+    // Label-follow — label tracks cursor until confirmed with a click
+    if (activeToolRef.current.type === 'label-follow') {
+      const tool = activeToolRef.current as { type: 'label-follow'; id: string; naturalCx: number; naturalCy: number; prevDx: number; prevDy: number }
+      const logical = clientToLogicalRef.current(e.clientX, e.clientY)
+      if (logical) {
+        liveLabelOffsetRef.current = { id: tool.id, dx: logical.lx - tool.naturalCx, dy: logical.ly - tool.naturalCy }
+        draw()
+      }
+      return
+    }
     // Label drag — live preview and hover highlight
     if (activeToolRef.current.type === 'label-drag') {
       const logical = clientToLogicalRef.current(e.clientX, e.clientY)
@@ -5660,6 +5698,18 @@ const roadV3TierGeomRef = useRef(roadV3TierGeom)
     if (e.button !== 0) return
     if (editingLabelRef.current) return
     draggedRef.current = false
+
+    // Label-follow — left-click commits the current cursor position
+    if (activeToolRef.current.type === 'label-follow') {
+      if (liveLabelOffsetRef.current) {
+        const { id, dx, dy } = liveLabelOffsetRef.current
+        setLabelOffsetRef.current(id, dx, dy)
+      }
+      liveLabelOffsetRef.current = null
+      setActiveToolRef.current({ type: 'none' })
+      draw()
+      return
+    }
 
     // Label-drag tool — start dragging the label under the cursor
     if (activeToolRef.current.type === 'label-drag') {

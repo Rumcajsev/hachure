@@ -15,7 +15,7 @@ type Ctx = CanvasRenderingContext2D | OffscreenCanvasRenderingContext2D
 export type BlobParams = {
   smooth: number; offset: number; bump: number
   sweepFreq: number; lobeFreq: number; lobeAmp: number
-  lobeThreshold: number; lobeDirection: number
+  lobeThreshold: number; lobeDirection: number; simplify: number; topoStyle: number
 }
 
 export type DrawTerrainParams = {
@@ -76,7 +76,6 @@ export type DrawTerrainParams = {
   contourCanvas: OffscreenCanvas | null
   contourDisabledTerrains: Set<string>
   contourDisabledElevClasses: Set<string>
-  terrainBlobFeather: number
   terrainBlobOutlineEnabled: boolean
   terrainBlobOutlineColor: string
   terrainBlobOutlineWidth: number
@@ -253,34 +252,6 @@ function drawElevationBlobsWithShading(
  * The blur of a solid shape has full opacity at centre, fading at edges.
  * Only used for the colour fill — textures are always drawn directly to tCtx.
  */
-function drawBlobWithFade(
-  tCtx: Ctx,
-  px: number, py: number,
-  pw: number, ph: number,
-  blurPx: number,
-  drawFn: (ctx: Ctx) => void,
-): void {
-  const dpr = typeof window !== 'undefined' ? (window.devicePixelRatio || 1) : 1
-  const offX = Math.floor(px - blurPx)
-  const offY = Math.floor(py - blurPx)
-  const w = Math.ceil(px + pw + blurPx) - offX
-  const h = Math.ceil(py + ph + blurPx) - offY
-  const wd = Math.round(w * dpr)
-  const hd = Math.round(h * dpr)
-
-  const solid = new OffscreenCanvas(wd, hd)
-  const solidCtx = solid.getContext('2d')!
-  solidCtx.scale(dpr, dpr)
-  solidCtx.translate(-offX, -offY)
-  drawFn(solidCtx)
-
-  const blurred = new OffscreenCanvas(wd, hd)
-  const blurCtx = blurred.getContext('2d')!
-  blurCtx.filter = `blur(${blurPx * dpr}px)`
-  blurCtx.drawImage(solid, 0, 0)
-
-  tCtx.drawImage(blurred, offX, offY, w, h)
-}
 
 function polyArea(pts: [number, number][]): number {
   let a = 0
@@ -307,7 +278,6 @@ export function drawTerrain(tCtx: Ctx, params: DrawTerrainParams): void {
     beachStrip, beachColor, beachWidth,
     coastlineBoundaryRings, coastlineRawBoundaryRings,
     // edge blobs destructured inline below where used
-    terrainBlobFeather,
     terrainBlobOutlineEnabled, terrainBlobOutlineColor, terrainBlobOutlineWidth,
   } = params
 
@@ -507,29 +477,19 @@ export function drawTerrain(tCtx: Ctx, params: DrawTerrainParams): void {
       const texTint = isColorMode ? (terrainColors[terrain] ?? '') : (terrainTextureTintColors[terrain] ?? '')
       const texTintOpacity = isColorMode ? 1.0 : (terrainTextureTintOpacities[terrain] ?? 0.5)
 
-      const typeFeather = params.terrainTypeBlobStyles[terrain]?.feather
-      const featherRatio = typeFeather ?? terrainBlobFeather
-
       const terrainColor = terrainColors[terrain] ?? '#cccccc'
 
       // a. Fill default polys
       if (defaultPolys.length > 0 && !isColorMode) {
-        const fillBlob = (ctx: Ctx) => {
-          ctx.fillStyle = terrainColor
-          ctx.beginPath()
-          for (const poly of defaultPolys) {
-            if (poly.length < 3) continue
-            ctx.moveTo(poly[0][0], poly[0][1])
-            for (let i = 1; i < poly.length; i++) ctx.lineTo(poly[i][0], poly[i][1])
-            ctx.closePath()
-          }
-          ctx.fill('evenodd')
+        tCtx.fillStyle = terrainColor
+        tCtx.beginPath()
+        for (const poly of defaultPolys) {
+          if (poly.length < 3) continue
+          tCtx.moveTo(poly[0][0], poly[0][1])
+          for (let i = 1; i < poly.length; i++) tCtx.lineTo(poly[i][0], poly[i][1])
+          tCtx.closePath()
         }
-        if (featherRatio > 0) {
-          drawBlobWithFade(tCtx, px, py, pw, ph, featherRatio * R, fillBlob)
-        } else {
-          fillBlob(tCtx)
-        }
+        tCtx.fill('evenodd')
       }
 
       // a2. Texture for default polys — always drawn directly (no fade)
@@ -558,33 +518,26 @@ export function drawTerrain(tCtx: Ctx, params: DrawTerrainParams): void {
         const ovLobeAmp         = override.lobeAmp         ?? terrainBlobParams.lobeAmp
         const ovLobeThreshold   = override.lobeThreshold   ?? terrainBlobParams.lobeThreshold
         const ovLobeDirection   = override.lobeDirection   ?? terrainBlobParams.lobeDirection
+        const ovSimplify        = override.simplify        ?? terrainBlobParams.simplify
         const ovBlobs = buildTerrainBlobsV2(
           ovProjected, ovSmooth, ovOffset, ovNoise,
-          ovSweepFreq, ovLobeFreq, ovLobeAmp, ovLobeThreshold, ovLobeDirection, R,
+          ovSweepFreq, ovLobeFreq, ovLobeAmp, ovLobeThreshold, ovLobeDirection, R, ovSimplify, terrainBlobParams.topoStyle,
         )
         const ovPolys = ovBlobs.find(b => b.terrain === terrain)?.polys ?? []
 
-        const ovFeatherRatio = override.feather ?? featherRatio
         const ovColor = override.color ?? terrainColor
 
         const ovTexScale = override.textureScale ?? (terrainTextureScales[terrain] ?? 3)
         if (!isColorMode) {
-          const fillOvBlob = (ctx: Ctx) => {
-            ctx.fillStyle = ovColor
-            ctx.beginPath()
-            for (const poly of ovPolys) {
-              if (poly.length < 3) continue
-              ctx.moveTo(poly[0][0], poly[0][1])
-              for (let i = 1; i < poly.length; i++) ctx.lineTo(poly[i][0], poly[i][1])
-              ctx.closePath()
-            }
-            ctx.fill('evenodd')
+          tCtx.fillStyle = ovColor
+          tCtx.beginPath()
+          for (const poly of ovPolys) {
+            if (poly.length < 3) continue
+            tCtx.moveTo(poly[0][0], poly[0][1])
+            for (let i = 1; i < poly.length; i++) tCtx.lineTo(poly[i][0], poly[i][1])
+            tCtx.closePath()
           }
-          if (ovFeatherRatio > 0) {
-            drawBlobWithFade(tCtx, px, py, pw, ph, ovFeatherRatio * R, fillOvBlob)
-          } else {
-            fillOvBlob(tCtx)
-          }
+          tCtx.fill('evenodd')
         }
         if (tex) applyTextureOverlay(tCtx, tex, ovPolys, R, ovTexScale, R * 0.12, texBlend, texOpacity, texTint, texTintOpacity, isColorMode)
       }
@@ -790,10 +743,11 @@ export function drawTerrain(tCtx: Ctx, params: DrawTerrainParams): void {
       const ovLobeAmp       = override.lobeAmp       ?? terrainBlobParams.lobeAmp
       const ovLobeThreshold = override.lobeThreshold ?? terrainBlobParams.lobeThreshold
       const ovLobeDirection = override.lobeDirection ?? terrainBlobParams.lobeDirection
+      const ovSimplify      = override.simplify      ?? terrainBlobParams.simplify
 
       const ovBlobs = buildTerrainBlobsV2(
         ovWaterProjected, ovSmooth, ovOffset, ovNoise,
-        ovSweepFreq, ovLobeFreq, ovLobeAmp, ovLobeThreshold, ovLobeDirection, R,
+        ovSweepFreq, ovLobeFreq, ovLobeAmp, ovLobeThreshold, ovLobeDirection, R, ovSimplify,
       )
       const ovPolys = ovBlobs.find(b => b.terrain === 'water')?.polys ?? []
       drawWaterPolys(ovPolys, override.color ?? waterColor)
