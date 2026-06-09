@@ -10,9 +10,10 @@ import { projectToCanvas, unprojectFromCanvas, computePaper, computeWorldcoverBb
 import { coastalBlobTerrains, bleedPolygon, buildTerrainBlobsV2, buildTerrainBlobTopology, shapeTerrainBlobs, shapeInputPolygon, computeConnectedComponents } from '../lib/terrainBlobs'
 import type { BlobTopologyEntry } from '../lib/terrainBlobs'
 import { findEdgeChains as findEdgeChainsSync } from '../lib/edgeBlobs'
-import { riverChainCache, buildRiverChains, buildRiverChainsV2 } from '../lib/riverChains'
+import { riverChainCache, buildRiverChains, buildRiverChainsV2, buildRiverChainsV3 } from '../lib/riverChains'
 
 const RIVER_V2 = true
+const RIVER_V3 = true   // new Chaikin+densify+noise pipeline; set false to revert to V2
 import { drawRivers as _drawRivers } from '../lib/drawRivers'
 import { buildRoadChains, buildRailChains, spineSideCpKey, applyRoadWiggle, applyRailWiggle } from '../lib/roadChains'
 import { buildRoadChainsV2, applyRoadWiggleV2 } from '../lib/roadChainsV2'
@@ -331,6 +332,7 @@ terrainColors, terrainTextureScales, terrainTextureBlendModes, terrainTextureOpa
     riverTierStyles, riverStyle, canalStyle,
     riverWidthScale, canalWidthScale, riverCurveSteps, riverWobble, riverDetail,
     riverWiggleFreq, riverWiggleAmp, riverSmoothing, riverPathSmoothing,
+    riverCornerRounds, riverPointSpacing, riverNoiseAmp, riverNoiseScale,
     terrainBlobOverrides, setTerrainBlobOverride,
     terrainTypeBlobStyles,
     waterOverrides, setWaterOverride,
@@ -569,6 +571,10 @@ terrainColors, terrainTextureScales, terrainTextureBlendModes, terrainTextureOpa
   const riverWiggleAmpRef = useRef(riverWiggleAmp)
   const riverSmoothingRef = useRef(riverSmoothing)
   const riverPathSmoothingRef = useRef(riverPathSmoothing)
+  const riverCornerRoundsRef = useRef(riverCornerRounds)
+  const riverPointSpacingRef = useRef(riverPointSpacing)
+  const riverNoiseAmpRef = useRef(riverNoiseAmp)
+  const riverNoiseScaleRef = useRef(riverNoiseScale)
   const setRiverSegmentPropRef = useRef(setRiverSegmentProp)
   const clearRiverSegmentPropRef = useRef(clearRiverSegmentProp)
   const roadSelectModeRef = useRef(roadSelectMode)
@@ -839,6 +845,10 @@ terrainColors, terrainTextureScales, terrainTextureBlendModes, terrainTextureOpa
   riverWiggleAmpRef.current = riverWiggleAmp
   riverSmoothingRef.current = riverSmoothing
   riverPathSmoothingRef.current = riverPathSmoothing
+  riverCornerRoundsRef.current = riverCornerRounds
+  riverPointSpacingRef.current = riverPointSpacing
+  riverNoiseAmpRef.current = riverNoiseAmp
+  riverNoiseScaleRef.current = riverNoiseScale
   setRiverSegmentPropRef.current = setRiverSegmentProp
   clearRiverSegmentPropRef.current = clearRiverSegmentProp
   roadSelectModeRef.current = roadSelectMode
@@ -2163,7 +2173,21 @@ const roadV3TierGeomRef = useRef(roadV3TierGeom)
 
     let riverTierChainData: [import('../lib/drawRivers').ChainEntry[], import('../lib/drawRivers').ChainEntry[], import('../lib/drawRivers').ChainEntry[]]
     let riverChainData, canalChainData
-    if (RIVER_V2) {
+    if (RIVER_V3) {
+      const cr = riverCornerRoundsRef.current
+      const ps = riverPointSpacingRef.current
+      const na = riverNoiseAmpRef.current
+      const ns = riverNoiseScaleRef.current
+      riverTierChainData = ([0, 1, 2] as const).map(tier =>
+        buildRiverChainsV3(tierEdges[tier], hexesRef.current, cr, ps, na, ns)
+          .map(c => ({ vertices: c.chain, segKey: c.segKey }))
+      ) as typeof riverTierChainData
+      riverChainsV2Ref.current = []
+      riverChainData = buildRiverChainsV3(riverEdgesRef.current, hexesRef.current, cr, ps, na, ns)
+        .map(c => ({ vertices: c.chain, segKey: c.segKey }))
+      canalChainData = buildRiverChainsV3(canalEdgesRef.current, hexesRef.current, cr, ps, na, ns)
+        .map(c => ({ vertices: c.chain, segKey: c.segKey }))
+    } else if (RIVER_V2) {
       const ts = riverTierStylesRef.current
       riverTierChainData = ([0, 1, 2] as const).map(tier => {
         const style = ts?.[tier]
@@ -3162,7 +3186,7 @@ const roadV3TierGeomRef = useRef(roadV3TierGeom)
 
   // Mark other layer caches dirty when their relevant data changes
   useEffect(() => { hexBorderDirtyRef.current = true }, [hexBorderMode, hexEdgeMode, hexBorderOpacity, hexBorderColor, hexBorderDifference, generatedHexes, excludedHexKeys, disabledHexKeys, autoDisabledOceanHexKeys])
-  useEffect(() => { riversDirtyRef.current = true }, [riverEdges, canalEdges, riverTierStyles, riverWidthScale, canalWidthScale, riverCurveSteps, riverWobble, riverDetail, riverWiggleFreq, riverWiggleAmp, riverSmoothing, riverPathSmoothing, showRiverLabels, riverLabelColor, riverSegmentProps, canalSegmentProps, riverSelectMode, canalSelectMode, selectedSegmentKeys, selectedCanalSegmentKeys, riverStyle, canalStyle, riverHopProps, selectedHopKey, labelOffsets])
+  useEffect(() => { riversDirtyRef.current = true }, [riverEdges, canalEdges, riverTierStyles, riverWidthScale, canalWidthScale, riverCurveSteps, riverWobble, riverDetail, riverWiggleFreq, riverWiggleAmp, riverSmoothing, riverPathSmoothing, riverCornerRounds, riverPointSpacing, riverNoiseAmp, riverNoiseScale, showRiverLabels, riverLabelColor, riverSegmentProps, canalSegmentProps, riverSelectMode, canalSelectMode, selectedSegmentKeys, selectedCanalSegmentKeys, riverStyle, canalStyle, riverHopProps, selectedHopKey, labelOffsets])
   useEffect(() => { buildingsDirtyRef.current = true }, [urbanHexes, urbanStyle, settlements, settlementTierStyles, roadBaseData])
   useEffect(() => { bridgesDirtyRef.current = true }, [bridgesEnabled, smoothedRoadData, smoothedRoadDataV2, smoothedRailData, riverEdges, canalEdges, generatedHexes])
   useEffect(() => { roadsDirtyRef.current = true }, [smoothedRoadData, smoothedRailData, roadTierStyles, railStyle, roadSegmentProps, roadHopProps, selectedRoadSegmentKeys, selectedRoadHopKey, roadSelectMode, railControlOverrides, railWiggleAmp, railWiggleFreq, railSmoothing, railSegmentProps, railHopProps, selectedRailSegmentKeys, selectedRailHopKey, railSelectMode, showRawOsmRoads, mapStyle, roadClearanceTerrains, defaultTerrainBlobs])
@@ -3176,7 +3200,7 @@ const roadV3TierGeomRef = useRef(roadV3TierGeom)
   }, [activeTool.type])
 
   // Redraw when data changes
-  useEffect(() => { draw() }, [generatedHexes, hexBorderMode, hexEdgeMode, hexBorderOpacity, hexBorderColor, hexBorderDifference, hexNumbersEnabled, hexNumberEdge, hexNumberColor, hexNumberFontScale, hexNumberStartCorner, hexNumberMap, smoothedRoadData, smoothedRailData, showRawOsmRoads, roadNodeEditMode, riverNodeEditMode, riverChainOverrides, riverEdges, canalEdges, riverEditMode, canalEditMode, riverWidthScale, canalWidthScale, riverCurveSteps, riverWobble, riverDetail, riverWiggleFreq, riverWiggleAmp, riverSmoothing, riverPathSmoothing, showRiverLabels, riverLabelColor, riverSegmentProps, canalSegmentProps, riverSelectMode, canalSelectMode, selectedSegmentKeys, selectedCanalSegmentKeys, riverStyle, canalStyle, riverHopProps, selectedHopKey, defaultTerrainBlobs, defaultWaterBlobs, terrainColors, terrainTextureScales, terrainTextureBlendModes, terrainTextureOpacities, terrainTextureTintColors, terrainTextureTintOpacities, terrainTextureFile, terrainTextureEnabled, terrainBlobOverrides, terrainTypeBlobStyles, waterOverrides, terrainRenderMode, settlements, settlementTierStyles, urbanHexes, urbanStyle, roadTierStyles, railStyle, highlights, highlightedHexes, highlightLines, highlightEdgePaths, iconOverlays, placedIcons, labelOverlays, placedLabels, realisticCoastline, coastlineDebugRaw, smoothedCoastlineBoundary, rawCoastlineBoundary, beachStrip, beachColor, beachWidth, coastlineDPEpsilon, coastlineChaikinPasses, edgeBlobPainted, edgeBlobOverrides, edgeBlobWidth, roadSegmentProps, roadHopProps, selectedRoadSegmentKeys, selectedRoadHopKey, roadSelectMode, railNodeEditMode, railControlOverrides, railSelectMode, railWiggleAmp, railWiggleFreq, railSmoothing, railSegmentProps, railHopProps, selectedRailSegmentKeys, selectedRailHopKey, mapBgColor, mapBorderEnabled, mapBorderColor, mapBorderWidth, clipToHexGrid, excludedHexKeys, disabledHexKeys, autoDisabledOceanHexKeys, megaHexEnabled, megaHexRadius, megaHexColor, megaHexOpacity, megaHexLineWidth, megaHexOriginQ, megaHexOriginR, bridgesEnabled, bridgeStyle, bridgeTiers, bridgeOverrides, showElevationDebug, showElevationClassOverlay, mapStyle, labelOffsets, labelPresetId, labelOverrides, activeTool, roadClearanceTerrains, blobEditMode, activeBlobEditId, blobHandleOverrides, draw])
+  useEffect(() => { draw() }, [generatedHexes, hexBorderMode, hexEdgeMode, hexBorderOpacity, hexBorderColor, hexBorderDifference, hexNumbersEnabled, hexNumberEdge, hexNumberColor, hexNumberFontScale, hexNumberStartCorner, hexNumberMap, smoothedRoadData, smoothedRailData, showRawOsmRoads, roadNodeEditMode, riverNodeEditMode, riverChainOverrides, riverEdges, canalEdges, riverEditMode, canalEditMode, riverWidthScale, canalWidthScale, riverCurveSteps, riverWobble, riverDetail, riverWiggleFreq, riverWiggleAmp, riverSmoothing, riverPathSmoothing, riverCornerRounds, riverPointSpacing, riverNoiseAmp, riverNoiseScale, showRiverLabels, riverLabelColor, riverSegmentProps, canalSegmentProps, riverSelectMode, canalSelectMode, selectedSegmentKeys, selectedCanalSegmentKeys, riverStyle, canalStyle, riverHopProps, selectedHopKey, defaultTerrainBlobs, defaultWaterBlobs, terrainColors, terrainTextureScales, terrainTextureBlendModes, terrainTextureOpacities, terrainTextureTintColors, terrainTextureTintOpacities, terrainTextureFile, terrainTextureEnabled, terrainBlobOverrides, terrainTypeBlobStyles, waterOverrides, terrainRenderMode, settlements, settlementTierStyles, urbanHexes, urbanStyle, roadTierStyles, railStyle, highlights, highlightedHexes, highlightLines, highlightEdgePaths, iconOverlays, placedIcons, labelOverlays, placedLabels, realisticCoastline, coastlineDebugRaw, smoothedCoastlineBoundary, rawCoastlineBoundary, beachStrip, beachColor, beachWidth, coastlineDPEpsilon, coastlineChaikinPasses, edgeBlobPainted, edgeBlobOverrides, edgeBlobWidth, roadSegmentProps, roadHopProps, selectedRoadSegmentKeys, selectedRoadHopKey, roadSelectMode, railNodeEditMode, railControlOverrides, railSelectMode, railWiggleAmp, railWiggleFreq, railSmoothing, railSegmentProps, railHopProps, selectedRailSegmentKeys, selectedRailHopKey, mapBgColor, mapBorderEnabled, mapBorderColor, mapBorderWidth, clipToHexGrid, excludedHexKeys, disabledHexKeys, autoDisabledOceanHexKeys, megaHexEnabled, megaHexRadius, megaHexColor, megaHexOpacity, megaHexLineWidth, megaHexOriginQ, megaHexOriginR, bridgesEnabled, bridgeStyle, bridgeTiers, bridgeOverrides, showElevationDebug, showElevationClassOverlay, mapStyle, labelOffsets, labelPresetId, labelOverrides, activeTool, roadClearanceTerrains, blobEditMode, activeBlobEditId, blobHandleOverrides, draw])
 
   useEffect(() => { drawOsmHighlight() }, [osmHighlightTier, osmSpotlightMode, osmSpotlightTiers, osmRailHighlight, hoveredOsmRiverIdx, drawOsmHighlight])
 

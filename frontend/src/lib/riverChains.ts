@@ -331,6 +331,190 @@ export function buildRiverChains(
 }
 
 // ---------------------------------------------------------------------------
+// V3 pipeline: hex corners → Chaikin corner rounding → densify → perpendicular noise
+// Stays within the hex corridor; no Catmull-Rom overshoots.
+// Produces the same segKeys as V1/V2 so per-segment props are fully compatible.
+// ---------------------------------------------------------------------------
+
+export interface RiverChainV3 {
+  segKey: string
+  chain: [number, number][]
+}
+
+/** Chaikin corner rounding: each pass replaces every interior point with two points
+ *  at 25% and 75% along each adjacent edge, beveling the corner without leaving the corridor. */
+function chaikin(pts: [number, number][], passes: number): [number, number][] {
+  if (passes <= 0 || pts.length < 3) return pts
+  let p = pts
+  for (let pass = 0; pass < passes; pass++) {
+    const q: [number, number][] = [p[0]]
+    for (let i = 0; i < p.length - 1; i++) {
+      const ax = p[i][0], ay = p[i][1]
+      const bx = p[i + 1][0], by = p[i + 1][1]
+      if (i > 0) q.push([ax * 0.75 + bx * 0.25, ay * 0.75 + by * 0.25])
+      q.push([ax * 0.25 + bx * 0.75, ay * 0.25 + by * 0.75])
+    }
+    q.push(p[p.length - 1])
+    p = q
+  }
+  return p
+}
+
+/** Densify a polyline so no consecutive pair is further apart than maxDist. */
+function densify(pts: [number, number][], maxDist: number): [number, number][] {
+  if (pts.length < 2 || maxDist <= 0) return pts
+  const out: [number, number][] = [pts[0]]
+  for (let i = 1; i < pts.length; i++) {
+    const ax = pts[i - 1][0], ay = pts[i - 1][1]
+    const bx = pts[i][0],     by = pts[i][1]
+    const d = Math.hypot(bx - ax, by - ay)
+    const steps = Math.ceil(d / maxDist)
+    for (let k = 1; k <= steps; k++) {
+      const t = k / steps
+      out.push([ax + (bx - ax) * t, ay + (by - ay) * t])
+    }
+  }
+  return out
+}
+
+/** Two-band perpendicular Perlin noise, tapering to zero at both endpoints. */
+function applyPerpendicularNoise(
+  pts: [number, number][],
+  ampBroad: number,
+  ampDetail: number,
+  scaleBroad: number,
+  scaleDetail: number,
+  perm: Uint8Array,
+): [number, number][] {
+  if (pts.length < 3) return pts
+  // Accumulate arc-length parameterisation
+  const lens: number[] = [0]
+  for (let i = 1; i < pts.length; i++)
+    lens.push(lens[i - 1] + Math.hypot(pts[i][0] - pts[i - 1][0], pts[i][1] - pts[i - 1][1]))
+  const total = lens[lens.length - 1]
+  if (total < 1e-6) return pts
+
+  return pts.map((pt, i) => {
+    if (i === 0 || i === pts.length - 1) return pt
+    const prev = pts[i - 1], next = pts[i + 1]
+    const dx = next[0] - prev[0], dy = next[1] - prev[1]
+    const len = Math.hypot(dx, dy)
+    if (len < 1e-6) return pt
+    // Unit perpendicular (rotated 90° CCW)
+    const nx = -dy / len, ny = dx / len
+    // Endpoint taper: sine curve → 0 at both ends
+    const taper = Math.sin(Math.PI * lens[i] / total)
+    const s = lens[i]
+    const broad  = ampBroad  * perlinNoise2D(s * scaleBroad,  0.3, perm) * taper
+    const detail = ampDetail * perlinNoise2D(s * scaleDetail, 0.7, perm) * taper
+    return [pt[0] + nx * (broad + detail), pt[1] + ny * (broad + detail)] as [number, number]
+  })
+}
+
+export function buildRiverChainsV3(
+  edges: { q1: number; r1: number; q2: number; r2: number }[],
+  hexes: GeneratedHex[],
+  /** Chaikin iterations — 0=hard hex corners, 2=smooth arcs */
+  cornerRounds = 2,
+  /** Target point spacing after densification, as a fraction of the measured inter-hex-corner distance */
+  pointSpacingFactor = 0.15,
+  /** Broad-band noise amplitude as a fraction of the inter-hex-corner distance */
+  noiseAmp = 0.35,
+  /** Scales the noise wavelength — 1=natural, <1=tighter, >1=lazier */
+  noiseScale = 1.0,
+): RiverChainV3[] {
+  const hexMap = new Map<string, GeneratedHex>()
+  for (const h of hexes) hexMap.set(`${h.q},${h.r}`, h)
+
+  const adj = new Map<string, { key: string; coord: [number, number] }[]>()
+  const coordOf = new Map<string, [number, number]>()
+
+  for (const edge of edges) {
+    const h1 = hexMap.get(`${edge.q1},${edge.r1}`), h2 = hexMap.get(`${edge.q2},${edge.r2}`)
+    if (!h1 || !h2) continue
+    const shared = findSharedVerts(h1, h2)
+    if (!shared) continue
+    const [v0, v1] = shared
+    const k0 = vKey(v0), k1 = vKey(v1)
+    coordOf.set(k0, v0); coordOf.set(k1, v1)
+    if (!adj.has(k0)) adj.set(k0, [])
+    if (!adj.has(k1)) adj.set(k1, [])
+    adj.get(k0)!.push({ key: k1, coord: v1 })
+    adj.get(k1)!.push({ key: k0, coord: v0 })
+  }
+
+  const degree = new Map<string, number>()
+  for (const [k, nbrs] of adj) degree.set(k, nbrs.length)
+
+  const eid = (a: string, b: string) => a < b ? `${a}|${b}` : `${b}|${a}`
+  const visitedEdges = new Set<string>()
+
+  const walkFrom = (startKey: string, dirKey: string): [number, number][] => {
+    const pts: [number, number][] = [coordOf.get(startKey)!, coordOf.get(dirKey)!]
+    visitedEdges.add(eid(startKey, dirKey))
+    let cur = dirKey
+    for (;;) {
+      if ((degree.get(cur) ?? 0) !== 2) break
+      const nbrs = adj.get(cur) ?? []
+      const next = nbrs.find(n => !visitedEdges.has(eid(cur, n.key)))
+      if (!next) break
+      visitedEdges.add(eid(cur, next.key))
+      pts.push(next.coord)
+      cur = next.key
+    }
+    return pts
+  }
+
+  const rawSparse: { pts: [number, number][]; segKey: string }[] = []
+  for (const [k] of adj) {
+    if ((degree.get(k) ?? 0) === 2) continue
+    for (const nbr of (adj.get(k) ?? [])) {
+      if (visitedEdges.has(eid(k, nbr.key))) continue
+      const pts = walkFrom(k, nbr.key)
+      if (pts.length >= 2) {
+        const a = vKey(pts[0]), b = vKey(pts[pts.length - 1])
+        rawSparse.push({ pts, segKey: a < b ? `${a}||${b}` : `${b}||${a}` })
+      }
+    }
+  }
+  for (const [k] of adj) {
+    for (const nbr of (adj.get(k) ?? [])) {
+      if (visitedEdges.has(eid(k, nbr.key))) continue
+      const pts = walkFrom(k, nbr.key)
+      if (pts.length >= 2) {
+        const a = vKey(pts[0]), b = vKey(pts[pts.length - 1])
+        rawSparse.push({ pts, segKey: a < b ? `${a}||${b}` : `${b}||${a}` })
+      }
+    }
+  }
+
+  // Measure median inter-vertex spacing across all chains
+  let totalDist = 0, distSamples = 0
+  outer3: for (const { pts } of rawSparse) {
+    for (let i = 1; i < pts.length; i++) {
+      totalDist += Math.hypot(pts[i][0] - pts[i - 1][0], pts[i][1] - pts[i - 1][1])
+      if (++distSamples >= 12) break outer3
+    }
+  }
+  const interDist = distSamples > 0 ? totalDist / distSamples : 1e-4
+
+  const maxSpacing  = interDist * pointSpacingFactor
+  const ampBroad    = noiseAmp * interDist
+  const ampDetail   = noiseAmp * interDist * 0.35
+  const scaleBroad  = (1 / (interDist * 4.0)) / noiseScale
+  const scaleDetail = (1 / (interDist * 1.3)) / noiseScale
+
+  const perm = makePermutation(42)
+
+  return rawSparse.map(({ pts, segKey }) => {
+    const rounded   = chaikin(pts, cornerRounds)
+    const dense     = densify(rounded, maxSpacing)
+    const chain     = applyPerpendicularNoise(dense, ampBroad, ampDetail, scaleBroad, scaleDetail, perm)
+    return { segKey, chain }
+  })
+}
+
+// ---------------------------------------------------------------------------
 // V2 pipeline: hex corner vertices → catmullRom → (wiggle TBD)
 // Produces the same segKeys as buildRiverChains so per-segment props still apply.
 // ---------------------------------------------------------------------------
