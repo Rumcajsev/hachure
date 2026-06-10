@@ -130,6 +130,7 @@ export type ActiveTool =
   /** Label follows cursor until left-click confirms placement or Escape cancels.
    *  dx/dy are stored relative to the icon centre (cx, cy), not the auto-placer output. */
   | { type: 'label-follow'; id: string; iconCx: number; iconCy: number; prevDx: number; prevDy: number }
+  | { type: 'blob-mask'; mode: 'add' | 'subtract'; terrain: string }
 
 export type MapMode = 'single' | 'diptych'
 export type DiptychJoin = 'long' | 'short'
