@@ -117,7 +117,7 @@ export function IconRail({ active, onSelect, onSetup }: IconRailProps) {
       height: '100%',
       flexShrink: 0,
       background: t.surface,
-      border: `1px solid ${t.line}`,
+      borderRight: `1px solid ${t.line}`,
       display: 'flex',
       flexDirection: 'column',
       alignItems: 'center',

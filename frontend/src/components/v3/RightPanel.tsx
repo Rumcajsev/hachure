@@ -34,7 +34,6 @@ export function RightPanel({ panel, onClose }: RightPanelProps) {
       display: 'flex',
       flexDirection: 'column',
       overflow: 'hidden',
-      boxShadow: t.shadowFlyout,
     }}>
       {/* Header */}
       <div style={{

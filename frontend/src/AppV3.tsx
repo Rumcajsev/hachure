@@ -178,10 +178,13 @@ function AppV3Inner({ screen, setScreen, isDark, setIsDark }: {
           <div style={{
             position: 'absolute', top: 16, left: 16, bottom: 16,
             zIndex: 10, pointerEvents: 'none',
-            display: 'flex', gap: 8,
-            zoom: uiScale,
           }}>
-            <div style={{ pointerEvents: 'auto', height: '100%', display: 'flex', gap: 8 }}>
+            <div style={{
+              pointerEvents: 'auto', height: '100%',
+              display: 'flex',
+              boxShadow: t.shadowFlyout,
+              zoom: uiScale,
+            }}>
               <IconRail
                 active={activeTool}
                 onSelect={handleSelectTool}
@@ -202,6 +205,7 @@ function AppV3Inner({ screen, setScreen, isDark, setIsDark }: {
             <div style={{
               position: 'absolute', top: 16, right: 16, bottom: 16,
               zIndex: 10, pointerEvents: 'auto',
+              boxShadow: t.shadowFlyout,
               zoom: uiScale,
             }}>
               <RightPanel
