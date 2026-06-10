@@ -377,9 +377,15 @@ function densify(pts: [number, number][], maxDist: number): [number, number][] {
   return out
 }
 
-/** Sine-dominated meander with regional coherence.
- *  Regional coherence (weight 0.25): slow 2D Perlin sampled at actual geographic
- *  position — nearby rivers share the same regional drift character. */
+/** Sine-dominated meander with a second harmonic and regional coherence.
+ *
+ *  Second harmonic: sin(phase) + 0.4 × sin(2×phase + harmonicOffset)
+ *  The offset is seeded per-chain from the segKey so each river has a
+ *  different asymmetry pattern — some bends lean left-heavy, others
+ *  right-heavy, some elongated, some compressed.
+ *
+ *  Regional coherence (weight 0.25): slow 2D Perlin at geographic position
+ *  so nearby rivers share the same general drift character. */
 function applyMeanderNoise(
   pts: [number, number][],
   amp: number,
@@ -388,6 +394,7 @@ function applyMeanderNoise(
   permB: Uint8Array,
   interDist: number,
   phaseOffset: number,
+  harmonicOffset: number,   // per-chain seed for second harmonic asymmetry
 ): [number, number][] {
   if (pts.length < 3) return pts
   const lens: number[] = [0]
@@ -425,7 +432,12 @@ function applyMeanderNoise(
     )
 
     const regional = perlinNoise2D(pt[0] * regionalFreq, pt[1] * regionalFreq, permB)
-    const meander  = amp * (Math.sin(phases[i]) + 0.25 * regional)
+    // Fundamental + second harmonic: creates asymmetric bends unique to each chain
+    const meander  = amp * (
+      Math.sin(phases[i]) +
+      0.4 * Math.sin(2 * phases[i] + harmonicOffset) +
+      0.25 * regional
+    )
     const detail   = amp * 0.15 * perlinNoise2D(sn(s) * detailFreq, 0.5, perm)
     const disp     = (meander + detail) * taper
 
@@ -525,10 +537,12 @@ export function buildRiverChainsV3(
   const permB = makePermutation(137)  // regional coherence field
 
   return rawSparse.map(({ pts, segKey }) => {
-    const phase   = pts[0][0] * 127.1 + pts[0][1] * 311.7
+    const phase          = pts[0][0] * 127.1 + pts[0][1] * 311.7
+    // Stable per-chain offset for the second harmonic — spreads chains across [0, 2π]
+    const harmonicOffset = (hashStr(segKey) / 0xffffffff) * 2 * Math.PI
     const rounded = chaikin(pts, cornerRounds)
     const dense   = densify(rounded, maxSpacing)
-    const chain   = applyMeanderNoise(dense, amp, meanderFreq, perm, permB, interDist, phase)
+    const chain   = applyMeanderNoise(dense, amp, meanderFreq, perm, permB, interDist, phase, harmonicOffset)
     return { segKey, chain }
   })
 }
