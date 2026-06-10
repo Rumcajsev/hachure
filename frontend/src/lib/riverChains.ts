@@ -537,9 +537,11 @@ export function buildRiverChainsV3(
   const permB = makePermutation(137)  // regional coherence field
 
   return rawSparse.map(({ pts, segKey }) => {
-    const phase          = pts[0][0] * 127.1 + pts[0][1] * 311.7
-    // Stable per-chain offset for the second harmonic — spreads chains across [0, 2π]
-    const harmonicOffset = (hashStr(segKey) / 0xffffffff) * 2 * Math.PI
+    const h = hashStr(segKey)
+    // Both offsets purely identity-based so nearby chains get uncorrelated phases.
+    // Regional coherence field (permB) handles the shared drift between neighbours.
+    const phase          = (h / 0xffffffff) * 2 * Math.PI
+    const harmonicOffset = ((h ^ (h >>> 13)) / 0xffffffff) * 2 * Math.PI
     const rounded = chaikin(pts, cornerRounds)
     const dense   = densify(rounded, maxSpacing)
     const chain   = applyMeanderNoise(dense, amp, meanderFreq, perm, permB, interDist, phase, harmonicOffset)
