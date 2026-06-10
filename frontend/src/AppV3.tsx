@@ -168,37 +168,52 @@ function AppV3Inner({ screen, setScreen, isDark, setIsDark }: {
           </div>
         )}
 
-        <div style={{ flex: 1, display: 'flex', overflow: 'hidden', zoom: uiScale }}>
-          {/* Left: icon rail */}
-          <IconRail
-            active={activePanel}
-            onSelect={handleSelectPanel}
-            onSetup={() => setScreen('wizard')}
-          />
-
-          {/* Left: popout strip for the active panel */}
-          {activePanel && (
-            <PopoutStrip
-              panel={activePanel}
-              onOpenSettings={handleToggleSettings}
-              settingsOpen={settingsOpen}
-            />
-          )}
-
-          {/* Centre: canvas fills the remaining space */}
-          <div style={{ flex: 1, display: 'flex', position: 'relative', overflow: 'hidden' }}>
+        {/* Canvas + floating panels — canvas is full size, UI floats over it */}
+        <div style={{ flex: 1, position: 'relative', overflow: 'hidden' }}>
+          <div style={{ width: '100%', height: '100%', display: 'flex' }}>
             <TerrainViewCanvas ref={canvasHandleRef} surroundColor={surroundColor} />
-            <CanvasToolbar />
-            <BottomDock canvasRef={canvasHandleRef} />
           </div>
 
-          {/* Right: settings panel, slides in when open */}
+          {/* Left: icon rail + popout strip, floating over canvas */}
+          <div style={{
+            position: 'absolute', top: 16, left: 16, bottom: 16,
+            zIndex: 10, pointerEvents: 'none',
+            display: 'flex', gap: 8,
+            zoom: uiScale,
+          }}>
+            <div style={{ pointerEvents: 'auto', height: '100%', display: 'flex', gap: 8, boxShadow: t.shadowFlyout }}>
+              <IconRail
+                active={activePanel}
+                onSelect={handleSelectPanel}
+                onSetup={() => setScreen('wizard')}
+              />
+              {activePanel && (
+                <PopoutStrip
+                  panel={activePanel}
+                  onOpenSettings={handleToggleSettings}
+                  settingsOpen={settingsOpen}
+                />
+              )}
+            </div>
+          </div>
+
+          {/* Right: settings panel, floating over canvas */}
           {activePanel && settingsOpen && (
-            <RightPanel
-              panel={activePanel}
-              onClose={() => setSettingsOpen(false)}
-            />
+            <div style={{
+              position: 'absolute', top: 16, right: 16, bottom: 16,
+              zIndex: 10, pointerEvents: 'auto',
+              boxShadow: t.shadowFlyout,
+              zoom: uiScale,
+            }}>
+              <RightPanel
+                panel={activePanel}
+                onClose={() => setSettingsOpen(false)}
+              />
+            </div>
           )}
+
+          <CanvasToolbar />
+          <BottomDock canvasRef={canvasHandleRef} />
         </div>
       </div>
     </ThemeContext.Provider>
