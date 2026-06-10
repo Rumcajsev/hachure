@@ -378,10 +378,7 @@ function densify(pts: [number, number][], maxDist: number): [number, number][] {
 }
 
 /** Sine-dominated meander with a second harmonic and regional coherence.
- *
- *  taperStart / taperEnd: whether to fade amplitude to zero at each endpoint.
- *  Main-river ends at junctions are NOT tapered; tributary ends ARE.
- *  True endpoints (degree-1) are always tapered on that side. */
+ *  Amplitude is always tapered to zero at both endpoints (arc-length fade). */
 function applyMeanderNoise(
   pts: [number, number][],
   amp: number,
@@ -391,8 +388,6 @@ function applyMeanderNoise(
   interDist: number,
   phaseOffset: number,
   harmonicOffset: number,
-  taperStart: boolean,
-  taperEnd: boolean,
 ): [number, number][] {
   if (pts.length < 3) return pts
   const lens: number[] = [0]
@@ -424,8 +419,8 @@ function applyMeanderNoise(
     const fadeLen = Math.min(total * 0.25, interDist * 1.5)
     const s = lens[i]
     const taper = Math.min(
-      taperStart ? (fadeLen > 0 ? s / fadeLen : 1) : 1,
-      taperEnd   ? (fadeLen > 0 ? (total - s) / fadeLen : 1) : 1,
+      fadeLen > 0 ? s / fadeLen : 1,
+      fadeLen > 0 ? (total - s) / fadeLen : 1,
       1,
     )
 
@@ -476,15 +471,37 @@ export function buildRiverChainsV3(
   const eid = (a: string, b: string) => a < b ? `${a}|${b}` : `${b}|${a}`
   const visitedEdges = new Set<string>()
 
+  // Greedy walk: at degree-2 nodes continue as before; at junction nodes (degree 3+)
+  // pick the most anti-parallel unvisited neighbour so the main river flows straight
+  // through the junction as one long chain. Tributaries get built in the second pass
+  // from whatever edges remain unvisited.
   const walkFrom = (startKey: string, dirKey: string): [number, number][] => {
     const pts: [number, number][] = [coordOf.get(startKey)!, coordOf.get(dirKey)!]
     visitedEdges.add(eid(startKey, dirKey))
     let cur = dirKey
     for (;;) {
-      if ((degree.get(cur) ?? 0) !== 2) break
+      const deg = degree.get(cur) ?? 0
+      if (deg === 1) break   // true endpoint — stop
       const nbrs = adj.get(cur) ?? []
-      const next = nbrs.find(n => !visitedEdges.has(eid(cur, n.key)))
-      if (!next) break
+      const unvisited = nbrs.filter(n => !visitedEdges.has(eid(cur, n.key)))
+      if (unvisited.length === 0) break
+      let next = unvisited[0]
+      if (deg >= 3 && unvisited.length > 1) {
+        // Junction: continue in the direction most anti-parallel to current travel
+        const last = pts[pts.length - 1], prev = pts[pts.length - 2]
+        const cdx = last[0] - prev[0], cdy = last[1] - prev[1]
+        const cl = Math.hypot(cdx, cdy)
+        let bestDot = Infinity
+        if (cl > 1e-9) {
+          for (const nbr of unvisited) {
+            const dx = nbr.coord[0] - last[0], dy = nbr.coord[1] - last[1]
+            const nl = Math.hypot(dx, dy)
+            if (nl < 1e-9) continue
+            const dot = (cdx * dx + cdy * dy) / (cl * nl)
+            if (dot < bestDot) { bestDot = dot; next = nbr }
+          }
+        }
+      }
       visitedEdges.add(eid(cur, next.key))
       pts.push(next.coord)
       cur = next.key
@@ -492,72 +509,28 @@ export function buildRiverChainsV3(
     return pts
   }
 
+  const pushChain = (pts: [number, number][]) => {
+    if (pts.length < 2) return
+    const a = vKey(pts[0]), b = vKey(pts[pts.length - 1])
+    rawSparse.push({ pts, segKey: a < b ? `${a}||${b}` : `${b}||${a}` })
+  }
+
   const rawSparse: { pts: [number, number][]; segKey: string }[] = []
+
+  // First pass: start from true endpoints (degree-1) so main rivers are walked
+  // greedily through junctions before tributaries claim those edges.
   for (const [k] of adj) {
-    if ((degree.get(k) ?? 0) === 2) continue
+    if ((degree.get(k) ?? 0) !== 1) continue
     for (const nbr of (adj.get(k) ?? [])) {
       if (visitedEdges.has(eid(k, nbr.key))) continue
-      const pts = walkFrom(k, nbr.key)
-      if (pts.length >= 2) {
-        const a = vKey(pts[0]), b = vKey(pts[pts.length - 1])
-        rawSparse.push({ pts, segKey: a < b ? `${a}||${b}` : `${b}||${a}` })
-      }
+      pushChain(walkFrom(k, nbr.key))
     }
   }
+  // Second pass: any remaining edges (tributaries starting at junctions, isolated loops)
   for (const [k] of adj) {
     for (const nbr of (adj.get(k) ?? [])) {
       if (visitedEdges.has(eid(k, nbr.key))) continue
-      const pts = walkFrom(k, nbr.key)
-      if (pts.length >= 2) {
-        const a = vKey(pts[0]), b = vKey(pts[pts.length - 1])
-        rawSparse.push({ pts, segKey: a < b ? `${a}||${b}` : `${b}||${a}` })
-      }
-    }
-  }
-
-  // ---------------------------------------------------------------------------
-  // Junction analysis: at each degree-3+ vertex, find the two most anti-parallel
-  // chain ends (the "straight-through" main river) and mark them as non-tapering.
-  // All other chain ends at that vertex are tributaries and keep their taper.
-  // ---------------------------------------------------------------------------
-  type ChainEnd = { chainIdx: number; isStart: boolean; dir: [number, number] }
-  const junctionMap = new Map<string, ChainEnd[]>()
-
-  for (let idx = 0; idx < rawSparse.length; idx++) {
-    const { pts } = rawSparse[idx]
-    for (const [isStart, pt, pt2] of [
-      [true,  pts[0],               pts[1]                ] as const,
-      [false, pts[pts.length - 1],  pts[pts.length - 2]   ] as const,
-    ]) {
-      const k = vKey(pt)
-      if ((degree.get(k) ?? 0) < 3) continue
-      const dir: [number, number] = [pt2[0] - pt[0], pt2[1] - pt[1]]
-      if (!junctionMap.has(k)) junctionMap.set(k, [])
-      junctionMap.get(k)!.push({ chainIdx: idx, isStart, dir })
-    }
-  }
-
-  // Default: taper both ends of every chain
-  const taperStart = new Array(rawSparse.length).fill(true) as boolean[]
-  const taperEnd   = new Array(rawSparse.length).fill(true) as boolean[]
-
-  for (const ends of junctionMap.values()) {
-    if (ends.length < 2) continue
-    // Find the pair whose directions are most anti-parallel (dot product most negative)
-    let bestDot = Infinity, bestI = 0, bestJ = 1
-    for (let i = 0; i < ends.length; i++) {
-      for (let j = i + 1; j < ends.length; j++) {
-        const di = ends[i].dir, dj = ends[j].dir
-        const li = Math.hypot(di[0], di[1]), lj = Math.hypot(dj[0], dj[1])
-        if (li < 1e-9 || lj < 1e-9) continue
-        const dot = (di[0] * dj[0] + di[1] * dj[1]) / (li * lj)
-        if (dot < bestDot) { bestDot = dot; bestI = i; bestJ = j }
-      }
-    }
-    // Mark the main-river pair as non-tapering at this junction end
-    for (const end of [ends[bestI], ends[bestJ]]) {
-      if (end.isStart) taperStart[end.chainIdx] = false
-      else             taperEnd[end.chainIdx]   = false
+      pushChain(walkFrom(k, nbr.key))
     }
   }
 
@@ -585,7 +558,7 @@ export function buildRiverChainsV3(
     const harmonicOffset = ((h ^ (h >>> 13)) / 0xffffffff) * 2 * Math.PI
     const rounded = chaikin(pts, cornerRounds)
     const dense   = densify(rounded, maxSpacing)
-    const chain   = applyMeanderNoise(dense, amp, meanderFreq, perm, permB, interDist, phase, harmonicOffset, taperStart[idx], taperEnd[idx])
+    const chain   = applyMeanderNoise(dense, amp, meanderFreq, perm, permB, interDist, phase, harmonicOffset)
     return { segKey, chain }
   })
 }
