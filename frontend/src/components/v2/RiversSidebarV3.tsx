@@ -1,13 +1,12 @@
 import { useState, useEffect } from 'react'
 import {
-  useMapStore, DEFAULT_RIVER_STYLE, DEFAULT_CANAL_STYLE, DEFAULT_STROKE_EFFECT,
+  useMapStore, DEFAULT_RIVER_STYLE, DEFAULT_STROKE_EFFECT,
   DEFAULT_RIVER_TIER_STYLES,
 } from '../../store/mapStore'
 import type { RiverTier } from '../../store/mapStore'
 import { riverChainCache, computeTaperRanges } from '../../lib/riverChains'
 import {
   PALETTE_RIVER, PALETTE_RIVER_OUTLINE,
-  PALETTE_CANAL, PALETTE_CANAL_OUTLINE,
 } from '../../palettes'
 import { useTheme } from '../../context/ThemeContext'
 import {
@@ -22,8 +21,6 @@ import { LabelSpecEditorRows } from './LabelSpecEditor'
 
 const RIVER_FILL_GROUPS   = [{ label: 'Blue', colors: [...PALETTE_RIVER] }]
 const RIVER_STROKE_GROUPS = [{ label: 'Dark', colors: [...PALETTE_RIVER_OUTLINE] }]
-const CANAL_FILL_GROUPS   = [{ label: 'Teal', colors: [...PALETTE_CANAL] }]
-const CANAL_STROKE_GROUPS = [{ label: 'Dark', colors: [...PALETTE_CANAL_OUTLINE] }]
 
 type FlyoutId = 'river-0' | 'river-1' | 'river-2' | 'shape' | 'osm' | 'segment' | 'river-labels' | null
 
@@ -171,50 +168,6 @@ export function RiverTierFlyout({ tier, onClose }: { tier: RiverTier; onClose: (
   )
 }
 
-// ── CanalStyleFlyout ──────────────────────────────────────────────────────────
-
-export function CanalStyleFlyout({ onClose }: { onClose: () => void }) {
-  const t = useTheme()
-  const {
-    canalStyle, setCanalStyle,
-    canalWidthScale, setCanalWidthScale,
-  } = useMapStore()
-
-  const isModified =
-    canalStyle.color !== DEFAULT_CANAL_STYLE.color ||
-    JSON.stringify(canalStyle.effect) !== JSON.stringify(DEFAULT_CANAL_STYLE.effect)
-
-  return (
-    <FlyoutShell title="Canal Style" subtitle={isModified ? 'modified' : undefined} onClose={onClose}>
-      <SubLabel label="Colour" />
-      <BigColorSwatch value={canalStyle.color} onChange={c => setCanalStyle({ color: c })} groups={CANAL_FILL_GROUPS} />
-
-      <div style={{ borderTop: `1px solid ${t.line2}` }}>
-        <SubLabel label="Width" />
-        <MiniSlider label="Scale" display={`${canalWidthScale.toFixed(1)}×`} value={Math.round(canalWidthScale * 10)} min={2} max={40} step={1} onChange={v => setCanalWidthScale(v / 10)} />
-      </div>
-
-      <div style={{ borderTop: `1px solid ${t.line2}` }}>
-        <StrokeEffectPanel
-          effect={canalStyle.effect ?? DEFAULT_STROKE_EFFECT}
-          onChange={patch => setCanalStyle({ effect: { ...(canalStyle.effect ?? DEFAULT_STROKE_EFFECT), ...patch } })}
-          colorGroups={[{ label: 'Canal', colors: [...CANAL_STROKE_GROUPS[0].colors] }]}
-        />
-      </div>
-
-      {isModified && (
-        <div style={{ padding: '8px 14px 0' }}>
-          <button
-            onClick={() => setCanalStyle({ ...DEFAULT_CANAL_STYLE })}
-            style={{ background: 'none', border: `1px solid ${t.line}`, color: t.inkMute, cursor: 'pointer', fontFamily: t.mono, fontSize: 9, padding: '3px 8px', letterSpacing: 0.3 }}
-          >
-            ↺ Reset to defaults
-          </button>
-        </div>
-      )}
-    </FlyoutShell>
-  )
-}
 
 
 // ── OsmRiversFlyout ───────────────────────────────────────────────────────────
@@ -225,7 +178,7 @@ export function OsmRiversFlyout({ onClose }: { onClose: () => void }) {
     osmRiverWays, riversOsmStatus, riversOsmError,
     hoveredOsmRiverIdx, appliedOsmRiverIndices,
     fetchRivers, toggleOsmRiver, setHoveredOsmRiverIdx, clearOsmRivers,
-    riverStyle, canalStyle,
+    riverStyle,
   } = useMapStore()
 
   const [listOpen, setListOpen] = useState(false)
@@ -293,7 +246,7 @@ export function OsmRiversFlyout({ onClose }: { onClose: () => void }) {
               {osmRiverWays.map((way, idx) => {
                 const applied = appliedOsmRiverIndices.includes(idx)
                 const hovered = hoveredOsmRiverIdx === idx
-                const dotColor = way.type === 'river' ? riverStyle.color : canalStyle.color
+                const dotColor = riverStyle.color
                 return (
                   <div
                     key={idx}
@@ -326,26 +279,24 @@ export function OsmRiversFlyout({ onClose }: { onClose: () => void }) {
 
 // ── SegmentFlyout ─────────────────────────────────────────────────────────────
 
-export function RiverSegmentFlyout({ mode, onClose }: { mode: 'river' | 'canal'; onClose: () => void }) {
+export function RiverSegmentFlyout({ onClose }: { onClose: () => void }) {
   const t = useTheme()
   const {
-    riverWidthScale, canalWidthScale,
+    riverWidthScale,
     riverWiggleAmp, riverWiggleFreq,
-    riverSegmentProps, canalSegmentProps,
-    selectedSegmentKeys, selectedCanalSegmentKeys,
+    riverSegmentProps,
+    selectedSegmentKeys,
     setRiverSegmentProp, setRiverSegmentPropMany, clearRiverSegmentPropMany,
-    setCanalSegmentProp, setCanalSegmentPropMany, clearCanalSegmentPropMany,
     riverHopProps, setRiverHopProp, clearRiverHopProp,
     selectedHopKey, setSelectedHopKey,
   } = useMapStore()
 
-  const isRiver      = mode === 'river'
-  const selectedKeys  = isRiver ? selectedSegmentKeys       : selectedCanalSegmentKeys
-  const segmentProps  = isRiver ? riverSegmentProps         : canalSegmentProps
-  const baseWidth     = isRiver ? riverWidthScale           : canalWidthScale
-  const setProp       = isRiver ? setRiverSegmentProp       : setCanalSegmentProp
-  const setPropMany   = isRiver ? setRiverSegmentPropMany   : setCanalSegmentPropMany
-  const clearPropMany = isRiver ? clearRiverSegmentPropMany : clearCanalSegmentPropMany
+  const selectedKeys  = selectedSegmentKeys
+  const segmentProps  = riverSegmentProps
+  const baseWidth     = riverWidthScale
+  const setProp       = setRiverSegmentProp
+  const setPropMany   = setRiverSegmentPropMany
+  const clearPropMany = clearRiverSegmentPropMany
 
   const n             = selectedKeys.length
   const firstProps    = segmentProps[selectedKeys[0]]
@@ -511,28 +462,25 @@ export function RiverLabelFlyout({ onClose }: { onClose: () => void }) {
 export function RiversSidebarV3() {
   const t = useTheme()
   const {
-    riverEditMode, riverPaintTier, canalEditMode, riverNodeEditMode,
-    riverSelectMode, canalSelectMode,
+    riverEditMode, riverPaintTier, riverNodeEditMode,
+    riverSelectMode,
     setActiveTool,
     selectedSegmentKeys, setSelectedSegmentKeys,
-    selectedCanalSegmentKeys, setSelectedCanalSegmentKeys,
-    riverTierStyles, riverStyle, canalStyle,
+    riverTierStyles,
     dataSource,
   } = useMapStore()
 
   const tierStyles = riverTierStyles ?? DEFAULT_RIVER_TIER_STYLES
 
   const [flyout, setFlyout] = useState<FlyoutId>(null)
-  const [segmentMode, setSegmentMode] = useState<'river' | 'canal'>('river')
 
   const toggle = (id: NonNullable<FlyoutId>) => setFlyout(prev => prev === id ? null : id)
 
   useEffect(() => {
-    if (selectedSegmentKeys.length > 0) { setSegmentMode('river'); setFlyout('segment') }
-    else if (selectedCanalSegmentKeys.length > 0) { setSegmentMode('canal'); setFlyout('segment') }
+    if (selectedSegmentKeys.length > 0) { setFlyout('segment') }
     else if (flyout === 'segment') { setFlyout(null) }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedSegmentKeys.length, selectedCanalSegmentKeys.length])
+  }, [selectedSegmentKeys.length])
 
   return (
     <div style={{ position: 'relative', height: '100%', display: 'flex' }}>
@@ -597,11 +545,7 @@ export function RiversSidebarV3() {
       {flyout === 'river-labels' && <RiverLabelFlyout onClose={() => setFlyout(null)} />}
       {flyout === 'segment'    && (
         <RiverSegmentFlyout
-          mode={segmentMode}
-          onClose={() => {
-            if (segmentMode === 'river') setSelectedSegmentKeys([])
-            else setSelectedCanalSegmentKeys([])
-          }}
+          onClose={() => setSelectedSegmentKeys([])}
         />
       )}
 

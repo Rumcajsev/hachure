@@ -6,7 +6,7 @@ import {
   BrushRow, StripShell, FlyoutShell, V2Divider, TriggerRow, TGap, ToggleRow,
 } from './sidebar'
 import {
-  RiverTierFlyout, CanalStyleFlyout, OsmRiversFlyout,
+  RiverTierFlyout, OsmRiversFlyout,
   RiverSegmentFlyout, RiverLabelFlyout, GlobalShapeFlyout,
 } from './RiversSidebarV3'
 import {
@@ -41,7 +41,7 @@ type FlyoutState =
   | null
   | { kind: 'river-0' } | { kind: 'river-1' } | { kind: 'river-2' }
   | { kind: 'osm-rivers' }
-  | { kind: 'river-segment'; segMode: 'river' | 'canal' }
+  | { kind: 'river-segment' }
   | { kind: 'river-labels' }
   | { kind: 'river-shape' }
   | { kind: 'road-style'; tier: 0 | 1 | 2 }
@@ -183,7 +183,6 @@ export function FeaturesSidebarV3() {
     riverSelectMode,
     riverTierStyles, riverStyle,
     selectedSegmentKeys, setSelectedSegmentKeys,
-    selectedCanalSegmentKeys, setSelectedCanalSegmentKeys,
     roadPaintMode, roadPaintBrush, roadPaintEraser,
     railPaintMode, railPaintEraser,
     roadNodeEditMode, railNodeEditMode,
@@ -210,11 +209,10 @@ export function FeaturesSidebarV3() {
 
   // Auto-open river segment flyout on selection
   useEffect(() => {
-    if (selectedSegmentKeys.length > 0)       setFlyout({ kind: 'river-segment', segMode: 'river' })
-    else if (selectedCanalSegmentKeys.length > 0) setFlyout({ kind: 'river-segment', segMode: 'canal' })
+    if (selectedSegmentKeys.length > 0) setFlyout({ kind: 'river-segment' })
     else setFlyout(prev => prev?.kind === 'river-segment' ? null : prev)
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedSegmentKeys.length, selectedCanalSegmentKeys.length])
+  }, [selectedSegmentKeys.length])
 
   // Auto-open road segment flyout on selection
   useEffect(() => {
@@ -452,12 +450,7 @@ export function FeaturesSidebarV3() {
       {flyout?.kind === 'river-labels'      && <RiverLabelFlyout onClose={() => setFlyout(null)} />}
       {flyout?.kind === 'river-segment'     && (
         <RiverSegmentFlyout
-          mode={(flyout as Extract<FlyoutState, { kind: 'river-segment' }>).segMode}
-          onClose={() => {
-            const mode = (flyout as Extract<FlyoutState, { kind: 'river-segment' }>).segMode
-            if (mode === 'river') setSelectedSegmentKeys([])
-            else setSelectedCanalSegmentKeys([])
-          }}
+          onClose={() => setSelectedSegmentKeys([])}
         />
       )}
       {flyout?.kind === 'road-style'        && <RoadStyleFlyout tier={(flyout as Extract<FlyoutState, { kind: 'road-style' }>).tier} onClose={() => setFlyout(null)} />}

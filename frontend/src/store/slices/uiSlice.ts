@@ -223,10 +223,6 @@ export const createUiSlice = (set: Set, get: () => MapStore): UiSlice => ({
     updates.riverSelectMode = tool.type === 'river-select'
     if (!updates.riverEditMode) { updates.selectedSegmentKeys = []; updates.selectedHopKey = null }
 
-    updates.canalEditMode = tool.type === 'canal-paint' || tool.type === 'canal-select'
-    updates.canalSelectMode = tool.type === 'canal-select'
-    if (!updates.canalEditMode) updates.selectedCanalSegmentKeys = []
-
     updates.highlightPaintMode = tool.type === 'highlight-paint'
     updates.highlightLineEraser = tool.type === 'highlight-erase' || tool.type === 'highlight-erase-any'
     if (tool.type === 'highlight-paint' || tool.type === 'highlight-erase') {
@@ -403,14 +399,14 @@ export const createUiSlice = (set: Set, get: () => MapStore): UiSlice => ({
         railChainOverrides: s.railChainOverrides, railSegmentProps: s.railSegmentProps,
         railHopProps: s.railHopProps, railPathSmoothing: s.railPathSmoothing,
         railGeomOverride: s.railGeomOverride,
-        riverEdges: s.riverEdges, canalEdges: s.canalEdges,
-        riverSegmentProps: s.riverSegmentProps, canalSegmentProps: s.canalSegmentProps,
+        riverEdges: s.riverEdges,
+        riverSegmentProps: s.riverSegmentProps,
         riverHopProps: s.riverHopProps,
         roadSegmentProps: s.roadSegmentProps, roadHopProps: s.roadHopProps,
         roadChainOverrides: s.roadChainOverrides, roadControlOverrides: s.roadControlOverrides,
         roadSnapBindings: s.roadSnapBindings, roadPathSmoothing: s.roadPathSmoothing,
         roadDensityMinChain: s.roadDensityMinChain, roadTierGeometry: s.roadTierGeometry,
-        riverStyle: s.riverStyle, canalStyle: s.canalStyle,
+        riverStyle: s.riverStyle,
         riverChainOverrides: s.riverChainOverrides,
         // riverFlowStyle / riverWiggliness — detached
         riverCurveSteps: s.riverCurveSteps,
@@ -420,7 +416,6 @@ export const createUiSlice = (set: Set, get: () => MapStore): UiSlice => ({
         riverSmoothing: s.riverSmoothing, riverWidthScale: s.riverWidthScale,
         riverPathSmoothing: s.riverPathSmoothing,
         showRiverLabels: s.showRiverLabels, riverLabelColor: s.riverLabelColor,
-        canalWidthScale: s.canalWidthScale,
         elevationStatus: s.elevationStatus,
         classificationParams: s.classificationParams,
         mapStyle: s.mapStyle,
@@ -538,10 +533,11 @@ export function migratePersisted(persisted: unknown, fromVersion: number): Recor
     s.selectedSegmentKeys = []
   }
   if (fromVersion < 4) {
-    if (!s.canalEdges) s.canalEdges = []
-    if (!s.canalSegmentProps) s.canalSegmentProps = {}
     if (!s.riverStyle) s.riverStyle = { color: '#5888b0', strokeEnabled: false, strokeColor: '#2a4a6a', strokeWidth: 0.4 }
-    if (!s.canalStyle) s.canalStyle = { color: '#6a9a8a', strokeEnabled: true, strokeColor: '#3a5a4a', strokeWidth: 0.5 }
+    delete (s as Record<string, unknown>).canalStyle
+    delete (s as Record<string, unknown>).canalEdges
+    delete (s as Record<string, unknown>).canalSegmentProps
+    delete (s as Record<string, unknown>).canalWidthScale
   }
   if (fromVersion < 5) {
     // if (s.riverFlowStyle === undefined) s.riverFlowStyle = 1  // detached
@@ -974,13 +970,6 @@ if (fromVersion < 64) {
     } else if (rs && !rs.effect) {
       rs.effect = { ...DEFAULT_FX }
     }
-    const cs = s.canalStyle as Record<string, unknown> | undefined
-    if (cs && cs.strokeEnabled !== undefined) {
-      cs.effect = { ...DEFAULT_FX, outlineEnabled: cs.strokeEnabled, outlineColor: cs.strokeColor ?? '#3a5a4a', outlineWidth: typeof cs.strokeWidth === 'number' ? cs.strokeWidth * 5 : 2 }
-      delete cs.strokeEnabled; delete cs.strokeColor; delete cs.strokeWidth
-    } else if (cs && !cs.effect) {
-      cs.effect = { ...DEFAULT_FX }
-    }
     // Migrate roadTierStyles: add effect field if missing
     const tiers = s.roadTierStyles as Array<Record<string, unknown>> | undefined
     if (tiers) {
@@ -1028,6 +1017,15 @@ if (fromVersion < 64) {
         delete t.smoothing; delete t.pathSmoothing
       }
     }
+  }
+  if (fromVersion < 79) {
+    delete (s as Record<string, unknown>).canalEdges
+    delete (s as Record<string, unknown>).canalSegmentProps
+    delete (s as Record<string, unknown>).canalStyle
+    delete (s as Record<string, unknown>).canalWidthScale
+    delete (s as Record<string, unknown>).canalEditMode
+    delete (s as Record<string, unknown>).canalSelectMode
+    delete (s as Record<string, unknown>).selectedCanalSegmentKeys
   }
   if (fromVersion < 69) {
     const cp = s.classificationParams as Record<string, unknown> | undefined

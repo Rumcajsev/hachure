@@ -106,8 +106,6 @@ export type ActiveTool =
   | { type: 'river-node-edit' }
   | { type: 'river-paint'; tier: RiverTier }
   | { type: 'river-select' }
-  | { type: 'canal-paint' }
-  | { type: 'canal-select' }
   | { type: 'highlight-paint'; id: string }
   | { type: 'highlight-erase'; id: string }
   | { type: 'highlight-erase-any' }
@@ -295,11 +293,6 @@ export const DEFAULT_RIVER_STYLE: RiverStyleConfig = {
   effect: { ...DEFAULT_STROKE_EFFECT, outlineEnabled: false, outlineColor: '#2a4a6a', outlineWidth: 0.4 },
 }
 
-export const DEFAULT_CANAL_STYLE: RiverStyleConfig = {
-  color:  '#6a9a8a',
-  effect: { ...DEFAULT_STROKE_EFFECT, outlineEnabled: true, outlineColor: '#3a5a4a', outlineWidth: 1.5 },
-}
-
 export function paperDimsMm(size: PaperSize, orientation: Orientation): [number, number] {
   const [s, l] = PAPER_MM[size]
   return orientation === 'landscape' ? [l, s] : [s, l]
@@ -483,10 +476,6 @@ export const DEFAULT_RIVER_GEOM = {
   wiggleFreq: 2.5,
   smoothing: 10,
   pathSmoothing: 0,
-}
-
-export const DEFAULT_CANAL_GEOM = {
-  widthScale: 0.45,
 }
 
 export const DEFAULT_ROAD_GEOM = {
@@ -812,12 +801,9 @@ export const useMapStore = create<MapStore>()(persist((set, get) => ({
     railsFetchTypes: s.railsFetchTypes,
     railsStatus: s.railsStatus,
     riverEdges: s.riverEdges,
-    canalEdges: s.canalEdges,
     riverSegmentProps: s.riverSegmentProps,
-    canalSegmentProps: s.canalSegmentProps,
     riverHopProps: s.riverHopProps,
     riverStyle: s.riverStyle,
-    canalStyle: s.canalStyle,
     riverChainOverrides: s.riverChainOverrides,
     // riverFlowStyle / riverWiggliness — detached
     riverCurveSteps: s.riverCurveSteps,
@@ -848,7 +834,6 @@ export const useMapStore = create<MapStore>()(persist((set, get) => ({
     illustratedStyle: s.illustratedStyle,
     riverTierStyles: s.riverTierStyles,
     riverWidthScale: s.riverWidthScale,
-    canalWidthScale: s.canalWidthScale,
     riverWiggleAmp: s.riverWiggleAmp,
     riverWiggleFreq: s.riverWiggleFreq,
     riverSmoothing: s.riverSmoothing,
@@ -985,7 +970,7 @@ export const useMapStore = create<MapStore>()(persist((set, get) => ({
     labelPresetId: s.labelPresetId,
     labelOverrides: s.labelOverrides,
   }),
-  version: 78,
+  version: 79,
   migrate: migratePersisted,
   merge: (persisted, current) => rehydrateState({ ...current, ...(persisted as Partial<MapStore>) }),
 }))

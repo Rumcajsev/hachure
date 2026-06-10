@@ -1,4 +1,4 @@
-/** River and canal layer rendering. Pure canvas operations — no React or store imports. */
+/** River layer rendering. Pure canvas operations — no React or store imports. */
 
 import type { RiverStyleConfig, RiverTierStyle, LabelBBox } from '../store/mapStore'
 import { DEFAULT_STROKE_EFFECT } from '../store/mapStore'
@@ -23,18 +23,13 @@ export type RiverLabelEntry = { name: string; coords: [number, number][] }
 
 export type DrawRiversParams = {
   riverTierChainData: [ChainEntry[], ChainEntry[], ChainEntry[]]
-  canalChainData: ChainEntry[]
   riverHopProps?: Record<string, HopProps>
   selectedHopKey?: string | null
   riverSegProps: SegProps
-  canalSegProps: SegProps
   riverTierStyles: [RiverTierStyle, RiverTierStyle, RiverTierStyle]
   riverStyle?: RiverStyleConfig   // legacy fallback
-  canalStyle: RiverStyleConfig
   selectedRiverKeys: Set<string>
-  selectedCanalKeys: Set<string>
   riverBaseHW: number   // base half-width before tier widthScale is applied
-  canalBaseHW: number
   lakeProjCenters: { px: number; py: number }[]
   smoothPasses: number
   wobbleBroad: number
@@ -328,20 +323,17 @@ function drawRiverLabels(
 
 export function drawRivers(rCtx: Ctx, params: DrawRiversParams) {
   const {
-    riverTierChainData, canalChainData,
-    riverSegProps, canalSegProps,
-    riverTierStyles, riverStyle, canalStyle,
-    selectedRiverKeys, selectedCanalKeys,
-    riverBaseHW, canalBaseHW,
+    riverTierChainData,
+    riverSegProps,
+    riverTierStyles, riverStyle,
+    selectedRiverKeys,
+    riverBaseHW,
     lakeProjCenters, smoothPasses, wobbleBroad, wobbleDetail, R,
     riverHopProps, selectedHopKey,
     project,
     showRiverLabels, riverLabelData, waterLabelSpec,
     labelOffsets, liveLabelOffset, labelBBoxOut,
   } = params
-
-  drawRiverLayer(rCtx, canalChainData, canalSegProps, canalStyle, selectedCanalKeys,
-    null, canalBaseHW, false, lakeProjCenters, R, smoothPasses, 0, 0, undefined, project)
 
   // Draw river tiers back-to-front: stream (2) → river (1) → major (0)
   for (const tier of [2, 1, 0] as const) {

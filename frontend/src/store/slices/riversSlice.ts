@@ -1,5 +1,5 @@
 import type { MapStore, RiverStyleConfig, RiverTierStyle, RiverTier, RiverEdge, OsmRiverWay } from '../mapStore'
-import { DEFAULT_RIVER_STYLE, DEFAULT_CANAL_STYLE, DEFAULT_RIVER_TIER_STYLES, waterwayTypeToTier } from '../mapStore'
+import { DEFAULT_RIVER_STYLE, DEFAULT_RIVER_TIER_STYLES, waterwayTypeToTier } from '../mapStore'
 
 export type RiversSlice = {
   osmRiverWays: OsmRiverWay[]
@@ -12,28 +12,19 @@ export type RiversSlice = {
   setHoveredOsmRiverIdx: (idx: number | null) => void
   clearOsmRivers: () => void
   riverEdges: RiverEdge[]
-  canalEdges: RiverEdge[]
   showRiverLabels: boolean
   riverLabelColor: string
   riverSegmentProps: Record<string, { width?: number; taper?: number; taperRange?: [number, number]; wiggleAmp?: number; wiggleFreq?: number; pathSmoothing?: number }>
-  canalSegmentProps: Record<string, { width?: number; taper?: number; taperRange?: [number, number] }>
   riverSelectMode: boolean
-  canalSelectMode: boolean
   selectedSegmentKeys: string[]
-  selectedCanalSegmentKeys: string[]
   riverTierStyles: [RiverTierStyle, RiverTierStyle, RiverTierStyle]
   riverStyle: RiverStyleConfig   // legacy, kept for migration
-  canalStyle: RiverStyleConfig
   riverEditMode: boolean
   riverPaintTier: RiverTier
-  canalEditMode: boolean
   riverWidthScale: number        // legacy, kept for migration
-  canalWidthScale: number
-  // riverFlowStyle: number  — defined but never wired to canvas or UI
   riverCurveSteps: number
   riverWobble: number
   riverDetail: number
-  // riverWiggliness: number  — defined but never wired to canvas or UI
   riverWiggleFreq: number
   riverWiggleAmp: number
   riverSmoothing: number
@@ -66,22 +57,10 @@ export type RiversSlice = {
   clearRiverSegmentPropMany: (keys: string[]) => void
   setRiverTierStyle: (tier: RiverTier, s: Partial<RiverTierStyle>) => void
   setRiverStyle: (s: Partial<RiverStyleConfig>) => void   // legacy
-  toggleCanalEdge: (q1: number, r1: number, q2: number, r2: number) => void
-  setCanalSelectMode: (v: boolean) => void
-  setSelectedCanalSegmentKeys: (keys: string[]) => void
-  toggleCanalSegmentSelection: (key: string) => void
-  setCanalSegmentProp: (key: string, prop: { width?: number; taper?: number; taperRange?: [number, number] }) => void
-  setCanalSegmentPropMany: (keys: string[], prop: { width?: number; taper?: number; taperRange?: [number, number] }) => void
-  clearCanalSegmentProp: (key: string) => void
-  clearCanalSegmentPropMany: (keys: string[]) => void
-  setCanalStyle: (s: Partial<RiverStyleConfig>) => void
-  setCanalWidthScale: (v: number) => void
   setRiverWidthScale: (v: number) => void
-  // setRiverFlowStyle: (v: number) => void  — detached
   setRiverCurveSteps: (v: number) => void
   setRiverWobble: (v: number) => void
   setRiverDetail: (v: number) => void
-  // setRiverWiggliness: (v: number) => void  — detached
   setRiverWiggleFreq: (v: number) => void
   setRiverWiggleAmp: (v: number) => void
   setRiverSmoothing: (v: number) => void
@@ -103,8 +82,8 @@ const edgeKey = (q1: number, r1: number, q2: number, r2: number) => {
 }
 
 function makeSegmentActions(
-  propsKey: 'riverSegmentProps' | 'canalSegmentProps',
-  selKey: 'selectedSegmentKeys' | 'selectedCanalSegmentKeys',
+  propsKey: 'riverSegmentProps',
+  selKey: 'selectedSegmentKeys',
   set: Set,
   get: () => MapStore,
 ) {
@@ -144,7 +123,6 @@ function makeSegmentActions(
 
 export const createRiversSlice = (set: Set, get: () => MapStore): RiversSlice => {
   const river = makeSegmentActions('riverSegmentProps', 'selectedSegmentKeys', set, get)
-  const canal = makeSegmentActions('canalSegmentProps', 'selectedCanalSegmentKeys', set, get)
 
   return {
     osmRiverWays: [],
@@ -154,24 +132,16 @@ export const createRiversSlice = (set: Set, get: () => MapStore): RiversSlice =>
     appliedOsmRiverIndices: [],
 
     riverEdges: [],
-    canalEdges: [],
     showRiverLabels: true,
     riverLabelColor: '#2a5a8a',
     riverEditMode: false,
     riverPaintTier: 1 as RiverTier,
-    canalEditMode: false,
     riverSegmentProps: {},
-    canalSegmentProps: {},
     riverSelectMode: false,
-    canalSelectMode: false,
     selectedSegmentKeys: [],
-    selectedCanalSegmentKeys: [],
     riverTierStyles: DEFAULT_RIVER_TIER_STYLES.map(s => ({ ...s, effect: { ...s.effect } })) as [RiverTierStyle, RiverTierStyle, RiverTierStyle],
     riverStyle: { ...DEFAULT_RIVER_STYLE },   // legacy
-    canalStyle: { ...DEFAULT_CANAL_STYLE },
     riverWidthScale: 1.0,   // legacy
-    canalWidthScale: 0.45,
-    // riverFlowStyle / riverWiggliness — detached
     riverCurveSteps: 3,
     riverWobble: 0,
     riverDetail: 0,
@@ -220,16 +190,10 @@ export const createRiversSlice = (set: Set, get: () => MapStore): RiversSlice =>
     },
 
     toggleOsmRiver: (idx) => {
-      const { osmRiverWays, appliedOsmRiverIndices, riverEdges, canalEdges, riverSegmentProps, canalSegmentProps } = get()
+      const { osmRiverWays, appliedOsmRiverIndices, riverEdges, riverSegmentProps } = get()
       const way = osmRiverWays[idx]
       if (!way) return
       get().pushUndoSnapshot()
-
-      const isRiver = way.type !== 'canal'
-      const edgesKey = isRiver ? 'riverEdges' : 'canalEdges'
-      const propsKey = isRiver ? 'riverSegmentProps' : 'canalSegmentProps'
-      const existingEdges = isRiver ? riverEdges : canalEdges
-      const existingProps = isRiver ? riverSegmentProps : canalSegmentProps
 
       const wayEdgeKeys = new Set<string>()
       for (const e of way.edges) {
@@ -238,23 +202,19 @@ export const createRiversSlice = (set: Set, get: () => MapStore): RiversSlice =>
       }
 
       if (appliedOsmRiverIndices.includes(idx)) {
-        const newEdges = existingEdges.filter(e => {
+        const newEdges = riverEdges.filter(e => {
           const a = `${e.q1},${e.r1}`, b = `${e.q2},${e.r2}`
           return !wayEdgeKeys.has(a < b ? `${a}|${b}` : `${b}|${a}`)
         })
-        const newProps = { ...existingProps }
+        const newProps = { ...riverSegmentProps }
         for (const k of wayEdgeKeys) delete newProps[k]
-        set({
-          [edgesKey]: newEdges,
-          [propsKey]: newProps,
-          appliedOsmRiverIndices: appliedOsmRiverIndices.filter(i => i !== idx),
-        } as Partial<MapStore>)
+        set({ riverEdges: newEdges, riverSegmentProps: newProps, appliedOsmRiverIndices: appliedOsmRiverIndices.filter(i => i !== idx) })
       } else {
-        const existingPairs = new Set(existingEdges.map(e => {
+        const existingPairs = new Set(riverEdges.map(e => {
           const a = `${e.q1},${e.r1}`, b = `${e.q2},${e.r2}`
           return a < b ? `${a}|${b}` : `${b}|${a}`
         }))
-        const tier = isRiver ? waterwayTypeToTier(way.type) : undefined
+        const tier = waterwayTypeToTier(way.type)
         const newEdges: RiverEdge[] = []
         const newProps: Record<string, { width: number }> = {}
         const edgeSet = new Set<string>()
@@ -263,12 +223,12 @@ export const createRiversSlice = (set: Set, get: () => MapStore): RiversSlice =>
           const pairKey = a < b ? `${a}|${b}` : `${b}|${a}`
           if (existingPairs.has(pairKey) || edgeSet.has(pairKey)) continue
           edgeSet.add(pairKey)
-          newEdges.push({ ...e, ...(tier !== undefined ? { tier } : {}) })
+          newEdges.push({ ...e, tier })
           newProps[pairKey] = { width: way.width_multiplier }
         }
         set(s => ({
-          [edgesKey]: [...(s[edgesKey] as typeof newEdges), ...newEdges],
-          [propsKey]: { ...(s[propsKey] as Record<string, { width: number }>), ...newProps },
+          riverEdges: [...s.riverEdges, ...newEdges],
+          riverSegmentProps: { ...s.riverSegmentProps, ...newProps },
           appliedOsmRiverIndices: [...s.appliedOsmRiverIndices, idx],
         }))
       }
@@ -299,24 +259,7 @@ export const createRiversSlice = (set: Set, get: () => MapStore): RiversSlice =>
     },
     setRiverEdges: (edges) => set({ riverEdges: edges }),
 
-    toggleCanalEdge: (q1, r1, q2, r2) => {
-      get().pushUndoSnapshot()
-      const { canalEdges } = get()
-      const k = edgeKey(q1, r1, q2, r2)
-      const idx = canalEdges.findIndex(e => edgeKey(e.q1, e.r1, e.q2, e.r2) === k)
-      set({ canalEdges: idx >= 0 ? canalEdges.filter((_, i) => i !== idx) : [...canalEdges, { q1, r1, q2, r2 }] })
-    },
-    setCanalSelectMode: (v) => set({ canalSelectMode: v, selectedCanalSegmentKeys: [] }),
-    setSelectedCanalSegmentKeys: canal.setSelectedKeys,
-    toggleCanalSegmentSelection: canal.toggleSelection,
-    setCanalSegmentProp: canal.setProp,
-    setCanalSegmentPropMany: canal.setPropMany,
-    clearCanalSegmentProp: canal.clearProp,
-    clearCanalSegmentPropMany: canal.clearPropMany,
-    setCanalStyle: (s) => set(st => ({ canalStyle: { ...st.canalStyle, ...s } })),
-    setCanalWidthScale: (v) => set({ canalWidthScale: v }),
     setRiverWidthScale: (v) => set({ riverWidthScale: v }),
-    // setRiverFlowStyle / setRiverWiggliness — detached
     setRiverCurveSteps: (v) => set({ riverCurveSteps: v }),
     setRiverWobble: (v) => set({ riverWobble: v }),
     setRiverDetail: (v) => set({ riverDetail: v }),

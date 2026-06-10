@@ -29,11 +29,6 @@ function riverBrushCursor(): string {
   return svgCursor(svg, 3, 3)
 }
 
-function canalBrushCursor(): string {
-  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24"><line x1="3" y1="9" x2="21" y2="9" stroke="#4a6a8a" stroke-width="1.5"/><line x1="3" y1="15" x2="21" y2="15" stroke="#4a6a8a" stroke-width="1.5"/><rect x="3" y="9" width="18" height="6" fill="#4a6a8a" opacity="0.12"/><circle cx="3" cy="3" r="2" fill="#4a6a8a" opacity="0.85"/></svg>`
-  return svgCursor(svg, 3, 3)
-}
-
 function terrainBrushCursor(color: string): string {
   const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24"><circle cx="12" cy="13" r="9" fill="${color}" opacity="0.75" stroke="rgba(0,0,0,0.4)" stroke-width="1"/><circle cx="3" cy="3" r="2" fill="${color}" stroke="rgba(0,0,0,0.5)" stroke-width="0.5"/></svg>`
   return svgCursor(svg, 3, 3)
@@ -109,13 +104,10 @@ export function getToolCursor(
     case 'node-edit':
     case 'river-node-edit':
     case 'river-select':
-    case 'canal-select':
     case 'road-select':
       return 'default'
     case 'river-paint':
       return riverBrushCursor()
-    case 'canal-paint':
-      return canalBrushCursor()
     case 'highlight-paint': {
       const hl = opts.highlights.find(h => h.id === activeTool.id)
       return highlightBrushCursor(hl?.color ?? '#a0a060')
