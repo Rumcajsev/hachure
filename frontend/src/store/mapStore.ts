@@ -70,11 +70,15 @@ export interface BlobOverride {
   outlineColor?: string
   outlineWidth?: number
   effect?: Partial<StrokeEffect>
-  riverRepulsionRadius?: number
-  roadRepulsionRadius?: number
-  repulsionStrength?: number
 }
 
+
+export type BlobMaskEdit = {
+  id: string
+  terrain: string
+  type: 'subtract' | 'add'
+  polygon: [number, number][]  // WGS84 lon/lat coordinates
+}
 
 export interface ClassificationParams {
   rangeHillsM: number     // min relief (range) to qualify as hills
@@ -267,12 +271,18 @@ export interface RiverTierStyle {
   wiggleFreq?:    number
   smoothing?:     number
   pathSmoothing?: number
+  // Bank clearance
+  bankEnabled:    boolean
+  bankWidth:      number    // extra half-width on each side (canvas px)
+  bankTerrains:   string[]  // terrain types that trigger bank; empty = show everywhere
 }
 
+const DEFAULT_BANK = { bankEnabled: false, bankWidth: 4, bankTerrains: [] as string[] }
+
 export const DEFAULT_RIVER_TIER_STYLES: [RiverTierStyle, RiverTierStyle, RiverTierStyle] = [
-  { label: 'Major River', color: WATER_COLOR, widthScale: 1.5,  visible: true, effect: { ...DEFAULT_STROKE_EFFECT } },
-  { label: 'River',       color: WATER_COLOR, widthScale: 1.0,  visible: true, effect: { ...DEFAULT_STROKE_EFFECT } },
-  { label: 'Stream',      color: '#5878a0',   widthScale: 0.55, visible: true, effect: { ...DEFAULT_STROKE_EFFECT } },
+  { label: 'Major River', color: WATER_COLOR, widthScale: 1.5,  visible: true, effect: { ...DEFAULT_STROKE_EFFECT }, ...DEFAULT_BANK },
+  { label: 'River',       color: WATER_COLOR, widthScale: 1.0,  visible: true, effect: { ...DEFAULT_STROKE_EFFECT }, ...DEFAULT_BANK },
+  { label: 'Stream',      color: '#5878a0',   widthScale: 0.55, visible: true, effect: { ...DEFAULT_STROKE_EFFECT }, ...DEFAULT_BANK },
 ]
 
 /** Maps OSM waterway type string to river tier (0=Major River, 1=River, 2=Stream) */
@@ -844,7 +854,6 @@ export const useMapStore = create<MapStore>()(persist((set, get) => ({
     roadSegmentProps: s.roadSegmentProps,
     roadHopProps: s.roadHopProps,
     roadTierStyles: s.roadTierStyles,
-    roadClearanceTerrains: Array.from(s.roadClearanceTerrains) as unknown as Set<string>,
     roadChainOverrides: s.roadChainOverrides,
     roadControlOverrides: s.roadControlOverrides,
     roadSnapBindings: s.roadSnapBindings,
@@ -918,6 +927,7 @@ export const useMapStore = create<MapStore>()(persist((set, get) => ({
     customTerrains: s.customTerrains,
     blobSeeds: s.blobSeeds,
     blobHandleOverrides: s.blobHandleOverrides,
+    blobMaskEdits: s.blobMaskEdits,
     waterBlobSmooth: s.waterBlobSmooth,
     waterBlobOffset: s.waterBlobOffset,
     waterBlobBump: s.waterBlobBump,
@@ -970,7 +980,7 @@ export const useMapStore = create<MapStore>()(persist((set, get) => ({
     labelPresetId: s.labelPresetId,
     labelOverrides: s.labelOverrides,
   }),
-  version: 79,
+  version: 80,
   migrate: migratePersisted,
   merge: (persisted, current) => rehydrateState({ ...current, ...(persisted as Partial<MapStore>) }),
 }))

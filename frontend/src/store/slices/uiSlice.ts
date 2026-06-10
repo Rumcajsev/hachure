@@ -1018,6 +1018,17 @@ if (fromVersion < 64) {
       }
     }
   }
+  if (fromVersion < 80) {
+    const tiers = s.riverTierStyles as Array<Record<string, unknown>> | undefined
+    if (tiers) {
+      for (const ts of tiers) {
+        if (ts.bankEnabled === undefined) ts.bankEnabled = false
+        if (ts.bankWidth === undefined) ts.bankWidth = 4
+        if (ts.bankTerrains === undefined) ts.bankTerrains = []
+      }
+    }
+    if (!s.blobMaskEdits) s.blobMaskEdits = []
+  }
   if (fromVersion < 79) {
     delete (s as Record<string, unknown>).canalEdges
     delete (s as Record<string, unknown>).canalSegmentProps
@@ -1046,8 +1057,6 @@ if (fromVersion < 64) {
 export function rehydrateState(state: MapStore): MapStore {
   const dt = state.disabledTerrains
   state.disabledTerrains = dt instanceof Set ? dt : new Set(Array.isArray(dt) ? dt as string[] : [])
-  const rct = state.roadClearanceTerrains
-  state.roadClearanceTerrains = rct instanceof Set ? rct : new Set(Array.isArray(rct) ? rct as string[] : [])
   if (state.generateStatus === 'loading') state.generateStatus = 'idle'
   if (state.elevationStatus === 'loading') state.elevationStatus = 'idle'
   if (state.settlementsStatus === 'loading') state.settlementsStatus = 'idle'

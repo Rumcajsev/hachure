@@ -4,8 +4,9 @@
 import { chaikin, subdivideClosedPolygon, resampleSmoothQuad, douglasPeuckerClosed } from './geometry'
 import { makePermutation, perlinNoise2D, perturbXY, perturbNormal, mulberry32 } from './noise'
 import { projectToCanvas } from './projection'
+import polygonClipping from 'polygon-clipping'
 import { hexTerrainLayers } from '../store/mapStore'
-import type { GridMetadata, GeneratedHex } from '../store/mapStore'
+import type { GridMetadata, GeneratedHex, BlobMaskEdit } from '../store/mapStore'
 
 // ── Coastal hex helpers ──────────────────────────────────────────────────────
 
@@ -43,186 +44,6 @@ export function coastalBlobTerrains(hex: GeneratedHex, realisticCoastline: boole
   const merged = new Set(base)
   merged.add(land)
   return [...merged]
-}
-
-// ── Post-shape corridor clamp ────────────────────────────────────────────────
-
-export type CorridorClamp = { chain: [number, number][]; halfWidth: number }
-
-/** After shapeTerrainBlobs, push any shaped vertex that strayed inside a corridor
- *  back to the corridor boundary — by the minimum amount needed, preserving the
- *  vertex's direction (so organic angular variation is kept, only radial distance clamped). */
-export function clampBlobsToCorridors(
-  polys: [number, number][][],
-  corridors: CorridorClamp[],
-): [number, number][][] {
-  if (corridors.length === 0) return polys
-  return polys.map(poly =>
-    poly.map(([x, y]) => {
-      let bestDist = Infinity, bestCx = x, bestCy = y, bestHW = 0
-      for (const { chain, halfWidth } of corridors) {
-        for (let i = 0; i < chain.length - 1; i++) {
-          const ax = chain[i][0], ay = chain[i][1]
-          const bx = chain[i+1][0], by = chain[i+1][1]
-          const dx = bx - ax, dy = by - ay
-          const len2 = dx*dx + dy*dy
-          const t = len2 < 1e-10 ? 0 : Math.max(0, Math.min(1, ((x-ax)*dx + (y-ay)*dy) / len2))
-          const cx = ax + t*dx, cy = ay + t*dy
-          const dist = Math.hypot(x - cx, y - cy)
-          if (dist < bestDist) { bestDist = dist; bestCx = cx; bestCy = cy; bestHW = halfWidth }
-        }
-      }
-      if (bestDist >= bestHW) return [x, y] as [number, number]
-      // Push radially outward to exactly halfWidth — preserves angular variation
-      const len = bestDist > 1e-6 ? bestDist : 1
-      return [bestCx + (x - bestCx) / len * bestHW, bestCy + (y - bestCy) / len * bestHW] as [number, number]
-    })
-  )
-}
-
-// ── Distance-based blob split ─────────────────────────────────────────────────
-
-/** Minimum distance from point (px,py) to polyline, returning also the closest point. */
-function distToChain(
-  px: number, py: number,
-  chain: [number, number][],
-): { dist: number; cx: number; cy: number } {
-  let best = Infinity, bx = px, by = py
-  for (let i = 0; i < chain.length - 1; i++) {
-    const ax = chain[i][0], ay = chain[i][1]
-    const bx2 = chain[i+1][0], by2 = chain[i+1][1]
-    const dx = bx2 - ax, dy = by2 - ay
-    const len2 = dx*dx + dy*dy
-    const t = len2 < 1e-10 ? 0 : Math.max(0, Math.min(1, ((px-ax)*dx + (py-ay)*dy) / len2))
-    const cx = ax + t*dx, cy = ay + t*dy
-    const d = Math.hypot(px-cx, py-cy)
-    if (d < best) { best = d; bx = cx; by = cy }
-  }
-  return { dist: best, cx: bx, cy: by }
-}
-
-export type DistanceCorridor = { chain: [number, number][]; halfWidth: number }
-
-/** Split a raw blob polygon into outside arcs wherever edges cross the corridor distance boundary.
- *  Uses direct distance to the road/river centerline — handles any winding geometry correctly. */
-export function splitBlobByCorridors(
-  rawPoly: [number, number][],
-  corridors: DistanceCorridor[],
-): [number, number][][] {
-  if (corridors.length === 0 || rawPoly.length < 3) return [rawPoly]
-
-  // Subdivide polygon so no edge is longer than minHalfWidth — ensures even narrow
-  // corridors have vertices close enough to be detected by the distance check.
-  const minHW = Math.min(...corridors.map(c => c.halfWidth))
-  const maxSegLen = Math.max(1, minHW * 0.8)
-  const densePoly: [number, number][] = []
-  for (let i = 0; i < rawPoly.length; i++) {
-    const a = rawPoly[i], b = rawPoly[(i + 1) % rawPoly.length]
-    densePoly.push(a)
-    const len = Math.hypot(b[0] - a[0], b[1] - a[1])
-    const segs = Math.ceil(len / maxSegLen)
-    for (let s = 1; s < segs; s++) {
-      const t = s / segs
-      densePoly.push([a[0] + t * (b[0] - a[0]), a[1] + t * (b[1] - a[1])])
-    }
-  }
-
-  const n = densePoly.length
-  const rawPoly2 = densePoly  // work on the dense version
-
-  // Effective half-width per vertex: minimum distance to any corridor centerline, vs halfWidth
-  const minDist = (x: number, y: number): { d: number; hw: number } => {
-    let best = Infinity, hw = 0
-    for (const { chain, halfWidth } of corridors) {
-      const r = distToChain(x, y, chain)
-      if (r.dist < best) { best = r.dist; hw = halfWidth }
-    }
-    return { d: best, hw }
-  }
-
-  const vertDists = rawPoly2.map(([x, y]) => minDist(x, y))
-
-  // Find crossing points: edges where inside/outside status changes
-  type Split = { edge: number; t: number; pt: [number, number] }
-  const splits: Split[] = []
-
-  for (let i = 0; i < n; i++) {
-    const j = (i + 1) % n
-    const { d: di, hw: hwi } = vertDists[i]
-    const { d: dj, hw: hwj } = vertDists[j]
-    const inside_i = di < hwi, inside_j = dj < hwj
-    if (inside_i === inside_j) continue
-    const hw = (hwi + hwj) / 2
-    const denom = dj - di
-    const t = Math.abs(denom) < 1e-10 ? 0.5 : Math.max(0, Math.min(1, (hw - di) / denom))
-    const pt: [number, number] = [
-      rawPoly2[i][0] + t * (rawPoly2[j][0] - rawPoly2[i][0]),
-      rawPoly2[i][1] + t * (rawPoly2[j][1] - rawPoly2[i][1]),
-    ]
-    splits.push({ edge: i, t, pt })
-  }
-
-  if (splits.length < 2) {
-    const { d, hw } = vertDists[0]
-    return d < hw ? [] : [rawPoly]
-  }
-
-  // Build outside arcs between consecutive split points
-  const results: [number, number][][] = []
-  const nh = splits.length
-
-  for (let k = 0; k < nh; k++) {
-    const from = splits[k]
-    const to   = splits[(k + 1) % nh]
-    const sampleIdx = (from.edge + 1) % n
-    const { d, hw } = vertDists[sampleIdx]
-    if (d < hw) continue
-
-    const arc: [number, number][] = [from.pt]
-    for (let i = (from.edge + 1) % n; i !== (to.edge + 1) % n; i = (i + 1) % n) {
-      arc.push(rawPoly2[i])
-      if (arc.length > n + 2) break
-    }
-    arc.push(to.pt)
-    if (arc.length >= 3) results.push(arc)
-  }
-
-  return results.length > 0 ? results : [rawPoly]
-}
-
-// ── Corridor polygon builder ─────────────────────────────────────────────────
-
-/** Build an organic closed polygon buffering a polyline. Used as a hole cutter
- *  in blob raw polygons — the terrain's own bump/sweepFreq drive the edge noise
- *  so the clearing boundary looks like it belongs to the terrain type. */
-export function buildCorridorPolygon(
-  pts: [number, number][],
-  halfWidth: number,
-  bumpFraction: number,
-  sweepFreq: number,
-  R: number,
-  seed: number,
-): [number, number][] {
-  if (pts.length < 2 || halfWidth <= 0) return []
-  const perm = makePermutation(seed + 777)
-  const noiseFreq = sweepFreq / R
-  const noiseAmp = halfWidth * bumpFraction
-  const left: [number, number][] = []
-  const right: [number, number][] = []
-  for (let i = 0; i < pts.length; i++) {
-    let tx: number, ty: number
-    if (i === 0) { tx = pts[1][0] - pts[0][0]; ty = pts[1][1] - pts[0][1] }
-    else if (i === pts.length - 1) { tx = pts[i][0] - pts[i-1][0]; ty = pts[i][1] - pts[i-1][1] }
-    else { tx = pts[i+1][0] - pts[i-1][0]; ty = pts[i+1][1] - pts[i-1][1] }
-    const len = Math.hypot(tx, ty)
-    if (len < 1e-6) { left.push(pts[i]); right.push(pts[i]); continue }
-    const nx = -ty / len, ny = tx / len
-    const [x, y] = pts[i]
-    const w = Math.max(0, halfWidth + perlinNoise2D(x * noiseFreq, y * noiseFreq, perm) * noiseAmp)
-    left.push([x + nx * w, y + ny * w])
-    right.push([x - nx * w, y - ny * w])
-  }
-  return [...left, ...right.reverse()]
 }
 
 // ── Topo-style perimeter resampling ─────────────────────────────────────────
@@ -682,4 +503,47 @@ export function buildFieldCanvas(
   octx.putImageData(imageData, 0, 0)
   return offscreen
 }
-*/
+
+// ── Blob mask edits (boolean add/subtract) ───────────────────────────────────
+
+/** Apply stored BlobMaskEdits to pre-shaped blob polygons.
+ *  Edits are stored in WGS84 lon/lat; projectFn converts them to canvas space.
+ *  Only the outer ring of each result polygon is kept — holes are not yet supported. */
+export function applyBlobMaskEdits(
+  blobs: { terrain: string; polys: [number, number][][] }[],
+  edits: BlobMaskEdit[],
+  projectFn: (lonlat: [number, number]) => [number, number],
+): { terrain: string; polys: [number, number][][] }[] {
+  if (edits.length === 0) return blobs
+  return blobs.map(blob => {
+    const relevant = edits.filter(e => e.terrain === blob.terrain)
+    if (relevant.length === 0) return blob
+
+    let polys = blob.polys
+    for (const edit of relevant) {
+      const editCanvas = edit.polygon.map(projectFn)
+      if (editCanvas.length < 3) continue
+      const editMPoly: polygonClipping.MultiPolygon = [[editCanvas as polygonClipping.Ring]]
+
+      if (edit.type === 'subtract') {
+        const next: [number, number][][] = []
+        for (const poly of polys) {
+          if (poly.length < 3) continue
+          const subject: polygonClipping.MultiPolygon = [[poly as polygonClipping.Ring]]
+          try {
+            const result = polygonClipping.difference(subject, editMPoly)
+            for (const polygon of result) {
+              if (polygon[0]?.length >= 3) next.push(polygon[0] as [number, number][])
+            }
+          } catch {
+            next.push(poly)
+          }
+        }
+        polys = next
+      } else {
+        polys = [...polys, editCanvas as [number, number][]]
+      }
+    }
+    return { ...blob, polys }
+  })
+}
