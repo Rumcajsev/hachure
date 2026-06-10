@@ -553,8 +553,11 @@ export function applyBlobMaskEdits(
       const editCanvas = edit.polygon.map(projectFn)
       if (editCanvas.length < 3) continue
 
+      const seed = Math.abs(Math.round(editCanvas[0][0] * 73 + editCanvas[0][1] * 97)) ^ (edit.id.split('').reduce((a, c) => a + c.charCodeAt(0), 0))
+      const shaped = shapeParams ? shapeAddPolygon(editCanvas as [number, number][], seed, shapeParams) : editCanvas as [number, number][]
+
       if (edit.type === 'subtract') {
-        const editMPoly: polygonClipping.MultiPolygon = [[editCanvas as polygonClipping.Ring]]
+        const editMPoly: polygonClipping.MultiPolygon = [[shaped as polygonClipping.Ring]]
         const next: [number, number][][] = []
         for (const poly of polys) {
           if (poly.length < 3) continue
@@ -570,8 +573,6 @@ export function applyBlobMaskEdits(
         }
         polys = next
       } else {
-        const seed = Math.abs(Math.round(editCanvas[0][0] * 73 + editCanvas[0][1] * 97)) ^ (edit.id.split('').reduce((a, c) => a + c.charCodeAt(0), 0))
-        const shaped = shapeParams ? shapeAddPolygon(editCanvas as [number, number][], seed, shapeParams) : editCanvas as [number, number][]
         polys = [...polys, shaped]
       }
     }
