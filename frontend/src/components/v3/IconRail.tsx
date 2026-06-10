@@ -1,62 +1,110 @@
+import { useState } from 'react'
 import { useTheme } from '../../context/ThemeContext'
 
-export type V3Panel = 'terrain' | 'roads' | 'rivers' | 'settlements' | 'highlights' | 'overlays' | 'display'
+export type V3Tool =
+  | 'hand'
+  | 'select'
+  | 'terrain'
+  | 'roads'
+  | 'rivers'
+  | 'settlements'
+  | 'highlights'
+  | 'display'
 
-const ICONS: { id: V3Panel; label: string; svg: string }[] = [
-  {
-    id: 'terrain',
-    label: 'Terrain',
-    svg: `<path d="M8 14L4 8l4-4 4 4-1.5 2.5L12 14H8z" fill="currentColor" opacity="0.9"/>
-          <path d="M12 14l2-4 2 4h-4z" fill="currentColor" opacity="0.5"/>`,
-  },
-  {
-    id: 'roads',
-    label: 'Roads',
-    svg: `<path d="M3 13h2l1-3h4l1 3h2L10 4H6L3 13z" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/>
-          <line x1="8" y1="4" x2="8" y2="14" stroke="currentColor" stroke-width="1" stroke-dasharray="1.5 1.5"/>`,
-  },
-  {
-    id: 'rivers',
-    label: 'Rivers',
-    svg: `<path d="M3 5 C5 5, 6 8, 8 8 C10 8, 11 5, 13 5" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
-          <path d="M3 9 C5 9, 7 12, 9 11 C11 10, 12 9, 14 10" fill="none" stroke="currentColor" stroke-width="1" stroke-linecap="round" opacity="0.6"/>`,
-  },
-  {
-    id: 'settlements',
-    label: 'Settlements',
-    svg: `<circle cx="8" cy="8" r="3" fill="none" stroke="currentColor" stroke-width="1.4"/>
-          <circle cx="8" cy="8" r="1" fill="currentColor"/>
-          <line x1="8" y1="2" x2="8" y2="4.5" stroke="currentColor" stroke-width="1.2"/>
-          <line x1="8" y1="11.5" x2="8" y2="14" stroke="currentColor" stroke-width="1.2"/>
-          <line x1="2" y1="8" x2="4.5" y2="8" stroke="currentColor" stroke-width="1.2"/>
-          <line x1="11.5" y1="8" x2="14" y2="8" stroke="currentColor" stroke-width="1.2"/>`,
-  },
-  {
-    id: 'highlights',
-    label: 'Highlights',
-    svg: `<polygon points="8,3 10,7 14,7 11,10 12,14 8,12 4,14 5,10 2,7 6,7" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round"/>`,
-  },
-  {
-    id: 'overlays',
-    label: 'Overlays',
-    svg: `<rect x="3" y="3" width="5" height="5" rx="0.5" fill="none" stroke="currentColor" stroke-width="1.3"/>
-          <rect x="8" y="8" width="5" height="5" rx="0.5" fill="none" stroke="currentColor" stroke-width="1.3" opacity="0.6"/>
-          <rect x="5.5" y="5.5" width="5" height="5" rx="0.5" fill="currentColor" opacity="0.15" stroke="currentColor" stroke-width="1"/>`,
-  },
-  {
-    id: 'display',
-    label: 'Display',
-    svg: `<rect x="2" y="4" width="12" height="9" rx="1" fill="none" stroke="currentColor" stroke-width="1.3"/>
-          <line x1="5" y1="14" x2="11" y2="14" stroke="currentColor" stroke-width="1.3"/>
-          <line x1="8" y1="13" x2="8" y2="14" stroke="currentColor" stroke-width="1.3"/>`,
-  },
+// Tools that open a popout strip when activated
+export const TOOLS_WITH_POPOUT: V3Tool[] = [
+  'terrain', 'roads', 'rivers', 'settlements', 'highlights', 'display',
 ]
 
-const RAIL_W = 48
+export const RAIL_W = 44
+
+// ── Icons — minimal strokes, viewBox 0 0 12 12, matching V2 SVG style ─────────
+
+const ICON_HAND = (
+  <svg width="14" height="14" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M4 6V2.5a1 1 0 0 1 2 0V6" />
+    <path d="M6 4.5a1 1 0 0 1 2 0V6" />
+    <path d="M8 5a1 1 0 0 1 2 0v1.5C10 9 8.5 11 6 11c-2 0-3.5-1.5-3.5-3.5V6.5a1 1 0 0 1 2 0" />
+  </svg>
+)
+
+const ICON_SELECT = (
+  <svg width="14" height="14" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M2 2l7 3.5-3 1L4.5 10 2 2z" />
+  </svg>
+)
+
+const ICON_TERRAIN = (
+  <svg width="14" height="14" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M9.5 2.5 C10 3 10 4 9.5 4.5 L5 9 L3 9 L3 7 L7.5 2.5 C8 2 9 2 9.5 2.5Z" />
+    <path d="M7.5 4.5 L8.5 3.5" />
+    <path d="M2 10 L10 10" />
+  </svg>
+)
+
+const ICON_ROADS = (
+  <svg width="14" height="14" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round">
+    <path d="M2 10 Q4 6 6 2" />
+    <path d="M10 10 Q8 6 6 2" />
+    <line x1="3.5" y1="7.5" x2="8.5" y2="7.5" />
+    <line x1="4.5" y1="5" x2="7.5" y2="5" />
+  </svg>
+)
+
+const ICON_RIVERS = (
+  <svg width="14" height="14" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round">
+    <path d="M1 4 C3 4 3 2 5 2 C7 2 7 4 9 4 C11 4 11 3 11 3" />
+    <path d="M1 8 C3 8 4 6 6 7 C8 8 9 7 11 7" strokeWidth="0.9" opacity="0.6" />
+  </svg>
+)
+
+const ICON_SETTLEMENTS = (
+  <svg width="14" height="14" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round">
+    <circle cx="6" cy="5" r="2.5" />
+    <circle cx="6" cy="5" r="0.8" fill="currentColor" stroke="none" />
+    <line x1="6" y1="7.5" x2="6" y2="10" />
+    <line x1="4" y1="10" x2="8" y2="10" />
+  </svg>
+)
+
+const ICON_HIGHLIGHTS = (
+  <svg width="14" height="14" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round">
+    <polygon points="6,1.5 7.5,4.5 11,5 8.5,7.5 9,11 6,9.5 3,11 3.5,7.5 1,5 4.5,4.5" />
+  </svg>
+)
+
+const ICON_DISPLAY = (
+  <svg width="14" height="14" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round">
+    <line x1="1" y1="3" x2="11" y2="3" />
+    <line x1="1" y1="6" x2="11" y2="6" />
+    <line x1="1" y1="9" x2="11" y2="9" />
+    <circle cx="4" cy="3" r="1.2" fill="currentColor" stroke="none" />
+    <circle cx="8" cy="6" r="1.2" fill="currentColor" stroke="none" />
+    <circle cx="5" cy="9" r="1.2" fill="currentColor" stroke="none" />
+  </svg>
+)
+
+const ICON_SETUP = (
+  <svg width="14" height="14" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round">
+    <circle cx="6" cy="6" r="2" />
+    <path d="M6 1v1.5M6 9.5V11M1 6h1.5M9.5 6H11M2.5 2.5l1 1M8.5 8.5l1 1M9.5 2.5l-1 1M3.5 8.5l-1 1" />
+  </svg>
+)
+
+const TOOLS: { id: V3Tool; label: string; icon: React.ReactNode }[] = [
+  { id: 'hand',        label: 'Hand',        icon: ICON_HAND        },
+  { id: 'select',      label: 'Select',      icon: ICON_SELECT      },
+  { id: 'terrain',     label: 'Terrain',     icon: ICON_TERRAIN     },
+  { id: 'roads',       label: 'Roads',       icon: ICON_ROADS       },
+  { id: 'rivers',      label: 'Rivers',      icon: ICON_RIVERS      },
+  { id: 'settlements', label: 'Settlements', icon: ICON_SETTLEMENTS },
+  { id: 'highlights',  label: 'Highlights',  icon: ICON_HIGHLIGHTS  },
+  { id: 'display',     label: 'Display',     icon: ICON_DISPLAY     },
+]
 
 interface IconRailProps {
-  active: V3Panel | null
-  onSelect: (panel: V3Panel) => void
+  active: V3Tool | null
+  onSelect: (tool: V3Tool) => void
   onSetup: () => void
 }
 
@@ -66,74 +114,75 @@ export function IconRail({ active, onSelect, onSetup }: IconRailProps) {
   return (
     <div style={{
       width: RAIL_W,
-      flexShrink: 0,
       height: '100%',
+      flexShrink: 0,
       background: t.surface,
-      borderRight: `1px solid ${t.line}`,
+      border: `1px solid ${t.line}`,
       display: 'flex',
       flexDirection: 'column',
       alignItems: 'center',
-      paddingTop: 8,
-      paddingBottom: 8,
-      gap: 2,
-      zIndex: 20,
+      paddingTop: 6,
+      paddingBottom: 6,
     }}>
-      {ICONS.map(({ id, label, svg }) => {
-        const isActive = active === id
-        return (
-          <RailButton
+      {/* Main tools */}
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 1, width: '100%', padding: '0 5px' }}>
+        {TOOLS.map(({ id, label, icon }) => (
+          <RailBtn
             key={id}
             label={label}
-            svg={svg}
-            isActive={isActive}
+            icon={icon}
+            active={active === id}
             onClick={() => onSelect(id)}
           />
-        )
-      })}
+        ))}
+      </div>
 
+      {/* Spacer */}
       <div style={{ flex: 1 }} />
 
-      <RailButton
-        label="Setup"
-        svg={`<circle cx="8" cy="8" r="3" fill="none" stroke="currentColor" stroke-width="1.4"/>
-              <path d="M8 1v2M8 13v2M1 8h2M13 8h2M3.1 3.1l1.4 1.4M11.5 11.5l1.4 1.4M11.5 4.5l-1.4 1.4M4.5 11.5l-1.4 1.4" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/>`}
-        isActive={false}
-        onClick={onSetup}
-      />
+      {/* Setup at bottom */}
+      <div style={{ width: '100%', padding: '0 5px', borderTop: `1px solid ${t.line2}`, paddingTop: 6, marginTop: 6 }}>
+        <RailBtn
+          label="Setup"
+          icon={ICON_SETUP}
+          active={false}
+          onClick={onSetup}
+        />
+      </div>
     </div>
   )
 }
 
-function RailButton({ label, svg, isActive, onClick }: {
+function RailBtn({ label, icon, active, onClick }: {
   label: string
-  svg: string
-  isActive: boolean
+  icon: React.ReactNode
+  active: boolean
   onClick: () => void
 }) {
   const t = useTheme()
+  const [hov, setHov] = useState(false)
 
   return (
     <button
       title={label}
       onClick={onClick}
+      onMouseEnter={() => setHov(true)}
+      onMouseLeave={() => setHov(false)}
       style={{
-        width: 36,
-        height: 36,
+        width: '100%',
+        height: 34,
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'center',
         border: 'none',
-        borderRadius: 6,
         cursor: 'pointer',
-        background: isActive ? t.rust : 'transparent',
-        color: isActive ? '#fff' : t.ink2,
-        transition: 'background 0.12s, color 0.12s',
+        background: active ? t.ink : hov ? t.paper2 : 'transparent',
+        color: active ? t.surface : hov ? t.ink : t.inkFaint,
+        transition: 'background 0.1s, color 0.1s',
         flexShrink: 0,
       }}
     >
-      <svg width="16" height="16" viewBox="0 0 16 16" dangerouslySetInnerHTML={{ __html: svg }} />
+      {icon}
     </button>
   )
 }
-
-export { RAIL_W }

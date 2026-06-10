@@ -11,7 +11,7 @@ import { SetupWizard } from './components/v2/SetupWizard'
 import { CanvasToolbar } from './components/v2/CanvasToolbar'
 import { BottomDock } from './components/v2/BottomDock'
 import { ErrorBoundary } from './components/ErrorBoundary'
-import { IconRail, type V3Panel } from './components/v3/IconRail'
+import { IconRail, type V3Tool, TOOLS_WITH_POPOUT } from './components/v3/IconRail'
 import { PopoutStrip } from './components/v3/PopoutStrip'
 import { RightPanel } from './components/v3/RightPanel'
 
@@ -41,7 +41,7 @@ function AppV3Inner({ screen, setScreen, isDark, setIsDark }: {
           elevationStatus, heightmapUrl, fetchElevation, loadBuiltinPreset } = useMapStore()
   const canvasHandleRef = useRef<TerrainViewCanvasHandle>(null)
 
-  const [activePanel, setActivePanel] = useState<V3Panel | null>('terrain')
+  const [activeTool, setActiveTool] = useState<V3Tool | null>('terrain')
   const [settingsOpen, setSettingsOpen] = useState(false)
 
   const activeScreen = screen === 'editor' && step === 'setup' ? 'wizard' : screen
@@ -109,13 +109,13 @@ function AppV3Inner({ screen, setScreen, isDark, setIsDark }: {
     URL.revokeObjectURL(url)
   }, [])
 
-  const handleSelectPanel = (panel: V3Panel) => {
-    if (activePanel === panel) {
-      // clicking the active panel collapses the strip
-      setActivePanel(null)
+  const handleSelectTool = (tool: V3Tool) => {
+    if (activeTool === tool) {
+      setActiveTool(null)
       setSettingsOpen(false)
     } else {
-      setActivePanel(panel)
+      setActiveTool(tool)
+      if (!TOOLS_WITH_POPOUT.includes(tool)) setSettingsOpen(false)
     }
   }
 
@@ -181,15 +181,15 @@ function AppV3Inner({ screen, setScreen, isDark, setIsDark }: {
             display: 'flex', gap: 8,
             zoom: uiScale,
           }}>
-            <div style={{ pointerEvents: 'auto', height: '100%', display: 'flex', gap: 8, boxShadow: t.shadowFlyout }}>
+            <div style={{ pointerEvents: 'auto', height: '100%', display: 'flex', gap: 8 }}>
               <IconRail
-                active={activePanel}
-                onSelect={handleSelectPanel}
+                active={activeTool}
+                onSelect={handleSelectTool}
                 onSetup={() => setScreen('wizard')}
               />
-              {activePanel && (
+              {activeTool && TOOLS_WITH_POPOUT.includes(activeTool) && (
                 <PopoutStrip
-                  panel={activePanel}
+                  tool={activeTool}
                   onOpenSettings={handleToggleSettings}
                   settingsOpen={settingsOpen}
                 />
@@ -198,15 +198,14 @@ function AppV3Inner({ screen, setScreen, isDark, setIsDark }: {
           </div>
 
           {/* Right: settings panel, floating over canvas */}
-          {activePanel && settingsOpen && (
+          {activeTool && settingsOpen && (
             <div style={{
               position: 'absolute', top: 16, right: 16, bottom: 16,
               zIndex: 10, pointerEvents: 'auto',
-              boxShadow: t.shadowFlyout,
               zoom: uiScale,
             }}>
               <RightPanel
-                panel={activePanel}
+                panel={activeTool}
                 onClose={() => setSettingsOpen(false)}
               />
             </div>

@@ -1,25 +1,24 @@
 import { useTheme } from '../../context/ThemeContext'
-import type { V3Panel } from './IconRail'
+import type { V3Tool } from './IconRail'
 
 export const POPOUT_W = 180
 
+const TOOL_LABELS: Record<string, string> = {
+  terrain:     'Terrain',
+  roads:       'Roads',
+  rivers:      'Rivers',
+  settlements: 'Settlements',
+  highlights:  'Highlights',
+  display:     'Display',
+}
+
 interface PopoutStripProps {
-  panel: V3Panel
+  tool: V3Tool
   onOpenSettings: () => void
   settingsOpen: boolean
 }
 
-const PANEL_LABELS: Record<V3Panel, string> = {
-  terrain: 'Terrain',
-  roads: 'Roads',
-  rivers: 'Rivers',
-  settlements: 'Settlements',
-  highlights: 'Highlights',
-  overlays: 'Overlays',
-  display: 'Display',
-}
-
-export function PopoutStrip({ panel, onOpenSettings, settingsOpen }: PopoutStripProps) {
+export function PopoutStrip({ tool, onOpenSettings, settingsOpen }: PopoutStripProps) {
   const t = useTheme()
 
   return (
@@ -28,86 +27,78 @@ export function PopoutStrip({ panel, onOpenSettings, settingsOpen }: PopoutStrip
       height: '100%',
       flexShrink: 0,
       background: t.surface,
-      borderRight: `1px solid ${t.line}`,
+      border: `1px solid ${t.line}`,
+      borderLeft: 'none',
       display: 'flex',
       flexDirection: 'column',
       overflow: 'hidden',
     }}>
       {/* Header */}
       <div style={{
-        padding: '10px 12px 8px',
+        padding: '9px 12px 7px',
         borderBottom: `1px solid ${t.line2}`,
         flexShrink: 0,
       }}>
         <div style={{
           fontFamily: t.mono,
-          fontSize: 9,
-          letterSpacing: 1,
-          textTransform: 'uppercase',
-          fontWeight: 700,
-          color: t.inkFaint,
+          fontSize: 9.5,
+          fontWeight: 600,
+          letterSpacing: 0.5,
+          color: t.ink,
         }}>
-          {PANEL_LABELS[panel]}
+          {TOOL_LABELS[tool] ?? tool}
         </div>
       </div>
 
-      {/* Actions area — generate button + mode switcher */}
-      <div style={{ flex: 1, overflowY: 'auto', padding: '8px 0' }}>
-        <PanelActions panel={panel} />
+      {/* Tool-specific actions + mode switcher */}
+      <div style={{ flex: 1, overflowY: 'auto', padding: '4px 0' }}>
+        <ToolActions tool={tool} />
       </div>
 
-      {/* Settings toggle at the bottom */}
-      <div style={{ padding: '8px 10px', borderTop: `1px solid ${t.line2}`, flexShrink: 0 }}>
+      {/* Style settings toggle */}
+      <div style={{ borderTop: `1px solid ${t.line2}`, flexShrink: 0 }}>
         <button
           onClick={onOpenSettings}
           style={{
             width: '100%',
-            padding: '5px 8px',
+            padding: '7px 14px',
             display: 'flex',
+            justifyContent: 'space-between',
             alignItems: 'center',
-            gap: 6,
-            background: settingsOpen ? t.paper2 : 'transparent',
-            border: `1px solid ${settingsOpen ? t.line : 'transparent'}`,
-            borderRadius: 5,
+            background: settingsOpen ? t.rustTint : 'transparent',
+            border: 'none',
+            borderTop: `1px solid ${t.line2}`,
             cursor: 'pointer',
-            color: t.ink2,
-            fontFamily: t.mono,
-            fontSize: 9,
-            letterSpacing: 0.8,
-            textTransform: 'uppercase',
-            fontWeight: 600,
+            fontFamily: t.sans,
+            fontSize: 12,
+            color: settingsOpen ? t.rust : t.ink2,
+            textAlign: 'left',
           }}
         >
-          <svg width="12" height="12" viewBox="0 0 16 16" style={{ flexShrink: 0 }}>
-            <circle cx="8" cy="8" r="3" fill="none" stroke="currentColor" strokeWidth="1.5"/>
-            <path d="M8 1v2M8 13v2M1 8h2M13 8h2M3.1 3.1l1.4 1.4M11.5 11.5l1.4 1.4M11.5 4.5l-1.4 1.4M4.5 11.5l-1.4 1.4" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round"/>
-          </svg>
-          Style settings
+          <span>Style settings</span>
+          <span style={{ fontFamily: t.mono, fontSize: 10, color: t.inkFaint }}>›</span>
         </button>
       </div>
     </div>
   )
 }
 
-function PanelActions({ panel }: { panel: V3Panel }) {
+function ToolActions({ tool }: { tool: V3Tool }) {
   const t = useTheme()
 
   const placeholder = (text: string) => (
-    <div style={{ padding: '6px 12px', fontFamily: t.mono, fontSize: 10, color: t.inkFaint }}>
+    <div style={{ padding: '6px 14px', fontFamily: t.sans, fontSize: 11, color: t.inkFaint, lineHeight: 1.5 }}>
       {text}
     </div>
   )
 
-  // Each panel will eventually wire its generate button and mode switcher here.
-  // For now, the existing sidebar content is surfaced via the right panel settings area.
-  switch (panel) {
-    case 'terrain':      return placeholder('Generate · Paint · Classify')
-    case 'roads':        return placeholder('Fetch Roads')
-    case 'rivers':       return placeholder('Fetch Rivers')
-    case 'settlements':  return placeholder('Fetch Settlements')
-    case 'highlights':   return placeholder('Draw · Erase')
-    case 'overlays':     return placeholder('Image · Grid overlay')
-    case 'display':      return placeholder('Display options')
-    default:             return null
+  switch (tool) {
+    case 'terrain':     return placeholder('Generate · Paint · Classify')
+    case 'roads':       return placeholder('Fetch Roads')
+    case 'rivers':      return placeholder('Fetch Rivers')
+    case 'settlements': return placeholder('Fetch Settlements')
+    case 'highlights':  return placeholder('Draw · Erase')
+    case 'display':     return placeholder('Display options')
+    default:            return null
   }
 }

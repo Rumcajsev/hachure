@@ -3,23 +3,22 @@ import { TerrainSidebarV3 } from '../v2/TerrainSidebarV3'
 import { DisplaySidebarV3 } from '../v2/DisplaySidebarV3'
 import { FeaturesSidebarV3 } from '../v2/FeaturesSidebarV3'
 import { OverlaysSidebarV3 } from '../v2/OverlaysSidebarV3'
-import type { V3Panel } from './IconRail'
+import type { V3Tool } from './IconRail'
 
-export const RIGHT_PANEL_W = 240
+export const RIGHT_PANEL_W = 280
 
-interface RightPanelProps {
-  panel: V3Panel
-  onClose: () => void
+const PANEL_TITLES: Record<string, string> = {
+  terrain:     'Terrain settings',
+  roads:       'Roads settings',
+  rivers:      'Rivers settings',
+  settlements: 'Settlements settings',
+  highlights:  'Highlights settings',
+  display:     'Display settings',
 }
 
-const PANEL_TITLES: Record<V3Panel, string> = {
-  terrain: 'Terrain settings',
-  roads: 'Roads settings',
-  rivers: 'Rivers settings',
-  settlements: 'Settlements settings',
-  highlights: 'Highlights settings',
-  overlays: 'Overlays settings',
-  display: 'Display settings',
+interface RightPanelProps {
+  panel: V3Tool
+  onClose: () => void
 }
 
 export function RightPanel({ panel, onClose }: RightPanelProps) {
@@ -31,30 +30,33 @@ export function RightPanel({ panel, onClose }: RightPanelProps) {
       height: '100%',
       flexShrink: 0,
       background: t.surface,
-      borderLeft: `1px solid ${t.line}`,
+      border: `1px solid ${t.line}`,
       display: 'flex',
       flexDirection: 'column',
       overflow: 'hidden',
-      boxShadow: '-2px 0 8px rgba(0,0,0,0.08)',
+      boxShadow: t.shadowFlyout,
     }}>
       {/* Header */}
       <div style={{
-        padding: '10px 12px 8px',
+        padding: '9px 12px 7px',
         borderBottom: `1px solid ${t.line2}`,
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'space-between',
         flexShrink: 0,
+        position: 'sticky',
+        top: 0,
+        background: t.surface,
+        zIndex: 1,
       }}>
         <div style={{
           fontFamily: t.mono,
-          fontSize: 9,
-          letterSpacing: 1,
-          textTransform: 'uppercase',
-          fontWeight: 700,
-          color: t.inkFaint,
+          fontSize: 9.5,
+          fontWeight: 600,
+          letterSpacing: 0.5,
+          color: t.ink,
         }}>
-          {PANEL_TITLES[panel]}
+          {PANEL_TITLES[panel] ?? panel}
         </div>
         <button
           onClick={onClose}
@@ -62,21 +64,19 @@ export function RightPanel({ panel, onClose }: RightPanelProps) {
             background: 'none',
             border: 'none',
             cursor: 'pointer',
-            color: t.inkFaint,
             padding: 2,
-            lineHeight: 1,
+            color: t.inkFaint,
             display: 'flex',
             alignItems: 'center',
           }}
         >
-          <svg width="12" height="12" viewBox="0 0 16 16">
-            <line x1="3" y1="3" x2="13" y2="13" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"/>
-            <line x1="13" y1="3" x2="3" y2="13" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"/>
+          <svg width="8" height="8" viewBox="0 0 10 10" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round">
+            <path d="M2 2l6 6M8 2l-6 6" />
           </svg>
         </button>
       </div>
 
-      {/* Content — existing sidebar components slotted in */}
+      {/* Content — existing v2 sidebar components slotted in */}
       <div style={{ flex: 1, overflowY: 'auto' }}>
         <PanelContent panel={panel} />
       </div>
@@ -84,7 +84,7 @@ export function RightPanel({ panel, onClose }: RightPanelProps) {
   )
 }
 
-function PanelContent({ panel }: { panel: V3Panel }) {
+function PanelContent({ panel }: { panel: V3Tool }) {
   switch (panel) {
     case 'terrain':     return <TerrainSidebarV3 />
     case 'display':     return <DisplaySidebarV3 />
@@ -92,7 +92,6 @@ function PanelContent({ panel }: { panel: V3Panel }) {
     case 'rivers':
     case 'settlements':
     case 'highlights':  return <FeaturesSidebarV3 />
-    case 'overlays':    return <OverlaysSidebarV3 />
-    default:            return null
+    default:            return <OverlaysSidebarV3 />
   }
 }
