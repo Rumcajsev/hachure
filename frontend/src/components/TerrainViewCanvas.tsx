@@ -1450,14 +1450,25 @@ const roadV3TierGeomRef = useRef(roadV3TierGeom)
 
   // Apply blob mask edits (boolean add/subtract regions) to the shaped blobs.
   // Edits are stored in lon/lat and projected to canvas space here so they track pan/zoom.
+  // Add edits are run through the blob shaping pipeline so they match the terrain's organic style.
   const defaultTerrainBlobsMasked = useMemo(() => {
     if (blobMaskEdits.length === 0 || !generatedMetadata || !paperDims) return defaultTerrainBlobs
     const { pw, ph, px, py } = paperDims
     const meta = generatedMetadata
     const projectFn = (lonlat: [number, number]): [number, number] =>
       projectToCanvas(lonlat[0], lonlat[1], meta, pw, ph, px, py)
-    return applyBlobMaskEdits(defaultTerrainBlobs, blobMaskEdits, projectFn)
-  }, [defaultTerrainBlobs, blobMaskEdits, generatedMetadata, paperDims])
+    const shapeParams = {
+      R: hexRadius,
+      smooth: terrainBlobSmooth,
+      bump: terrainBlobBump,
+      sweepFreq: terrainBlobSweepFreq,
+      lobeFreq: terrainBlobLobeFreq,
+      lobeAmp: terrainBlobLobeAmp,
+      lobeThreshold: terrainBlobLobeThreshold,
+      lobeDirection: terrainBlobLobeDirection,
+    }
+    return applyBlobMaskEdits(defaultTerrainBlobs, blobMaskEdits, projectFn, shapeParams)
+  }, [defaultTerrainBlobs, blobMaskEdits, generatedMetadata, paperDims, hexRadius, terrainBlobSmooth, terrainBlobBump, terrainBlobSweepFreq, terrainBlobLobeFreq, terrainBlobLobeAmp, terrainBlobLobeThreshold, terrainBlobLobeDirection])
   const defaultTerrainBlobsMaskedRef = useRef(defaultTerrainBlobsMasked)
   defaultTerrainBlobsMaskedRef.current = defaultTerrainBlobsMasked
 
@@ -3365,7 +3376,7 @@ const roadV3TierGeomRef = useRef(roadV3TierGeom)
     const onDown = (e: MouseEvent) => {
       if (e.button !== 1 && e.button !== 0) return
       if (e.button === 0 && (e.target as HTMLElement).tagName !== 'CANVAS') return
-      if (e.button === 0 && (terrainPaintModeRef.current || elevationPaintModeRef.current || roadPaintModeRef.current || railPaintModeRef.current || riverEditModeRef.current || activeToolRef.current.type === 'hex-mask' || activeToolRef.current.type === 'mega-hex-origin' || activeToolRef.current.type === 'align-image')) return
+      if (e.button === 0 && (terrainPaintModeRef.current || elevationPaintModeRef.current || roadPaintModeRef.current || railPaintModeRef.current || riverEditModeRef.current || activeToolRef.current.type === 'hex-mask' || activeToolRef.current.type === 'mega-hex-origin' || activeToolRef.current.type === 'align-image' || activeToolRef.current.type === 'blob-mask')) return
       if (e.button === 0 && activePanelRef.current === 'highlights' && (highlightPaintModeRef.current || highlightLineEraserRef.current)) return
       if (e.button === 0 && draggingCpKeyRef.current) return
       e.preventDefault()

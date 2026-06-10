@@ -506,13 +506,42 @@ export function buildFieldCanvas(
 
 // ── Blob mask edits (boolean add/subtract) ───────────────────────────────────
 
+export type BlobShapeParams = {
+  R: number
+  smooth: number
+  bump: number
+  sweepFreq: number
+  lobeFreq: number
+  lobeAmp: number
+  lobeThreshold: number
+  lobeDirection: number
+}
+
+function shapeAddPolygon(poly: [number, number][], seed: number, p: BlobShapeParams): [number, number][] {
+  const p1Amp = p.bump * p.R
+  const p2Amp = p.bump * p.lobeAmp * p.R * p.lobeDirection
+  let pts: [number, number][] = poly
+  const smoothPasses = Math.floor(p.smooth)
+  const smoothRemainder = p.smooth - smoothPasses
+  for (let i = 0; i < smoothPasses; i++) pts = preSmoothVar(pts, 0.4)
+  if (smoothRemainder > 0) pts = preSmoothVar(pts, 0.4 * smoothRemainder)
+  // skip resizeToHexAnchors — no hex anchors for user-drawn polygons
+  pts = subdivideClosedPolygon(pts, p.R * 0.25)
+  pts = perturbXY(pts, makePermutation(seed), makePermutation(seed + 31), p.sweepFreq / p.R, p1Amp)
+  pts = resampleSmoothQuad(pts, 5)
+  pts = perturbNormal(pts, makePermutation(seed + 67), makePermutation(seed + 113), p.lobeFreq / p.R, p2Amp, p.lobeThreshold)
+  return pts
+}
+
 /** Apply stored BlobMaskEdits to pre-shaped blob polygons.
  *  Edits are stored in WGS84 lon/lat; projectFn converts them to canvas space.
- *  Only the outer ring of each result polygon is kept — holes are not yet supported. */
+ *  Add edits are shaped with the terrain's blob pipeline when shapeParams is provided.
+ *  Subtract edits stay raw (clean cuts). */
 export function applyBlobMaskEdits(
   blobs: { terrain: string; polys: [number, number][][] }[],
   edits: BlobMaskEdit[],
   projectFn: (lonlat: [number, number]) => [number, number],
+  shapeParams?: BlobShapeParams,
 ): { terrain: string; polys: [number, number][][] }[] {
   if (edits.length === 0) return blobs
   return blobs.map(blob => {
@@ -523,9 +552,9 @@ export function applyBlobMaskEdits(
     for (const edit of relevant) {
       const editCanvas = edit.polygon.map(projectFn)
       if (editCanvas.length < 3) continue
-      const editMPoly: polygonClipping.MultiPolygon = [[editCanvas as polygonClipping.Ring]]
 
       if (edit.type === 'subtract') {
+        const editMPoly: polygonClipping.MultiPolygon = [[editCanvas as polygonClipping.Ring]]
         const next: [number, number][][] = []
         for (const poly of polys) {
           if (poly.length < 3) continue
@@ -541,7 +570,9 @@ export function applyBlobMaskEdits(
         }
         polys = next
       } else {
-        polys = [...polys, editCanvas as [number, number][]]
+        const seed = Math.abs(Math.round(editCanvas[0][0] * 73 + editCanvas[0][1] * 97)) ^ (edit.id.split('').reduce((a, c) => a + c.charCodeAt(0), 0))
+        const shaped = shapeParams ? shapeAddPolygon(editCanvas as [number, number][], seed, shapeParams) : editCanvas as [number, number][]
+        polys = [...polys, shaped]
       }
     }
     return { ...blob, polys }
