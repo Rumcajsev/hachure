@@ -379,13 +379,9 @@ function densify(pts: [number, number][], maxDist: number): [number, number][] {
 
 /** Sine-dominated meander with a second harmonic and regional coherence.
  *
- *  Second harmonic: sin(phase) + 0.4 × sin(2×phase + harmonicOffset)
- *  The offset is seeded per-chain from the segKey so each river has a
- *  different asymmetry pattern — some bends lean left-heavy, others
- *  right-heavy, some elongated, some compressed.
- *
- *  Regional coherence (weight 0.25): slow 2D Perlin at geographic position
- *  so nearby rivers share the same general drift character. */
+ *  taperStart / taperEnd: whether to fade amplitude to zero at each endpoint.
+ *  Main-river ends at junctions are NOT tapered; tributary ends ARE.
+ *  True endpoints (degree-1) are always tapered on that side. */
 function applyMeanderNoise(
   pts: [number, number][],
   amp: number,
@@ -394,7 +390,9 @@ function applyMeanderNoise(
   permB: Uint8Array,
   interDist: number,
   phaseOffset: number,
-  harmonicOffset: number,   // per-chain seed for second harmonic asymmetry
+  harmonicOffset: number,
+  taperStart: boolean,
+  taperEnd: boolean,
 ): [number, number][] {
   if (pts.length < 3) return pts
   const lens: number[] = [0]
@@ -426,13 +424,12 @@ function applyMeanderNoise(
     const fadeLen = Math.min(total * 0.25, interDist * 1.5)
     const s = lens[i]
     const taper = Math.min(
-      fadeLen > 0 ? s / fadeLen : 1,
-      fadeLen > 0 ? (total - s) / fadeLen : 1,
+      taperStart ? (fadeLen > 0 ? s / fadeLen : 1) : 1,
+      taperEnd   ? (fadeLen > 0 ? (total - s) / fadeLen : 1) : 1,
       1,
     )
 
     const regional = perlinNoise2D(pt[0] * regionalFreq, pt[1] * regionalFreq, permB)
-    // Fundamental + second harmonic: creates asymmetric bends unique to each chain
     const meander  = amp * (
       Math.sin(phases[i]) +
       0.4 * Math.sin(2 * phases[i] + harmonicOffset) +
@@ -518,6 +515,52 @@ export function buildRiverChainsV3(
     }
   }
 
+  // ---------------------------------------------------------------------------
+  // Junction analysis: at each degree-3+ vertex, find the two most anti-parallel
+  // chain ends (the "straight-through" main river) and mark them as non-tapering.
+  // All other chain ends at that vertex are tributaries and keep their taper.
+  // ---------------------------------------------------------------------------
+  type ChainEnd = { chainIdx: number; isStart: boolean; dir: [number, number] }
+  const junctionMap = new Map<string, ChainEnd[]>()
+
+  for (let idx = 0; idx < rawSparse.length; idx++) {
+    const { pts } = rawSparse[idx]
+    for (const [isStart, pt, pt2] of [
+      [true,  pts[0],               pts[1]                ] as const,
+      [false, pts[pts.length - 1],  pts[pts.length - 2]   ] as const,
+    ]) {
+      const k = vKey(pt)
+      if ((degree.get(k) ?? 0) < 3) continue
+      const dir: [number, number] = [pt2[0] - pt[0], pt2[1] - pt[1]]
+      if (!junctionMap.has(k)) junctionMap.set(k, [])
+      junctionMap.get(k)!.push({ chainIdx: idx, isStart, dir })
+    }
+  }
+
+  // Default: taper both ends of every chain
+  const taperStart = new Array(rawSparse.length).fill(true) as boolean[]
+  const taperEnd   = new Array(rawSparse.length).fill(true) as boolean[]
+
+  for (const ends of junctionMap.values()) {
+    if (ends.length < 2) continue
+    // Find the pair whose directions are most anti-parallel (dot product most negative)
+    let bestDot = Infinity, bestI = 0, bestJ = 1
+    for (let i = 0; i < ends.length; i++) {
+      for (let j = i + 1; j < ends.length; j++) {
+        const di = ends[i].dir, dj = ends[j].dir
+        const li = Math.hypot(di[0], di[1]), lj = Math.hypot(dj[0], dj[1])
+        if (li < 1e-9 || lj < 1e-9) continue
+        const dot = (di[0] * dj[0] + di[1] * dj[1]) / (li * lj)
+        if (dot < bestDot) { bestDot = dot; bestI = i; bestJ = j }
+      }
+    }
+    // Mark the main-river pair as non-tapering at this junction end
+    for (const end of [ends[bestI], ends[bestJ]]) {
+      if (end.isStart) taperStart[end.chainIdx] = false
+      else             taperEnd[end.chainIdx]   = false
+    }
+  }
+
   // Measure median inter-vertex spacing across all chains
   let totalDist = 0, distSamples = 0
   outer3: for (const { pts } of rawSparse) {
@@ -536,15 +579,13 @@ export function buildRiverChainsV3(
   const perm  = makePermutation(42)   // arc-length noise
   const permB = makePermutation(137)  // regional coherence field
 
-  return rawSparse.map(({ pts, segKey }) => {
+  return rawSparse.map(({ pts, segKey }, idx) => {
     const h = hashStr(segKey)
-    // Both offsets purely identity-based so nearby chains get uncorrelated phases.
-    // Regional coherence field (permB) handles the shared drift between neighbours.
     const phase          = (h / 0xffffffff) * 2 * Math.PI
     const harmonicOffset = ((h ^ (h >>> 13)) / 0xffffffff) * 2 * Math.PI
     const rounded = chaikin(pts, cornerRounds)
     const dense   = densify(rounded, maxSpacing)
-    const chain   = applyMeanderNoise(dense, amp, meanderFreq, perm, permB, interDist, phase, harmonicOffset)
+    const chain   = applyMeanderNoise(dense, amp, meanderFreq, perm, permB, interDist, phase, harmonicOffset, taperStart[idx], taperEnd[idx])
     return { segKey, chain }
   })
 }
