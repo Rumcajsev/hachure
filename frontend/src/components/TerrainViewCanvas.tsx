@@ -209,6 +209,8 @@ export type TerrainViewCanvasHandle = {
   captureThumb: () => string | null
 }
 
+const EMPTY_CORRIDORS: [number, number][][] = []
+
 export const TerrainViewCanvas = forwardRef<TerrainViewCanvasHandle, { surroundColor?: string }>(function TerrainViewCanvas({ surroundColor = '#1a1a2a' }, ref) {
   const t = useTheme()
   const containerRef = useRef<HTMLDivElement>(null)
@@ -351,6 +353,7 @@ terrainColors, terrainTextureScales, terrainTextureBlendModes, terrainTextureOpa
     hillshadeDisabledTerrains, hillshadeDisabledElevClasses,
     setHillshadeAzimuth, setHillshadeAltitude, setHillshadeIntensity,
     contoursEnabled, contourInterval, contourBaseElevation, contourSmoothPasses, contourLineWidth,
+    contourIndexEvery, contourIndexWidthMult, contourColor, contourOpacity,
     contourDisabledTerrains, contourDisabledElevClasses,
     coastlineDPEpsilon, coastlineChaikinPasses,
     terrainRenderMode,
@@ -937,6 +940,14 @@ terrainColors, terrainTextureScales, terrainTextureBlendModes, terrainTextureOpa
   contourSmoothPassesRef.current = contourSmoothPasses
   const contourLineWidthRef = useRef(contourLineWidth)
   contourLineWidthRef.current = contourLineWidth
+  const contourIndexEveryRef = useRef(contourIndexEvery)
+  contourIndexEveryRef.current = contourIndexEvery
+  const contourIndexWidthMultRef = useRef(contourIndexWidthMult)
+  contourIndexWidthMultRef.current = contourIndexWidthMult
+  const contourColorRef = useRef(contourColor)
+  contourColorRef.current = contourColor
+  const contourOpacityRef = useRef(contourOpacity)
+  contourOpacityRef.current = contourOpacity
   const contourDisabledTerrainsSetRef = useRef(new Set<string>())
   contourDisabledTerrainsSetRef.current = new Set(contourDisabledTerrains)
   const contourDisabledElevClassesSetRef = useRef(new Set<string>())
@@ -1307,7 +1318,7 @@ const roadV3TierGeomRef = useRef(roadV3TierGeom)
   // pre-shaping cut can use them. The cut happens on raw hex-outline polygons so the cut edge
   // goes through the full organic shaping pipeline (inset, bump, lobe) just like any other blob edge.
   const riverAutoCorridors = useMemo((): [number, number][][] => {
-    if (!riverBlobCutEnabled || riverEdges.length === 0 || generatedHexes.length === 0 || !generatedMetadata || !paperDims) return []
+    if (!riverBlobCutEnabled || riverEdges.length === 0 || generatedHexes.length === 0 || !generatedMetadata || !paperDims) return EMPTY_CORRIDORS
     const { pw, ph, px, py } = paperDims
     const meta = generatedMetadata
     const proj = (lonlat: [number, number]): [number, number] =>
@@ -1392,7 +1403,28 @@ const roadV3TierGeomRef = useRef(roadV3TierGeom)
         const h = blobHandleOverrides[ck]
         return h && Object.keys(h).length > 0 ? `${ck}:${JSON.stringify(h)}` : ''
       }).filter(Boolean).join('~')
-      const corridorKey = riverAutoCorridors.map(c => `${c.length}:${c[0]?.[0].toFixed(0)},${c[0]?.[1].toFixed(0)}`).join('|')
+      // Filter to corridors that spatially overlap this terrain's hex extents.
+      // Terrains with no overlapping corridors keep a stable empty corridorKey and never get
+      // a shaping cache miss when river cut is toggled or corridor geometry changes.
+      const relevantCorridors = (() => {
+        if (riverAutoCorridors.length === 0) return riverAutoCorridors
+        let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity
+        for (const [cx, cy] of hexOrigCenterByKey.values()) {
+          if (cx - hexRadius < minX) minX = cx - hexRadius
+          if (cx + hexRadius > maxX) maxX = cx + hexRadius
+          if (cy - hexRadius < minY) minY = cy - hexRadius
+          if (cy + hexRadius > maxY) maxY = cy + hexRadius
+        }
+        return riverAutoCorridors.filter(corridor => {
+          let cMinX = Infinity, cMaxX = -Infinity, cMinY = Infinity, cMaxY = -Infinity
+          for (const [px, py] of corridor) {
+            if (px < cMinX) cMinX = px; if (px > cMaxX) cMaxX = px
+            if (py < cMinY) cMinY = py; if (py > cMaxY) cMaxY = py
+          }
+          return cMaxX >= minX && cMinX <= maxX && cMaxY >= minY && cMinY <= maxY
+        })
+      })()
+      const corridorKey = relevantCorridors.map(c => `${c.length}:${c[0]?.[0].toFixed(0)},${c[0]?.[1].toFixed(0)}`).join('|')
       const styleKey = `${smooth}|${offset}|${bump}|${sweepFreq}|${lobeFreq}|${lobeAmp}|${lobeThreshold}|${lobeDirection}|${terrainBlobSimplify}|${terrainBlobTopoStyle}|${hexRadius}|${JSON.stringify(blobSeeds)}|${handleKey}|${corridorKey}`
       const cached = perTerrainBlobCache.current.get(terrain)
 
@@ -1407,7 +1439,7 @@ const roadV3TierGeomRef = useRef(roadV3TierGeom)
 
       // Pre-cut raw polys with river corridors so the cut edge goes through the full
       // shaping pipeline (inset, bump, lobe) and responds to all blob style settings.
-      const rawPolysForShaping = cutRawPolysWithCorridors(rawPolys, riverAutoCorridors)
+      const rawPolysForShaping = cutRawPolysWithCorridors(rawPolys, relevantCorridors)
 
       // Simplified polys — what handles are generated from and what the dashed overlay shows
       const simplifiedPolys = rawPolysForShaping.map(p => {
@@ -3167,12 +3199,12 @@ const roadV3TierGeomRef = useRef(roadV3TierGeom)
           contourCanvasRef.current = computeContours(heightmapImgDataRef.current, meta, {
             interval: contourIntervalRef.current,
             baseElevation: contourBaseElevationRef.current,
-            indexEvery: 5,
+            indexEvery: contourIndexEveryRef.current,
             smoothPasses: contourSmoothPassesRef.current,
-            color: '#6b5a3a',
+            color: contourColorRef.current,
             width: contourLineWidthRef.current,
-            indexWidth: contourLineWidthRef.current * 2,
-            opacity: 0.7,
+            indexWidth: contourLineWidthRef.current * contourIndexWidthMultRef.current,
+            opacity: contourOpacityRef.current,
           }, pw, ph)
         }
       }
@@ -3211,18 +3243,18 @@ const roadV3TierGeomRef = useRef(roadV3TierGeom)
       contourCanvasRef.current = computeContours(imgData, meta, {
         interval: contourInterval,
         baseElevation: contourBaseElevation,
-        indexEvery: 5,
+        indexEvery: contourIndexEvery,
         smoothPasses: contourSmoothPasses,
-        color: '#6b5a3a',
+        color: contourColor,
         width: contourLineWidth,
-        indexWidth: contourLineWidth * 2,
-        opacity: 0.7,
+        indexWidth: contourLineWidth * contourIndexWidthMult,
+        opacity: contourOpacity,
       }, pw, ph)
     }
     terrainDirtyRef.current = true
     draw()
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [contoursEnabled, contourInterval, contourBaseElevation, contourSmoothPasses, contourLineWidth])
+  }, [contoursEnabled, contourInterval, contourBaseElevation, contourSmoothPasses, contourLineWidth, contourIndexEvery, contourIndexWidthMult, contourColor, contourOpacity])
 
   // Mark other layer caches dirty when their relevant data changes
   useEffect(() => { hexBorderDirtyRef.current = true }, [hexBorderMode, hexEdgeMode, hexBorderOpacity, hexBorderColor, hexBorderDifference, generatedHexes, excludedHexKeys, disabledHexKeys, autoDisabledOceanHexKeys])
