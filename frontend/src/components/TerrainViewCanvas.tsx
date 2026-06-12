@@ -61,6 +61,8 @@ const OSM_OVERLAY_STYLE: maplibregl.StyleSpecification = {
 
 type CtxItem = { label: string; action: () => void; danger?: boolean; color?: string; dim?: boolean; icon?: 'edit' | 'dice' | 'erase'; highlightPolys?: [number,number][][]; highlightLines?: [number,number][][] }
 
+const EMPTY_CORRIDORS: [number, number][][] = []
+
 /** Parses a CSS hex color string (#rrggbb or #rgb) into {r,g,b}. */
 function parseHexColor(hex: string): { r: number; g: number; b: number } {
   const s = hex.replace('#', '')
@@ -286,7 +288,7 @@ export const TerrainViewCanvas = forwardRef<TerrainViewCanvasHandle, { surroundC
     terrainBlobSplatDensity, terrainBlobSplatSize, terrainBlobHoleDensity, terrainBlobHoleSize,
     terrainBlobOutlineEnabled, terrainBlobOutlineColor, terrainBlobOutlineWidth, terrainBlobEffect,
 terrainColors, terrainTextureScales, terrainTextureBlendModes, terrainTextureOpacities,
-    terrainTextureTintColors, terrainTextureTintOpacities,
+    terrainTextureTintColors, terrainTextureTintOpacities, terrainTextureShadeRanges,
     terrainTextureFile, terrainTextureEnabled,
     terrainPaintMode, terrainPaintBrush, overrideHexTerrain, resetHexOverride,
     elevationPaintMode, elevationPaintBrush, overrideHexElevation,
@@ -596,6 +598,7 @@ terrainColors, terrainTextureScales, terrainTextureBlendModes, terrainTextureOpa
   const terrainTextureOpacitiesRef = useRef(terrainTextureOpacities)
   const terrainTextureTintColorsRef = useRef(terrainTextureTintColors)
   const terrainTextureTintOpacitiesRef = useRef(terrainTextureTintOpacities)
+  const terrainTextureShadeRangesRef = useRef(terrainTextureShadeRanges)
   const terrainTextureFileRef = useRef(terrainTextureFile)
   const terrainTextureEnabledRef = useRef(terrainTextureEnabled)
   const terrainBlobOverridesRef = useRef(terrainBlobOverrides)
@@ -887,6 +890,7 @@ terrainColors, terrainTextureScales, terrainTextureBlendModes, terrainTextureOpa
   terrainTextureOpacitiesRef.current = terrainTextureOpacities
   terrainTextureTintColorsRef.current = terrainTextureTintColors
   terrainTextureTintOpacitiesRef.current = terrainTextureTintOpacities
+  terrainTextureShadeRangesRef.current = terrainTextureShadeRanges
   terrainTextureFileRef.current = terrainTextureFile
   terrainTextureEnabledRef.current = terrainTextureEnabled
 
@@ -1307,7 +1311,7 @@ const roadV3TierGeomRef = useRef(roadV3TierGeom)
   // pre-shaping cut can use them. The cut happens on raw hex-outline polygons so the cut edge
   // goes through the full organic shaping pipeline (inset, bump, lobe) just like any other blob edge.
   const riverAutoCorridors = useMemo((): [number, number][][] => {
-    if (!riverBlobCutEnabled || riverEdges.length === 0 || generatedHexes.length === 0 || !generatedMetadata || !paperDims) return []
+    if (!riverBlobCutEnabled || riverEdges.length === 0 || generatedHexes.length === 0 || !generatedMetadata || !paperDims) return EMPTY_CORRIDORS
     const { pw, ph, px, py } = paperDims
     const meta = generatedMetadata
     const proj = (lonlat: [number, number]): [number, number] =>
@@ -1392,7 +1396,28 @@ const roadV3TierGeomRef = useRef(roadV3TierGeom)
         const h = blobHandleOverrides[ck]
         return h && Object.keys(h).length > 0 ? `${ck}:${JSON.stringify(h)}` : ''
       }).filter(Boolean).join('~')
-      const corridorKey = riverAutoCorridors.map(c => `${c.length}:${c[0]?.[0].toFixed(0)},${c[0]?.[1].toFixed(0)}`).join('|')
+      // Filter to corridors that spatially overlap this terrain's hex extents so terrains
+      // with no nearby rivers keep a stable empty corridorKey and don't miss cache when
+      // the river cut toggle or corridor geometry changes.
+      const relevantCorridors = (() => {
+        if (riverAutoCorridors.length === 0) return riverAutoCorridors
+        let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity
+        for (const [cx, cy] of hexOrigCenterByKey.values()) {
+          if (cx - hexRadius < minX) minX = cx - hexRadius
+          if (cx + hexRadius > maxX) maxX = cx + hexRadius
+          if (cy - hexRadius < minY) minY = cy - hexRadius
+          if (cy + hexRadius > maxY) maxY = cy + hexRadius
+        }
+        return riverAutoCorridors.filter(corridor => {
+          let cMinX = Infinity, cMaxX = -Infinity, cMinY = Infinity, cMaxY = -Infinity
+          for (const [px, py] of corridor) {
+            if (px < cMinX) cMinX = px; if (px > cMaxX) cMaxX = px
+            if (py < cMinY) cMinY = py; if (py > cMaxY) cMaxY = py
+          }
+          return cMaxX >= minX && cMinX <= maxX && cMaxY >= minY && cMinY <= maxY
+        })
+      })()
+      const corridorKey = relevantCorridors.map(c => `${c.length}:${c[0]?.[0].toFixed(0)},${c[0]?.[1].toFixed(0)}`).join('|')
       const styleKey = `${smooth}|${offset}|${bump}|${sweepFreq}|${lobeFreq}|${lobeAmp}|${lobeThreshold}|${lobeDirection}|${terrainBlobSimplify}|${terrainBlobTopoStyle}|${hexRadius}|${JSON.stringify(blobSeeds)}|${handleKey}|${corridorKey}`
       const cached = perTerrainBlobCache.current.get(terrain)
 
@@ -1407,7 +1432,7 @@ const roadV3TierGeomRef = useRef(roadV3TierGeom)
 
       // Pre-cut raw polys with river corridors so the cut edge goes through the full
       // shaping pipeline (inset, bump, lobe) and responds to all blob style settings.
-      const rawPolysForShaping = cutRawPolysWithCorridors(rawPolys, riverAutoCorridors)
+      const rawPolysForShaping = cutRawPolysWithCorridors(rawPolys, relevantCorridors)
 
       // Simplified polys — what handles are generated from and what the dashed overlay shows
       const simplifiedPolys = rawPolysForShaping.map(p => {
@@ -1874,6 +1899,7 @@ const roadV3TierGeomRef = useRef(roadV3TierGeom)
       terrainTextureOpacities: terrainTextureOpacitiesRef.current,
       terrainTextureTintColors: terrainTextureTintColorsRef.current,
       terrainTextureTintOpacities: terrainTextureTintOpacitiesRef.current,
+      terrainTextureShadeRanges: terrainTextureShadeRangesRef.current,
       terrainTextures: buildTerrainTextures(),
       px, py, pw, ph,
       backgroundTerrainBlobs: defaultBackgroundBlobsRef.current,
@@ -3178,7 +3204,7 @@ const roadV3TierGeomRef = useRef(roadV3TierGeom)
   //   forestTextureVersion, frameDims, draw])
 
   // Mark terrain layer dirty when terrain-affecting data changes
-  useEffect(() => { terrainDirtyRef.current = true }, [defaultTerrainBlobsSplatted, defaultTerrainBlobsMasked, defaultTerrainBlobs, defaultWaterBlobs, defaultElevationBlobs, terrainColors, terrainTextureScales, terrainTextureBlendModes, terrainTextureOpacities, terrainTextureTintColors, terrainTextureTintOpacities, terrainTextureFile, terrainTextureEnabled, terrainBlobOverrides, terrainTypeBlobStyles, waterOverrides, terrainRenderMode, hexEdgeMode, generatedHexes, realisticCoastline, coastlineDebugRaw, smoothedCoastlineBoundary, rawCoastlineBoundary, beachStrip, beachColor, beachWidth, hillsColor, mountainsColor, reliefShadingOpacity, coastlineDPEpsilon, coastlineChaikinPasses, edgeBlobPainted, edgeBlobOverrides, edgeBlobWidth, mapStyle, historicalIconParams, elevationTypeBlobStyles, terrainBlobOutlineEnabled, terrainBlobOutlineColor, terrainBlobOutlineWidth, terrainBlobEffect, elevationOverridesTerrain])
+  useEffect(() => { terrainDirtyRef.current = true }, [defaultTerrainBlobsSplatted, defaultTerrainBlobsMasked, defaultTerrainBlobs, defaultWaterBlobs, defaultElevationBlobs, terrainColors, terrainTextureScales, terrainTextureBlendModes, terrainTextureOpacities, terrainTextureTintColors, terrainTextureTintOpacities, terrainTextureShadeRanges, terrainTextureFile, terrainTextureEnabled, terrainBlobOverrides, terrainTypeBlobStyles, waterOverrides, terrainRenderMode, hexEdgeMode, generatedHexes, realisticCoastline, coastlineDebugRaw, smoothedCoastlineBoundary, rawCoastlineBoundary, beachStrip, beachColor, beachWidth, hillsColor, mountainsColor, reliefShadingOpacity, coastlineDPEpsilon, coastlineChaikinPasses, edgeBlobPainted, edgeBlobOverrides, edgeBlobWidth, mapStyle, historicalIconParams, elevationTypeBlobStyles, terrainBlobOutlineEnabled, terrainBlobOutlineColor, terrainBlobOutlineWidth, terrainBlobEffect, elevationOverridesTerrain])
   useEffect(() => { terrainDirtyRef.current = true; draw() }, [hillshadeDisabledTerrains, hillshadeDisabledElevClasses, contourDisabledTerrains, contourDisabledElevClasses]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // Decode heightmap PNG → ImageData when URL changes, then recompute derived canvases
@@ -3283,7 +3309,7 @@ const roadV3TierGeomRef = useRef(roadV3TierGeom)
   }, [activeTool.type])
 
   // Redraw when data changes
-  useEffect(() => { draw() }, [generatedHexes, hexBorderMode, hexEdgeMode, hexBorderOpacity, hexBorderColor, hexBorderDifference, hexNumbersEnabled, hexNumberEdge, hexNumberColor, hexNumberFontScale, hexNumberStartCorner, hexNumberMap, smoothedRoadData, smoothedRailData, showRawOsmRoads, roadNodeEditMode, riverNodeEditMode, riverChainOverrides, riverEdges, riverEditMode, riverWidthScale, riverCurveSteps, riverWobble, riverDetail, riverWiggleFreq, riverWiggleAmp, riverSmoothing, riverPathSmoothing, showRiverLabels, riverLabelColor, riverSegmentProps, riverSelectMode, selectedSegmentKeys, riverTierStyles, riverStyle, riverHopProps, selectedHopKey, defaultTerrainBlobs, defaultWaterBlobs, terrainColors, terrainTextureScales, terrainTextureBlendModes, terrainTextureOpacities, terrainTextureTintColors, terrainTextureTintOpacities, terrainTextureFile, terrainTextureEnabled, terrainBlobOverrides, terrainTypeBlobStyles, waterOverrides, terrainRenderMode, settlements, settlementTierStyles, urbanHexes, urbanStyle, roadTierStyles, railStyle, highlights, highlightedHexes, highlightLines, highlightEdgePaths, iconOverlays, placedIcons, labelOverlays, placedLabels, realisticCoastline, coastlineDebugRaw, smoothedCoastlineBoundary, rawCoastlineBoundary, beachStrip, beachColor, beachWidth, coastlineDPEpsilon, coastlineChaikinPasses, edgeBlobPainted, edgeBlobOverrides, edgeBlobWidth, roadSegmentProps, roadHopProps, selectedRoadSegmentKeys, selectedRoadHopKey, roadSelectMode, railNodeEditMode, railControlOverrides, railSelectMode, railWiggleAmp, railWiggleFreq, railSmoothing, railSegmentProps, railHopProps, selectedRailSegmentKeys, selectedRailHopKey, mapBgColor, mapBorderEnabled, mapBorderColor, mapBorderWidth, clipToHexGrid, excludedHexKeys, disabledHexKeys, autoDisabledOceanHexKeys, megaHexEnabled, megaHexRadius, megaHexColor, megaHexOpacity, megaHexLineWidth, megaHexOriginQ, megaHexOriginR, bridgesEnabled, bridgeStyle, bridgeTiers, bridgeOverrides, showElevationDebug, showElevationClassOverlay, mapStyle, labelOffsets, labelPresetId, labelOverrides, activeTool, blobEditMode, activeBlobEditId, blobHandleOverrides, blobMaskEdits, defaultTerrainBlobsMasked, draw])
+  useEffect(() => { draw() }, [generatedHexes, hexBorderMode, hexEdgeMode, hexBorderOpacity, hexBorderColor, hexBorderDifference, hexNumbersEnabled, hexNumberEdge, hexNumberColor, hexNumberFontScale, hexNumberStartCorner, hexNumberMap, smoothedRoadData, smoothedRailData, showRawOsmRoads, roadNodeEditMode, riverNodeEditMode, riverChainOverrides, riverEdges, riverEditMode, riverWidthScale, riverCurveSteps, riverWobble, riverDetail, riverWiggleFreq, riverWiggleAmp, riverSmoothing, riverPathSmoothing, showRiverLabels, riverLabelColor, riverSegmentProps, riverSelectMode, selectedSegmentKeys, riverTierStyles, riverStyle, riverHopProps, selectedHopKey, defaultTerrainBlobs, defaultWaterBlobs, terrainColors, terrainTextureScales, terrainTextureBlendModes, terrainTextureOpacities, terrainTextureTintColors, terrainTextureTintOpacities, terrainTextureShadeRanges, terrainTextureFile, terrainTextureEnabled, terrainBlobOverrides, terrainTypeBlobStyles, waterOverrides, terrainRenderMode, settlements, settlementTierStyles, urbanHexes, urbanStyle, roadTierStyles, railStyle, highlights, highlightedHexes, highlightLines, highlightEdgePaths, iconOverlays, placedIcons, labelOverlays, placedLabels, realisticCoastline, coastlineDebugRaw, smoothedCoastlineBoundary, rawCoastlineBoundary, beachStrip, beachColor, beachWidth, coastlineDPEpsilon, coastlineChaikinPasses, edgeBlobPainted, edgeBlobOverrides, edgeBlobWidth, roadSegmentProps, roadHopProps, selectedRoadSegmentKeys, selectedRoadHopKey, roadSelectMode, railNodeEditMode, railControlOverrides, railSelectMode, railWiggleAmp, railWiggleFreq, railSmoothing, railSegmentProps, railHopProps, selectedRailSegmentKeys, selectedRailHopKey, mapBgColor, mapBorderEnabled, mapBorderColor, mapBorderWidth, clipToHexGrid, excludedHexKeys, disabledHexKeys, autoDisabledOceanHexKeys, megaHexEnabled, megaHexRadius, megaHexColor, megaHexOpacity, megaHexLineWidth, megaHexOriginQ, megaHexOriginR, bridgesEnabled, bridgeStyle, bridgeTiers, bridgeOverrides, showElevationDebug, showElevationClassOverlay, mapStyle, labelOffsets, labelPresetId, labelOverrides, activeTool, blobEditMode, activeBlobEditId, blobHandleOverrides, blobMaskEdits, defaultTerrainBlobsMasked, draw])
 
   useEffect(() => { drawOsmHighlight() }, [osmHighlightTier, osmSpotlightMode, osmSpotlightTiers, osmRailHighlight, hoveredOsmRiverIdx, drawOsmHighlight])
 
