@@ -1,20 +1,17 @@
 import { useRef, useCallback, useState, useEffect } from 'react'
 import { set as idbSet } from 'idb-keyval'
 import { useMapStore } from './store/mapStore'
-import { FeaturesSidebarV3 } from './components/v2/FeaturesSidebarV3'
-import { DisplaySidebarV3 } from './components/v2/DisplaySidebarV3'
 import { TerrainViewCanvas, type TerrainViewCanvasHandle } from './components/TerrainViewCanvas'
 import { ImageAlignView } from './components/ImageAlignView'
 import { TK, TK_DARK } from './theme'
 import { ThemeContext } from './context/ThemeContext'
 import { EditorTopBar } from './components/v2/EditorTopBar'
-import { TerrainSidebarV3 } from './components/v2/TerrainSidebarV3'
-import { OverlaysSidebarV3 } from './components/v2/OverlaysSidebarV3'
 import { BottomDock } from './components/v2/BottomDock'
 import { CanvasToolbar } from './components/v2/CanvasToolbar'
 import { SetupLandingPage } from './components/v2/SetupLandingPage'
 import { SetupWizard } from './components/v2/SetupWizard'
 import { ErrorBoundary } from './components/ErrorBoundary'
+import { LeftRail } from './components/v2/LeftRail'
 
 export function AppV2() {
   const [screen, setScreen] = useState<'landing' | 'wizard' | 'editor'>('landing')
@@ -38,7 +35,7 @@ function AppV2Inner({ screen, setScreen, isDark, setIsDark }: {
   isDark: boolean
   setIsDark: (v: boolean) => void
 }) {
-  const { step, activePanel, undo, redo, generateStatus, generateProgress, uiScale,
+  const { step, undo, redo, generateStatus, generateProgress, uiScale,
           elevationStatus, heightmapUrl, fetchElevation, loadBuiltinPreset } = useMapStore()
   const canvasHandleRef = useRef<TerrainViewCanvasHandle>(null)
 
@@ -135,11 +132,6 @@ function AppV2Inner({ screen, setScreen, isDark, setIsDark }: {
   if (step === 'image-align') return <ImageAlignView />
 
   const t = isDark ? TK_DARK : TK
-  const sidebar = activePanel === 'terrain'  ? <TerrainSidebarV3 />
-    : activePanel === 'display'   ? <DisplaySidebarV3 />
-    : activePanel === 'features'  ? <FeaturesSidebarV3 />
-    : <OverlaysSidebarV3 />
-
   const surroundColor = isDark ? '#2a2420' : '#B7B0A6'
 
   return (
@@ -154,15 +146,16 @@ function AppV2Inner({ screen, setScreen, isDark, setIsDark }: {
           </div>
         )}
 
-        {/* Canvas + floating sidebar */}
+        {/* Canvas + floating UI */}
         <div style={{ flex: 1, position: 'relative', overflow: 'hidden' }}>
           <div style={{ width: '100%', height: '100%', display: 'flex' }}>
             <TerrainViewCanvas ref={canvasHandleRef} surroundColor={surroundColor} />
           </div>
-          {/* Sidebar floats over the canvas */}
+
+          {/* Left rail + flyout float over the canvas */}
           <div style={{ position: 'absolute', top: 16, left: 16, bottom: 16, zIndex: 10, pointerEvents: 'none' }}>
             <div style={{ pointerEvents: 'auto', height: '100%', boxShadow: t.shadowFlyout, zoom: uiScale }}>
-              {sidebar}
+              <LeftRail />
             </div>
           </div>
 

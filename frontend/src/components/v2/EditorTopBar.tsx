@@ -4,19 +4,11 @@ import { useTheme } from '../../context/ThemeContext'
 import { PresetsDropdown } from '../PresetsPanel'
 import { BUILTIN_PRESET_MAP, isPresetEdited } from '../../lib/stylePreset'
 
-const TABS = [
-  { id: 'terrain',    label: 'Terrain'  },
-  { id: 'features',   label: 'Features' },
-  { id: 'highlights', label: 'Overlays' },
-  { id: 'display',    label: 'Display'  },
-] as const
-
-export function EditorTopBar({ onExportPDF, onGoHome, hideTabs }: { onExportPDF: (mode: 'sheets' | 'combined') => Promise<void>; onGoHome: () => void; hideTabs?: boolean }) {
+export function EditorTopBar({ onExportPDF, onGoHome }: { onExportPDF: (mode: 'sheets' | 'combined') => Promise<void>; onGoHome: () => void }) {
   const t = useTheme()
   const {
     paperSize, generatedHexes, generatedMetadata, pageGrid,
     undoStack, redoStack, undo, redo,
-    activePanel, setActivePanel,
     saveProject, restoreProject,
     mapTitle, setMapTitle,
     activePresetId,
@@ -286,34 +278,8 @@ export function EditorTopBar({ onExportPDF, onGoHome, hideTabs }: { onExportPDF:
         </button>
       </div>
 
-      {/* Center: tabs */}
-      <div style={{ flex: 1, display: 'flex', alignItems: 'stretch', justifyContent: 'center' }}>
-        {!hideTabs && TABS.map(tab => {
-          const active = activePanel === tab.id
-          return (
-            <button
-              key={tab.id}
-              onClick={() => setActivePanel(tab.id as typeof activePanel)}
-              style={{
-                height: '100%',
-                padding: '0 10px',
-                background: 'none',
-                border: 'none',
-                borderBottom: `2px solid ${active ? t.rust : 'transparent'}`,
-                cursor: 'pointer',
-                fontFamily: t.sans,
-                fontSize: 12,
-                fontWeight: active ? 600 : 400,
-                color: active ? t.ink : t.inkMute,
-                letterSpacing: 0.1,
-                whiteSpace: 'nowrap',
-              }}
-            >
-              {tab.label}
-            </button>
-          )
-        })}
-      </div>
+      {/* Center spacer */}
+      <div style={{ flex: 1 }} />
 
       {/* Right: undo/redo + PRINT */}
       <div style={{ display: 'flex', alignItems: 'stretch', borderLeft: `1px solid ${t.line}`, flexShrink: 0 }}>

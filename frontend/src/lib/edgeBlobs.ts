@@ -272,7 +272,7 @@ function buildRibbonBlob(
 }
 
 /** How far (in units of R) to extend the ribbon toward a matching-terrain hex. */
-const HEX_CONNECT_EXTEND = 0.7
+const HEX_CONNECT_EXTEND = 1.2
 
 /** How far (in units of R) to push a chain endpoint into an adjacent matching-terrain area hex. */
 const ENDPOINT_EXTEND_FRACTION = 0.4

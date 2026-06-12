@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react'
 import {
   useMapStore, DEFAULT_RIVER_STYLE, DEFAULT_STROKE_EFFECT,
-  DEFAULT_RIVER_TIER_STYLES,
+  DEFAULT_RIVER_TIER_STYLES, TERRAIN_COLORS,
 } from '../../store/mapStore'
 import type { RiverTier } from '../../store/mapStore'
 import { riverChainCache, computeTaperRanges } from '../../lib/riverChains'
@@ -22,7 +22,7 @@ import { LabelSpecEditorRows } from './LabelSpecEditor'
 const RIVER_FILL_GROUPS   = [{ label: 'Blue', colors: [...PALETTE_RIVER] }]
 const RIVER_STROKE_GROUPS = [{ label: 'Dark', colors: [...PALETTE_RIVER_OUTLINE] }]
 
-type FlyoutId = 'river-0' | 'river-1' | 'river-2' | 'shape' | 'osm' | 'segment' | 'river-labels' | null
+type FlyoutId = 'river-0' | 'river-1' | 'river-2' | 'shape' | 'osm' | 'segment' | 'river-labels' | 'terrain-cut' | null
 
 const TIER_COLORS = ['#6090c8', '#8090b8', '#a0a8c0'] as const
 
@@ -56,6 +56,31 @@ function SectionToggle({ label, enabled, onChange, accentColor }: { label: strin
   )
 }
 
+// ── TerrainCutFlyout ──────────────────────────────────────────────────────────
+
+export function TerrainCutFlyout({ onClose }: { onClose: () => void }) {
+  const t = useTheme()
+  const { riverBlobCutEnabled, riverBlobCutWidth, setRiverBlobCutEnabled, setRiverBlobCutWidth } = useMapStore()
+  return (
+    <FlyoutShell title="Terrain cut" subtitle="carve river corridors out of terrain blobs" onClose={onClose}>
+      <ToggleRow label="Enabled" checked={riverBlobCutEnabled} onChange={setRiverBlobCutEnabled} />
+      <MiniSlider
+        label="Width"
+        display={riverBlobCutWidth.toFixed(2) + '×'}
+        value={Math.round(riverBlobCutWidth * 100)}
+        min={10} max={300} step={5}
+        disabled={!riverBlobCutEnabled}
+        onChange={v => setRiverBlobCutWidth(v / 100)}
+      />
+      {riverBlobCutEnabled && (
+        <div style={{ padding: '4px 14px 8px', fontFamily: t.mono, fontSize: 9, color: t.inkFaint, lineHeight: 1.5 }}>
+          Width is a multiple of hex radius. Reactively follows the rendered river path — removing a river restores the terrain.
+        </div>
+      )}
+    </FlyoutShell>
+  )
+}
+
 // ── GlobalShapeFlyout ─────────────────────────────────────────────────────────
 
 export function GlobalShapeFlyout({ onClose }: { onClose: () => void }) {
@@ -80,6 +105,49 @@ export function GlobalShapeFlyout({ onClose }: { onClose: () => void }) {
       <MiniSlider label="Line smooth" display={String(riverSmoothing)}     value={riverSmoothing}     min={2} max={30} step={1} onChange={setRiverSmoothing} />
       <MiniSlider label="Path smooth" display={String(riverPathSmoothing)} value={riverPathSmoothing} min={0} max={50} step={1} onChange={setRiverPathSmoothing} />
     </FlyoutShell>
+  )
+}
+
+// ── BankTerrainPicker ─────────────────────────────────────────────────────────
+
+const BANK_TERRAINS = [
+  { id: 'woods',       label: 'Woods' },
+  { id: 'light_woods', label: 'Light woods' },
+  { id: 'rough',       label: 'Rough' },
+  { id: 'marsh',       label: 'Marsh' },
+  { id: 'beach',       label: 'Beach' },
+]
+
+function BankTerrainPicker({ value, onChange, terrainColors }: {
+  value: string[]
+  onChange: (v: string[]) => void
+  terrainColors: Record<string, string>
+}) {
+  const t = useTheme()
+  const toggle = (id: string) => {
+    const next = value.includes(id) ? value.filter(x => x !== id) : [...value, id]
+    onChange(next)
+  }
+  return (
+    <div style={{ padding: '2px 14px 6px' }}>
+      <div style={{ fontFamily: t.mono, fontSize: 8, letterSpacing: 0.6, color: t.inkFaint, textTransform: 'uppercase', marginBottom: 4 }}>
+        {value.length === 0 ? 'Show on all terrain' : 'Show only on selected'}
+      </div>
+      {BANK_TERRAINS.map(({ id, label }) => {
+        const active = value.includes(id)
+        const color = terrainColors[id] ?? '#888'
+        return (
+          <div key={id} onClick={() => toggle(id)}
+            style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '2px 0', cursor: 'pointer', userSelect: 'none' }}>
+            <div style={{ width: 10, height: 10, borderRadius: 2, background: color, flexShrink: 0, border: `1px solid rgba(0,0,0,0.15)` }} />
+            <span style={{ fontFamily: t.sans, fontSize: 11, color: active ? t.ink : t.inkMute, flex: 1 }}>{label}</span>
+            <div style={{ width: 12, height: 12, borderRadius: 2, border: `1px solid ${active ? t.rust : t.inkFaint}`, background: active ? t.rust : 'transparent', flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+              {active && <span style={{ color: '#fff', fontSize: 8, lineHeight: 1 }}>✓</span>}
+            </div>
+          </div>
+        )
+      })}
+    </div>
   )
 }
 
@@ -108,11 +176,14 @@ export function RiverTierFlyout({ tier, onClose }: { tier: RiverTier; onClose: (
   const smoothing     = s.smoothing     ?? riverSmoothing
   const pathSmoothing = s.pathSmoothing ?? riverPathSmoothing
 
+  const { terrainColors } = useMapStore()
+
   const isModified =
     s.color !== def.color || s.widthScale !== def.widthScale ||
     JSON.stringify(s.effect) !== JSON.stringify(def.effect) ||
     s.wiggleAmp !== undefined || s.wiggleFreq !== undefined ||
-    s.smoothing !== undefined || s.pathSmoothing !== undefined
+    s.smoothing !== undefined || s.pathSmoothing !== undefined ||
+    s.bankEnabled || s.bankWidth !== def.bankWidth || (s.bankTerrains?.length ?? 0) > 0
 
   return (
     <FlyoutShell title={s.label} subtitle={isModified ? 'modified' : undefined} onClose={onClose}>
@@ -153,6 +224,15 @@ export function RiverTierFlyout({ tier, onClose }: { tier: RiverTier; onClose: (
       <MiniSlider label="Wiggle freq" display={wiggleFreq.toFixed(1)} value={Math.round(wiggleFreq * 10)} min={5} max={100} step={1} accentColor={shapeOverrideEnabled ? accentColor : undefined} onChange={v => setS({ wiggleFreq: v / 10 })} disabled={!shapeOverrideEnabled} />
       <MiniSlider label="Line smooth" display={String(smoothing)}     value={smoothing}     min={2} max={30} step={1} accentColor={shapeOverrideEnabled ? accentColor : undefined} onChange={v => setS({ smoothing: v })} disabled={!shapeOverrideEnabled} />
       <MiniSlider label="Path smooth" display={String(pathSmoothing)} value={pathSmoothing} min={0} max={50} step={1} accentColor={shapeOverrideEnabled ? accentColor : undefined} onChange={v => setS({ pathSmoothing: v })} disabled={!shapeOverrideEnabled} />
+
+      {/* Bank clearance */}
+      <SectionToggle label="Bank clearance" enabled={s.bankEnabled ?? false} onChange={v => setS({ bankEnabled: v })} accentColor={accentColor} />
+      {s.bankEnabled && (
+        <>
+          <MiniSlider label="Width" display={`${s.bankWidth ?? 4}px`} value={s.bankWidth ?? 4} min={1} max={30} step={1} accentColor={accentColor} onChange={v => setS({ bankWidth: v })} />
+          <BankTerrainPicker value={s.bankTerrains ?? []} onChange={v => setS({ bankTerrains: v })} terrainColors={{ ...TERRAIN_COLORS, ...terrainColors }} />
+        </>
+      )}
 
       {isModified && (
         <div style={{ margin: '8px 14px 0', borderTop: `1px solid ${t.line2}`, paddingTop: 8 }}>
@@ -530,6 +610,7 @@ export function RiversSidebarV3() {
         <TGap />
         <V2Divider label="Style" />
         <TriggerRow label="Shape defaults" active={flyout === 'shape'} onClick={() => toggle('shape')} />
+        <TriggerRow label="Terrain cut" active={flyout === 'terrain-cut'} onClick={() => toggle('terrain-cut')} />
 
         <TGap />
         <V2Divider label="Labels" />
@@ -537,7 +618,8 @@ export function RiversSidebarV3() {
 
       </StripShell>
 
-      {flyout === 'shape'   && <GlobalShapeFlyout onClose={() => setFlyout(null)} />}
+      {flyout === 'shape'        && <GlobalShapeFlyout  onClose={() => setFlyout(null)} />}
+      {flyout === 'terrain-cut'  && <TerrainCutFlyout   onClose={() => setFlyout(null)} />}
       {flyout === 'river-0' && <RiverTierFlyout tier={0} onClose={() => setFlyout(null)} />}
       {flyout === 'river-1' && <RiverTierFlyout tier={1} onClose={() => setFlyout(null)} />}
       {flyout === 'river-2' && <RiverTierFlyout tier={2} onClose={() => setFlyout(null)} />}

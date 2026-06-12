@@ -60,6 +60,21 @@ function AssignedRule({
 }) {
   const t = useTheme()
   const cls = WORLDCOVER_CLASSES.find(c => c.code === code)
+  // Local state so the slider thumb moves instantly. Reclassification is debounced
+  // to ~150ms so the map updates live while dragging but not on every pixel.
+  const [localPct, setLocalPct] = useState(() => Math.round(threshold * 100))
+  const localRef = useRef(threshold)
+  const draggingRef = useRef(false)
+  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  // Sync parent value when not dragging (e.g. external reset)
+  const prevThreshold = useRef(threshold)
+  if (prevThreshold.current !== threshold && !draggingRef.current) {
+    prevThreshold.current = threshold
+    localRef.current = threshold
+    setLocalPct(Math.round(threshold * 100))
+  }
+
   if (!cls) return null
   return (
     <div style={{
@@ -74,11 +89,25 @@ function AssignedRule({
         <div style={{ flex: 1 }}>
           <MiniSlider
             label={<><span style={{ color: t.inkMute, marginRight: 6 }}>{code}</span>{cls.name}</>}
-            display={`${Math.round(threshold * 100)}%`}
-            value={Math.round(threshold * 100)}
+            display={`${localPct}%`}
+            value={localPct}
             min={1} max={100} step={1}
             accentColor={cls.color}
-            onChange={v => onThresholdChange(v / 100)}
+            onChange={v => {
+              localRef.current = v / 100
+              setLocalPct(v)
+              if (debounceRef.current) clearTimeout(debounceRef.current)
+              debounceRef.current = setTimeout(() => {
+                debounceRef.current = null
+                onThresholdChange(localRef.current)
+              }, 150)
+            }}
+            onDragStart={() => { draggingRef.current = true }}
+            onDragEnd={() => {
+              draggingRef.current = false
+              if (debounceRef.current) { clearTimeout(debounceRef.current); debounceRef.current = null }
+              onThresholdChange(localRef.current)
+            }}
           />
         </div>
       </div>

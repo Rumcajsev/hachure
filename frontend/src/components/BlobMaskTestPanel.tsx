@@ -8,9 +8,11 @@ type Props = {
   setActiveTool: (t: ActiveTool) => void
   onRemove: (id: string) => void
   onClear: (terrain?: string) => void
+  subtractWidth: number
+  onSubtractWidthChange: (v: number) => void
 }
 
-export function BlobMaskTestPanel({ blobMaskEdits, activeTool, setActiveTool, onRemove, onClear }: Props) {
+export function BlobMaskTestPanel({ blobMaskEdits, activeTool, setActiveTool, onRemove, onClear, subtractWidth, onSubtractWidthChange }: Props) {
   const [terrain, setTerrain] = useState('woods')
   const [open, setOpen] = useState(false)
 
@@ -78,11 +80,26 @@ export function BlobMaskTestPanel({ blobMaskEdits, activeTool, setActiveTool, on
         </button>
       </div>
 
-      {isBlobMask && (
+      {isBlobMask && activeMode === 'subtract' && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', color: '#888', fontSize: 10 }}>
+            <span>brush width</span>
+            <span>{Math.round(subtractWidth * 1000) / 10}%</span>
+          </div>
+          <input
+            type="range" min={0.002} max={0.08} step={0.001}
+            value={subtractWidth}
+            onChange={e => onSubtractWidthChange(Number(e.target.value))}
+            style={{ width: '100%', accentColor: '#f88' }}
+          />
+          <div style={{ color: '#888', fontSize: 10, lineHeight: 1.4 }}>
+            Draw a stroke across the blob to cut it.
+          </div>
+        </div>
+      )}
+      {isBlobMask && activeMode === 'add' && (
         <div style={{ color: '#888', fontSize: 10, lineHeight: 1.4 }}>
-          {activeMode === 'subtract'
-            ? 'Draw a stroke across the blob to cut it. Width scales with map size.'
-            : 'Draw a closed shape to add to the blob.'}
+          Draw a closed shape to add to the blob.
         </div>
       )}
 

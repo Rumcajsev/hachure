@@ -54,18 +54,17 @@ export function BottomDock({ canvasRef }: { canvasRef: React.RefObject<TerrainVi
   const peekStart = () => { canvasRef.current?.peekStart(); setOverlayOn(true) }
   const peekEnd = () => { canvasRef.current?.peekEnd(); setOverlayOn(false) }
 
-  // Keep active state in sync with spacebar (canvas handles the actual peek)
+  // Keep active state in sync with M key (canvas handles the actual peek)
   useEffect(() => {
     let held = false
     const onDown = (e: KeyboardEvent) => {
-      if (e.code !== 'Space' || held) return
+      if (e.code !== 'KeyM' || held) return
       if (shouldSuppressShortcut(e)) return
-      e.preventDefault()
       held = true
       setOverlayOn(true)
     }
     const onUp = (e: KeyboardEvent) => {
-      if (e.code !== 'Space') return
+      if (e.code !== 'KeyM') return
       held = false
       setOverlayOn(false)
     }
@@ -108,7 +107,7 @@ export function BottomDock({ canvasRef }: { canvasRef: React.RefObject<TerrainVi
           background: t.paper,
           letterSpacing: 0,
         }}>
-          space
+          M
         </span>
       </DockBtn>
 

@@ -12,7 +12,6 @@ import {
 import {
   RoadStyleFlyout, RailStyleFlyout, RoadShapeFlyout, RailShapeFlyout,
   OsmRoadsFlyout, OsmRailsFlyout, BridgesFlyout, RoadSegmentFlyout,
-  TerrainClearanceFlyout,
 } from './RoadsSidebarV3'
 import {
   TierIcon, TierStyleFlyout, UrbanStyleFlyout, OsmSettlementsFlyout, SettlementLabelFlyout,
@@ -51,7 +50,6 @@ type FlyoutState =
   | { kind: 'road-import' }
   | { kind: 'rail-import' }
   | { kind: 'bridges' }
-  | { kind: 'terrain-clearance' }
   | { kind: 'road-segment'; segMode: 'road' | 'rail' }
   | { kind: 'tier'; tier: SettlementTier }
   | { kind: 'urban' }
@@ -335,7 +333,6 @@ export function FeaturesSidebarV3() {
         )}
         <TGap />
         <TriggerRow label="Road shape" active={flyout?.kind === 'road-shape'} onClick={() => open({ kind: 'road-shape' })} />
-        <TriggerRow label="Terrain clearance" active={flyout?.kind === 'terrain-clearance'} onClick={() => open({ kind: 'terrain-clearance' })} />
         {dataSource === 'osm' && (
           <TriggerRow label="Fetch from OSM" active={flyout?.kind === 'road-import'} icon={IMPORT_ICON} onClick={() => open({ kind: 'road-import' })} />
         )}
@@ -460,7 +457,6 @@ export function FeaturesSidebarV3() {
       {flyout?.kind === 'road-import'       && <OsmRoadsFlyout  onClose={() => setFlyout(null)} />}
       {flyout?.kind === 'rail-import'       && <OsmRailsFlyout  onClose={() => setFlyout(null)} />}
       {flyout?.kind === 'bridges'           && <BridgesFlyout   onClose={() => setFlyout(null)} />}
-      {flyout?.kind === 'terrain-clearance' && <TerrainClearanceFlyout onClose={() => setFlyout(null)} />}
       {flyout?.kind === 'road-segment'      && (
         <RoadSegmentFlyout
           mode={(flyout as Extract<FlyoutState, { kind: 'road-segment' }>).segMode}

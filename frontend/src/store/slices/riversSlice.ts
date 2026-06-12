@@ -70,6 +70,10 @@ export type RiversSlice = {
   setRiverPointSpacing: (v: number) => void
   setRiverNoiseAmp: (v: number) => void
   setRiverNoiseScale: (v: number) => void
+  riverBlobCutEnabled: boolean
+  riverBlobCutWidth: number
+  setRiverBlobCutEnabled: (v: boolean) => void
+  setRiverBlobCutWidth: (v: number) => void
 }
 
 type Set = (partial: Partial<MapStore> | ((s: MapStore) => Partial<MapStore>)) => void
@@ -157,6 +161,8 @@ export const createRiversSlice = (set: Set, get: () => MapStore): RiversSlice =>
     riverChainOverrides: {},
     riverHopProps: {},
     selectedHopKey: null,
+    riverBlobCutEnabled: false,
+    riverBlobCutWidth: 0.5,
 
     setHoveredOsmRiverIdx: (idx) => set({ hoveredOsmRiverIdx: idx }),
     clearOsmRivers: () => set({ osmRiverWays: [], riversOsmStatus: 'idle', riversOsmError: null, hoveredOsmRiverIdx: null, appliedOsmRiverIndices: [] }),
@@ -271,6 +277,8 @@ export const createRiversSlice = (set: Set, get: () => MapStore): RiversSlice =>
     setRiverPointSpacing: (v) => set({ riverPointSpacing: v }),
     setRiverNoiseAmp: (v) => set({ riverNoiseAmp: v }),
     setRiverNoiseScale: (v) => set({ riverNoiseScale: v }),
+    setRiverBlobCutEnabled: (v) => set({ riverBlobCutEnabled: v }),
+    setRiverBlobCutWidth: (v) => set({ riverBlobCutWidth: v }),
     setRiverChainOverride: (segKey, pts) => set(s => ({ riverChainOverrides: { ...s.riverChainOverrides, [segKey]: pts } })),
     deleteRiverChainOverride: (segKey) => set(s => { const { [segKey]: _, ...rest } = s.riverChainOverrides; return { riverChainOverrides: rest } }),
     clearRiverChainOverrides: () => set({ riverChainOverrides: {} }),

@@ -2,7 +2,7 @@
 
 import type { RoadTierStyle, RailStyle, RoadDashStyle } from '../store/mapStore'
 import { DEFAULT_STROKE_EFFECT } from '../store/mapStore'
-import { offsetPolyline, pointInPolygon } from './geometry'
+import { offsetPolyline } from './geometry'
 import { dashArray, drawLineGlow } from './strokeEffect'
 
 function dashPattern(style: RoadDashStyle, w: number): number[] {
@@ -11,24 +11,7 @@ function dashPattern(style: RoadDashStyle, w: number): number[] {
   return []
 }
 
-// Returns t ∈ [0,1] along segment AB where it intersects segment CD, or null if no intersection.
-function segIntersect(
-  ax: number, ay: number, bx: number, by: number,
-  cx: number, cy: number, dx: number, dy: number,
-): number | null {
-  const dxAB = bx - ax, dyAB = by - ay
-  const dxCD = dx - cx, dyCD = dy - cy
-  const denom = dxAB * dyCD - dyAB * dxCD
-  if (Math.abs(denom) < 1e-10) return null
-  const t = ((cx - ax) * dyCD - (cy - ay) * dxCD) / denom
-  const u = ((cx - ax) * dyAB - (cy - ay) * dxAB) / denom
-  if (t < 0 || t > 1 || u < 0 || u > 1) return null
-  return t
-}
-
 type Ctx = CanvasRenderingContext2D | OffscreenCanvasRenderingContext2D
-
-export type TerrainBlobEntry = { terrain: string; polys: [number, number][][] }
 
 export type DrawRoadsRailsParams = {
   roadChains: { tier: 0 | 1 | 2; chain: [number, number][] }[]
@@ -37,12 +20,10 @@ export type DrawRoadsRailsParams = {
   tierStyles: [RoadTierStyle, RoadTierStyle, RoadTierStyle]
   railStyle: RailStyle
   project: (lon: number, lat: number) => [number, number]
-  clearColor?: string
-  clearanceBlobs?: TerrainBlobEntry[]
 }
 
 export function drawRoadsAndRails(rCtx: Ctx, {
-  roadChains, junctions, railChains, tierStyles, railStyle, project, clearColor, clearanceBlobs,
+  roadChains, junctions, railChains, tierStyles, railStyle, project,
 }: DrawRoadsRailsParams) {
   rCtx.save()
   const drawChain = (chain: [number, number][]) => {
@@ -57,104 +38,6 @@ export function drawRoadsAndRails(rCtx: Ctx, {
   if (roadChains.length > 0) {
     const chainsByTier: [[number,number][][], [number,number][][], [number,number][][]] = [[], [], []]
     for (const { tier, chain } of roadChains) chainsByTier[tier].push(chain)
-
-    if (clearColor && clearanceBlobs && clearanceBlobs.length > 0) {
-      const allPolys = clearanceBlobs.flatMap(b => b.polys).filter(p => p.length >= 3)
-      if (allPolys.length > 0) {
-        const TAPER_PX = 20
-
-        rCtx.save()
-        rCtx.fillStyle = clearColor
-
-        for (const tier of [2, 1, 0] as const) {
-          const halfW = tierStyles[tier].outerW
-          for (const chain of chainsByTier[tier]) {
-            const pts = chain.map(([lon, lat]) => project(lon, lat))
-            if (pts.length < 2) continue
-
-            // Arc-length at each projected point
-            const arcLen: number[] = [0]
-            for (let i = 1; i < pts.length; i++)
-              arcLen.push(arcLen[i - 1] + Math.hypot(pts[i][0] - pts[i-1][0], pts[i][1] - pts[i-1][1]))
-
-            // Collect all arc-length positions where the chain crosses a polygon edge
-            const crossings: number[] = []
-            for (const poly of allPolys) {
-              const n = poly.length
-              for (let ei = 0; ei < n; ei++) {
-                const [ex1, ey1] = poly[ei], [ex2, ey2] = poly[(ei + 1) % n]
-                for (let ci = 0; ci < pts.length - 1; ci++) {
-                  const t = segIntersect(pts[ci][0], pts[ci][1], pts[ci+1][0], pts[ci+1][1], ex1, ey1, ex2, ey2)
-                  if (t !== null) crossings.push(arcLen[ci] + t * (arcLen[ci+1] - arcLen[ci]))
-                }
-              }
-            }
-            crossings.sort((a, b) => a - b)
-
-            // One pointInPolygon check — just the first point — to seed inside/outside state
-            const firstInside = allPolys.some(p => pointInPolygon(pts[0][0], pts[0][1], p))
-
-            // Build intervals [s0, s1, taperStart, taperEnd] where chain is inside a blob
-            type Interval = { s0: number; s1: number; taperStart: boolean; taperEnd: boolean }
-            const intervals: Interval[] = []
-            let inside = firstInside
-            let s0 = inside ? 0 : -1
-            let taperStart = false  // no taper if we start inside (road was already in terrain)
-
-            for (const s of crossings) {
-              if (inside) {
-                intervals.push({ s0, s1: s, taperStart, taperEnd: true })
-                inside = false
-              } else {
-                s0 = s; taperStart = true; inside = true
-              }
-            }
-            if (inside) {
-              // Chain ends inside — no taper at the exit end
-              intervals.push({ s0, s1: arcLen[arcLen.length - 1], taperStart, taperEnd: false })
-            }
-
-            // Draw a tapered ribbon for each interval
-            for (const { s0, s1, taperStart, taperEnd } of intervals) {
-              // Gather chain points inside [s0, s1]
-              const segPts: [number, number][] = []
-              const segW: number[] = []
-              for (let i = 0; i < pts.length; i++) {
-                const s = arcLen[i]
-                if (s < s0 - 0.5 || s > s1 + 0.5) continue
-                const ew = taperStart ? Math.min(1, (s - s0) / TAPER_PX) : 1
-                const xw = taperEnd  ? Math.min(1, (s1 - s) / TAPER_PX) : 1
-                segPts.push(pts[i])
-                segW.push(Math.min(ew, xw) * halfW)
-              }
-              if (segPts.length < 2) continue
-
-              // Build left/right ribbon edges using per-point normals
-              const left: [number, number][] = []
-              const right: [number, number][] = []
-              for (let i = 0; i < segPts.length; i++) {
-                const prev = segPts[Math.max(0, i - 1)]
-                const next = segPts[Math.min(segPts.length - 1, i + 1)]
-                const tx = next[0] - prev[0], ty = next[1] - prev[1]
-                const tl = Math.hypot(tx, ty) || 1
-                const nx = -ty / tl, ny = tx / tl
-                const w = segW[i]
-                left.push([segPts[i][0] + nx * w, segPts[i][1] + ny * w])
-                right.push([segPts[i][0] - nx * w, segPts[i][1] - ny * w])
-              }
-
-              rCtx.beginPath()
-              rCtx.moveTo(left[0][0], left[0][1])
-              for (let i = 1; i < left.length; i++) rCtx.lineTo(left[i][0], left[i][1])
-              for (let i = right.length - 1; i >= 0; i--) rCtx.lineTo(right[i][0], right[i][1])
-              rCtx.closePath()
-              rCtx.fill()
-            }
-          }
-        }
-        rCtx.restore()
-      }
-    }
 
     // Pass 0: outer glow per tier (behind everything)
     for (const tier of [2, 1, 0] as const) {

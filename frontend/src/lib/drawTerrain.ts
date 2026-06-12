@@ -80,8 +80,6 @@ export type DrawTerrainParams = {
   terrainBlobOutlineColor: string
   terrainBlobOutlineWidth: number
   terrainBlobEffect: StrokeEffect
-  /** Per-terrain corridor erase: road/river chains (canvas px) to cut from blob fill at draw time. */
-  featureCorridors?: Map<string, { chains: [number, number][][]; halfWidth: number; bump: number; sweepFreq: number; lobeAmp: number; lobeFreq: number }[]>
 }
 
 export type { EdgeBlobParams, EdgeBlobChain }
@@ -542,74 +540,7 @@ export function drawTerrain(tCtx: Ctx, params: DrawTerrainParams): void {
         if (tex) applyTextureOverlay(tCtx, tex, ovPolys, R, ovTexScale, R * 0.12, texBlend, texOpacity, texTint, texTintOpacity, isColorMode)
       }
 
-      // c. Feature corridor erase — destination-out stroke, clipped to blob polygon
-      const corridors = params.featureCorridors?.get(terrain)
-      if (corridors && corridors.length > 0 && defaultPolys.length > 0) {
-        tCtx.save()
-        tCtx.beginPath()
-        for (const poly of defaultPolys) {
-          if (poly.length < 3) continue
-          tCtx.moveTo(poly[0][0], poly[0][1])
-          for (let i = 1; i < poly.length; i++) tCtx.lineTo(poly[i][0], poly[i][1])
-          tCtx.closePath()
-        }
-        tCtx.clip('evenodd')
-        tCtx.globalCompositeOperation = 'destination-out'
-        tCtx.lineCap = 'round'
-        tCtx.lineJoin = 'round'
-        tCtx.strokeStyle = 'rgba(0,0,0,1)'
-        for (const { chains, halfWidth, bump, sweepFreq, lobeAmp, lobeFreq } of corridors) {
-          const noiseFreq  = sweepFreq / R   // base waviness frequency
-          const lobeFreqPx = lobeFreq / R    // fringe frequency (matches blob edge character)
-          const permWidth = makePermutation(Math.round(halfWidth * 997))
-          const permPerp  = makePermutation(Math.round(halfWidth * 997) + 53)
-          // Perpendicular meander: capped to 40% of halfWidth so corridor stays near centerline
-          const perpAmp = halfWidth * Math.min(lobeAmp, 0.4)
-
-          for (const chain of chains) {
-            if (chain.length < 2) continue
-
-            // Step 1: perturb chain points perpendicular using lobeFreq — same fringe
-            // frequency as the blob edge, so the corridor gap looks like it belongs
-            const perturbed: [number, number][] = chain.map((pt, i) => {
-              const prev = chain[Math.max(0, i - 1)]
-              const next = chain[Math.min(chain.length - 1, i + 1)]
-              const tx = next[0] - prev[0], ty = next[1] - prev[1]
-              const len = Math.hypot(tx, ty)
-              if (len < 1e-6) return pt
-              const nx = -ty / len, ny = tx / len
-              const noise = perlinNoise2D(pt[0] * lobeFreqPx, pt[1] * lobeFreqPx, permPerp)
-              return [pt[0] + nx * noise * perpAmp, pt[1] + ny * noise * perpAmp]
-            })
-
-            // Step 2: feathered multi-pass — inner core uses bump/sweepFreq,
-            // outer passes use lobeFreq for edge breakup matching blob fringe scale
-            const passes = 4
-            for (let pass = 0; pass < passes; pass++) {
-              const permPass = makePermutation(Math.round(halfWidth * 997) + pass * 137)
-              const passWidth = halfWidth * (0.5 + pass * 0.4)
-              // Outer passes use lobeFreq (finer, jaggier) — inner use sweepFreq (broader)
-              const freq = pass < 2 ? noiseFreq : lobeFreqPx
-              const amp  = pass < 2 ? Math.min(bump, 0.3) : Math.min(lobeAmp, 0.4)
-
-              for (let i = 0; i < perturbed.length - 1; i++) {
-                const [x0, y0] = perturbed[i], [x1, y1] = perturbed[i + 1]
-                const mx = (x0 + x1) / 2, my = (y0 + y1) / 2
-                const noise = (perlinNoise2D(mx * freq, my * freq, permPass) + 1) / 2
-                const w = passWidth * 2 * (0.6 + noise * amp)
-                tCtx.beginPath()
-                tCtx.moveTo(x0, y0)
-                tCtx.lineTo(x1, y1)
-                tCtx.lineWidth = Math.max(1, w)
-                tCtx.stroke()
-              }
-            }
-          }
-        }
-        tCtx.restore()
-      }
-
-      // d. Blob outline + glow pass
+      // c. Blob outline + glow pass
       if (defaultPolys.length > 0) {
         const typeStyle = params.terrainTypeBlobStyles[terrain]
         const fx = resolveBlobEffect(typeStyle, params.terrainBlobEffect ?? DEFAULT_STROKE_EFFECT, terrainBlobOutlineEnabled, terrainBlobOutlineColor, terrainBlobOutlineWidth)
