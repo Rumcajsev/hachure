@@ -1534,12 +1534,27 @@ const roadV3TierGeomRef = useRef(roadV3TierGeom)
   const defaultTerrainBlobsRef = useRef(defaultTerrainBlobs)
   defaultTerrainBlobsRef.current = defaultTerrainBlobs
 
+  // Per-terrain cache for mask edit application. Invalidated per-terrain when the
+  // source blob reference changes (shaped geometry changed) or edit content changes.
+  // This way adding/removing a forest mask edit only re-clips forest blobs.
+  type MaskedBlobCacheEntry = {
+    sourceRef: unknown
+    editSig: string
+    shapeParamSig: string
+    projSig: string
+    result: { terrain: string; polys: [number, number][][] }
+  }
+  const perTerrainMaskedCache = useRef(new Map<string, MaskedBlobCacheEntry>())
+
   // Apply blob mask edits (boolean add/subtract regions) to the shaped blobs.
   // Edits are stored in lon/lat and projected to canvas space here so they track pan/zoom.
   // River corridor cuts are now applied upstream in defaultTerrainBlobs (pre-shaping) so
   // the cut edge goes through the full organic pipeline like any other blob edge.
   const defaultTerrainBlobsMasked = useMemo(() => {
-    if (blobMaskEdits.length === 0 || !generatedMetadata || !paperDims) return defaultTerrainBlobs
+    if (blobMaskEdits.length === 0 || !generatedMetadata || !paperDims) {
+      perTerrainMaskedCache.current.clear()
+      return defaultTerrainBlobs
+    }
     const { pw, ph, px, py } = paperDims
     const meta = generatedMetadata
     const projectFn = (lonlat: [number, number]): [number, number] =>
@@ -1554,7 +1569,23 @@ const roadV3TierGeomRef = useRef(roadV3TierGeom)
       lobeThreshold: terrainBlobLobeThreshold,
       lobeDirection: terrainBlobLobeDirection,
     }
-    return applyBlobMaskEdits(defaultTerrainBlobs, blobMaskEdits, projectFn, shapeParams)
+    const shapeParamSig = `${hexRadius}|${terrainBlobSmooth}|${terrainBlobBump}|${terrainBlobSweepFreq}|${terrainBlobLobeFreq}|${terrainBlobLobeAmp}|${terrainBlobLobeThreshold}|${terrainBlobLobeDirection}`
+    const projSig = `${pw}|${ph}|${px}|${py}`
+    return defaultTerrainBlobs.map(blob => {
+      const terrainEdits = blobMaskEdits.filter(e => e.terrain === blob.terrain)
+      if (terrainEdits.length === 0) {
+        perTerrainMaskedCache.current.delete(blob.terrain)
+        return blob
+      }
+      const editSig = terrainEdits.map(e => `${e.id}:${e.type}:${e.polygon.length}:${e.polygon[0]?.[0].toFixed(1)}`).join(',')
+      const cached = perTerrainMaskedCache.current.get(blob.terrain)
+      if (cached?.sourceRef === blob && cached.editSig === editSig && cached.shapeParamSig === shapeParamSig && cached.projSig === projSig) {
+        return cached.result
+      }
+      const [result] = applyBlobMaskEdits([blob], terrainEdits, projectFn, shapeParams)
+      perTerrainMaskedCache.current.set(blob.terrain, { sourceRef: blob, editSig, shapeParamSig, projSig, result: result ?? blob })
+      return result ?? blob
+    })
   }, [defaultTerrainBlobs, blobMaskEdits, generatedMetadata, paperDims, hexRadius, terrainBlobSmooth, terrainBlobBump, terrainBlobSweepFreq, terrainBlobLobeFreq, terrainBlobLobeAmp, terrainBlobLobeThreshold, terrainBlobLobeDirection])
   // Apply procedural splats (satellites + holes) after mask edits.
   const defaultTerrainBlobsSplatted = useMemo(() => {
@@ -3267,28 +3298,34 @@ const roadV3TierGeomRef = useRef(roadV3TierGeom)
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [hillshadeEnabled, hillshadeAzimuth, hillshadeAltitude, hillshadeIntensity, hillshadeMode])
 
-  // Recompute contours when params change
+  // Recompute contours when params change — debounced so slider drags don't
+  // fire an expensive marching-squares pass on every tick.
   useEffect(() => {
-    const imgData = heightmapImgDataRef.current
-    const meta = heightmapMetaRef.current
-    if (!imgData || !meta || !metaRef.current) return
     if (!contoursEnabled) {
       contourCanvasRef.current = null
-    } else {
+      terrainDirtyRef.current = true
+      draw()
+      return
+    }
+    const tid = setTimeout(() => {
+      const imgData = heightmapImgDataRef.current
+      const meta = heightmapMetaRef.current
+      if (!imgData || !meta || !metaRef.current) return
       const { pw, ph } = computePaper(frameDimsRef.current.w, frameDimsRef.current.h, metaRef.current)
       contourCanvasRef.current = computeContours(imgData, meta, {
-        interval: contourInterval,
-        baseElevation: contourBaseElevation,
-        indexEvery: contourIndexEvery,
-        smoothPasses: contourSmoothPasses,
-        color: contourColor,
-        width: contourLineWidth,
-        indexWidth: contourLineWidth * contourIndexWidthMult,
-        opacity: contourOpacity,
+        interval: contourIntervalRef.current,
+        baseElevation: contourBaseElevationRef.current,
+        indexEvery: contourIndexEveryRef.current,
+        smoothPasses: contourSmoothPassesRef.current,
+        color: contourColorRef.current,
+        width: contourLineWidthRef.current,
+        indexWidth: contourLineWidthRef.current * contourIndexWidthMultRef.current,
+        opacity: contourOpacityRef.current,
       }, pw, ph)
-    }
-    terrainDirtyRef.current = true
-    draw()
+      terrainDirtyRef.current = true
+      draw()
+    }, 200)
+    return () => clearTimeout(tid)
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [contoursEnabled, contourInterval, contourBaseElevation, contourSmoothPasses, contourLineWidth, contourIndexEvery, contourIndexWidthMult, contourColor, contourOpacity])
 
