@@ -527,6 +527,9 @@ terrainColors, terrainTextureScales, terrainTextureBlendModes, terrainTextureOpa
   const riverChainOverridesRef = useRef(riverChainOverrides)
   const setRiverChainOverrideRef = useRef(setRiverChainOverride)
   const riverChainsV2Ref = useRef<import('../lib/riverChains').RiverChainV2[]>([])
+  type ChainEntry = import('../lib/drawRivers').ChainEntry
+  const cachedRiverTierChainDataRef = useRef<[ChainEntry[], ChainEntry[], ChainEntry[]] | null>(null)
+  const cachedRiverChainDataRef = useRef<ChainEntry[] | null>(null)
   // Dense-point hover/drag refs (shared by road node edit and river node edit)
   // handles = sparse edit points (every 5th of the dense catmullRom output)
   const hoveredChainRef = useRef<{ id: string; handles: [number, number][]; kind: 'road' | 'river' | 'rail' } | null>(null)
@@ -2196,33 +2199,35 @@ const roadV3TierGeomRef = useRef(roadV3TierGeom)
         py: verts.reduce((s, v) => s + v[1], 0) / 6,
       }))
 
-    // Split river edges into 3 tier buckets (undefined tier → tier 1 for legacy data)
-    const tierEdges: [typeof riverEdgesRef.current, typeof riverEdgesRef.current, typeof riverEdgesRef.current] = [[], [], []]
-    for (const e of riverEdgesRef.current) tierEdges[e.tier ?? 1].push(e)
+    // Rebuild chains only when dirty — Catmull-Rom is expensive and must not run every frame
+    if (riversDirtyRef.current || !cachedRiverChainDataRef.current) {
+      const tierEdges: [typeof riverEdgesRef.current, typeof riverEdgesRef.current, typeof riverEdgesRef.current] = [[], [], []]
+      for (const e of riverEdgesRef.current) tierEdges[e.tier ?? 1].push(e)
 
-    let riverTierChainData: [import('../lib/drawRivers').ChainEntry[], import('../lib/drawRivers').ChainEntry[], import('../lib/drawRivers').ChainEntry[]]
-    let riverChainData
-    if (RIVER_V2) {
-      const ts = riverTierStylesRef.current
-      riverTierChainData = ([0, 1, 2] as const).map(tier => {
-        const style = ts?.[tier]
-        const amp  = style?.wiggleAmp     ?? riverWiggleAmpRef.current
-        const freq = style?.wiggleFreq    ?? riverWiggleFreqRef.current
-        const sm   = style?.smoothing     ?? riverSmoothingRef.current
-        const ps   = style?.pathSmoothing ?? riverPathSmoothingRef.current
-        return buildRiverChainsV2(tierEdges[tier], hexesRef.current, riverChainOverridesRef.current, freq, amp, sm, riverHopPropsRef.current, riverSegmentPropsRef.current, ps)
-          .map(c => ({ vertices: c.chain, segKey: c.segKey, hopKeys: c.hopKeys, hopRanges: c.hopRanges }))
-      }) as typeof riverTierChainData
-      const rv2 = buildRiverChainsV2(riverEdgesRef.current, hexesRef.current, riverChainOverridesRef.current, riverWiggleFreqRef.current, riverWiggleAmpRef.current, riverSmoothingRef.current, riverHopPropsRef.current, riverSegmentPropsRef.current, riverPathSmoothingRef.current)
-      riverChainsV2Ref.current = rv2
-      riverChainData = rv2.map(c => ({ vertices: c.chain, segKey: c.segKey, hopKeys: c.hopKeys, hopRanges: c.hopRanges }))
-    } else {
-      riverTierChainData = tierEdges.map(edges => buildRiverChains(edges, hexesRef.current)) as typeof riverTierChainData
-      riverChainsV2Ref.current = []
-      riverChainData = buildRiverChains(riverEdgesRef.current, hexesRef.current)
+      if (RIVER_V2) {
+        const ts = riverTierStylesRef.current
+        cachedRiverTierChainDataRef.current = ([0, 1, 2] as const).map(tier => {
+          const style = ts?.[tier]
+          const amp  = style?.wiggleAmp     ?? riverWiggleAmpRef.current
+          const freq = style?.wiggleFreq    ?? riverWiggleFreqRef.current
+          const sm   = style?.smoothing     ?? riverSmoothingRef.current
+          const ps   = style?.pathSmoothing ?? riverPathSmoothingRef.current
+          return buildRiverChainsV2(tierEdges[tier], hexesRef.current, riverChainOverridesRef.current, freq, amp, sm, riverHopPropsRef.current, riverSegmentPropsRef.current, ps)
+            .map(c => ({ vertices: c.chain, segKey: c.segKey, hopKeys: c.hopKeys, hopRanges: c.hopRanges }))
+        }) as typeof cachedRiverTierChainDataRef.current
+        const rv2 = buildRiverChainsV2(riverEdgesRef.current, hexesRef.current, riverChainOverridesRef.current, riverWiggleFreqRef.current, riverWiggleAmpRef.current, riverSmoothingRef.current, riverHopPropsRef.current, riverSegmentPropsRef.current, riverPathSmoothingRef.current)
+        riverChainsV2Ref.current = rv2
+        cachedRiverChainDataRef.current = rv2.map(c => ({ vertices: c.chain, segKey: c.segKey, hopKeys: c.hopKeys, hopRanges: c.hopRanges }))
+      } else {
+        cachedRiverTierChainDataRef.current = tierEdges.map(edges => buildRiverChains(edges, hexesRef.current)) as typeof cachedRiverTierChainDataRef.current
+        riverChainsV2Ref.current = []
+        cachedRiverChainDataRef.current = buildRiverChains(riverEdgesRef.current, hexesRef.current)
+      }
+      computedRiverChainsRef.current = cachedRiverChainDataRef.current
+      riverChainCache.chains = cachedRiverChainDataRef.current
     }
-    computedRiverChainsRef.current = riverChainData
-    riverChainCache.chains = riverChainData
+    const riverTierChainData = cachedRiverTierChainDataRef.current!
+    const riverChainData = cachedRiverChainDataRef.current!
     // Bridge detection — runs once per data-change (dirty flag), not every frame
     if (bridgesDirtyRef.current) {
       bridgesDirtyRef.current = false
