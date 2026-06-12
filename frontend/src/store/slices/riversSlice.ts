@@ -29,11 +29,6 @@ export type RiversSlice = {
   riverWiggleAmp: number
   riverSmoothing: number
   riverPathSmoothing: number
-  // V3 shape pipeline
-  riverCornerRounds: number
-  riverPointSpacing: number
-  riverNoiseAmp: number
-  riverNoiseScale: number
   riverNodeEditMode: boolean
   riverChainOverrides: Record<string, [number, number][]>
   riverHopProps: Record<string, { wiggleAmp?: number; wiggleFreq?: number; width?: number; taper?: number }>
@@ -65,11 +60,6 @@ export type RiversSlice = {
   setRiverWiggleAmp: (v: number) => void
   setRiverSmoothing: (v: number) => void
   setRiverPathSmoothing: (v: number) => void
-  // V3
-  setRiverCornerRounds: (v: number) => void
-  setRiverPointSpacing: (v: number) => void
-  setRiverNoiseAmp: (v: number) => void
-  setRiverNoiseScale: (v: number) => void
   riverBlobCutEnabled: boolean
   riverBlobCutWidth: number
   setRiverBlobCutEnabled: (v: boolean) => void
@@ -153,10 +143,6 @@ export const createRiversSlice = (set: Set, get: () => MapStore): RiversSlice =>
     riverWiggleAmp: 0.25,
     riverSmoothing: 10,
     riverPathSmoothing: 0,
-    riverCornerRounds: 2,
-    riverPointSpacing: 0.12,
-    riverNoiseAmp: 0.35,
-    riverNoiseScale: 1.0,
     riverNodeEditMode: false,
     riverChainOverrides: {},
     riverHopProps: {},
@@ -273,10 +259,6 @@ export const createRiversSlice = (set: Set, get: () => MapStore): RiversSlice =>
     setRiverWiggleAmp: (v) => set({ riverWiggleAmp: v }),
     setRiverSmoothing: (v) => set({ riverSmoothing: v }),
     setRiverPathSmoothing: (v) => set({ riverPathSmoothing: v }),
-    setRiverCornerRounds: (v) => set({ riverCornerRounds: v }),
-    setRiverPointSpacing: (v) => set({ riverPointSpacing: v }),
-    setRiverNoiseAmp: (v) => set({ riverNoiseAmp: v }),
-    setRiverNoiseScale: (v) => set({ riverNoiseScale: v }),
     setRiverBlobCutEnabled: (v) => set({ riverBlobCutEnabled: v }),
     setRiverBlobCutWidth: (v) => set({ riverBlobCutWidth: v }),
     setRiverChainOverride: (segKey, pts) => set(s => ({ riverChainOverrides: { ...s.riverChainOverrides, [segKey]: pts } })),

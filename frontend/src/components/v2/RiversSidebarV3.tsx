@@ -89,17 +89,9 @@ export function GlobalShapeFlyout({ onClose }: { onClose: () => void }) {
     riverWiggleFreq, setRiverWiggleFreq,
     riverSmoothing, setRiverSmoothing,
     riverPathSmoothing, setRiverPathSmoothing,
-    riverCornerRounds, setRiverCornerRounds,
-    riverPointSpacing, setRiverPointSpacing,
-    riverNoiseAmp, setRiverNoiseAmp,
-    riverNoiseScale, setRiverNoiseScale,
   } = useMapStore()
   return (
     <FlyoutShell title="Shape defaults" subtitle="applied to all tiers unless overridden" onClose={onClose}>
-      <MiniSlider label="Corner rounds"  display={String(riverCornerRounds)}         value={riverCornerRounds}                    min={0} max={5}   step={1} onChange={setRiverCornerRounds} />
-      <MiniSlider label="Point spacing"  display={riverPointSpacing.toFixed(2)}      value={Math.round(riverPointSpacing * 100)}   min={3} max={30}  step={1} onChange={v => setRiverPointSpacing(v / 100)} />
-      <MiniSlider label="Noise amp"      display={riverNoiseAmp.toFixed(2)}          value={Math.round(riverNoiseAmp * 100)}       min={0} max={100} step={1} onChange={v => setRiverNoiseAmp(v / 100)} />
-      <MiniSlider label="Noise scale"     display={riverNoiseScale.toFixed(2)}        value={Math.round(riverNoiseScale * 100)}     min={0} max={400} step={1} onChange={v => setRiverNoiseScale(v / 100)} />
       <MiniSlider label="Wiggle amp"  display={riverWiggleAmp.toFixed(2)}  value={Math.round(riverWiggleAmp * 100)} min={0} max={100} step={1} onChange={v => setRiverWiggleAmp(v / 100)} />
       <MiniSlider label="Wiggle freq" display={riverWiggleFreq.toFixed(1)} value={Math.round(riverWiggleFreq * 10)} min={5} max={100} step={1} onChange={v => setRiverWiggleFreq(v / 10)} />
       <MiniSlider label="Line smooth" display={String(riverSmoothing)}     value={riverSmoothing}     min={2} max={30} step={1} onChange={setRiverSmoothing} />

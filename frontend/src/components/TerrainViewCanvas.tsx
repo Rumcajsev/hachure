@@ -11,10 +11,9 @@ import { projectToCanvas, unprojectFromCanvas, computePaper, computeWorldcoverBb
 import { coastalBlobTerrains, bleedPolygon, buildTerrainBlobsV2, buildTerrainBlobTopology, shapeTerrainBlobs, shapeInputPolygon, computeConnectedComponents, applyBlobMaskEdits, cutRawPolysWithCorridors, generateBlobSplats } from '../lib/terrainBlobs'
 import type { BlobTopologyEntry } from '../lib/terrainBlobs'
 import { findEdgeChains as findEdgeChainsSync } from '../lib/edgeBlobs'
-import { riverChainCache, buildRiverChains, buildRiverChainsV2, buildRiverChainsV3 } from '../lib/riverChains'
+import { riverChainCache, buildRiverChains, buildRiverChainsV2 } from '../lib/riverChains'
 
 const RIVER_V2 = true
-const RIVER_V3 = true   // new Chaikin+densify+noise pipeline; set false to revert to V2
 import { drawRivers as _drawRivers } from '../lib/drawRivers'
 import { buildRoadChains, buildRailChains, spineSideCpKey, applyRoadWiggle, applyRailWiggle } from '../lib/roadChains'
 import { buildRoadChainsV2, applyRoadWiggleV2 } from '../lib/roadChainsV2'
@@ -333,7 +332,6 @@ terrainColors, terrainTextureScales, terrainTextureBlendModes, terrainTextureOpa
     riverTierStyles, riverStyle,
     riverWidthScale, riverCurveSteps, riverWobble, riverDetail,
     riverWiggleFreq, riverWiggleAmp, riverSmoothing, riverPathSmoothing,
-    riverCornerRounds, riverPointSpacing, riverNoiseAmp, riverNoiseScale,
     riverBlobCutEnabled, riverBlobCutWidth,
     terrainBlobOverrides, setTerrainBlobOverride,
     terrainTypeBlobStyles,
@@ -562,10 +560,6 @@ terrainColors, terrainTextureScales, terrainTextureBlendModes, terrainTextureOpa
   const riverWiggleAmpRef = useRef(riverWiggleAmp)
   const riverSmoothingRef = useRef(riverSmoothing)
   const riverPathSmoothingRef = useRef(riverPathSmoothing)
-  const riverCornerRoundsRef = useRef(riverCornerRounds)
-  const riverPointSpacingRef = useRef(riverPointSpacing)
-  const riverNoiseAmpRef = useRef(riverNoiseAmp)
-  const riverNoiseScaleRef = useRef(riverNoiseScale)
   const setRiverSegmentPropRef = useRef(setRiverSegmentProp)
   const clearRiverSegmentPropRef = useRef(clearRiverSegmentProp)
   const roadSelectModeRef = useRef(roadSelectMode)
@@ -832,10 +826,6 @@ terrainColors, terrainTextureScales, terrainTextureBlendModes, terrainTextureOpa
   riverWiggleAmpRef.current = riverWiggleAmp
   riverSmoothingRef.current = riverSmoothing
   riverPathSmoothingRef.current = riverPathSmoothing
-  riverCornerRoundsRef.current = riverCornerRounds
-  riverPointSpacingRef.current = riverPointSpacing
-  riverNoiseAmpRef.current = riverNoiseAmp
-  riverNoiseScaleRef.current = riverNoiseScale
   setRiverSegmentPropRef.current = setRiverSegmentProp
   clearRiverSegmentPropRef.current = clearRiverSegmentProp
   roadSelectModeRef.current = roadSelectMode
@@ -1319,7 +1309,7 @@ const roadV3TierGeomRef = useRef(roadV3TierGeom)
     const meta = generatedMetadata
     const proj = (lonlat: [number, number]): [number, number] =>
       projectToCanvas(lonlat[0], lonlat[1], meta, pw, ph, px, py)
-    const chains = buildRiverChainsV3(riverEdges, generatedHexes, riverCornerRounds, riverPointSpacing, riverNoiseAmp, riverNoiseScale)
+    const chains = buildRiverChainsV2(riverEdges, generatedHexes, {}, riverWiggleFreq, riverWiggleAmp, riverSmoothing)
     const halfW = hexRadius * riverBlobCutWidth
     const corridors: [number, number][][] = []
     for (const chain of chains) {
@@ -1330,7 +1320,7 @@ const roadV3TierGeomRef = useRef(roadV3TierGeom)
       if (upper.length + lower.length >= 3) corridors.push([...upper, ...lower])
     }
     return corridors
-  }, [riverBlobCutEnabled, riverBlobCutWidth, riverEdges, generatedHexes, riverCornerRounds, riverPointSpacing, riverNoiseAmp, riverNoiseScale, hexRadius, generatedMetadata, paperDims])
+  }, [riverBlobCutEnabled, riverBlobCutWidth, riverEdges, generatedHexes, riverWiggleFreq, riverWiggleAmp, riverSmoothing, hexRadius, generatedMetadata, paperDims])
 
   const prevTerrainBlobsRef = useRef<{ terrain: string; polys: [number, number][][]; blobKeys: string[] }[]>([])
   type TerrainBlobCacheEntry = { hexKey: string; rawPolys: [number, number][][]; hexCenters: [number, number][]; styleKey: string; blobs: { terrain: string; polys: [number, number][][]; blobKeys: string[] }[]; handleGroups?: Map<string, { edgeKey: string; cx: number; cy: number }[]>; simplifiedPolyGroups?: Map<string, [number, number][][]> }
@@ -2212,19 +2202,7 @@ const roadV3TierGeomRef = useRef(roadV3TierGeom)
 
     let riverTierChainData: [import('../lib/drawRivers').ChainEntry[], import('../lib/drawRivers').ChainEntry[], import('../lib/drawRivers').ChainEntry[]]
     let riverChainData
-    if (RIVER_V3) {
-      const cr = riverCornerRoundsRef.current
-      const ps = riverPointSpacingRef.current
-      const na = riverNoiseAmpRef.current
-      const ns = riverNoiseScaleRef.current
-      riverTierChainData = ([0, 1, 2] as const).map(tier =>
-        buildRiverChainsV3(tierEdges[tier], hexesRef.current, cr, ps, na, ns)
-          .map(c => ({ vertices: c.chain, segKey: c.segKey }))
-      ) as typeof riverTierChainData
-      riverChainsV2Ref.current = []
-      riverChainData = buildRiverChainsV3(riverEdgesRef.current, hexesRef.current, cr, ps, na, ns)
-        .map(c => ({ vertices: c.chain, segKey: c.segKey }))
-    } else if (RIVER_V2) {
+    if (RIVER_V2) {
       const ts = riverTierStylesRef.current
       riverTierChainData = ([0, 1, 2] as const).map(tier => {
         const style = ts?.[tier]
