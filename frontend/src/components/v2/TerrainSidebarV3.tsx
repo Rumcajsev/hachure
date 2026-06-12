@@ -492,7 +492,11 @@ function ContoursFlyout({ onClose }: { onClose: () => void }) {
   const t = useTheme()
   const {
     contoursEnabled, contourInterval, contourLineWidth,
+    contourOpacity, contourBaseElevation, contourSmoothPasses,
+    contourIndexEvery, contourIndexWidthMult, contourColor,
     setContoursEnabled, setContourInterval, setContourLineWidth,
+    setContourOpacity, setContourBaseElevation, setContourSmoothPasses,
+    setContourIndexEvery, setContourIndexWidthMult, setContourColor,
     contourDisabledTerrains, contourDisabledElevClasses,
     setContourDisabledTerrains, setContourDisabledElevClasses,
     customTerrains,
@@ -506,8 +510,18 @@ function ContoursFlyout({ onClose }: { onClose: () => void }) {
       </div>
       {contoursEnabled && (
         <>
-          <MiniSlider label="Interval"   display={`${contourInterval}m`}    value={contourInterval}  min={10} max={500} step={10}   onChange={setContourInterval} />
-          <MiniSlider label="Line width" display={contourLineWidth.toFixed(2)} value={contourLineWidth} min={0.5} max={4} step={0.25} onChange={setContourLineWidth} />
+          <MiniSlider label="Interval"        display={`${contourInterval}m`}          value={contourInterval}       min={10}  max={500} step={10}   onChange={setContourInterval} />
+          <MiniSlider label="Base elev"       display={`${contourBaseElevation}m`}      value={contourBaseElevation}  min={-500} max={4000} step={10} onChange={setContourBaseElevation} />
+          <MiniSlider label="Line width"      display={contourLineWidth.toFixed(2)}     value={contourLineWidth}      min={0.5} max={4}    step={0.25} onChange={setContourLineWidth} />
+          <MiniSlider label="Opacity"         display={contourOpacity.toFixed(2)}       value={contourOpacity}        min={0.1} max={1}    step={0.05} onChange={setContourOpacity} />
+          <MiniSlider label="Index every"     display={`${contourIndexEvery}`}          value={contourIndexEvery}     min={2}   max={10}   step={1}    onChange={setContourIndexEvery} />
+          <MiniSlider label="Index width ×"   display={contourIndexWidthMult.toFixed(1)} value={contourIndexWidthMult} min={1}   max={4}    step={0.5}  onChange={setContourIndexWidthMult} />
+          <MiniSlider label="Smooth passes"   display={`${contourSmoothPasses}`}        value={contourSmoothPasses}   min={0}   max={6}    step={1}    onChange={setContourSmoothPasses} />
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '3px 14px' }}>
+            <span style={{ fontFamily: t.mono, fontSize: 8.5, letterSpacing: 0.8, color: t.inkFaint, textTransform: 'uppercase', fontWeight: 600 }}>Color</span>
+            <input type="color" value={contourColor} onChange={e => setContourColor(e.target.value)}
+              style={{ width: 28, height: 18, border: 'none', padding: 0, background: 'none', cursor: 'pointer' }} />
+          </div>
         </>
       )}
       <TerrainVisibilityFilter
