@@ -61,11 +61,6 @@ const OSM_OVERLAY_STYLE: maplibregl.StyleSpecification = {
 
 type CtxItem = { label: string; action: () => void; danger?: boolean; color?: string; dim?: boolean; icon?: 'edit' | 'dice' | 'erase'; highlightPolys?: [number,number][][]; highlightLines?: [number,number][][] }
 
-// Stable empty-array sentinel for riverAutoCorridors when blob-cut is disabled.
-// Module-level so every early-return yields the same reference, preventing
-// defaultTerrainBlobs from seeing a "change" and triggering a full terrain rebuild.
-const EMPTY_CORRIDORS: [number, number][][] = []
-
 /** Parses a CSS hex color string (#rrggbb or #rgb) into {r,g,b}. */
 function parseHexColor(hex: string): { r: number; g: number; b: number } {
   const s = hex.replace('#', '')
@@ -356,7 +351,6 @@ terrainColors, terrainTextureScales, terrainTextureBlendModes, terrainTextureOpa
     hillshadeDisabledTerrains, hillshadeDisabledElevClasses,
     setHillshadeAzimuth, setHillshadeAltitude, setHillshadeIntensity,
     contoursEnabled, contourInterval, contourBaseElevation, contourSmoothPasses, contourLineWidth,
-    contourIndexEvery, contourIndexWidthMult, contourColor, contourOpacity,
     contourDisabledTerrains, contourDisabledElevClasses,
     coastlineDPEpsilon, coastlineChaikinPasses,
     terrainRenderMode,
@@ -943,14 +937,6 @@ terrainColors, terrainTextureScales, terrainTextureBlendModes, terrainTextureOpa
   contourSmoothPassesRef.current = contourSmoothPasses
   const contourLineWidthRef = useRef(contourLineWidth)
   contourLineWidthRef.current = contourLineWidth
-  const contourIndexEveryRef = useRef(contourIndexEvery)
-  contourIndexEveryRef.current = contourIndexEvery
-  const contourIndexWidthMultRef = useRef(contourIndexWidthMult)
-  contourIndexWidthMultRef.current = contourIndexWidthMult
-  const contourColorRef = useRef(contourColor)
-  contourColorRef.current = contourColor
-  const contourOpacityRef = useRef(contourOpacity)
-  contourOpacityRef.current = contourOpacity
   const contourDisabledTerrainsSetRef = useRef(new Set<string>())
   contourDisabledTerrainsSetRef.current = new Set(contourDisabledTerrains)
   const contourDisabledElevClassesSetRef = useRef(new Set<string>())
@@ -1321,7 +1307,7 @@ const roadV3TierGeomRef = useRef(roadV3TierGeom)
   // pre-shaping cut can use them. The cut happens on raw hex-outline polygons so the cut edge
   // goes through the full organic shaping pipeline (inset, bump, lobe) just like any other blob edge.
   const riverAutoCorridors = useMemo((): [number, number][][] => {
-    if (!riverBlobCutEnabled || riverEdges.length === 0 || generatedHexes.length === 0 || !generatedMetadata || !paperDims) return EMPTY_CORRIDORS
+    if (!riverBlobCutEnabled || riverEdges.length === 0 || generatedHexes.length === 0 || !generatedMetadata || !paperDims) return []
     const { pw, ph, px, py } = paperDims
     const meta = generatedMetadata
     const proj = (lonlat: [number, number]): [number, number] =>
@@ -1340,10 +1326,8 @@ const roadV3TierGeomRef = useRef(roadV3TierGeom)
   }, [riverBlobCutEnabled, riverBlobCutWidth, riverEdges, generatedHexes, riverWiggleFreq, riverWiggleAmp, riverSmoothing, hexRadius, generatedMetadata, paperDims])
 
   const prevTerrainBlobsRef = useRef<{ terrain: string; polys: [number, number][][]; blobKeys: string[] }[]>([])
-  type TerrainTopoCacheEntry = { hexKey: string; rawPolys: [number, number][][] }
-  const perTerrainBlobCache = useRef(new Map<string, TerrainTopoCacheEntry>())
-  type ComponentBlobCacheEntry = { hexKey: string; styleKey: string; blobs: { terrain: string; polys: [number, number][][]; blobKeys: string[] }[] }
-  const perComponentBlobCache = useRef(new Map<string, ComponentBlobCacheEntry>())
+  type TerrainBlobCacheEntry = { hexKey: string; rawPolys: [number, number][][]; hexCenters: [number, number][]; styleKey: string; blobs: { terrain: string; polys: [number, number][][]; blobKeys: string[] }[]; handleGroups?: Map<string, { edgeKey: string; cx: number; cy: number }[]>; simplifiedPolyGroups?: Map<string, [number, number][][]> }
+  const perTerrainBlobCache = useRef(new Map<string, TerrainBlobCacheEntry>())
   const defaultTerrainBlobs = useMemo(() => {
     if (projectedHexes.length === 0 || hexRadius === 0) return []
     if (isTerrainPainting) return prevTerrainBlobsRef.current
@@ -1403,58 +1387,40 @@ const roadV3TierGeomRef = useRef(roadV3TierGeom)
       }
 
       const hexKey = `eot:${elevationOverridesTerrain}|` + terrainProjected.map(p => `${(p.hex as GeneratedHex).q},${(p.hex as GeneratedHex).r}`).join('|')
-      // Filter to corridors that spatially overlap this terrain's hex extents.
-      // Terrains with no overlapping corridors keep a stable empty corridorKey and never get
-      // a shaping cache miss when river cut is toggled or corridor geometry changes.
-      const relevantCorridors = (() => {
-        if (riverAutoCorridors.length === 0) return riverAutoCorridors
-        let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity
-        for (const [cx, cy] of hexOrigCenterByKey.values()) {
-          if (cx - hexRadius < minX) minX = cx - hexRadius
-          if (cx + hexRadius > maxX) maxX = cx + hexRadius
-          if (cy - hexRadius < minY) minY = cy - hexRadius
-          if (cy + hexRadius > maxY) maxY = cy + hexRadius
-        }
-        return riverAutoCorridors.filter(corridor => {
-          let cMinX = Infinity, cMaxX = -Infinity, cMinY = Infinity, cMaxY = -Infinity
-          for (const [px, py] of corridor) {
-            if (px < cMinX) cMinX = px; if (px > cMaxX) cMaxX = px
-            if (py < cMinY) cMinY = py; if (py > cMaxY) cMaxY = py
-          }
-          return cMaxX >= minX && cMinX <= maxX && cMaxY >= minY && cMinY <= maxY
-        })
-      })()
-      const corridorKey = relevantCorridors.map(c => `${c.length}:${c[0]?.[0].toFixed(0)},${c[0]?.[1].toFixed(0)}`).join('|')
-      // Base style key covers global params + per-terrain corridor intersection.
-      // Per-component handle overrides are appended individually so only the touched
-      // component's cache misses when a handle moves.
-      const baseStyleKey = `${smooth}|${offset}|${bump}|${sweepFreq}|${lobeFreq}|${lobeAmp}|${lobeThreshold}|${lobeDirection}|${terrainBlobSimplify}|${terrainBlobTopoStyle}|${hexRadius}|${JSON.stringify(blobSeeds)}|${corridorKey}`
+      const canonicalKeySet = new Set([...componentMap.values()])
+      const handleKey = [...canonicalKeySet].sort().map(ck => {
+        const h = blobHandleOverrides[ck]
+        return h && Object.keys(h).length > 0 ? `${ck}:${JSON.stringify(h)}` : ''
+      }).filter(Boolean).join('~')
+      const corridorKey = riverAutoCorridors.map(c => `${c.length}:${c[0]?.[0].toFixed(0)},${c[0]?.[1].toFixed(0)}`).join('|')
+      const styleKey = `${smooth}|${offset}|${bump}|${sweepFreq}|${lobeFreq}|${lobeAmp}|${lobeThreshold}|${lobeDirection}|${terrainBlobSimplify}|${terrainBlobTopoStyle}|${hexRadius}|${JSON.stringify(blobSeeds)}|${handleKey}|${corridorKey}`
+      const cached = perTerrainBlobCache.current.get(terrain)
 
-      // Topology cache — keyed per terrain by hex membership
-      const topoCached = perTerrainBlobCache.current.get(terrain)
+      // Compute rawPolys (topology cache)
       let rawPolys: [number, number][][]
-      if (topoCached?.hexKey === hexKey) {
-        rawPolys = topoCached.rawPolys
+      if (cached?.hexKey === hexKey) {
+        rawPolys = cached.rawPolys
       } else {
         const topo = buildTerrainBlobTopology(terrainProjected, hexRadius)
         rawPolys = topo.find(e => e.terrain === terrain)?.rawPolys ?? []
-        perTerrainBlobCache.current.set(terrain, { hexKey, rawPolys })
       }
 
       // Pre-cut raw polys with river corridors so the cut edge goes through the full
       // shaping pipeline (inset, bump, lobe) and responds to all blob style settings.
-      const rawPolysForShaping = cutRawPolysWithCorridors(rawPolys, relevantCorridors)
+      const rawPolysForShaping = cutRawPolysWithCorridors(rawPolys, riverAutoCorridors)
 
       // Simplified polys — what handles are generated from and what the dashed overlay shows
-      const ESNAP = Math.max(2, hexRadius * 0.015)
-      const evk = (p: [number, number]) => `${Math.round(p[0]/ESNAP)},${Math.round(p[1]/ESNAP)}`
       const simplifiedPolys = rawPolysForShaping.map(p => {
         const seed = Math.abs(Math.round(p[0][0] * 73 + p[0][1] * 97))
         return shapeInputPolygon(p, terrainBlobSimplify, terrainBlobTopoStyle, hexRadius, seed)
       })
 
-      // Group simplified polys by blob component canonical key
-      const polysByComponent = new Map<string, [number, number][][]>()
+      // Build vertex handles from simplified poly corners — each vertex is one handle
+      const ESNAP = Math.max(2, hexRadius * 0.015)
+      const evk = (p: [number, number]) => `${Math.round(p[0]/ESNAP)},${Math.round(p[1]/ESNAP)}`
+      const newHandleGroups = new Map<string, { edgeKey: string; cx: number; cy: number }[]>()
+      const newSimplifiedPolys = new Map<string, [number, number][][]>()
+      const displacedPolys: [number, number][][] = []
       for (const poly of simplifiedPolys) {
         if (poly.length < 3) continue
         const [fvx, fvy] = poly[0]
@@ -1464,69 +1430,40 @@ const roadV3TierGeomRef = useRef(roadV3TierGeom)
           if (d < bestD) { bestD = d; polyCk = componentMap.get(hk) ?? hk }
         }
         if (!polyCk) continue
-        if (!polysByComponent.has(polyCk)) polysByComponent.set(polyCk, [])
-        polysByComponent.get(polyCk)!.push(poly)
+        if (!newHandleGroups.has(polyCk)) newHandleGroups.set(polyCk, [])
+        if (!newSimplifiedPolys.has(polyCk)) newSimplifiedPolys.set(polyCk, [])
+        newSimplifiedPolys.get(polyCk)!.push(poly)
+        const group = newHandleGroups.get(polyCk)!
+        const displaced: [number, number][] = []
+        for (const v of poly) {
+          const edgeKey = evk(v)
+          const off = blobHandleOverrides[polyCk]?.[edgeKey]
+          const cx = v[0] + (off?.[0] ?? 0) * hexRadius
+          const cy = v[1] + (off?.[1] ?? 0) * hexRadius
+          group.push({ edgeKey, cx, cy })
+          displaced.push([cx, cy])
+        }
+        displacedPolys.push(displaced)
+      }
+      for (const [ck, handles] of newHandleGroups) {
+        blobHandleDataRef.current.set(ck, { terrain, handles, simplifiedPolys: newSimplifiedPolys.get(ck) ?? [] })
       }
 
-      // Shape each component independently. Cache keyed by "terrain::componentKey" so
-      // moving one handle only reshapes that component's blob, not the entire terrain.
-      const terrainBlobs: { terrain: string; polys: [number, number][][]; blobKeys: string[] }[] = []
-      for (const [polyCk, componentPolys] of polysByComponent) {
-        const compHandleData = blobHandleOverrides[polyCk]
-        const compHandleStr = compHandleData && Object.keys(compHandleData).length > 0 ? JSON.stringify(compHandleData) : ''
-        const componentStyleKey = `${baseStyleKey}|${compHandleStr}`
-        const compCacheKey = `${terrain}::${polyCk}`
-        const compCached = perComponentBlobCache.current.get(compCacheKey)
-
-        // Build handle group and displaced polys (cheap — always current)
-        const handles: { edgeKey: string; cx: number; cy: number }[] = []
-        const simplifiedForComp: [number, number][][] = []
-        const displacedPolys: [number, number][][] = []
-        for (const poly of componentPolys) {
-          simplifiedForComp.push(poly)
-          const displaced: [number, number][] = []
-          for (const v of poly) {
-            const edgeKey = evk(v)
-            const off = blobHandleOverrides[polyCk]?.[edgeKey]
-            const cx = v[0] + (off?.[0] ?? 0) * hexRadius
-            const cy = v[1] + (off?.[1] ?? 0) * hexRadius
-            handles.push({ edgeKey, cx, cy })
-            displaced.push([cx, cy])
-          }
-          displacedPolys.push(displaced)
+      if (cached?.hexKey === hexKey && cached?.styleKey === styleKey) {
+        for (const [ck, handles] of cached.handleGroups ?? []) {
+          blobHandleDataRef.current.set(ck, { terrain, handles, simplifiedPolys: cached.simplifiedPolyGroups?.get(ck) ?? [] })
         }
-        blobHandleDataRef.current.set(polyCk, { terrain, handles, simplifiedPolys: simplifiedForComp })
-
-        if (compCached?.hexKey === hexKey && compCached?.styleKey === componentStyleKey) {
-          terrainBlobs.push(...compCached.blobs)
-          continue
-        }
-
-        // Collect only this component's hex centers for the anchor-resize step
-        const hexCenters: [number, number][] = []
-        for (const [hk, center] of hexOrigCenterByKey) {
-          if ((componentMap.get(hk) ?? hk) === polyCk) hexCenters.push(center)
-        }
-
-        const blobs = shapeTerrainBlobs([{ terrain, rawPolys: displacedPolys, hexCenters }], smooth, offset, bump, sweepFreq, lobeFreq, lobeAmp, lobeThreshold, lobeDirection, hexRadius, blobSeeds)
-        perComponentBlobCache.current.set(compCacheKey, { hexKey, styleKey: componentStyleKey, blobs })
-        terrainBlobs.push(...blobs)
+        return cached.blobs
       }
 
-      // Remove stale per-component entries for components no longer present in this terrain
-      for (const key of perComponentBlobCache.current.keys()) {
-        if (key.startsWith(`${terrain}::`) && !polysByComponent.has(key.slice(terrain.length + 2))) {
-          perComponentBlobCache.current.delete(key)
-        }
-      }
+      const hexCenters = [...hexOrigCenterByKey.values()]
+      const blobs = shapeTerrainBlobs([{ terrain, rawPolys: displacedPolys, hexCenters }], smooth, offset, bump, sweepFreq, lobeFreq, lobeAmp, lobeThreshold, lobeDirection, hexRadius, blobSeeds)
 
-      return terrainBlobs
+      perTerrainBlobCache.current.set(terrain, { hexKey, rawPolys, hexCenters, styleKey, blobs, handleGroups: newHandleGroups, simplifiedPolyGroups: newSimplifiedPolys })
+      return blobs
     })
     for (const t of perTerrainBlobCache.current.keys()) {
       if (!terrainTypeSet.has(t)) perTerrainBlobCache.current.delete(t)
-    }
-    for (const key of perComponentBlobCache.current.keys()) {
-      if (!terrainTypeSet.has(key.split('::')[0])) perComponentBlobCache.current.delete(key)
     }
     prevTerrainBlobsRef.current = result
     return result
@@ -1534,27 +1471,12 @@ const roadV3TierGeomRef = useRef(roadV3TierGeom)
   const defaultTerrainBlobsRef = useRef(defaultTerrainBlobs)
   defaultTerrainBlobsRef.current = defaultTerrainBlobs
 
-  // Per-terrain cache for mask edit application. Invalidated per-terrain when the
-  // source blob reference changes (shaped geometry changed) or edit content changes.
-  // This way adding/removing a forest mask edit only re-clips forest blobs.
-  type MaskedBlobCacheEntry = {
-    sourceRef: unknown
-    editSig: string
-    shapeParamSig: string
-    projSig: string
-    result: { terrain: string; polys: [number, number][][] }
-  }
-  const perTerrainMaskedCache = useRef(new Map<string, MaskedBlobCacheEntry>())
-
   // Apply blob mask edits (boolean add/subtract regions) to the shaped blobs.
   // Edits are stored in lon/lat and projected to canvas space here so they track pan/zoom.
   // River corridor cuts are now applied upstream in defaultTerrainBlobs (pre-shaping) so
   // the cut edge goes through the full organic pipeline like any other blob edge.
   const defaultTerrainBlobsMasked = useMemo(() => {
-    if (blobMaskEdits.length === 0 || !generatedMetadata || !paperDims) {
-      perTerrainMaskedCache.current.clear()
-      return defaultTerrainBlobs
-    }
+    if (blobMaskEdits.length === 0 || !generatedMetadata || !paperDims) return defaultTerrainBlobs
     const { pw, ph, px, py } = paperDims
     const meta = generatedMetadata
     const projectFn = (lonlat: [number, number]): [number, number] =>
@@ -1569,23 +1491,7 @@ const roadV3TierGeomRef = useRef(roadV3TierGeom)
       lobeThreshold: terrainBlobLobeThreshold,
       lobeDirection: terrainBlobLobeDirection,
     }
-    const shapeParamSig = `${hexRadius}|${terrainBlobSmooth}|${terrainBlobBump}|${terrainBlobSweepFreq}|${terrainBlobLobeFreq}|${terrainBlobLobeAmp}|${terrainBlobLobeThreshold}|${terrainBlobLobeDirection}`
-    const projSig = `${pw}|${ph}|${px}|${py}`
-    return defaultTerrainBlobs.map(blob => {
-      const terrainEdits = blobMaskEdits.filter(e => e.terrain === blob.terrain)
-      if (terrainEdits.length === 0) {
-        perTerrainMaskedCache.current.delete(blob.terrain)
-        return blob
-      }
-      const editSig = terrainEdits.map(e => `${e.id}:${e.type}:${e.polygon.length}:${e.polygon[0]?.[0].toFixed(1)}`).join(',')
-      const cached = perTerrainMaskedCache.current.get(blob.terrain)
-      if (cached?.sourceRef === blob && cached.editSig === editSig && cached.shapeParamSig === shapeParamSig && cached.projSig === projSig) {
-        return cached.result
-      }
-      const [result] = applyBlobMaskEdits([blob], terrainEdits, projectFn, shapeParams)
-      perTerrainMaskedCache.current.set(blob.terrain, { sourceRef: blob, editSig, shapeParamSig, projSig, result: result ?? blob })
-      return result ?? blob
-    })
+    return applyBlobMaskEdits(defaultTerrainBlobs, blobMaskEdits, projectFn, shapeParams)
   }, [defaultTerrainBlobs, blobMaskEdits, generatedMetadata, paperDims, hexRadius, terrainBlobSmooth, terrainBlobBump, terrainBlobSweepFreq, terrainBlobLobeFreq, terrainBlobLobeAmp, terrainBlobLobeThreshold, terrainBlobLobeDirection])
   // Apply procedural splats (satellites + holes) after mask edits.
   const defaultTerrainBlobsSplatted = useMemo(() => {
@@ -2422,12 +2328,7 @@ const roadV3TierGeomRef = useRef(roadV3TierGeom)
         ctx.restore()
       } else {
         const papW = Math.ceil(pw), papH = Math.ceil(ph)
-        const hasRivers = riverEdgesRef.current.length > 0
-        if (!hasRivers) {
-          // No river edges — discard cached layer and skip expensive OffscreenCanvas creation.
-          riversLayerRef.current = null
-          riversDirtyRef.current = false
-        } else if (riversDirtyRef.current || !riversLayerRef.current ||
+        if (riversDirtyRef.current || !riversLayerRef.current ||
             riversLayerPapWRef.current !== papW || riversLayerPapHRef.current !== papH) {
           const offW = Math.ceil(pw * dpr * offZoom), offH = Math.ceil(ph * dpr * offZoom)
           const offscreen = new OffscreenCanvas(offW, offH)
@@ -2445,7 +2346,7 @@ const roadV3TierGeomRef = useRef(roadV3TierGeom)
           riversLayerPapWRef.current = papW
           riversLayerPapHRef.current = papH
         }
-        if (riversLayerRef.current) ctx.drawImage(riversLayerRef.current, px, py, pw, ph)
+        ctx.drawImage(riversLayerRef.current, px, py, pw, ph)
       }
     }
     if (isExport) {
@@ -3309,12 +3210,12 @@ const roadV3TierGeomRef = useRef(roadV3TierGeom)
           contourCanvasRef.current = computeContours(heightmapImgDataRef.current, meta, {
             interval: contourIntervalRef.current,
             baseElevation: contourBaseElevationRef.current,
-            indexEvery: contourIndexEveryRef.current,
+            indexEvery: 5,
             smoothPasses: contourSmoothPassesRef.current,
-            color: contourColorRef.current,
+            color: '#6b5a3a',
             width: contourLineWidthRef.current,
-            indexWidth: contourLineWidthRef.current * contourIndexWidthMultRef.current,
-            opacity: contourOpacityRef.current,
+            indexWidth: contourLineWidthRef.current * 2,
+            opacity: 0.7,
           }, pw, ph)
         }
       }
@@ -3341,36 +3242,30 @@ const roadV3TierGeomRef = useRef(roadV3TierGeom)
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [hillshadeEnabled, hillshadeAzimuth, hillshadeAltitude, hillshadeIntensity, hillshadeMode])
 
-  // Recompute contours when params change — debounced so slider drags don't
-  // fire an expensive marching-squares pass on every tick.
+  // Recompute contours when params change
   useEffect(() => {
+    const imgData = heightmapImgDataRef.current
+    const meta = heightmapMetaRef.current
+    if (!imgData || !meta || !metaRef.current) return
     if (!contoursEnabled) {
       contourCanvasRef.current = null
-      terrainDirtyRef.current = true
-      draw()
-      return
-    }
-    const tid = setTimeout(() => {
-      const imgData = heightmapImgDataRef.current
-      const meta = heightmapMetaRef.current
-      if (!imgData || !meta || !metaRef.current) return
+    } else {
       const { pw, ph } = computePaper(frameDimsRef.current.w, frameDimsRef.current.h, metaRef.current)
       contourCanvasRef.current = computeContours(imgData, meta, {
-        interval: contourIntervalRef.current,
-        baseElevation: contourBaseElevationRef.current,
-        indexEvery: contourIndexEveryRef.current,
-        smoothPasses: contourSmoothPassesRef.current,
-        color: contourColorRef.current,
-        width: contourLineWidthRef.current,
-        indexWidth: contourLineWidthRef.current * contourIndexWidthMultRef.current,
-        opacity: contourOpacityRef.current,
+        interval: contourInterval,
+        baseElevation: contourBaseElevation,
+        indexEvery: 5,
+        smoothPasses: contourSmoothPasses,
+        color: '#6b5a3a',
+        width: contourLineWidth,
+        indexWidth: contourLineWidth * 2,
+        opacity: 0.7,
       }, pw, ph)
-      terrainDirtyRef.current = true
-      draw()
-    }, 200)
-    return () => clearTimeout(tid)
+    }
+    terrainDirtyRef.current = true
+    draw()
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [contoursEnabled, contourInterval, contourBaseElevation, contourSmoothPasses, contourLineWidth, contourIndexEvery, contourIndexWidthMult, contourColor, contourOpacity])
+  }, [contoursEnabled, contourInterval, contourBaseElevation, contourSmoothPasses, contourLineWidth])
 
   // Mark other layer caches dirty when their relevant data changes
   useEffect(() => { hexBorderDirtyRef.current = true }, [hexBorderMode, hexEdgeMode, hexBorderOpacity, hexBorderColor, hexBorderDifference, generatedHexes, excludedHexKeys, disabledHexKeys, autoDisabledOceanHexKeys])
