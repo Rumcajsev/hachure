@@ -31,6 +31,10 @@ export type TerrainSlice = {
   terrainBlobLobeDirection: number
   terrainBlobSimplify: number
   terrainBlobTopoStyle: number
+  terrainBlobSplatDensity: number
+  terrainBlobSplatSize: number
+  terrainBlobHoleDensity: number
+  terrainBlobHoleSize: number
   terrainBlobOutlineEnabled: boolean
   terrainBlobOutlineColor: string
   terrainBlobOutlineWidth: number
@@ -101,6 +105,10 @@ export type TerrainSlice = {
   setTerrainBlobLobeDirection: (v: number) => void
   setTerrainBlobSimplify: (v: number) => void
   setTerrainBlobTopoStyle: (v: number) => void
+  setTerrainBlobSplatDensity: (v: number) => void
+  setTerrainBlobSplatSize: (v: number) => void
+  setTerrainBlobHoleDensity: (v: number) => void
+  setTerrainBlobHoleSize: (v: number) => void
   setTerrainBlobOutlineEnabled: (v: boolean) => void
   setTerrainBlobOutlineColor: (v: string) => void
   setTerrainBlobOutlineWidth: (v: number) => void
@@ -198,6 +206,10 @@ export const createTerrainSlice = (set: Set, get: () => MapStore): TerrainSlice 
   terrainBlobLobeDirection: DEFAULT_TERRAIN_BLOB.lobeDirection,
   terrainBlobSimplify: DEFAULT_TERRAIN_BLOB.simplify,
   terrainBlobTopoStyle: DEFAULT_TERRAIN_BLOB.topoStyle,
+  terrainBlobSplatDensity: 0,
+  terrainBlobSplatSize: 0.3,
+  terrainBlobHoleDensity: 0,
+  terrainBlobHoleSize: 0.35,
   terrainBlobOutlineEnabled: false,
   terrainBlobOutlineColor: '#000000',
   terrainBlobOutlineWidth: 1,
@@ -896,6 +908,10 @@ export const createTerrainSlice = (set: Set, get: () => MapStore): TerrainSlice 
   setTerrainBlobLobeDirection: (v) => set({ terrainBlobLobeDirection: v }),
   setTerrainBlobSimplify: (v) => set({ terrainBlobSimplify: v }),
   setTerrainBlobTopoStyle: (v) => set({ terrainBlobTopoStyle: v }),
+  setTerrainBlobSplatDensity: (v) => set({ terrainBlobSplatDensity: v }),
+  setTerrainBlobSplatSize: (v) => set({ terrainBlobSplatSize: v }),
+  setTerrainBlobHoleDensity: (v) => set({ terrainBlobHoleDensity: v }),
+  setTerrainBlobHoleSize: (v) => set({ terrainBlobHoleSize: v }),
   setTerrainBlobOutlineEnabled: (v) => set({ terrainBlobOutlineEnabled: v }),
   setTerrainBlobOutlineColor: (v) => set({ terrainBlobOutlineColor: v }),
   setTerrainBlobOutlineWidth: (v) => set({ terrainBlobOutlineWidth: v }),

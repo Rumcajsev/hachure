@@ -98,6 +98,10 @@ function ShapeSettingsFlyout({ onClose }: { onClose: () => void }) {
     terrainBlobLobeDirection, setTerrainBlobLobeDirection,
     terrainBlobSimplify, setTerrainBlobSimplify,
     terrainBlobTopoStyle, setTerrainBlobTopoStyle,
+    terrainBlobSplatDensity, setTerrainBlobSplatDensity,
+    terrainBlobSplatSize, setTerrainBlobSplatSize,
+    terrainBlobHoleDensity, setTerrainBlobHoleDensity,
+    terrainBlobHoleSize, setTerrainBlobHoleSize,
     terrainBlobOutlineEnabled, setTerrainBlobOutlineEnabled,
     terrainBlobOutlineColor, setTerrainBlobOutlineColor,
     terrainBlobOutlineWidth, setTerrainBlobOutlineWidth,
@@ -189,6 +193,13 @@ function ShapeSettingsFlyout({ onClose }: { onClose: () => void }) {
         <span style={{ fontFamily: t.mono, fontSize: 9, letterSpacing: 0.8, color: t.inkFaint, textTransform: 'uppercase', fontWeight: 600 }}>Fringe</span>
       </div>
       <MiniSlider label="Fringe" display={`${Math.round(local.lobeAmp * 100)}%`} value={Math.round(local.lobeAmp * 100)} min={0} max={100} step={1} onChange={v => setFringe(v / 100)} />
+      <div style={{ margin: '6px 12px 2px', borderTop: `1px solid ${t.line2}`, paddingTop: 8 }}>
+        <span style={{ fontFamily: t.mono, fontSize: 9, letterSpacing: 0.8, color: t.inkFaint, textTransform: 'uppercase', fontWeight: 600 }}>Splats</span>
+      </div>
+      <MiniSlider label="Satellites" display={terrainBlobSplatDensity === 0 ? 'off' : `${Math.round(terrainBlobSplatDensity * 10) / 10}`} value={Math.round(terrainBlobSplatDensity * 10)} min={0} max={20} step={1} onChange={v => setTerrainBlobSplatDensity(v / 10)} />
+      <MiniSlider label="Sat. size" display={`${Math.round(terrainBlobSplatSize * 100)}%`} value={Math.round(terrainBlobSplatSize * 100)} min={10} max={80} step={5} onChange={v => setTerrainBlobSplatSize(v / 100)} />
+      <MiniSlider label="Holes" display={terrainBlobHoleDensity === 0 ? 'off' : `${Math.round(terrainBlobHoleDensity * 10) / 10}`} value={Math.round(terrainBlobHoleDensity * 10)} min={0} max={20} step={1} onChange={v => setTerrainBlobHoleDensity(v / 10)} />
+      <MiniSlider label="Hole size" display={`${Math.round(terrainBlobHoleSize * 100)}%`} value={Math.round(terrainBlobHoleSize * 100)} min={10} max={80} step={5} onChange={v => setTerrainBlobHoleSize(v / 100)} />
       <div style={{ borderTop: `1px solid ${t.line2}`, paddingTop: 4 }}>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '6px 12px 6px' }}>
           <span style={{ fontFamily: t.mono, fontSize: 8.5, letterSpacing: 0.8, color: t.inkFaint, textTransform: 'uppercase', fontWeight: 600 }}>Blob outline</span>
@@ -644,9 +655,6 @@ function TerrainCogFlyout({ terrain, onClose }: { terrain: string; onClose: () =
     smooth: storeSmooth, offset: storeOffset, bump: storeBump, sweepFreq: storeSweepFreq,
     lobeFreq: storeLobeFreq, lobeAmp: storeLobeAmp, lobeThreshold: storeLobeThreshold, lobeDirection: storeLobeDirection, simplify: storeSimplify,
   })
-  const [repulsionEnabled, setRepulsionEnabled] = useState(
-    (typeStyle?.riverRepulsionRadius ?? 0) > 0 || (typeStyle?.roadRepulsionRadius ?? 0) > 0
-  )
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const draggingRef = useRef(false)
 
@@ -852,40 +860,6 @@ function TerrainCogFlyout({ terrain, onClose }: { terrain: string; onClose: () =
         </>}
       </div>
 
-      {/* Feature repulsion */}
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '8px 12px 4px', borderTop: `1px solid ${tk.line2}` }}>
-        <span style={{ fontFamily: tk.mono, fontSize: 8.5, letterSpacing: 0.8, color: repulsionEnabled ? tk.ink2 : tk.inkFaint, textTransform: 'uppercase' as const, fontWeight: 600 }}>
-          Feature repulsion
-        </span>
-        <ToggleSwitch enabled={repulsionEnabled} onChange={setRepulsionEnabled} />
-      </div>
-      {repulsionEnabled && (
-        <div>
-          <MiniSlider
-            label="River pushback"
-            display={typeStyle?.riverRepulsionRadius ? `${typeStyle.riverRepulsionRadius.toFixed(2)}R` : 'off'}
-            value={Math.round((typeStyle?.riverRepulsionRadius ?? 0) * 20)}
-            min={0} max={20} step={1}
-            onChange={v => setTerrainTypeBlobStyle(terrain, { riverRepulsionRadius: v / 20 })}
-          />
-          <MiniSlider
-            label="Road pushback"
-            display={typeStyle?.roadRepulsionRadius ? `${typeStyle.roadRepulsionRadius.toFixed(2)}R` : 'off'}
-            value={Math.round((typeStyle?.roadRepulsionRadius ?? 0) * 20)}
-            min={0} max={20} step={1}
-            onChange={v => setTerrainTypeBlobStyle(terrain, { roadRepulsionRadius: v / 20 })}
-          />
-          {((typeStyle?.riverRepulsionRadius ?? 0) > 0 || (typeStyle?.roadRepulsionRadius ?? 0) > 0) && (
-            <MiniSlider
-              label="Strength"
-              display={`${Math.round((typeStyle?.repulsionStrength ?? 1) * 100)}%`}
-              value={Math.round((typeStyle?.repulsionStrength ?? 1) * 100)}
-              min={0} max={100} step={1}
-              onChange={v => setTerrainTypeBlobStyle(terrain, { repulsionStrength: v / 100 })}
-            />
-          )}
-        </div>
-      )}
     </FlyoutShell>
   )
 }

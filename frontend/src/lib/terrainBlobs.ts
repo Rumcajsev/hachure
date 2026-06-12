@@ -1,7 +1,7 @@
 /** Terrain blob building and field-style rendering utilities.
  *  Depends on geometry, noise, and projection libs — no React, no store state. */
 
-import { chaikin, subdivideClosedPolygon, resampleSmoothQuad, douglasPeuckerClosed } from './geometry'
+import { chaikin, subdivideClosedPolygon, resampleSmoothQuad, douglasPeuckerClosed, pointInPolygon } from './geometry'
 import { makePermutation, perlinNoise2D, perturbXY, perturbNormal, mulberry32 } from './noise'
 import { projectToCanvas } from './projection'
 import polygonClipping from 'polygon-clipping'
@@ -517,26 +517,9 @@ export type BlobShapeParams = {
   lobeDirection: number
 }
 
-function shapeAddPolygon(poly: [number, number][], seed: number, p: BlobShapeParams): [number, number][] {
-  const p1Amp = p.bump * p.R
-  const p2Amp = p.bump * p.lobeAmp * p.R * p.lobeDirection
-  let pts: [number, number][] = poly
-  const smoothPasses = Math.floor(p.smooth)
-  const smoothRemainder = p.smooth - smoothPasses
-  for (let i = 0; i < smoothPasses; i++) pts = preSmoothVar(pts, 0.4)
-  if (smoothRemainder > 0) pts = preSmoothVar(pts, 0.4 * smoothRemainder)
-  // skip resizeToHexAnchors — no hex anchors for user-drawn polygons
-  pts = subdivideClosedPolygon(pts, p.R * 0.25)
-  pts = perturbXY(pts, makePermutation(seed), makePermutation(seed + 31), p.sweepFreq / p.R, p1Amp)
-  pts = resampleSmoothQuad(pts, 5)
-  pts = perturbNormal(pts, makePermutation(seed + 67), makePermutation(seed + 113), p.lobeFreq / p.R, p2Amp, p.lobeThreshold)
-  return pts
-}
-
 /** Apply stored BlobMaskEdits to pre-shaped blob polygons.
  *  Edits are stored in WGS84 lon/lat; projectFn converts them to canvas space.
- *  Add edits are shaped with the terrain's blob pipeline when shapeParams is provided.
- *  Subtract edits stay raw (clean cuts). */
+ *  Add/subtract edits both go through the terrain blob shaping pipeline when shapeParams is provided. */
 export function applyBlobMaskEdits(
   blobs: { terrain: string; polys: [number, number][][] }[],
   edits: BlobMaskEdit[],
@@ -554,7 +537,23 @@ export function applyBlobMaskEdits(
       if (editCanvas.length < 3) continue
 
       const seed = Math.abs(Math.round(editCanvas[0][0] * 73 + editCanvas[0][1] * 97)) ^ (edit.id.split('').reduce((a, c) => a + c.charCodeAt(0), 0))
-      const shaped = shapeParams ? shapeAddPolygon(editCanvas as [number, number][], seed, shapeParams) : editCanvas as [number, number][]
+
+      let shaped: [number, number][] = editCanvas as [number, number][]
+      if (shapeParams) {
+        const p = shapeParams
+        const p1Amp = p.bump * p.R
+        const p2Amp = p.bump * p.lobeAmp * p.R * p.lobeDirection
+        let out: [number, number][] = shaped
+        const smoothPasses = Math.floor(p.smooth)
+        const smoothRemainder = p.smooth - smoothPasses
+        for (let i = 0; i < smoothPasses; i++) out = preSmoothVar(out, 0.4)
+        if (smoothRemainder > 0) out = preSmoothVar(out, 0.4 * smoothRemainder)
+        out = subdivideClosedPolygon(out, p.R * 0.25)
+        out = perturbXY(out, makePermutation(seed), makePermutation(seed + 31), p.sweepFreq / p.R, p1Amp)
+        out = resampleSmoothQuad(out, 5)
+        out = perturbNormal(out, makePermutation(seed + 67), makePermutation(seed + 113), p.lobeFreq / p.R, p2Amp, p.lobeThreshold)
+        shaped = out
+      }
 
       if (edit.type === 'subtract') {
         const editMPoly: polygonClipping.MultiPolygon = [[shaped as polygonClipping.Ring]]
@@ -577,5 +576,255 @@ export function applyBlobMaskEdits(
       }
     }
     return { ...blob, polys }
+  })
+}
+
+/** Cut river corridors out of raw (pre-shaped) hex-outline polygons so the
+ *  cut edge participates in the full blob shaping pipeline (inset, bump, lobe).
+ *  Call this on rawPolys before passing them to shapeTerrainBlobs. */
+export function cutRawPolysWithCorridors(
+  rawPolys: [number, number][][],
+  corridors: [number, number][][],
+): [number, number][][] {
+  if (corridors.length === 0) return rawPolys
+  const cutMultiPoly: polygonClipping.MultiPolygon = corridors.map(c => [c as polygonClipping.Ring])
+  return rawPolys.flatMap(poly => {
+    if (poly.length < 3) return [poly]
+    const subject: polygonClipping.MultiPolygon = [[poly as polygonClipping.Ring]]
+    try {
+      const result = polygonClipping.difference(subject, cutMultiPoly)
+      return result.map(p => p[0] as [number, number][]).filter(p => p?.length >= 3)
+    } catch { return [poly] }
+  })
+}
+
+export type BlobSplatParams = {
+  splatDensity: number  // expected satellites per R of perimeter (0 = none)
+  splatSize: number     // satellite radius as fraction of R
+  holeDensity: number   // expected holes per 6R of perimeter (0 = none)
+  holeSize: number      // hole radius as fraction of R
+}
+
+/** Generate procedural satellite splats (small blobs near edges) and holes (clearings inside)
+ *  for all terrain blobs. Both are seeded deterministically from blob geometry so they are
+ *  stable across re-renders without being stored. Runs after shaping and mask edits. */
+export function generateBlobSplats(
+  blobs: { terrain: string; polys: [number, number][][] }[],
+  params: BlobSplatParams,
+  R: number,
+  shapeParams: BlobShapeParams,
+): { terrain: string; polys: [number, number][][] }[] {
+  const { splatDensity, splatSize, holeDensity, holeSize } = params
+  if (splatDensity <= 0 && holeDensity <= 0) return blobs
+
+  return blobs.map(blob => {
+    const addSplats: [number, number][][] = []
+    const subtractPolys: [number, number][][] = []
+
+    for (const poly of blob.polys) {
+      const n = poly.length
+      if (n < 3) continue
+
+      const seed = Math.abs(Math.round(poly[0][0] * 73 + poly[0][1] * 97))
+      const rng = mulberry32(seed ^ 0x5A7B3C)
+
+      // Perimeter arc-length table
+      let totalLen = 0
+      const arcLens: number[] = [0]
+      for (let i = 0; i < n; i++) {
+        const a = poly[i], b = poly[(i + 1) % n]
+        totalLen += Math.hypot(b[0] - a[0], b[1] - a[1])
+        arcLens.push(totalLen)
+      }
+
+      // Centroid for normal-direction checks and hole placement
+      let cx = 0, cy = 0
+      for (const [x, y] of poly) { cx += x; cy += y }
+      cx /= n; cy /= n
+
+      // ── Satellites along the boundary ───────────────────────────────────────
+      if (splatDensity > 0) {
+        const spacing = R / splatDensity
+        let t = rng() * spacing
+        let idx = 0
+        while (t < totalLen) {
+          // Find position at arc length t
+          const tmod = t % totalLen
+          while (idx + 1 < arcLens.length - 1 && arcLens[idx + 1] <= tmod) idx++
+          const a = poly[idx], b = poly[(idx + 1) % n]
+          const segLen = arcLens[idx + 1] - arcLens[idx]
+          const f = segLen < 1e-9 ? 0 : (tmod - arcLens[idx]) / segLen
+          const px = a[0] + f * (b[0] - a[0])
+          const py = a[1] + f * (b[1] - a[1])
+
+          // Outward normal (flip if it points toward centroid)
+          const dx = b[0] - a[0], dy = b[1] - a[1]
+          const elen = Math.hypot(dx, dy)
+          let nx = elen < 1e-9 ? 0 : -dy / elen
+          let ny = elen < 1e-9 ? 0 :  dx / elen
+          if (nx * (cx - px) + ny * (cy - py) > 0) { nx = -nx; ny = -ny }
+
+          // Satellite center: just outside the boundary
+          const offset = R * (0.15 + rng() * 0.25)
+          const scx = px + nx * offset
+          const scy = py + ny * offset
+
+          // Satellite radius with variation
+          const sr = R * splatSize * (0.6 + rng() * 0.8)
+          const splatSeed = seed ^ Math.abs(Math.round(t)) ^ 0x9A3F
+
+          // Build circle polygon and shape it organically
+          const nPts = 8 + Math.floor(rng() * 5)
+          const circle: [number, number][] = []
+          for (let i = 0; i < nPts; i++) {
+            const angle = (i / nPts) * Math.PI * 2
+            circle.push([scx + Math.cos(angle) * sr, scy + Math.sin(angle) * sr])
+          }
+
+          const sp = shapeParams
+          const p1Amp = sp.bump * sr
+          const p2Amp = sp.bump * sp.lobeAmp * sr * sp.lobeDirection
+          let out: [number, number][] = circle
+          out = subdivideClosedPolygon(out, Math.max(sr * 0.25, 1))
+          out = perturbXY(out, makePermutation(splatSeed), makePermutation(splatSeed + 31), sp.sweepFreq / sr, p1Amp)
+          out = resampleSmoothQuad(out, 3)
+          out = perturbNormal(out, makePermutation(splatSeed + 67), makePermutation(splatSeed + 113), sp.lobeFreq / sr, p2Amp, sp.lobeThreshold)
+
+          if (out.length >= 3) addSplats.push(out)
+
+          t += spacing * (0.5 + rng())
+        }
+      }
+
+      // ── Interior holes ──────────────────────────────────────────────────────
+      if (holeDensity > 0) {
+        // Expected holes proportional to blob perimeter (scales with blob size)
+        const expected = holeDensity * totalLen / (6 * R)
+        const numHoles = Math.floor(expected) + (rng() < (expected % 1) ? 1 : 0)
+
+        // Bounding box for rejection sampling
+        let minX = poly[0][0], maxX = poly[0][0]
+        let minY = poly[0][1], maxY = poly[0][1]
+        for (const [x, y] of poly) {
+          if (x < minX) minX = x; if (x > maxX) maxX = x
+          if (y < minY) minY = y; if (y > maxY) maxY = y
+        }
+
+        for (let h = 0; h < numHoles; h++) {
+          const hr = R * holeSize * (0.6 + rng() * 0.6)
+          const minDist = hr * 1.5  // hole center must be this far from boundary
+
+          let hcx = 0, hcy = 0, found = false
+          for (let attempt = 0; attempt < 40; attempt++) {
+            const tx = minX + rng() * (maxX - minX)
+            const ty = minY + rng() * (maxY - minY)
+            if (!pointInPolygon(tx, ty, poly)) continue
+
+            // Approximate distance to nearest boundary segment
+            let minBd = Infinity
+            for (let i = 0; i < n; i++) {
+              const a = poly[i], b = poly[(i + 1) % n]
+              const edx = b[0] - a[0], edy = b[1] - a[1]
+              const len2 = edx * edx + edy * edy
+              const t2 = len2 < 1e-9 ? 0 : Math.max(0, Math.min(1, ((tx - a[0]) * edx + (ty - a[1]) * edy) / len2))
+              const d = Math.hypot(a[0] + t2 * edx - tx, a[1] + t2 * edy - ty)
+              if (d < minBd) minBd = d
+            }
+            if (minBd >= minDist) { hcx = tx; hcy = ty; found = true; break }
+          }
+          if (!found) continue
+
+          const holeSeed = seed ^ (h * 0x7F3D) ^ 0xB4E1
+          const nPts = 8 + Math.floor(rng() * 5)
+          const circle: [number, number][] = []
+          for (let i = 0; i < nPts; i++) {
+            const angle = (i / nPts) * Math.PI * 2
+            circle.push([hcx + Math.cos(angle) * hr, hcy + Math.sin(angle) * hr])
+          }
+
+          const sp = shapeParams
+          const p1Amp = sp.bump * hr
+          const p2Amp = sp.bump * sp.lobeAmp * hr * sp.lobeDirection
+          let out: [number, number][] = circle
+          out = subdivideClosedPolygon(out, Math.max(hr * 0.25, 1))
+          out = perturbXY(out, makePermutation(holeSeed), makePermutation(holeSeed + 31), sp.sweepFreq / hr, p1Amp)
+          out = resampleSmoothQuad(out, 3)
+          out = perturbNormal(out, makePermutation(holeSeed + 67), makePermutation(holeSeed + 113), sp.lobeFreq / hr, p2Amp, sp.lobeThreshold)
+
+          if (out.length >= 3) subtractPolys.push(out)
+        }
+      }
+    }
+
+    // Apply holes to original polys, then append satellites
+    let polys = blob.polys
+    if (subtractPolys.length > 0) {
+      const cutMPoly: polygonClipping.MultiPolygon = subtractPolys.map(c => [c as polygonClipping.Ring])
+      const next: [number, number][][] = []
+      for (const poly of polys) {
+        if (poly.length < 3) continue
+        const subject: polygonClipping.MultiPolygon = [[poly as polygonClipping.Ring]]
+        try {
+          const result = polygonClipping.difference(subject, cutMPoly)
+          for (const p of result) {
+            if (p[0]?.length >= 3) next.push(p[0] as [number, number][])
+          }
+        } catch { next.push(poly) }
+      }
+      polys = next
+    }
+
+    return { ...blob, polys: [...polys, ...addSplats] }
+  })
+}
+
+/** Cut river corridors out of all terrain blobs in one efficient pass.
+ *  Corridors are in canvas/paper coords (not lon/lat) — no projection needed.
+ *  When shapeParams is provided each corridor goes through the same organic
+ *  shaping pipeline as manual subtract edits, so cut edges match the terrain
+ *  blob style (wobbly/lobed) rather than being crisp geometric strips.
+ *  All (shaped) corridors are unioned into a single MultiPolygon so only one
+ *  polygonClipping.difference call is needed per blob regardless of river count. */
+export function applyRiverCuts(
+  blobs: { terrain: string; polys: [number, number][][] }[],
+  corridors: [number, number][][],
+  shapeParams?: BlobShapeParams,
+): { terrain: string; polys: [number, number][][] }[] {
+  if (corridors.length === 0) return blobs
+
+  const shapedCorridors: [number, number][][] = corridors.map(corridor => {
+    if (!shapeParams || corridor.length < 3) return corridor
+    const p = shapeParams
+    const seed = Math.abs(Math.round(corridor[0][0] * 73 + corridor[0][1] * 97))
+    const p1Amp = p.bump * p.R
+    const p2Amp = p.bump * p.lobeAmp * p.R * p.lobeDirection
+    let out: [number, number][] = corridor
+    const smoothPasses = Math.floor(p.smooth)
+    const smoothRemainder = p.smooth - smoothPasses
+    for (let i = 0; i < smoothPasses; i++) out = preSmoothVar(out, 0.4)
+    if (smoothRemainder > 0) out = preSmoothVar(out, 0.4 * smoothRemainder)
+    out = subdivideClosedPolygon(out, p.R * 0.25)
+    out = perturbXY(out, makePermutation(seed), makePermutation(seed + 31), p.sweepFreq / p.R, p1Amp)
+    out = resampleSmoothQuad(out, 5)
+    out = perturbNormal(out, makePermutation(seed + 67), makePermutation(seed + 113), p.lobeFreq / p.R, p2Amp, p.lobeThreshold)
+    return out
+  })
+
+  const cutMultiPoly: polygonClipping.MultiPolygon = shapedCorridors.map(c => [c as polygonClipping.Ring])
+  return blobs.map(blob => {
+    const nextPolys: [number, number][][] = []
+    for (const poly of blob.polys) {
+      if (poly.length < 3) continue
+      const subject: polygonClipping.MultiPolygon = [[poly as polygonClipping.Ring]]
+      try {
+        const result = polygonClipping.difference(subject, cutMultiPoly)
+        for (const p of result) {
+          if (p[0]?.length >= 3) nextPolys.push(p[0] as [number, number][])
+        }
+      } catch {
+        nextPolys.push(poly)
+      }
+    }
+    return { ...blob, polys: nextPolys }
   })
 }

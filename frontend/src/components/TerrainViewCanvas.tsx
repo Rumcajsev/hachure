@@ -8,7 +8,7 @@ import { useTheme } from '../context/ThemeContext'
 import { hexAdjacent, catmullRom, offsetPolyline, pointInPolygon, distToSeg, douglasPeucker, douglasPeuckerClosed, chaikin } from '../lib/geometry'
 import { mulberry32, makePermutation } from '../lib/noise'
 import { projectToCanvas, unprojectFromCanvas, computePaper, computeWorldcoverBbox } from '../lib/projection'
-import { coastalBlobTerrains, bleedPolygon, buildTerrainBlobsV2, buildTerrainBlobTopology, shapeTerrainBlobs, shapeInputPolygon, computeConnectedComponents, applyBlobMaskEdits } from '../lib/terrainBlobs'
+import { coastalBlobTerrains, bleedPolygon, buildTerrainBlobsV2, buildTerrainBlobTopology, shapeTerrainBlobs, shapeInputPolygon, computeConnectedComponents, applyBlobMaskEdits, cutRawPolysWithCorridors, generateBlobSplats } from '../lib/terrainBlobs'
 import type { BlobTopologyEntry } from '../lib/terrainBlobs'
 import { findEdgeChains as findEdgeChainsSync } from '../lib/edgeBlobs'
 import { riverChainCache, buildRiverChains, buildRiverChainsV2, buildRiverChainsV3 } from '../lib/riverChains'
@@ -284,6 +284,7 @@ export const TerrainViewCanvas = forwardRef<TerrainViewCanvasHandle, { surroundC
     terrainBlobSmooth, terrainBlobOffset, terrainBlobBump,
     terrainBlobSweepFreq, terrainBlobLobeFreq, terrainBlobLobeAmp, terrainBlobLobeThreshold, terrainBlobLobeDirection,
     terrainBlobSimplify, terrainBlobTopoStyle,
+    terrainBlobSplatDensity, terrainBlobSplatSize, terrainBlobHoleDensity, terrainBlobHoleSize,
     terrainBlobOutlineEnabled, terrainBlobOutlineColor, terrainBlobOutlineWidth, terrainBlobEffect,
 terrainColors, terrainTextureScales, terrainTextureBlendModes, terrainTextureOpacities,
     terrainTextureTintColors, terrainTextureTintOpacities,
@@ -333,6 +334,7 @@ terrainColors, terrainTextureScales, terrainTextureBlendModes, terrainTextureOpa
     riverWidthScale, riverCurveSteps, riverWobble, riverDetail,
     riverWiggleFreq, riverWiggleAmp, riverSmoothing, riverPathSmoothing,
     riverCornerRounds, riverPointSpacing, riverNoiseAmp, riverNoiseScale,
+    riverBlobCutEnabled, riverBlobCutWidth,
     terrainBlobOverrides, setTerrainBlobOverride,
     terrainTypeBlobStyles,
     waterOverrides, setWaterOverride,
@@ -679,6 +681,7 @@ terrainColors, terrainTextureScales, terrainTextureBlendModes, terrainTextureOpa
   const blobMaskDrawingRef = useRef(false)
   const addBlobMaskEditRef = useRef(addBlobMaskEdit)
   addBlobMaskEditRef.current = addBlobMaskEdit
+  const blobMaskSubtractWidthRef = useRef(0.012)
 
   pageGridRef.current = pageGrid
   paperSizeRef.current = paperSize
@@ -1307,6 +1310,28 @@ const roadV3TierGeomRef = useRef(roadV3TierGeom)
   smoothedCoastlineBoundaryRef.current = smoothedCoastlineBoundary
 
 
+  // River corridor polygons in canvas coords — computed here (before defaultTerrainBlobs) so the
+  // pre-shaping cut can use them. The cut happens on raw hex-outline polygons so the cut edge
+  // goes through the full organic shaping pipeline (inset, bump, lobe) just like any other blob edge.
+  const riverAutoCorridors = useMemo((): [number, number][][] => {
+    if (!riverBlobCutEnabled || riverEdges.length === 0 || generatedHexes.length === 0 || !generatedMetadata || !paperDims) return []
+    const { pw, ph, px, py } = paperDims
+    const meta = generatedMetadata
+    const proj = (lonlat: [number, number]): [number, number] =>
+      projectToCanvas(lonlat[0], lonlat[1], meta, pw, ph, px, py)
+    const chains = buildRiverChainsV3(riverEdges, generatedHexes, riverCornerRounds, riverPointSpacing, riverNoiseAmp, riverNoiseScale)
+    const halfW = hexRadius * riverBlobCutWidth
+    const corridors: [number, number][][] = []
+    for (const chain of chains) {
+      const pts = chain.chain.map(proj)
+      if (pts.length < 2) continue
+      const upper = offsetPolyline(pts, +halfW)
+      const lower = offsetPolyline(pts, -halfW).slice().reverse()
+      if (upper.length + lower.length >= 3) corridors.push([...upper, ...lower])
+    }
+    return corridors
+  }, [riverBlobCutEnabled, riverBlobCutWidth, riverEdges, generatedHexes, riverCornerRounds, riverPointSpacing, riverNoiseAmp, riverNoiseScale, hexRadius, generatedMetadata, paperDims])
+
   const prevTerrainBlobsRef = useRef<{ terrain: string; polys: [number, number][][]; blobKeys: string[] }[]>([])
   type TerrainBlobCacheEntry = { hexKey: string; rawPolys: [number, number][][]; hexCenters: [number, number][]; styleKey: string; blobs: { terrain: string; polys: [number, number][][]; blobKeys: string[] }[]; handleGroups?: Map<string, { edgeKey: string; cx: number; cy: number }[]>; simplifiedPolyGroups?: Map<string, [number, number][][]> }
   const perTerrainBlobCache = useRef(new Map<string, TerrainBlobCacheEntry>())
@@ -1374,7 +1399,8 @@ const roadV3TierGeomRef = useRef(roadV3TierGeom)
         const h = blobHandleOverrides[ck]
         return h && Object.keys(h).length > 0 ? `${ck}:${JSON.stringify(h)}` : ''
       }).filter(Boolean).join('~')
-      const styleKey = `${smooth}|${offset}|${bump}|${sweepFreq}|${lobeFreq}|${lobeAmp}|${lobeThreshold}|${lobeDirection}|${terrainBlobSimplify}|${terrainBlobTopoStyle}|${hexRadius}|${JSON.stringify(blobSeeds)}|${handleKey}`
+      const corridorKey = riverAutoCorridors.map(c => `${c.length}:${c[0]?.[0].toFixed(0)},${c[0]?.[1].toFixed(0)}`).join('|')
+      const styleKey = `${smooth}|${offset}|${bump}|${sweepFreq}|${lobeFreq}|${lobeAmp}|${lobeThreshold}|${lobeDirection}|${terrainBlobSimplify}|${terrainBlobTopoStyle}|${hexRadius}|${JSON.stringify(blobSeeds)}|${handleKey}|${corridorKey}`
       const cached = perTerrainBlobCache.current.get(terrain)
 
       // Compute rawPolys (topology cache)
@@ -1386,8 +1412,12 @@ const roadV3TierGeomRef = useRef(roadV3TierGeom)
         rawPolys = topo.find(e => e.terrain === terrain)?.rawPolys ?? []
       }
 
+      // Pre-cut raw polys with river corridors so the cut edge goes through the full
+      // shaping pipeline (inset, bump, lobe) and responds to all blob style settings.
+      const rawPolysForShaping = cutRawPolysWithCorridors(rawPolys, riverAutoCorridors)
+
       // Simplified polys — what handles are generated from and what the dashed overlay shows
-      const simplifiedPolys = rawPolys.map(p => {
+      const simplifiedPolys = rawPolysForShaping.map(p => {
         const seed = Math.abs(Math.round(p[0][0] * 73 + p[0][1] * 97))
         return shapeInputPolygon(p, terrainBlobSimplify, terrainBlobTopoStyle, hexRadius, seed)
       })
@@ -1444,13 +1474,14 @@ const roadV3TierGeomRef = useRef(roadV3TierGeom)
     }
     prevTerrainBlobsRef.current = result
     return result
-  }, [isTerrainPainting, projectedHexes, blobComponentsByTerrain, terrainBlobOverrides, terrainTypeBlobStyles, terrainBlobSmooth, terrainBlobOffset, terrainBlobBump, terrainBlobSweepFreq, terrainBlobLobeFreq, terrainBlobLobeAmp, terrainBlobLobeThreshold, terrainBlobLobeDirection, terrainBlobSimplify, terrainBlobTopoStyle, hexRadius, realisticCoastline, blobSeeds, elevationOverridesTerrain, blobHandleOverrides])
+  }, [isTerrainPainting, projectedHexes, blobComponentsByTerrain, terrainBlobOverrides, terrainTypeBlobStyles, terrainBlobSmooth, terrainBlobOffset, terrainBlobBump, terrainBlobSweepFreq, terrainBlobLobeFreq, terrainBlobLobeAmp, terrainBlobLobeThreshold, terrainBlobLobeDirection, terrainBlobSimplify, terrainBlobTopoStyle, hexRadius, realisticCoastline, blobSeeds, elevationOverridesTerrain, blobHandleOverrides, riverAutoCorridors])
   const defaultTerrainBlobsRef = useRef(defaultTerrainBlobs)
   defaultTerrainBlobsRef.current = defaultTerrainBlobs
 
   // Apply blob mask edits (boolean add/subtract regions) to the shaped blobs.
   // Edits are stored in lon/lat and projected to canvas space here so they track pan/zoom.
-  // Add edits are run through the blob shaping pipeline so they match the terrain's organic style.
+  // River corridor cuts are now applied upstream in defaultTerrainBlobs (pre-shaping) so
+  // the cut edge goes through the full organic pipeline like any other blob edge.
   const defaultTerrainBlobsMasked = useMemo(() => {
     if (blobMaskEdits.length === 0 || !generatedMetadata || !paperDims) return defaultTerrainBlobs
     const { pw, ph, px, py } = paperDims
@@ -1469,8 +1500,28 @@ const roadV3TierGeomRef = useRef(roadV3TierGeom)
     }
     return applyBlobMaskEdits(defaultTerrainBlobs, blobMaskEdits, projectFn, shapeParams)
   }, [defaultTerrainBlobs, blobMaskEdits, generatedMetadata, paperDims, hexRadius, terrainBlobSmooth, terrainBlobBump, terrainBlobSweepFreq, terrainBlobLobeFreq, terrainBlobLobeAmp, terrainBlobLobeThreshold, terrainBlobLobeDirection])
-  const defaultTerrainBlobsMaskedRef = useRef(defaultTerrainBlobsMasked)
-  defaultTerrainBlobsMaskedRef.current = defaultTerrainBlobsMasked
+  // Apply procedural splats (satellites + holes) after mask edits.
+  const defaultTerrainBlobsSplatted = useMemo(() => {
+    if (terrainBlobSplatDensity <= 0 && terrainBlobHoleDensity <= 0) return defaultTerrainBlobsMasked
+    const shapeParams = {
+      R: hexRadius,
+      smooth: terrainBlobSmooth,
+      bump: terrainBlobBump,
+      sweepFreq: terrainBlobSweepFreq,
+      lobeFreq: terrainBlobLobeFreq,
+      lobeAmp: terrainBlobLobeAmp,
+      lobeThreshold: terrainBlobLobeThreshold,
+      lobeDirection: terrainBlobLobeDirection,
+    }
+    return generateBlobSplats(
+      defaultTerrainBlobsMasked,
+      { splatDensity: terrainBlobSplatDensity, splatSize: terrainBlobSplatSize, holeDensity: terrainBlobHoleDensity, holeSize: terrainBlobHoleSize },
+      hexRadius,
+      shapeParams,
+    )
+  }, [defaultTerrainBlobsMasked, terrainBlobSplatDensity, terrainBlobSplatSize, terrainBlobHoleDensity, terrainBlobHoleSize, hexRadius, terrainBlobSmooth, terrainBlobBump, terrainBlobSweepFreq, terrainBlobLobeFreq, terrainBlobLobeAmp, terrainBlobLobeThreshold, terrainBlobLobeDirection])
+  const defaultTerrainBlobsMaskedRef = useRef(defaultTerrainBlobsSplatted)
+  defaultTerrainBlobsMaskedRef.current = defaultTerrainBlobsSplatted
 
   // ── Background terrain blobs ──────────────────────────────────────────────
   const prevBackgroundBlobsRef = useRef<{ terrain: string; polys: [number, number][][] }[]>([])
@@ -1697,6 +1748,7 @@ const roadV3TierGeomRef = useRef(roadV3TierGeom)
   type ExportTarget = { canvas: HTMLCanvasElement; pw: number; ph: number }
 
   const draw = useCallback((exportTarget?: ExportTarget) => {
+    const _t0 = performance.now()
     const canvas = exportTarget ? exportTarget.canvas : canvasRef.current
     const meta = metaRef.current
     const hexes = hexesRef.current
@@ -1884,6 +1936,7 @@ const roadV3TierGeomRef = useRef(roadV3TierGeom)
       contourDisabledElevClasses: contourDisabledElevClassesSetRef.current,
     }
 
+    const _tTerrain0 = performance.now()
     // Build offscreen terrain layer when dirty (skipped for export — always renders inline).
     // Skip rebuild while actively painting: blobs are frozen during drag so the terrain
     // visually doesn't change, and rebuilding on every mousemove event (~30ms each) blocks
@@ -2144,6 +2197,7 @@ const roadV3TierGeomRef = useRef(roadV3TierGeom)
       }
     }
 
+    const _tRivers0 = performance.now()
     // Rivers — offscreen cached
     const lakeProjCenters = projected
       .filter(({ hex }) => hex.terrain === 'water')
@@ -2300,6 +2354,7 @@ const roadV3TierGeomRef = useRef(roadV3TierGeom)
       _drawRivers(ctx, liveRiverParams)
     }
 
+    const _tRoads0 = performance.now()
     // Urban area buildings + settlement buildings (rendered below roads)
     {
       const { chains: roadChains } = smoothedRoadDataRef.current
@@ -2667,7 +2722,7 @@ const roadV3TierGeomRef = useRef(roadV3TierGeom)
       const tool = activeToolRef.current
       if (pts.length >= 2 && tool.type === 'blob-mask') {
         const isSubtract = tool.mode === 'subtract'
-        const halfW = Math.max(pw, ph) * 0.012
+        const halfW = Math.max(pw, ph) * blobMaskSubtractWidthRef.current
         ctx.save()
         ctx.strokeStyle = isSubtract ? 'rgba(255,80,80,0.8)' : 'rgba(80,220,120,0.8)'
         ctx.lineWidth = isSubtract ? halfW * 2 : 2
@@ -2682,6 +2737,7 @@ const roadV3TierGeomRef = useRef(roadV3TierGeom)
       }
     }
 
+    const _tSettlements0 = performance.now()
     // Settlements — offscreen cached
     {
 
@@ -2902,6 +2958,17 @@ const roadV3TierGeomRef = useRef(roadV3TierGeom)
 
     ctx.restore() // pan/zoom
     drawOsmHighlightRef.current?.()
+    if (!isExport) {
+      const _tEnd = performance.now()
+      const total = _tEnd - _t0
+      if (total > 8) {
+        const terrain = _tRivers0 - _tTerrain0
+        const rivers = _tRoads0 - _tRivers0
+        const roads = _tSettlements0 - _tRoads0
+        const settle = _tEnd - _tSettlements0
+        console.log(`[draw] ${total.toFixed(1)}ms  terrain=${terrain.toFixed(1)}  rivers=${rivers.toFixed(1)}  roads=${roads.toFixed(1)}  settle=${settle.toFixed(1)}  riversDirty=${riversDirtyRef.current}`)
+      }
+    }
   }, [])
 
   const drawOsmHighlightRef = useRef<(() => void) | null>(null)
@@ -3085,7 +3152,7 @@ const roadV3TierGeomRef = useRef(roadV3TierGeom)
   //   forestTextureVersion, frameDims, draw])
 
   // Mark terrain layer dirty when terrain-affecting data changes
-  useEffect(() => { terrainDirtyRef.current = true }, [defaultTerrainBlobsMasked, defaultTerrainBlobs, defaultWaterBlobs, defaultElevationBlobs, terrainColors, terrainTextureScales, terrainTextureBlendModes, terrainTextureOpacities, terrainTextureTintColors, terrainTextureTintOpacities, terrainTextureFile, terrainTextureEnabled, terrainBlobOverrides, terrainTypeBlobStyles, waterOverrides, terrainRenderMode, hexEdgeMode, generatedHexes, realisticCoastline, coastlineDebugRaw, smoothedCoastlineBoundary, rawCoastlineBoundary, beachStrip, beachColor, beachWidth, hillsColor, mountainsColor, reliefShadingOpacity, coastlineDPEpsilon, coastlineChaikinPasses, edgeBlobPainted, edgeBlobOverrides, edgeBlobWidth, mapStyle, historicalIconParams, elevationTypeBlobStyles, terrainBlobOutlineEnabled, terrainBlobOutlineColor, terrainBlobOutlineWidth, terrainBlobEffect, elevationOverridesTerrain])
+  useEffect(() => { terrainDirtyRef.current = true }, [defaultTerrainBlobsSplatted, defaultTerrainBlobsMasked, defaultTerrainBlobs, defaultWaterBlobs, defaultElevationBlobs, terrainColors, terrainTextureScales, terrainTextureBlendModes, terrainTextureOpacities, terrainTextureTintColors, terrainTextureTintOpacities, terrainTextureFile, terrainTextureEnabled, terrainBlobOverrides, terrainTypeBlobStyles, waterOverrides, terrainRenderMode, hexEdgeMode, generatedHexes, realisticCoastline, coastlineDebugRaw, smoothedCoastlineBoundary, rawCoastlineBoundary, beachStrip, beachColor, beachWidth, hillsColor, mountainsColor, reliefShadingOpacity, coastlineDPEpsilon, coastlineChaikinPasses, edgeBlobPainted, edgeBlobOverrides, edgeBlobWidth, mapStyle, historicalIconParams, elevationTypeBlobStyles, terrainBlobOutlineEnabled, terrainBlobOutlineColor, terrainBlobOutlineWidth, terrainBlobEffect, elevationOverridesTerrain])
   useEffect(() => { terrainDirtyRef.current = true; draw() }, [hillshadeDisabledTerrains, hillshadeDisabledElevClasses, contourDisabledTerrains, contourDisabledElevClasses]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // Decode heightmap PNG → ImageData when URL changes, then recompute derived canvases
@@ -5884,7 +5951,7 @@ const roadV3TierGeomRef = useRef(roadV3TierGeom)
           unprojectFromCanvas(p[0], p[1], meta, pw, ph, px, py)
         let polygon: [number, number][]
         if (tool.mode === 'subtract') {
-          const halfW = Math.max(pw, ph) * 0.012
+          const halfW = Math.max(pw, ph) * blobMaskSubtractWidthRef.current
           const upper = offsetPolyline(pts, +halfW)
           const lower = offsetPolyline(pts, -halfW).slice().reverse()
           polygon = [...upper, ...lower].map(unproj)
@@ -6464,6 +6531,8 @@ const roadV3TierGeomRef = useRef(roadV3TierGeom)
           setActiveTool={setActiveTool}
           onRemove={removeBlobMaskEdit}
           onClear={clearBlobMaskEdits}
+          subtractWidth={blobMaskSubtractWidthRef.current}
+          onSubtractWidthChange={v => { blobMaskSubtractWidthRef.current = v; draw() }}
         />
       )}
     </div>

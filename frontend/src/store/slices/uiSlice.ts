@@ -444,6 +444,10 @@ export const createUiSlice = (set: Set, get: () => MapStore): UiSlice => ({
         terrainBlobLobeThreshold: s.terrainBlobLobeThreshold, terrainBlobLobeDirection: s.terrainBlobLobeDirection,
         terrainBlobSimplify: s.terrainBlobSimplify,
         terrainBlobTopoStyle: s.terrainBlobTopoStyle,
+        terrainBlobSplatDensity: s.terrainBlobSplatDensity,
+        terrainBlobSplatSize: s.terrainBlobSplatSize,
+        terrainBlobHoleDensity: s.terrainBlobHoleDensity,
+        terrainBlobHoleSize: s.terrainBlobHoleSize,
         terrainBlobOutlineEnabled: s.terrainBlobOutlineEnabled,
         terrainBlobOutlineColor: s.terrainBlobOutlineColor,
         terrainBlobOutlineWidth: s.terrainBlobOutlineWidth,
@@ -1017,6 +1021,16 @@ if (fromVersion < 64) {
         delete t.smoothing; delete t.pathSmoothing
       }
     }
+  }
+  if (fromVersion < 81) {
+    if (s.riverBlobCutEnabled === undefined) s.riverBlobCutEnabled = false
+    if (s.riverBlobCutWidth === undefined) s.riverBlobCutWidth = 0.5
+  }
+  if (fromVersion < 82) {
+    if (s.terrainBlobSplatDensity === undefined) s.terrainBlobSplatDensity = 0
+    if (s.terrainBlobSplatSize === undefined) s.terrainBlobSplatSize = 0.3
+    if (s.terrainBlobHoleDensity === undefined) s.terrainBlobHoleDensity = 0
+    if (s.terrainBlobHoleSize === undefined) s.terrainBlobHoleSize = 0.35
   }
   if (fromVersion < 80) {
     const tiers = s.riverTierStyles as Array<Record<string, unknown>> | undefined
