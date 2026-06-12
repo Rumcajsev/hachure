@@ -28,6 +28,7 @@ export type DrawTerrainParams = {
   terrainTextureOpacities: Record<string, number>
   terrainTextureTintColors: Record<string, string>
   terrainTextureTintOpacities: Record<string, number>
+  terrainTextureShadeRanges: Record<string, number>
   /** terrain name → loaded texture image */
   terrainTextures: Map<string, HTMLImageElement | null>
   px: number; py: number; pw: number; ph: number
@@ -118,6 +119,53 @@ function getTintedTexture(tex: HTMLImageElement, hexColor: string, invert: boole
   return oc
 }
 
+/**
+ * Like getTintedTexture but maps each pixel's grayscale through a 3-stop ramp:
+ *   black → darkened terrain color, mid-gray → base color, white → lightened terrain color.
+ * shadeRange 0-1: how far dark/light deviate from base (0 = same as getTintedTexture).
+ */
+function getGradientMappedTexture(tex: HTMLImageElement, hexColor: string, shadeRange: number, invert: boolean): OffscreenCanvas | null {
+  const key = `${tex.src}_${hexColor}_${shadeRange.toFixed(2)}_${invert}_gm`
+  if (colorModeTextureCache.has(key)) return colorModeTextureCache.get(key)!
+  if (!tex.complete || tex.naturalWidth === 0) return null
+  const r = parseInt(hexColor.slice(1, 3), 16)
+  const g = parseInt(hexColor.slice(3, 5), 16)
+  const b = parseInt(hexColor.slice(5, 7), 16)
+  if (isNaN(r) || isNaN(g) || isNaN(b)) return null
+  const darkR = Math.round(r * (1 - shadeRange))
+  const darkG = Math.round(g * (1 - shadeRange))
+  const darkB = Math.round(b * (1 - shadeRange))
+  const lightR = Math.round(r + (255 - r) * shadeRange)
+  const lightG = Math.round(g + (255 - g) * shadeRange)
+  const lightB = Math.round(b + (255 - b) * shadeRange)
+  const oc = new OffscreenCanvas(tex.naturalWidth, tex.naturalHeight)
+  const octx = oc.getContext('2d')!
+  octx.drawImage(tex, 0, 0)
+  const img = octx.getImageData(0, 0, tex.naturalWidth, tex.naturalHeight)
+  const d = img.data
+  for (let i = 0; i < d.length; i += 4) {
+    const lum = d[i] * 0.299 + d[i + 1] * 0.587 + d[i + 2] * 0.114
+    const t = lum / 255
+    let cr: number, cg: number, cb: number
+    if (t <= 0.5) {
+      const blend = t * 2
+      cr = Math.round(darkR + (r - darkR) * blend)
+      cg = Math.round(darkG + (g - darkG) * blend)
+      cb = Math.round(darkB + (b - darkB) * blend)
+    } else {
+      const blend = (t - 0.5) * 2
+      cr = Math.round(r + (lightR - r) * blend)
+      cg = Math.round(g + (lightG - g) * blend)
+      cb = Math.round(b + (lightB - b) * blend)
+    }
+    d[i] = cr; d[i + 1] = cg; d[i + 2] = cb
+    d[i + 3] = Math.round(invert ? lum : 255 - lum)
+  }
+  octx.putImageData(img, 0, 0)
+  colorModeTextureCache.set(key, oc)
+  return oc
+}
+
 function applyTextureOverlay(
   tCtx: Ctx,
   tex: HTMLImageElement,
@@ -130,6 +178,7 @@ function applyTextureOverlay(
   tintColor = '',
   tintOpacity = 0.5,
   colorMode = false,
+  shadeRange = 0,
 ): void {
   if (!tex.complete || polys.length === 0) return
   const texSize = R * scaleR
@@ -150,7 +199,9 @@ function applyTextureOverlay(
 
   if (colorMode && tintColor) {
     const invertAlpha = blendMode === ('color-bg' as GlobalCompositeOperation)
-    const tinted = getTintedTexture(tex, tintColor, invertAlpha)
+    const tinted = shadeRange > 0
+      ? getGradientMappedTexture(tex, tintColor, shadeRange, invertAlpha)
+      : getTintedTexture(tex, tintColor, invertAlpha)
     if (!tinted) return
     const pattern = tCtx.createPattern(tinted, 'repeat')
     if (!pattern) return
@@ -264,7 +315,7 @@ export function drawTerrain(tCtx: Ctx, params: DrawTerrainParams): void {
   const {
     projected, edgeMode, inMargin,
     terrainColors, terrainTextureScales, terrainTextureBlendModes, terrainTextureOpacities,
-    terrainTextureTintColors, terrainTextureTintOpacities, terrainTextures,
+    terrainTextureTintColors, terrainTextureTintOpacities, terrainTextureShadeRanges, terrainTextures,
     px, py, pw, ph,
     backgroundTerrainBlobs, defaultTerrainBlobs, defaultWaterBlobs,
     terrainBlobOverrides, waterOverrides,
@@ -434,7 +485,7 @@ export function drawTerrain(tCtx: Ctx, params: DrawTerrainParams): void {
         tCtx.fill('evenodd')
       }
       const texScale = terrainTextureScales[terrain] ?? 3
-      if (tex) applyTextureOverlay(tCtx, tex, polys, R, texScale, R * 0.12, texBlend, texOpacity, texTint, texTintOpacity, isColorMode)
+      if (tex) applyTextureOverlay(tCtx, tex, polys, R, texScale, R * 0.12, texBlend, texOpacity, texTint, texTintOpacity, isColorMode, terrainTextureShadeRanges[terrain] ?? 0)
 
       tCtx.restore()
     }
@@ -492,7 +543,7 @@ export function drawTerrain(tCtx: Ctx, params: DrawTerrainParams): void {
 
       // a2. Texture for default polys — always drawn directly (no fade)
       if (tex && defaultPolys.length > 0) {
-        applyTextureOverlay(tCtx, tex, defaultPolys, R, terrainTextureScales[terrain] ?? 3, 0, texBlend, texOpacity, texTint, texTintOpacity, isColorMode)
+        applyTextureOverlay(tCtx, tex, defaultPolys, R, terrainTextureScales[terrain] ?? 3, 0, texBlend, texOpacity, texTint, texTintOpacity, isColorMode, terrainTextureShadeRanges[terrain] ?? 0)
       }
 
       // b. Override passes for this terrain
@@ -537,7 +588,7 @@ export function drawTerrain(tCtx: Ctx, params: DrawTerrainParams): void {
           }
           tCtx.fill('evenodd')
         }
-        if (tex) applyTextureOverlay(tCtx, tex, ovPolys, R, ovTexScale, R * 0.12, texBlend, texOpacity, texTint, texTintOpacity, isColorMode)
+        if (tex) applyTextureOverlay(tCtx, tex, ovPolys, R, ovTexScale, R * 0.12, texBlend, texOpacity, texTint, texTintOpacity, isColorMode, terrainTextureShadeRanges[terrain] ?? 0)
       }
 
       // c. Blob outline + glow pass
@@ -628,7 +679,7 @@ export function drawTerrain(tCtx: Ctx, params: DrawTerrainParams): void {
       const edgeTexTint = edgeIsColor ? (terrainColors[chain.terrain] ?? '') : (terrainTextureTintColors[chain.terrain] ?? '')
       const edgeTexTintOpacity = edgeIsColor ? 1.0 : (terrainTextureTintOpacities[chain.terrain] ?? 0.5)
       const edgeTex = terrainTextures.get(chain.terrain) ?? null
-      if (edgeTex) applyTextureOverlay(tCtx, edgeTex, polys, R, texScale, R * 0.12, edgeTexBlend, edgeTexOpacity, edgeTexTint, edgeTexTintOpacity, edgeIsColor)
+      if (edgeTex) applyTextureOverlay(tCtx, edgeTex, polys, R, texScale, R * 0.12, edgeTexBlend, edgeTexOpacity, edgeTexTint, edgeTexTintOpacity, edgeIsColor, terrainTextureShadeRanges[chain.terrain] ?? 0)
     }
   }
 
