@@ -2033,8 +2033,17 @@ const roadV3TierGeomRef = useRef(roadV3TierGeom)
       if (!isPaintingRef.current && (terrainDirtyRef.current || !terrainLayerRef.current ||
           terrainLayerPapWRef.current !== papW || terrainLayerPapHRef.current !== papH)) {
         const offW = Math.ceil(pw * dpr * offZoom), offH = Math.ceil(ph * dpr * offZoom)
-        const offscreen = new OffscreenCanvas(offW, offH)
-        const oCtx = offscreen.getContext('2d')!
+        const existingT = terrainLayerRef.current
+        let oCtx: OffscreenCanvasRenderingContext2D
+        if (existingT && existingT.width === offW && existingT.height === offH) {
+          oCtx = existingT.getContext('2d')!
+          oCtx.setTransform(1, 0, 0, 1, 0, 0)
+          oCtx.clearRect(0, 0, offW, offH)
+        } else {
+          const offscreen = new OffscreenCanvas(offW, offH)
+          oCtx = offscreen.getContext('2d')!
+          terrainLayerRef.current = offscreen
+        }
         oCtx.scale(dpr * offZoom, dpr * offZoom)
         oCtx.translate(-px, -py)
         oCtx.save()
@@ -2043,7 +2052,6 @@ const roadV3TierGeomRef = useRef(roadV3TierGeom)
         oCtx.clip()
         _drawTerrain(oCtx, terrainParams)
         oCtx.restore()
-        terrainLayerRef.current = offscreen
         terrainDirtyRef.current = false
         terrainLayerPapWRef.current = papW
         terrainLayerPapHRef.current = papH
@@ -2169,17 +2177,25 @@ const roadV3TierGeomRef = useRef(roadV3TierGeom)
         if (hexBorderDirtyRef.current || !hexBorderLayerRef.current ||
             hexBorderLayerPapWRef.current !== papW || hexBorderLayerPapHRef.current !== papH) {
           const offW = Math.ceil(pw * dpr * offZoom), offH = Math.ceil(ph * dpr * offZoom)
-          const offscreen = new OffscreenCanvas(offW, offH)
-          const oCtx = offscreen.getContext('2d')!
-          oCtx.scale(dpr * offZoom, dpr * offZoom)
-          oCtx.translate(-px, -py)
-          oCtx.save()
-          oCtx.beginPath()
-          oCtx.rect(px, py, pw, ph)
-          oCtx.clip()
-          _drawHexBorders(oCtx, projected, borderMode, edgeMode, inMargin, 1, bordersExcludedSet, hexBorderOpacityRef.current, hexBorderColorRef.current, false)
-          oCtx.restore()
-          hexBorderLayerRef.current = offscreen
+          const existingHB = hexBorderLayerRef.current
+          let oCtxHB: OffscreenCanvasRenderingContext2D
+          if (existingHB && existingHB.width === offW && existingHB.height === offH) {
+            oCtxHB = existingHB.getContext('2d')!
+            oCtxHB.setTransform(1, 0, 0, 1, 0, 0)
+            oCtxHB.clearRect(0, 0, offW, offH)
+          } else {
+            const offscreen = new OffscreenCanvas(offW, offH)
+            oCtxHB = offscreen.getContext('2d')!
+            hexBorderLayerRef.current = offscreen
+          }
+          oCtxHB.scale(dpr * offZoom, dpr * offZoom)
+          oCtxHB.translate(-px, -py)
+          oCtxHB.save()
+          oCtxHB.beginPath()
+          oCtxHB.rect(px, py, pw, ph)
+          oCtxHB.clip()
+          _drawHexBorders(oCtxHB, projected, borderMode, edgeMode, inMargin, 1, bordersExcludedSet, hexBorderOpacityRef.current, hexBorderColorRef.current, false)
+          oCtxHB.restore()
           hexBorderDirtyRef.current = false
           hexBorderLayerPapWRef.current = papW
           hexBorderLayerPapHRef.current = papH
@@ -2463,29 +2479,34 @@ const roadV3TierGeomRef = useRef(roadV3TierGeom)
 
 
       if (!isExport) {
-        const papW = Math.ceil(pw), papH = Math.ceil(ph)
-        if (buildingsDirtyRef.current || !buildingsLayerRef.current ||
-            buildingsLayerPapWRef.current !== papW || buildingsLayerPapHRef.current !== papH) {
-          // Clear geometry cache so buildings are re-generated into the new offscreen context
-          hexBuildingGeoCacheRef.current.clear()
-          const offW = Math.ceil(pw * dpr * offZoom), offH = Math.ceil(ph * dpr * offZoom)
-          const offscreen = new OffscreenCanvas(offW, offH)
-          const oCtx = offscreen.getContext('2d')!
-          oCtx.scale(dpr * offZoom, dpr * offZoom)
-          oCtx.translate(-px, -py)
-          oCtx.save()
-          oCtx.beginPath()
-          oCtx.rect(px, py, pw, ph)
-          oCtx.clip()
-          _drawAllBuildings(oCtx, { hexes: hexesRef.current, urbanHexes: urbanHexesRef.current, urbanStyle: urbanStyleRef.current, settlements: settlementsRef.current, settlementTierStyles: settlementTierStylesRef.current, roadChains, roadTierStyles: roadTierStylesRef.current, hexBuildingGeoCache: hexBuildingGeoCacheRef.current, project })
-          _drawAllBuildingsV2(oCtx, { hexes: hexesRef.current, urbanHexes: urbanHexesRef.current, urbanStyle: urbanStyleRef.current, settlements: settlementsRef.current, settlementTierStyles: settlementTierStylesRef.current, roadChains, roadTierStyles: roadTierStylesRef.current, project })
-          oCtx.restore()
-          buildingsLayerRef.current = offscreen
+        const hasBuildings = urbanHexesRef.current.length > 0
+        if (!hasBuildings) {
+          buildingsLayerRef.current = null
           buildingsDirtyRef.current = false
-          buildingsLayerPapWRef.current = papW
-          buildingsLayerPapHRef.current = papH
+        } else {
+          const papW = Math.ceil(pw), papH = Math.ceil(ph)
+          if (buildingsDirtyRef.current || !buildingsLayerRef.current ||
+              buildingsLayerPapWRef.current !== papW || buildingsLayerPapHRef.current !== papH) {
+            hexBuildingGeoCacheRef.current.clear()
+            const offW = Math.ceil(pw * dpr * offZoom), offH = Math.ceil(ph * dpr * offZoom)
+            const offscreen = new OffscreenCanvas(offW, offH)
+            const oCtx = offscreen.getContext('2d')!
+            oCtx.scale(dpr * offZoom, dpr * offZoom)
+            oCtx.translate(-px, -py)
+            oCtx.save()
+            oCtx.beginPath()
+            oCtx.rect(px, py, pw, ph)
+            oCtx.clip()
+            _drawAllBuildings(oCtx, { hexes: hexesRef.current, urbanHexes: urbanHexesRef.current, urbanStyle: urbanStyleRef.current, settlements: settlementsRef.current, settlementTierStyles: settlementTierStylesRef.current, roadChains, roadTierStyles: roadTierStylesRef.current, hexBuildingGeoCache: hexBuildingGeoCacheRef.current, project })
+            _drawAllBuildingsV2(oCtx, { hexes: hexesRef.current, urbanHexes: urbanHexesRef.current, urbanStyle: urbanStyleRef.current, settlements: settlementsRef.current, settlementTierStyles: settlementTierStylesRef.current, roadChains, roadTierStyles: roadTierStylesRef.current, project })
+            oCtx.restore()
+            buildingsLayerRef.current = offscreen
+            buildingsDirtyRef.current = false
+            buildingsLayerPapWRef.current = papW
+            buildingsLayerPapHRef.current = papH
+          }
+          ctx.drawImage(buildingsLayerRef.current, px, py, pw, ph)
         }
-        ctx.drawImage(buildingsLayerRef.current, px, py, pw, ph)
       }
       if (isExport) {
         const scaledSettlementTierStylesB = Object.fromEntries(
@@ -2594,26 +2615,40 @@ const roadV3TierGeomRef = useRef(roadV3TierGeom)
           _drawRoadsAndRails(ctx, { roadChains, junctions, railChains: liveRailData.chains, tierStyles, railStyle: railStyleRef.current, project })
           ctx.restore()
         } else {
-          const papW = Math.ceil(pw), papH = Math.ceil(ph)
-          if (roadsDirtyRef.current || !roadsLayerRef.current ||
-              roadsLayerPapWRef.current !== papW || roadsLayerPapHRef.current !== papH) {
-            const offW = Math.ceil(pw * dpr * offZoom), offH = Math.ceil(ph * dpr * offZoom)
-            const offscreen = new OffscreenCanvas(offW, offH)
-            const oCtx = offscreen.getContext('2d')!
-            oCtx.scale(dpr * offZoom, dpr * offZoom)
-            oCtx.translate(-px, -py)
-            oCtx.save()
-            oCtx.beginPath()
-            oCtx.rect(px, py, pw, ph)
-            oCtx.clip()
-            _drawRoadsAndRails(oCtx, { roadChains, junctions, railChains: liveRailData.chains, tierStyles, railStyle: railStyleRef.current, project })
-            oCtx.restore()
-            roadsLayerRef.current = offscreen
+          const hasRoads = roadEdgesRef.current.length > 0 || railEdgesRef.current.length > 0
+          if (!hasRoads) {
+            roadsLayerRef.current = null
             roadsDirtyRef.current = false
-            roadsLayerPapWRef.current = papW
-            roadsLayerPapHRef.current = papH
+          } else {
+            const papW = Math.ceil(pw), papH = Math.ceil(ph)
+            if (roadsDirtyRef.current || !roadsLayerRef.current ||
+                roadsLayerPapWRef.current !== papW || roadsLayerPapHRef.current !== papH) {
+              const offW = Math.ceil(pw * dpr * offZoom), offH = Math.ceil(ph * dpr * offZoom)
+              const existingR = roadsLayerRef.current
+              let oCtxR: OffscreenCanvasRenderingContext2D
+              if (existingR && existingR.width === offW && existingR.height === offH) {
+                oCtxR = existingR.getContext('2d')!
+                oCtxR.setTransform(1, 0, 0, 1, 0, 0)
+                oCtxR.clearRect(0, 0, offW, offH)
+              } else {
+                const offscreen = new OffscreenCanvas(offW, offH)
+                oCtxR = offscreen.getContext('2d')!
+                roadsLayerRef.current = offscreen
+              }
+              oCtxR.scale(dpr * offZoom, dpr * offZoom)
+              oCtxR.translate(-px, -py)
+              oCtxR.save()
+              oCtxR.beginPath()
+              oCtxR.rect(px, py, pw, ph)
+              oCtxR.clip()
+              _drawRoadsAndRails(oCtxR, { roadChains, junctions, railChains: liveRailData.chains, tierStyles, railStyle: railStyleRef.current, project })
+              oCtxR.restore()
+              roadsDirtyRef.current = false
+              roadsLayerPapWRef.current = papW
+              roadsLayerPapHRef.current = papH
+            }
+            ctx.drawImage(roadsLayerRef.current!, px, py, pw, ph)
           }
-          ctx.drawImage(roadsLayerRef.current, px, py, pw, ph)
         }
       }
       if (isExport) {
@@ -2828,27 +2863,35 @@ const roadV3TierGeomRef = useRef(roadV3TierGeom)
         if (settlementsDirtyRef.current || !settlementsLayerRef.current ||
             settlementsLayerPapWRef.current !== papW || settlementsLayerPapHRef.current !== papH) {
           const offW = Math.ceil(pw * dpr * offZoom), offH = Math.ceil(ph * dpr * offZoom)
-          const offscreen = new OffscreenCanvas(offW, offH)
-          const oCtx = offscreen.getContext('2d')!
-          oCtx.scale(dpr * offZoom, dpr * offZoom)
-          oCtx.translate(-px, -py)
-          oCtx.save()
-          oCtx.beginPath()
-          oCtx.rect(px, py, pw, ph)
-          oCtx.clip()
+          const existingS = settlementsLayerRef.current
+          let oCtxS: OffscreenCanvasRenderingContext2D
+          if (existingS && existingS.width === offW && existingS.height === offH) {
+            oCtxS = existingS.getContext('2d')!
+            oCtxS.setTransform(1, 0, 0, 1, 0, 0)
+            oCtxS.clearRect(0, 0, offW, offH)
+          } else {
+            const offscreen = new OffscreenCanvas(offW, offH)
+            oCtxS = offscreen.getContext('2d')!
+            settlementsLayerRef.current = offscreen
+          }
+          oCtxS.scale(dpr * offZoom, dpr * offZoom)
+          oCtxS.translate(-px, -py)
+          oCtxS.save()
+          oCtxS.beginPath()
+          oCtxS.rect(px, py, pw, ph)
+          oCtxS.clip()
           const activeRoadDataS = smoothedRoadDataV2Ref.current ?? smoothedRoadDataRef.current
           // Skip the pixel sampler during live-drag repaints — it's only useful for
           // initial auto-placement, not when repainting because a label is being moved.
           const isLiveDrag = liveLabelOffsetRef.current?.id.startsWith('settlement:') ?? false
           const pixelSampler = isLiveDrag ? undefined : makePixelSampler(ctx, dpr, zoom, pan, cssW, cssH, mapBgColorRef.current)
-          _drawSettlements(oCtx, { settlements: settlementsRef.current, tierStyles: settlementTierStylesRef.current, labelSpecs: resolvedLabelSpecsRef.current, roadChains: activeRoadDataS.chains, roadJunctions: activeRoadDataS.junctions, railChains: smoothedRailDataRef.current.chains, project, hexCenterOf: (q, r) => { const h = hexesRef.current.find(h => h.q === q && h.r === r); return h ? project(h.center[0], h.center[1]) : null }, hexRadiusPx: hexRadiusRef.current, labelOffsets: labelOffsetsRef.current, liveLabelOffset: liveLabelOffsetRef.current ?? undefined, labelBBoxOut: labelBBoxCacheRef.current, pixelSampler })
-          oCtx.restore()
-          settlementsLayerRef.current = offscreen
+          _drawSettlements(oCtxS, { settlements: settlementsRef.current, tierStyles: settlementTierStylesRef.current, labelSpecs: resolvedLabelSpecsRef.current, roadChains: activeRoadDataS.chains, roadJunctions: activeRoadDataS.junctions, railChains: smoothedRailDataRef.current.chains, project, hexCenterOf: (q, r) => { const h = hexesRef.current.find(h => h.q === q && h.r === r); return h ? project(h.center[0], h.center[1]) : null }, hexRadiusPx: hexRadiusRef.current, labelOffsets: labelOffsetsRef.current, liveLabelOffset: liveLabelOffsetRef.current ?? undefined, labelBBoxOut: labelBBoxCacheRef.current, pixelSampler })
+          oCtxS.restore()
           settlementsDirtyRef.current = false
           settlementsLayerPapWRef.current = papW
           settlementsLayerPapHRef.current = papH
         }
-        ctx.drawImage(settlementsLayerRef.current, px, py, pw, ph)
+        ctx.drawImage(settlementsLayerRef.current!, px, py, pw, ph)
       }
       if (isExport) {
         const activeRoadDataS = smoothedRoadDataV2Ref.current ?? smoothedRoadDataRef.current
