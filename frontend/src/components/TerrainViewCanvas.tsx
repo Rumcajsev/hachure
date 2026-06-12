@@ -61,6 +61,11 @@ const OSM_OVERLAY_STYLE: maplibregl.StyleSpecification = {
 
 type CtxItem = { label: string; action: () => void; danger?: boolean; color?: string; dim?: boolean; icon?: 'edit' | 'dice' | 'erase'; highlightPolys?: [number,number][][]; highlightLines?: [number,number][][] }
 
+// Stable empty-array sentinel for riverAutoCorridors when blob-cut is disabled.
+// Module-level so every early-return yields the same reference, preventing
+// defaultTerrainBlobs from seeing a "change" and triggering a full terrain rebuild.
+const EMPTY_CORRIDORS: [number, number][][] = []
+
 /** Parses a CSS hex color string (#rrggbb or #rgb) into {r,g,b}. */
 function parseHexColor(hex: string): { r: number; g: number; b: number } {
   const s = hex.replace('#', '')
@@ -208,8 +213,6 @@ export type TerrainViewCanvasHandle = {
   zoomToPhysical: () => void
   captureThumb: () => string | null
 }
-
-const EMPTY_CORRIDORS: [number, number][][] = []
 
 export const TerrainViewCanvas = forwardRef<TerrainViewCanvasHandle, { surroundColor?: string }>(function TerrainViewCanvas({ surroundColor = '#1a1a2a' }, ref) {
   const t = useTheme()
@@ -1337,8 +1340,10 @@ const roadV3TierGeomRef = useRef(roadV3TierGeom)
   }, [riverBlobCutEnabled, riverBlobCutWidth, riverEdges, generatedHexes, riverWiggleFreq, riverWiggleAmp, riverSmoothing, hexRadius, generatedMetadata, paperDims])
 
   const prevTerrainBlobsRef = useRef<{ terrain: string; polys: [number, number][][]; blobKeys: string[] }[]>([])
-  type TerrainBlobCacheEntry = { hexKey: string; rawPolys: [number, number][][]; hexCenters: [number, number][]; styleKey: string; blobs: { terrain: string; polys: [number, number][][]; blobKeys: string[] }[]; handleGroups?: Map<string, { edgeKey: string; cx: number; cy: number }[]>; simplifiedPolyGroups?: Map<string, [number, number][][]> }
-  const perTerrainBlobCache = useRef(new Map<string, TerrainBlobCacheEntry>())
+  type TerrainTopoCacheEntry = { hexKey: string; rawPolys: [number, number][][] }
+  const perTerrainBlobCache = useRef(new Map<string, TerrainTopoCacheEntry>())
+  type ComponentBlobCacheEntry = { hexKey: string; styleKey: string; blobs: { terrain: string; polys: [number, number][][]; blobKeys: string[] }[] }
+  const perComponentBlobCache = useRef(new Map<string, ComponentBlobCacheEntry>())
   const defaultTerrainBlobs = useMemo(() => {
     if (projectedHexes.length === 0 || hexRadius === 0) return []
     if (isTerrainPainting) return prevTerrainBlobsRef.current
@@ -1398,11 +1403,6 @@ const roadV3TierGeomRef = useRef(roadV3TierGeom)
       }
 
       const hexKey = `eot:${elevationOverridesTerrain}|` + terrainProjected.map(p => `${(p.hex as GeneratedHex).q},${(p.hex as GeneratedHex).r}`).join('|')
-      const canonicalKeySet = new Set([...componentMap.values()])
-      const handleKey = [...canonicalKeySet].sort().map(ck => {
-        const h = blobHandleOverrides[ck]
-        return h && Object.keys(h).length > 0 ? `${ck}:${JSON.stringify(h)}` : ''
-      }).filter(Boolean).join('~')
       // Filter to corridors that spatially overlap this terrain's hex extents.
       // Terrains with no overlapping corridors keep a stable empty corridorKey and never get
       // a shaping cache miss when river cut is toggled or corridor geometry changes.
@@ -1425,16 +1425,20 @@ const roadV3TierGeomRef = useRef(roadV3TierGeom)
         })
       })()
       const corridorKey = relevantCorridors.map(c => `${c.length}:${c[0]?.[0].toFixed(0)},${c[0]?.[1].toFixed(0)}`).join('|')
-      const styleKey = `${smooth}|${offset}|${bump}|${sweepFreq}|${lobeFreq}|${lobeAmp}|${lobeThreshold}|${lobeDirection}|${terrainBlobSimplify}|${terrainBlobTopoStyle}|${hexRadius}|${JSON.stringify(blobSeeds)}|${handleKey}|${corridorKey}`
-      const cached = perTerrainBlobCache.current.get(terrain)
+      // Base style key covers global params + per-terrain corridor intersection.
+      // Per-component handle overrides are appended individually so only the touched
+      // component's cache misses when a handle moves.
+      const baseStyleKey = `${smooth}|${offset}|${bump}|${sweepFreq}|${lobeFreq}|${lobeAmp}|${lobeThreshold}|${lobeDirection}|${terrainBlobSimplify}|${terrainBlobTopoStyle}|${hexRadius}|${JSON.stringify(blobSeeds)}|${corridorKey}`
 
-      // Compute rawPolys (topology cache)
+      // Topology cache — keyed per terrain by hex membership
+      const topoCached = perTerrainBlobCache.current.get(terrain)
       let rawPolys: [number, number][][]
-      if (cached?.hexKey === hexKey) {
-        rawPolys = cached.rawPolys
+      if (topoCached?.hexKey === hexKey) {
+        rawPolys = topoCached.rawPolys
       } else {
         const topo = buildTerrainBlobTopology(terrainProjected, hexRadius)
         rawPolys = topo.find(e => e.terrain === terrain)?.rawPolys ?? []
+        perTerrainBlobCache.current.set(terrain, { hexKey, rawPolys })
       }
 
       // Pre-cut raw polys with river corridors so the cut edge goes through the full
@@ -1442,17 +1446,15 @@ const roadV3TierGeomRef = useRef(roadV3TierGeom)
       const rawPolysForShaping = cutRawPolysWithCorridors(rawPolys, relevantCorridors)
 
       // Simplified polys — what handles are generated from and what the dashed overlay shows
+      const ESNAP = Math.max(2, hexRadius * 0.015)
+      const evk = (p: [number, number]) => `${Math.round(p[0]/ESNAP)},${Math.round(p[1]/ESNAP)}`
       const simplifiedPolys = rawPolysForShaping.map(p => {
         const seed = Math.abs(Math.round(p[0][0] * 73 + p[0][1] * 97))
         return shapeInputPolygon(p, terrainBlobSimplify, terrainBlobTopoStyle, hexRadius, seed)
       })
 
-      // Build vertex handles from simplified poly corners — each vertex is one handle
-      const ESNAP = Math.max(2, hexRadius * 0.015)
-      const evk = (p: [number, number]) => `${Math.round(p[0]/ESNAP)},${Math.round(p[1]/ESNAP)}`
-      const newHandleGroups = new Map<string, { edgeKey: string; cx: number; cy: number }[]>()
-      const newSimplifiedPolys = new Map<string, [number, number][][]>()
-      const displacedPolys: [number, number][][] = []
+      // Group simplified polys by blob component canonical key
+      const polysByComponent = new Map<string, [number, number][][]>()
       for (const poly of simplifiedPolys) {
         if (poly.length < 3) continue
         const [fvx, fvy] = poly[0]
@@ -1462,40 +1464,69 @@ const roadV3TierGeomRef = useRef(roadV3TierGeom)
           if (d < bestD) { bestD = d; polyCk = componentMap.get(hk) ?? hk }
         }
         if (!polyCk) continue
-        if (!newHandleGroups.has(polyCk)) newHandleGroups.set(polyCk, [])
-        if (!newSimplifiedPolys.has(polyCk)) newSimplifiedPolys.set(polyCk, [])
-        newSimplifiedPolys.get(polyCk)!.push(poly)
-        const group = newHandleGroups.get(polyCk)!
-        const displaced: [number, number][] = []
-        for (const v of poly) {
-          const edgeKey = evk(v)
-          const off = blobHandleOverrides[polyCk]?.[edgeKey]
-          const cx = v[0] + (off?.[0] ?? 0) * hexRadius
-          const cy = v[1] + (off?.[1] ?? 0) * hexRadius
-          group.push({ edgeKey, cx, cy })
-          displaced.push([cx, cy])
+        if (!polysByComponent.has(polyCk)) polysByComponent.set(polyCk, [])
+        polysByComponent.get(polyCk)!.push(poly)
+      }
+
+      // Shape each component independently. Cache keyed by "terrain::componentKey" so
+      // moving one handle only reshapes that component's blob, not the entire terrain.
+      const terrainBlobs: { terrain: string; polys: [number, number][][]; blobKeys: string[] }[] = []
+      for (const [polyCk, componentPolys] of polysByComponent) {
+        const compHandleData = blobHandleOverrides[polyCk]
+        const compHandleStr = compHandleData && Object.keys(compHandleData).length > 0 ? JSON.stringify(compHandleData) : ''
+        const componentStyleKey = `${baseStyleKey}|${compHandleStr}`
+        const compCacheKey = `${terrain}::${polyCk}`
+        const compCached = perComponentBlobCache.current.get(compCacheKey)
+
+        // Build handle group and displaced polys (cheap — always current)
+        const handles: { edgeKey: string; cx: number; cy: number }[] = []
+        const simplifiedForComp: [number, number][][] = []
+        const displacedPolys: [number, number][][] = []
+        for (const poly of componentPolys) {
+          simplifiedForComp.push(poly)
+          const displaced: [number, number][] = []
+          for (const v of poly) {
+            const edgeKey = evk(v)
+            const off = blobHandleOverrides[polyCk]?.[edgeKey]
+            const cx = v[0] + (off?.[0] ?? 0) * hexRadius
+            const cy = v[1] + (off?.[1] ?? 0) * hexRadius
+            handles.push({ edgeKey, cx, cy })
+            displaced.push([cx, cy])
+          }
+          displacedPolys.push(displaced)
         }
-        displacedPolys.push(displaced)
-      }
-      for (const [ck, handles] of newHandleGroups) {
-        blobHandleDataRef.current.set(ck, { terrain, handles, simplifiedPolys: newSimplifiedPolys.get(ck) ?? [] })
-      }
+        blobHandleDataRef.current.set(polyCk, { terrain, handles, simplifiedPolys: simplifiedForComp })
 
-      if (cached?.hexKey === hexKey && cached?.styleKey === styleKey) {
-        for (const [ck, handles] of cached.handleGroups ?? []) {
-          blobHandleDataRef.current.set(ck, { terrain, handles, simplifiedPolys: cached.simplifiedPolyGroups?.get(ck) ?? [] })
+        if (compCached?.hexKey === hexKey && compCached?.styleKey === componentStyleKey) {
+          terrainBlobs.push(...compCached.blobs)
+          continue
         }
-        return cached.blobs
+
+        // Collect only this component's hex centers for the anchor-resize step
+        const hexCenters: [number, number][] = []
+        for (const [hk, center] of hexOrigCenterByKey) {
+          if ((componentMap.get(hk) ?? hk) === polyCk) hexCenters.push(center)
+        }
+
+        const blobs = shapeTerrainBlobs([{ terrain, rawPolys: displacedPolys, hexCenters }], smooth, offset, bump, sweepFreq, lobeFreq, lobeAmp, lobeThreshold, lobeDirection, hexRadius, blobSeeds)
+        perComponentBlobCache.current.set(compCacheKey, { hexKey, styleKey: componentStyleKey, blobs })
+        terrainBlobs.push(...blobs)
       }
 
-      const hexCenters = [...hexOrigCenterByKey.values()]
-      const blobs = shapeTerrainBlobs([{ terrain, rawPolys: displacedPolys, hexCenters }], smooth, offset, bump, sweepFreq, lobeFreq, lobeAmp, lobeThreshold, lobeDirection, hexRadius, blobSeeds)
+      // Remove stale per-component entries for components no longer present in this terrain
+      for (const key of perComponentBlobCache.current.keys()) {
+        if (key.startsWith(`${terrain}::`) && !polysByComponent.has(key.slice(terrain.length + 2))) {
+          perComponentBlobCache.current.delete(key)
+        }
+      }
 
-      perTerrainBlobCache.current.set(terrain, { hexKey, rawPolys, hexCenters, styleKey, blobs, handleGroups: newHandleGroups, simplifiedPolyGroups: newSimplifiedPolys })
-      return blobs
+      return terrainBlobs
     })
     for (const t of perTerrainBlobCache.current.keys()) {
       if (!terrainTypeSet.has(t)) perTerrainBlobCache.current.delete(t)
+    }
+    for (const key of perComponentBlobCache.current.keys()) {
+      if (!terrainTypeSet.has(key.split('::')[0])) perComponentBlobCache.current.delete(key)
     }
     prevTerrainBlobsRef.current = result
     return result
@@ -2344,7 +2375,12 @@ const roadV3TierGeomRef = useRef(roadV3TierGeom)
         ctx.restore()
       } else {
         const papW = Math.ceil(pw), papH = Math.ceil(ph)
-        if (riversDirtyRef.current || !riversLayerRef.current ||
+        const hasRivers = riverEdgesRef.current.length > 0
+        if (!hasRivers) {
+          // No river edges — discard cached layer and skip expensive OffscreenCanvas creation.
+          riversLayerRef.current = null
+          riversDirtyRef.current = false
+        } else if (riversDirtyRef.current || !riversLayerRef.current ||
             riversLayerPapWRef.current !== papW || riversLayerPapHRef.current !== papH) {
           const offW = Math.ceil(pw * dpr * offZoom), offH = Math.ceil(ph * dpr * offZoom)
           const offscreen = new OffscreenCanvas(offW, offH)
@@ -2362,7 +2398,7 @@ const roadV3TierGeomRef = useRef(roadV3TierGeom)
           riversLayerPapWRef.current = papW
           riversLayerPapHRef.current = papH
         }
-        ctx.drawImage(riversLayerRef.current, px, py, pw, ph)
+        if (riversLayerRef.current) ctx.drawImage(riversLayerRef.current, px, py, pw, ph)
       }
     }
     if (isExport) {
