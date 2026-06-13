@@ -1798,9 +1798,9 @@ terrainColors, terrainTextureScales, terrainTextureBlendModes, terrainTextureOpa
     const isExport = !!exportTarget
     const dpr = isExport ? 1 : (window.devicePixelRatio || 1)
     const zoom = isExport ? 1 : zoomRef.current
-    // Offscreen canvases are capped at zoom=4 equivalent to avoid browser canvas size limits.
-    // The main canvas zoom transform handles magnification above that level.
-    const offZoom = Math.min(zoom, 4)
+    // Offscreen canvases render at dpr resolution only — zoom is handled by canvas transform.
+    // Using offZoom>1 causes layers to grow to 16× pixels at zoom=4, blowing up blit cost.
+    const offZoom = 1
     const pan = isExport ? { x: 0, y: 0 } : panRef.current
     const borderMode = hexBorderModeRef.current
     const edgeMode = hexEdgeModeRef.current
