@@ -259,6 +259,7 @@ export const TerrainViewCanvas = forwardRef<TerrainViewCanvasHandle, { surroundC
   const frameDimsRef = useRef({ w: 0, h: 0 })
 
   const rafRef = useRef<number | null>(null)
+  const drawPerfRef = useRef({ frames: 0, lastSec: 0, fps: 0 })
   const zoomRef = useRef(1)
   const panRef = useRef({ x: 0, y: 0 })
   const isPanningRef = useRef(false)
@@ -1767,6 +1768,15 @@ terrainColors, terrainTextureScales, terrainTextureBlendModes, terrainTextureOpa
 
   const draw = useCallback((exportTarget?: ExportTarget) => {
     const _t0 = performance.now()
+    const _dirtySnap = {
+      terrain: terrainDirtyRef.current,
+      hexBorder: hexBorderDirtyRef.current,
+      rivers: riversDirtyRef.current,
+      roads: roadsDirtyRef.current,
+      buildings: buildingsDirtyRef.current,
+      settlements: settlementsDirtyRef.current,
+      bridges: bridgesDirtyRef.current,
+    }
     const canvas = exportTarget ? exportTarget.canvas : canvasRef.current
     const meta = metaRef.current
     const hexes = hexesRef.current
@@ -1798,9 +1808,9 @@ terrainColors, terrainTextureScales, terrainTextureBlendModes, terrainTextureOpa
     const isExport = !!exportTarget
     const dpr = isExport ? 1 : (window.devicePixelRatio || 1)
     const zoom = isExport ? 1 : zoomRef.current
-    // Offscreen canvases render at dpr resolution only — zoom is handled by canvas transform.
-    // Using offZoom>1 causes layers to grow to 16× pixels at zoom=4, blowing up blit cost.
-    const offZoom = 1
+    // Offscreen canvases are capped at zoom=4 equivalent to avoid browser canvas size limits.
+    // The main canvas zoom transform handles magnification above that level.
+    const offZoom = Math.min(zoom, 4)
     const pan = isExport ? { x: 0, y: 0 } : panRef.current
     const borderMode = hexBorderModeRef.current
     const edgeMode = hexEdgeModeRef.current
@@ -3017,12 +3027,27 @@ terrainColors, terrainTextureScales, terrainTextureBlendModes, terrainTextureOpa
     if (!isExport) {
       const _tEnd = performance.now()
       const total = _tEnd - _t0
+
+      // FPS counter
+      const perf = drawPerfRef.current
+      perf.frames++
+      if (_tEnd - perf.lastSec >= 1000) {
+        perf.fps = perf.frames
+        perf.frames = 0
+        perf.lastSec = _tEnd
+      }
+
       if (total > 8) {
         const terrain = _tRivers0 - _tTerrain0
         const rivers = _tRoads0 - _tRivers0
         const roads = _tSettlements0 - _tRoads0
         const settle = _tEnd - _tSettlements0
-        console.log(`[draw] ${total.toFixed(1)}ms  terrain=${terrain.toFixed(1)}  rivers=${rivers.toFixed(1)}  roads=${roads.toFixed(1)}  settle=${settle.toFixed(1)}  riversDirty=${riversDirtyRef.current}`)
+        const dirty = Object.entries(_dirtySnap).filter(([, v]) => v).map(([k]) => k).join('+') || 'none'
+        const offW = Math.ceil(pw * dpr * offZoom), offH = Math.ceil(ph * dpr * offZoom)
+        console.warn(
+          `[draw] ${total.toFixed(1)}ms (${perf.fps}fps)  terrain=${terrain.toFixed(1)} rivers=${rivers.toFixed(1)} roads=${roads.toFixed(1)} settle=${settle.toFixed(1)}` +
+          `  dirty=${dirty}  canvas=${offW}×${offH}  zoom=${zoom.toFixed(2)} offZoom=${offZoom}`
+        )
       }
     }
   }, [])
