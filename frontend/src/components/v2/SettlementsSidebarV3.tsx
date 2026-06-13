@@ -12,6 +12,7 @@ import { useTheme } from '../../context/ThemeContext'
 import {
   BrushRow, MiniSlider, InlineColorSwatch, SegmentedControl,
   StripShell, FlyoutShell, V2Divider, TriggerRow, TGap, ToggleRow,
+  useDeferredSlider,
 } from './sidebar'
 import { resolveLabels } from '../../lib/labelPresets'
 import type { LabelCategory, LabelSpec } from '../../lib/labelPresets'
@@ -90,6 +91,21 @@ export function TierStyleFlyout({ tier, onClose }: { tier: SettlementTier; onClo
   const labelOverride = labelOverrides[cat]
   const hasLabelOverride = !!labelOverride && Object.keys(labelOverride).length > 0
 
+  // Building algorithm sliders all trigger settlement canvas rebuilds —
+  // defer to drag end. All hooks called unconditionally (React rules).
+  const v2SizeSlider        = useDeferredSlider(style.buildingV2Size,         v => setSettlementTierStyle(tier, { buildingV2Size: v }))
+  const v2CountSlider       = useDeferredSlider(style.buildingCount,           v => setSettlementTierStyle(tier, { buildingCount: v }))
+  const v2SpacingSlider     = useDeferredSlider(style.buildingV2Spacing,       v => setSettlementTierStyle(tier, { buildingV2Spacing: v }))
+  const v2MergeSlider       = useDeferredSlider(style.buildingV2MergeChance,   v => setSettlementTierStyle(tier, { buildingV2MergeChance: v }))
+  const v1CountSlider       = useDeferredSlider(style.buildingCount,           v => setSettlementTierStyle(tier, { buildingCount: v }))
+  const v1SetbackSlider     = useDeferredSlider(style.roadSetback,             v => setSettlementTierStyle(tier, { roadSetback: v }))
+  const v1SpacingSlider     = useDeferredSlider(style.slotSpacing,             v => setSettlementTierStyle(tier, { slotSpacing: v }))
+  const v1BackGapSlider     = useDeferredSlider(style.backRowGap,              v => setSettlementTierStyle(tier, { backRowGap: v }))
+  const v1BackProbSlider    = useDeferredSlider(style.backRowProbability,      v => setSettlementTierStyle(tier, { backRowProbability: v }))
+  const v1JitterSlider      = useDeferredSlider(style.angleJitter,             v => setSettlementTierStyle(tier, { angleJitter: v }))
+  const v1SizeMinSlider     = useDeferredSlider(style.buildingSizeMin,         v => setSettlementTierStyle(tier, { buildingSizeMin: v }))
+  const v1SizeMaxSlider     = useDeferredSlider(style.buildingSizeMax,         v => setSettlementTierStyle(tier, { buildingSizeMax: v }))
+
   return (
     <FlyoutShell title={TIER_LABELS[tier]} onClose={onClose}>
       <div style={{ padding: '4px 14px 2px' }}>
@@ -152,23 +168,23 @@ export function TierStyleFlyout({ tier, onClose }: { tier: SettlementTier; onClo
 
           {style.buildingAlgorithm === 'v2' && (
             <>
-              <MiniSlider label="Size"         display={`${style.buildingV2Size}px`}                            value={style.buildingV2Size}         min={0.5} max={20}  step={0.5}  onChange={v => setSettlementTierStyle(tier, { buildingV2Size: v })} />
-              <MiniSlider label="Count"        display={String(style.buildingCount)}                             value={style.buildingCount}          min={1}   max={80}  step={1}    onChange={v => setSettlementTierStyle(tier, { buildingCount: v })} />
-              <MiniSlider label="Spacing"      display={`${style.buildingV2Spacing}px`}                          value={style.buildingV2Spacing}      min={0}   max={20}  step={0.5}  onChange={v => setSettlementTierStyle(tier, { buildingV2Spacing: v })} />
-              <MiniSlider label="Merge chance" display={`${Math.round(style.buildingV2MergeChance * 100)}%`}     value={style.buildingV2MergeChance}  min={0}   max={1}   step={0.05} onChange={v => setSettlementTierStyle(tier, { buildingV2MergeChance: v })} />
+              <MiniSlider label="Size"         display={`${v2SizeSlider.value}px`}                          value={v2SizeSlider.value}      min={0.5} max={20}  step={0.5}  onChange={v2SizeSlider.onChange}    onDragEnd={v2SizeSlider.onDragEnd} />
+              <MiniSlider label="Count"        display={String(v2CountSlider.value)}                         value={v2CountSlider.value}     min={1}   max={80}  step={1}    onChange={v2CountSlider.onChange}   onDragEnd={v2CountSlider.onDragEnd} />
+              <MiniSlider label="Spacing"      display={`${v2SpacingSlider.value}px`}                        value={v2SpacingSlider.value}   min={0}   max={20}  step={0.5}  onChange={v2SpacingSlider.onChange} onDragEnd={v2SpacingSlider.onDragEnd} />
+              <MiniSlider label="Merge chance" display={`${Math.round(v2MergeSlider.value * 100)}%`}         value={v2MergeSlider.value}     min={0}   max={1}   step={0.05} onChange={v2MergeSlider.onChange}   onDragEnd={v2MergeSlider.onDragEnd} />
             </>
           )}
 
           {style.buildingAlgorithm === 'v1' && (
             <>
-              <MiniSlider label="Count"      display={String(style.buildingCount)}                     value={style.buildingCount}        min={1}    max={40}   step={1}    onChange={v => setSettlementTierStyle(tier, { buildingCount: v })} />
-              <MiniSlider label="Setback"    display={`${style.roadSetback}px`}                        value={style.roadSetback}          min={0}    max={20}   step={0.5}  onChange={v => setSettlementTierStyle(tier, { roadSetback: v })} />
-              <MiniSlider label="Spacing"    display={`${style.slotSpacing.toFixed(1)}×`}              value={style.slotSpacing}          min={0.5}  max={3}    step={0.1}  onChange={v => setSettlementTierStyle(tier, { slotSpacing: v })} />
-              <MiniSlider label="Back gap"   display={`${style.backRowGap}px`}                         value={style.backRowGap}           min={2}    max={40}   step={1}    onChange={v => setSettlementTierStyle(tier, { backRowGap: v })} />
-              <MiniSlider label="Back prob"  display={`${Math.round(style.backRowProbability * 100)}%`} value={style.backRowProbability}   min={0}    max={1}    step={0.05} onChange={v => setSettlementTierStyle(tier, { backRowProbability: v })} />
-              <MiniSlider label="Jitter"     display={`${style.angleJitter.toFixed(2)} rad`}           value={style.angleJitter}          min={0}    max={1.57} step={0.01} onChange={v => setSettlementTierStyle(tier, { angleJitter: v })} />
-              <MiniSlider label="Size min"   display={`${style.buildingSizeMin}px`}                    value={style.buildingSizeMin}      min={1}    max={20}   step={0.5}  onChange={v => setSettlementTierStyle(tier, { buildingSizeMin: v })} />
-              <MiniSlider label="Size max"   display={`${style.buildingSizeMax}px`}                    value={style.buildingSizeMax}      min={1}    max={20}   step={0.5}  onChange={v => setSettlementTierStyle(tier, { buildingSizeMax: v })} />
+              <MiniSlider label="Count"      display={String(v1CountSlider.value)}                       value={v1CountSlider.value}    min={1}    max={40}   step={1}    onChange={v1CountSlider.onChange}    onDragEnd={v1CountSlider.onDragEnd} />
+              <MiniSlider label="Setback"    display={`${v1SetbackSlider.value}px`}                      value={v1SetbackSlider.value}  min={0}    max={20}   step={0.5}  onChange={v1SetbackSlider.onChange}  onDragEnd={v1SetbackSlider.onDragEnd} />
+              <MiniSlider label="Spacing"    display={`${v1SpacingSlider.value.toFixed(1)}×`}            value={v1SpacingSlider.value}  min={0.5}  max={3}    step={0.1}  onChange={v1SpacingSlider.onChange}  onDragEnd={v1SpacingSlider.onDragEnd} />
+              <MiniSlider label="Back gap"   display={`${v1BackGapSlider.value}px`}                      value={v1BackGapSlider.value}  min={2}    max={40}   step={1}    onChange={v1BackGapSlider.onChange}  onDragEnd={v1BackGapSlider.onDragEnd} />
+              <MiniSlider label="Back prob"  display={`${Math.round(v1BackProbSlider.value * 100)}%`}    value={v1BackProbSlider.value} min={0}    max={1}    step={0.05} onChange={v1BackProbSlider.onChange} onDragEnd={v1BackProbSlider.onDragEnd} />
+              <MiniSlider label="Jitter"     display={`${v1JitterSlider.value.toFixed(2)} rad`}          value={v1JitterSlider.value}   min={0}    max={1.57} step={0.01} onChange={v1JitterSlider.onChange}   onDragEnd={v1JitterSlider.onDragEnd} />
+              <MiniSlider label="Size min"   display={`${v1SizeMinSlider.value}px`}                      value={v1SizeMinSlider.value}  min={1}    max={20}   step={0.5}  onChange={v1SizeMinSlider.onChange}  onDragEnd={v1SizeMinSlider.onDragEnd} />
+              <MiniSlider label="Size max"   display={`${v1SizeMaxSlider.value}px`}                      value={v1SizeMaxSlider.value}  min={1}    max={20}   step={0.5}  onChange={v1SizeMaxSlider.onChange}  onDragEnd={v1SizeMaxSlider.onDragEnd} />
             </>
           )}
 

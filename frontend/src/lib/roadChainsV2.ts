@@ -302,40 +302,36 @@ export function buildRoadChainsV2(
       }
     }
 
-    // After relaxation, optionally insert a blended hex-center waypoint between
-    // each pair of consecutive edge midpoints. At effectiveCenterPull=1, the inserted
-    // point lands exactly on the hex center; at 0, no points are inserted.
-    let augPts = relaxed as [number, number][]
-    let augEdgeKeys = edgeKeys as (string | null)[]
-    let augPtsTiers = ptsTiers as (0 | 1 | 2 | null)[]
-    if (effectiveCenterPull > 1e-9) {
-      const newPts: [number, number][] = []
-      const newEdgeKeys: (string | null)[] = []
-      const newPtsTiers: (0 | 1 | 2 | null)[] = []
-      for (let i = 0; i < relaxed.length; i++) {
-        newPts.push(relaxed[i])
-        newEdgeKeys.push(edgeKeys[i])
-        newPtsTiers.push(ptsTiers[i])
-        if (i < relaxed.length - 1 && edgeKeys[i] !== null && edgeKeys[i + 1] !== null) {
-          const arrHex = ptArrivalHex[i]
-          const hc = arrHex ? hexIdx.get(arrHex) : null
-          if (hc && arrHex && !isJunction(arrHex)) {
-            const mx = (relaxed[i][0] + relaxed[i + 1][0]) / 2
-            const my = (relaxed[i][1] + relaxed[i + 1][1]) / 2
-            const cp = effectiveCenterPull
-            newPts.push([mx + cp * (hc.center[0] - mx), my + cp * (hc.center[1] - my)])
-            newEdgeKeys.push(null)
-            newPtsTiers.push(ptsTiers[i])
-          }
+    // Insert a hex center waypoint between every pair of consecutive edge midpoints.
+    // centerPull controls where it sits: 0 = midpoint between the two borders (near-neutral),
+    // 1 = exactly at the hex center. Always present so the road segment in each hex
+    // consistently passes toward its center.
+    const newPts: [number, number][] = []
+    const newEdgeKeys: (string | null)[] = []
+    const newPtsTiers: (0 | 1 | 2 | null)[] = []
+    for (let i = 0; i < relaxed.length; i++) {
+      newPts.push(relaxed[i])
+      newEdgeKeys.push(edgeKeys[i])
+      newPtsTiers.push(ptsTiers[i])
+      if (i < relaxed.length - 1 && edgeKeys[i] !== null && edgeKeys[i + 1] !== null) {
+        const arrHex = ptArrivalHex[i]
+        const hc = arrHex ? hexIdx.get(arrHex) : null
+        if (hc && arrHex && !isJunction(arrHex)) {
+          const mx = (relaxed[i][0] + relaxed[i + 1][0]) / 2
+          const my = (relaxed[i][1] + relaxed[i + 1][1]) / 2
+          const cp = effectiveCenterPull
+          newPts.push([mx + cp * (hc.center[0] - mx), my + cp * (hc.center[1] - my)])
+          newEdgeKeys.push(null)
+          newPtsTiers.push(ptsTiers[i])
         }
       }
-      augPts = newPts
-      augEdgeKeys = newEdgeKeys
-      augPtsTiers = newPtsTiers
     }
+    const augPts = newPts
+    const augEdgeKeys = newEdgeKeys
+    const augPtsTiers = newPtsTiers
 
-    // Ignore stored chain handles when center pull is active — topology has changed.
-    const storedHandles = effectiveCenterPull <= 1e-9 ? chainOverrides[id] : undefined
+    // storedHandles incompatible with current topology (always includes hex center waypoints)
+    const storedHandles = undefined
     const steps = Math.round(effectiveSmoothing)
     const stepsActual = steps === 0 ? 1 : Math.max(2, steps)
     const chainWiggleAmplitude = effectiveWiggleAmp * interHexDist

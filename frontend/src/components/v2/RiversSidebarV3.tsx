@@ -12,6 +12,7 @@ import { useTheme } from '../../context/ThemeContext'
 import {
   BrushRow, MiniSlider, BigColorSwatch, SegmentedControl, ToggleRow, tintBg,
   StripShell, FlyoutShell, V2Divider, TriggerRow, TGap,
+  useDeferredSlider,
 } from './sidebar'
 import { StrokeEffectPanel } from './StrokeEffectPanel'
 import { resolveLabels } from '../../lib/labelPresets'
@@ -61,16 +62,18 @@ function SectionToggle({ label, enabled, onChange, accentColor }: { label: strin
 export function TerrainCutFlyout({ onClose }: { onClose: () => void }) {
   const t = useTheme()
   const { riverBlobCutEnabled, riverBlobCutWidth, setRiverBlobCutEnabled, setRiverBlobCutWidth } = useMapStore()
+  const widthSlider = useDeferredSlider(Math.round(riverBlobCutWidth * 100), v => setRiverBlobCutWidth(v / 100))
   return (
     <FlyoutShell title="Terrain cut" subtitle="carve river corridors out of terrain blobs" onClose={onClose}>
       <ToggleRow label="Enabled" checked={riverBlobCutEnabled} onChange={setRiverBlobCutEnabled} />
       <MiniSlider
         label="Width"
-        display={riverBlobCutWidth.toFixed(2) + '×'}
-        value={Math.round(riverBlobCutWidth * 100)}
+        display={(widthSlider.value / 100).toFixed(2) + '×'}
+        value={widthSlider.value}
         min={10} max={300} step={5}
         disabled={!riverBlobCutEnabled}
-        onChange={v => setRiverBlobCutWidth(v / 100)}
+        onChange={widthSlider.onChange}
+        onDragEnd={widthSlider.onDragEnd}
       />
       {riverBlobCutEnabled && (
         <div style={{ padding: '4px 14px 8px', fontFamily: t.mono, fontSize: 9, color: t.inkFaint, lineHeight: 1.5 }}>
@@ -90,12 +93,16 @@ export function GlobalShapeFlyout({ onClose }: { onClose: () => void }) {
     riverSmoothing, setRiverSmoothing,
     riverPathSmoothing, setRiverPathSmoothing,
   } = useMapStore()
+  const ampSlider    = useDeferredSlider(Math.round(riverWiggleAmp * 100), v => setRiverWiggleAmp(v / 100))
+  const freqSlider   = useDeferredSlider(Math.round(riverWiggleFreq * 10), v => setRiverWiggleFreq(v / 10))
+  const smoothSlider = useDeferredSlider(riverSmoothing, setRiverSmoothing)
+  const pathSlider   = useDeferredSlider(riverPathSmoothing, setRiverPathSmoothing)
   return (
     <FlyoutShell title="Shape defaults" subtitle="applied to all tiers unless overridden" onClose={onClose}>
-      <MiniSlider label="Wiggle amp"  display={riverWiggleAmp.toFixed(2)}  value={Math.round(riverWiggleAmp * 100)} min={0} max={100} step={1} onChange={v => setRiverWiggleAmp(v / 100)} />
-      <MiniSlider label="Wiggle freq" display={riverWiggleFreq.toFixed(1)} value={Math.round(riverWiggleFreq * 10)} min={5} max={100} step={1} onChange={v => setRiverWiggleFreq(v / 10)} />
-      <MiniSlider label="Line smooth" display={String(riverSmoothing)}     value={riverSmoothing}     min={2} max={30} step={1} onChange={setRiverSmoothing} />
-      <MiniSlider label="Path smooth" display={String(riverPathSmoothing)} value={riverPathSmoothing} min={0} max={50} step={1} onChange={setRiverPathSmoothing} />
+      <MiniSlider label="Wiggle amp"  display={(ampSlider.value / 100).toFixed(2)}  value={ampSlider.value}    min={0} max={100} step={1} onChange={ampSlider.onChange}    onDragEnd={ampSlider.onDragEnd} />
+      <MiniSlider label="Wiggle freq" display={(freqSlider.value / 10).toFixed(1)}  value={freqSlider.value}   min={5} max={100} step={1} onChange={freqSlider.onChange}   onDragEnd={freqSlider.onDragEnd} />
+      <MiniSlider label="Line smooth" display={String(smoothSlider.value)}           value={smoothSlider.value} min={2} max={30}  step={1} onChange={smoothSlider.onChange} onDragEnd={smoothSlider.onDragEnd} />
+      <MiniSlider label="Path smooth" display={String(pathSlider.value)}             value={pathSlider.value}   min={0} max={50}  step={1} onChange={pathSlider.onChange}   onDragEnd={pathSlider.onDragEnd} />
     </FlyoutShell>
   )
 }
@@ -168,6 +175,13 @@ export function RiverTierFlyout({ tier, onClose }: { tier: RiverTier; onClose: (
   const smoothing     = s.smoothing     ?? riverSmoothing
   const pathSmoothing = s.pathSmoothing ?? riverPathSmoothing
 
+  // Per-tier shape sliders cascade into buildRiverChainsV2 + shapeTerrainBlobs —
+  // defer all to drag end. Hooks must be called unconditionally (React rules).
+  const tierAmpSlider    = useDeferredSlider(Math.round(wiggleAmp * 100),  v => setS({ wiggleAmp: v / 100 }))
+  const tierFreqSlider   = useDeferredSlider(Math.round(wiggleFreq * 10),  v => setS({ wiggleFreq: v / 10 }))
+  const tierSmoothSlider = useDeferredSlider(smoothing,     v => setS({ smoothing: v }))
+  const tierPathSlider   = useDeferredSlider(pathSmoothing, v => setS({ pathSmoothing: v }))
+
   const { terrainColors } = useMapStore()
 
   const isModified =
@@ -212,10 +226,10 @@ export function RiverTierFlyout({ tier, onClose }: { tier: RiverTier; onClose: (
           else   setS({ wiggleAmp: undefined, wiggleFreq: undefined, smoothing: undefined, pathSmoothing: undefined })
         }}
       />
-      <MiniSlider label="Wiggle amp"  display={wiggleAmp.toFixed(2)}  value={Math.round(wiggleAmp * 100)} min={0} max={100} step={1} accentColor={shapeOverrideEnabled ? accentColor : undefined} onChange={v => setS({ wiggleAmp: v / 100 })} disabled={!shapeOverrideEnabled} />
-      <MiniSlider label="Wiggle freq" display={wiggleFreq.toFixed(1)} value={Math.round(wiggleFreq * 10)} min={5} max={100} step={1} accentColor={shapeOverrideEnabled ? accentColor : undefined} onChange={v => setS({ wiggleFreq: v / 10 })} disabled={!shapeOverrideEnabled} />
-      <MiniSlider label="Line smooth" display={String(smoothing)}     value={smoothing}     min={2} max={30} step={1} accentColor={shapeOverrideEnabled ? accentColor : undefined} onChange={v => setS({ smoothing: v })} disabled={!shapeOverrideEnabled} />
-      <MiniSlider label="Path smooth" display={String(pathSmoothing)} value={pathSmoothing} min={0} max={50} step={1} accentColor={shapeOverrideEnabled ? accentColor : undefined} onChange={v => setS({ pathSmoothing: v })} disabled={!shapeOverrideEnabled} />
+      <MiniSlider label="Wiggle amp"  display={(tierAmpSlider.value / 100).toFixed(2)}  value={tierAmpSlider.value}    min={0} max={100} step={1} accentColor={shapeOverrideEnabled ? accentColor : undefined} onChange={tierAmpSlider.onChange}    onDragEnd={tierAmpSlider.onDragEnd}    disabled={!shapeOverrideEnabled} />
+      <MiniSlider label="Wiggle freq" display={(tierFreqSlider.value / 10).toFixed(1)}  value={tierFreqSlider.value}   min={5} max={100} step={1} accentColor={shapeOverrideEnabled ? accentColor : undefined} onChange={tierFreqSlider.onChange}   onDragEnd={tierFreqSlider.onDragEnd}   disabled={!shapeOverrideEnabled} />
+      <MiniSlider label="Line smooth" display={String(tierSmoothSlider.value)}           value={tierSmoothSlider.value} min={2} max={30}  step={1} accentColor={shapeOverrideEnabled ? accentColor : undefined} onChange={tierSmoothSlider.onChange} onDragEnd={tierSmoothSlider.onDragEnd} disabled={!shapeOverrideEnabled} />
+      <MiniSlider label="Path smooth" display={String(tierPathSlider.value)}             value={tierPathSlider.value}   min={0} max={50}  step={1} accentColor={shapeOverrideEnabled ? accentColor : undefined} onChange={tierPathSlider.onChange}   onDragEnd={tierPathSlider.onDragEnd}   disabled={!shapeOverrideEnabled} />
 
       {/* Bank clearance */}
       <SectionToggle label="Bank clearance" enabled={s.bankEnabled ?? false} onChange={v => setS({ bankEnabled: v })} accentColor={accentColor} />

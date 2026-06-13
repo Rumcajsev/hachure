@@ -37,19 +37,6 @@ export interface RailGeomOverride {
   smoothing: number
 }
 
-export interface RoadV3TierGeom {
-  cornerRoundness: number
-  pathStraightness: number
-  segmentVariation: number
-  variationCharacter: number
-}
-
-export const DEFAULT_ROAD_V3_TIER_GEOM: [RoadV3TierGeom, RoadV3TierGeom, RoadV3TierGeom] = [
-  { cornerRoundness: 0.8, pathStraightness: 0.8, segmentVariation: 0.00, variationCharacter: 0 },
-  { cornerRoundness: 0.6, pathStraightness: 0.5, segmentVariation: 0.06, variationCharacter: 1 },
-  { cornerRoundness: 0.3, pathStraightness: 0.2, segmentVariation: 0.12, variationCharacter: 2 },
-]
-
 export interface BlobOverride {
   terrain?: string
   color?: string
@@ -867,8 +854,6 @@ export const useMapStore = create<MapStore>()(persist((set, get) => ({
     roadPathSmoothing: s.roadPathSmoothing,
     roadCenterPull: s.roadCenterPull,
     roadDensityMinChain: s.roadDensityMinChain,
-    roadRenderVersion: s.roadRenderVersion,
-    roadV3TierGeom: s.roadV3TierGeom,
     railStyle: s.railStyle,
     railControlOverrides: s.railControlOverrides,
     railSnapBindings: s.railSnapBindings,

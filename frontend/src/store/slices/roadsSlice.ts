@@ -1,5 +1,5 @@
-import type { MapStore, RawRoadWay, RoadEdge, HexRoadPath, RoadTierStyle, RoadGeomOverride, ActiveTool, RoadV3TierGeom } from '../mapStore'
-import { TIER_HIGHWAYS, HIGHWAY_TO_TIER, roadEdgeCanonicalKey, DEFAULT_ROAD_TIER_STYLES, DEFAULT_ROAD_GEOM, DEFAULT_ROAD_V3_TIER_GEOM } from '../mapStore'
+import type { MapStore, RawRoadWay, RoadEdge, HexRoadPath, RoadTierStyle, RoadGeomOverride, ActiveTool } from '../mapStore'
+import { TIER_HIGHWAYS, HIGHWAY_TO_TIER, roadEdgeCanonicalKey, DEFAULT_ROAD_TIER_STYLES, DEFAULT_ROAD_GEOM } from '../mapStore'
 
 export type RoadsSlice = {
   rawRoadWays: RawRoadWay[]
@@ -81,11 +81,6 @@ export type RoadsSlice = {
   setSelectedRoadHopKey: (key: string | null) => void
   roadWiggleDragging: boolean
   setRoadWiggleDragging: (v: boolean) => void
-  roadRenderVersion: 'v2' | 'v3'
-  roadV3TierGeom: [RoadV3TierGeom, RoadV3TierGeom, RoadV3TierGeom]
-  setRoadRenderVersion: (v: 'v2' | 'v3') => void
-  setRoadV3TierGeom: (tier: 0 | 1 | 2, update: Partial<RoadV3TierGeom>) => void
-  resetRoadV3TierGeom: (tier: 0 | 1 | 2) => void
   motorwayHexes: [number, number][]
   motorwayHexesStatus: 'idle' | 'loading' | 'error' | 'done'
   motorwayHexesError: string | null
@@ -354,19 +349,6 @@ export const createRoadsSlice = (set: Set, get: () => MapStore): RoadsSlice => (
   setSelectedRoadHopKey: (key) => set({ selectedRoadHopKey: key }),
   roadWiggleDragging: false,
   setRoadWiggleDragging: (v) => set({ roadWiggleDragging: v }),
-  roadRenderVersion: 'v2',
-  roadV3TierGeom: [...DEFAULT_ROAD_V3_TIER_GEOM] as [RoadV3TierGeom, RoadV3TierGeom, RoadV3TierGeom],
-  setRoadRenderVersion: (v) => set({ roadRenderVersion: v }),
-  setRoadV3TierGeom: (tier, update) => set(state => {
-    const geoms = [...state.roadV3TierGeom] as [RoadV3TierGeom, RoadV3TierGeom, RoadV3TierGeom]
-    geoms[tier] = { ...geoms[tier], ...update }
-    return { roadV3TierGeom: geoms }
-  }),
-  resetRoadV3TierGeom: (tier) => set(state => {
-    const geoms = [...state.roadV3TierGeom] as [RoadV3TierGeom, RoadV3TierGeom, RoadV3TierGeom]
-    geoms[tier] = { ...DEFAULT_ROAD_V3_TIER_GEOM[tier] }
-    return { roadV3TierGeom: geoms }
-  }),
 
   clearMotorwayHexes: () => set({ motorwayHexes: [], motorwayHexesStatus: 'idle', motorwayHexesError: null }),
   setMotorwayHexesFast: (v) => set({ motorwayHexesFast: v }),

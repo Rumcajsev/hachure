@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react'
+import { useRef, useState, useEffect } from 'react'
 import { useTheme } from '../../context/ThemeContext'
 
 // ── Strip / flyout layout constants ──────────────────────────────────────────
@@ -759,6 +759,21 @@ export function DetailSection({
       )}
     </div>
   )
+}
+
+// ── useDeferredSlider ─────────────────────────────────────────────────────────
+// Shows live slider position during drag via local state but only commits to the
+// store on pointer-up. Avoids queueing expensive recomputes on every drag tick.
+
+export function useDeferredSlider(storeVal: number, commit: (v: number) => void) {
+  const [local, setLocal] = useState(storeVal)
+  const ref = useRef(storeVal)
+  useEffect(() => { setLocal(storeVal); ref.current = storeVal }, [storeVal])
+  return {
+    value: local,
+    onChange: (v: number) => { ref.current = v; setLocal(v) },
+    onDragEnd: () => commit(ref.current),
+  }
 }
 
 // ── MiniSlider ────────────────────────────────────────────────────────────────

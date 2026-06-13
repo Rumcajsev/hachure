@@ -13,6 +13,7 @@ import { useTheme } from '../../context/ThemeContext'
 import {
   BrushRow, MiniSlider, BigColorSwatch, SegmentedControl, ToggleRow, tintBg,
   STRIP_W, FLYOUT_W, StripShell, FlyoutShell, V2Divider, TriggerRow, TGap,
+  useDeferredSlider,
 } from './sidebar'
 
 // ── Palette groups ─────────────────────────────────────────────────────────────
@@ -228,21 +229,6 @@ function FSectionLabel({ label }: { label: string }) {
 function FSectionDivider() {
   const t = useTheme()
   return <div style={{ margin: '6px 12px 4px', borderTop: `1px solid ${t.line2}` }} />
-}
-
-// ── useDeferredSlider ─────────────────────────────────────────────────────────
-// Slider that shows live position during drag but only commits to the store on
-// pointer-up. Avoids queuing expensive recomputes on every tick during drag.
-
-function useDeferredSlider(storeVal: number, commit: (v: number) => void) {
-  const [local, setLocal] = useState(storeVal)
-  const ref = useRef(storeVal)
-  useEffect(() => { setLocal(storeVal); ref.current = storeVal }, [storeVal])
-  return {
-    value: local,
-    onChange: (v: number) => { ref.current = v; setLocal(v) },
-    onDragEnd: () => commit(ref.current),
-  }
 }
 
 // ── RoadShapeFlyout ────────────────────────────────────────────────────────────
