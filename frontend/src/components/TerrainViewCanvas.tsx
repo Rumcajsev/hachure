@@ -353,6 +353,7 @@ terrainColors, terrainTextureScales, terrainTextureBlendModes, terrainTextureOpa
     hillshadeDisabledTerrains, hillshadeDisabledElevClasses,
     setHillshadeAzimuth, setHillshadeAltitude, setHillshadeIntensity,
     contoursEnabled, contourInterval, contourBaseElevation, contourSmoothPasses, contourLineWidth,
+    contourIndexEvery, contourIndexWidthMult, contourColor, contourOpacity,
     contourDisabledTerrains, contourDisabledElevClasses,
     coastlineDPEpsilon, coastlineChaikinPasses,
     terrainRenderMode,
@@ -941,6 +942,14 @@ terrainColors, terrainTextureScales, terrainTextureBlendModes, terrainTextureOpa
   contourSmoothPassesRef.current = contourSmoothPasses
   const contourLineWidthRef = useRef(contourLineWidth)
   contourLineWidthRef.current = contourLineWidth
+  const contourIndexEveryRef = useRef(contourIndexEvery)
+  contourIndexEveryRef.current = contourIndexEvery
+  const contourIndexWidthMultRef = useRef(contourIndexWidthMult)
+  contourIndexWidthMultRef.current = contourIndexWidthMult
+  const contourColorRef = useRef(contourColor)
+  contourColorRef.current = contourColor
+  const contourOpacityRef = useRef(contourOpacity)
+  contourOpacityRef.current = contourOpacity
   const contourDisabledTerrainsSetRef = useRef(new Set<string>())
   contourDisabledTerrainsSetRef.current = new Set(contourDisabledTerrains)
   const contourDisabledElevClassesSetRef = useRef(new Set<string>())
@@ -3236,12 +3245,12 @@ const roadV3TierGeomRef = useRef(roadV3TierGeom)
           contourCanvasRef.current = computeContours(heightmapImgDataRef.current, meta, {
             interval: contourIntervalRef.current,
             baseElevation: contourBaseElevationRef.current,
-            indexEvery: 5,
+            indexEvery: contourIndexEveryRef.current,
             smoothPasses: contourSmoothPassesRef.current,
-            color: '#6b5a3a',
+            color: contourColorRef.current,
             width: contourLineWidthRef.current,
-            indexWidth: contourLineWidthRef.current * 2,
-            opacity: 0.7,
+            indexWidth: contourLineWidthRef.current * contourIndexWidthMultRef.current,
+            opacity: contourOpacityRef.current,
           }, pw, ph)
         }
       }
@@ -3268,30 +3277,36 @@ const roadV3TierGeomRef = useRef(roadV3TierGeom)
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [hillshadeEnabled, hillshadeAzimuth, hillshadeAltitude, hillshadeIntensity, hillshadeMode])
 
-  // Recompute contours when params change
+  // Recompute contours when params change — debounced so slider drags don't
+  // fire an expensive marching-squares pass on every tick.
   useEffect(() => {
-    const imgData = heightmapImgDataRef.current
-    const meta = heightmapMetaRef.current
-    if (!imgData || !meta || !metaRef.current) return
     if (!contoursEnabled) {
       contourCanvasRef.current = null
-    } else {
+      terrainDirtyRef.current = true
+      draw()
+      return
+    }
+    const tid = setTimeout(() => {
+      const imgData = heightmapImgDataRef.current
+      const meta = heightmapMetaRef.current
+      if (!imgData || !meta || !metaRef.current) return
       const { pw, ph } = computePaper(frameDimsRef.current.w, frameDimsRef.current.h, metaRef.current)
       contourCanvasRef.current = computeContours(imgData, meta, {
-        interval: contourInterval,
-        baseElevation: contourBaseElevation,
-        indexEvery: 5,
-        smoothPasses: contourSmoothPasses,
-        color: '#6b5a3a',
-        width: contourLineWidth,
-        indexWidth: contourLineWidth * 2,
-        opacity: 0.7,
+        interval: contourIntervalRef.current,
+        baseElevation: contourBaseElevationRef.current,
+        indexEvery: contourIndexEveryRef.current,
+        smoothPasses: contourSmoothPassesRef.current,
+        color: contourColorRef.current,
+        width: contourLineWidthRef.current,
+        indexWidth: contourLineWidthRef.current * contourIndexWidthMultRef.current,
+        opacity: contourOpacityRef.current,
       }, pw, ph)
-    }
-    terrainDirtyRef.current = true
-    draw()
+      terrainDirtyRef.current = true
+      draw()
+    }, 200)
+    return () => clearTimeout(tid)
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [contoursEnabled, contourInterval, contourBaseElevation, contourSmoothPasses, contourLineWidth])
+  }, [contoursEnabled, contourInterval, contourBaseElevation, contourSmoothPasses, contourLineWidth, contourIndexEvery, contourIndexWidthMult, contourColor, contourOpacity])
 
   // Mark other layer caches dirty when their relevant data changes
   useEffect(() => { hexBorderDirtyRef.current = true }, [hexBorderMode, hexEdgeMode, hexBorderOpacity, hexBorderColor, hexBorderDifference, generatedHexes, excludedHexKeys, disabledHexKeys, autoDisabledOceanHexKeys])
