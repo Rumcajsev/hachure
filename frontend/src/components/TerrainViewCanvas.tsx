@@ -2393,6 +2393,7 @@ terrainColors, terrainTextureScales, terrainTextureBlendModes, terrainTextureOpa
     }
 
     const _tRoads0 = performance.now()
+    const _tRBuildings0 = _tRoads0
     // Urban area buildings + settlement buildings (rendered below roads)
     {
       const { chains: roadChains } = smoothedRoadDataRef.current
@@ -2463,6 +2464,7 @@ terrainColors, terrainTextureScales, terrainTextureBlendModes, terrainTextureOpa
       }
     }
 
+    const _tRRoads0 = performance.now()
     // During a CP drag, compute road geometry with the live position directly — no store update,
     // no React re-render cycle, no useMemo. On drop, the store is updated once for the full rebuild.
     const liveTierGeomMap = (() => {
@@ -2622,6 +2624,7 @@ terrainColors, terrainTextureScales, terrainTextureBlendModes, terrainTextureOpa
 
     }
 
+    const _tRBridges0 = performance.now()
     // Bridges — drawn on top of rivers and roads
     if (bridgesEnabledRef.current && detectedBridgesRef.current.length > 0) {
       ctx.save()
@@ -2795,7 +2798,8 @@ terrainColors, terrainTextureScales, terrainTextureBlendModes, terrainTextureOpa
       }
     }
 
-    const _tSettlements0 = performance.now()
+    const _tRHandles0 = performance.now()
+    const _tSettlements0 = _tRHandles0
     // Settlements — offscreen cached
     {
 
@@ -3044,8 +3048,12 @@ terrainColors, terrainTextureScales, terrainTextureBlendModes, terrainTextureOpa
         const settle = _tEnd - _tSettlements0
         const dirty = Object.entries(_dirtySnap).filter(([, v]) => v).map(([k]) => k).join('+') || 'none'
         const offW = Math.ceil(pw * dpr * offZoom), offH = Math.ceil(ph * dpr * offZoom)
+        const rBuildings = _tRRoads0 - _tRBuildings0
+        const rRoads = _tRBridges0 - _tRRoads0
+        const rBridges = _tRHandles0 - _tRBridges0
+        const rHandles = _tSettlements0 - _tRHandles0
         console.warn(
-          `[draw] ${total.toFixed(1)}ms (${perf.fps}fps)  terrain=${terrain.toFixed(1)} rivers=${rivers.toFixed(1)} roads=${roads.toFixed(1)} settle=${settle.toFixed(1)}` +
+          `[draw] ${total.toFixed(1)}ms (${perf.fps}fps)  terrain=${terrain.toFixed(1)} rivers=${rivers.toFixed(1)} roads=${roads.toFixed(1)}[bldg=${rBuildings.toFixed(1)} rdlayer=${rRoads.toFixed(1)} bridges=${rBridges.toFixed(1)} handles=${rHandles.toFixed(1)}] settle=${settle.toFixed(1)}` +
           `  dirty=${dirty}  canvas=${offW}×${offH}  zoom=${zoom.toFixed(2)} offZoom=${offZoom}`
         )
       }
