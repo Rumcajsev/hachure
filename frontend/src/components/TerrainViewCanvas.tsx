@@ -1808,9 +1808,9 @@ terrainColors, terrainTextureScales, terrainTextureBlendModes, terrainTextureOpa
     const isExport = !!exportTarget
     const dpr = isExport ? 1 : (window.devicePixelRatio || 1)
     const zoom = isExport ? 1 : zoomRef.current
-    // Offscreen canvases are capped at zoom=4 equivalent to avoid browser canvas size limits.
-    // The main canvas zoom transform handles magnification above that level.
-    const offZoom = Math.min(zoom, 4)
+    // Offscreen canvases capped at 2× — higher values cause CPU blit cost to dominate
+    // (OffscreenCanvas drawImage is software-rendered). Canvas transform handles the rest.
+    const offZoom = Math.min(zoom, 2)
     const pan = isExport ? { x: 0, y: 0 } : panRef.current
     const borderMode = hexBorderModeRef.current
     const edgeMode = hexEdgeModeRef.current
@@ -3052,9 +3052,11 @@ terrainColors, terrainTextureScales, terrainTextureBlendModes, terrainTextureOpa
         const rRoads = _tRBridges0 - _tRRoads0
         const rBridges = _tRHandles0 - _tRBridges0
         const rHandles = _tSettlements0 - _tRHandles0
+        const actualTerrainSz = terrainLayerRef.current ? `${terrainLayerRef.current.width}×${terrainLayerRef.current.height}` : 'null'
+        const actualRoadsSz   = roadsLayerRef.current   ? `${roadsLayerRef.current.width}×${roadsLayerRef.current.height}`   : 'null'
         console.warn(
           `[draw] ${total.toFixed(1)}ms (${perf.fps}fps)  terrain=${terrain.toFixed(1)} rivers=${rivers.toFixed(1)} roads=${roads.toFixed(1)}[bldg=${rBuildings.toFixed(1)} rdlayer=${rRoads.toFixed(1)} bridges=${rBridges.toFixed(1)} handles=${rHandles.toFixed(1)}] settle=${settle.toFixed(1)}` +
-          `  dirty=${dirty}  canvas=${offW}×${offH}  zoom=${zoom.toFixed(2)} offZoom=${offZoom}`
+          `  dirty=${dirty}  targetCanvas=${offW}×${offH}  terrainLayer=${actualTerrainSz}  roadsLayer=${actualRoadsSz}  zoom=${zoom.toFixed(2)} offZoom=${offZoom.toFixed(2)}`
         )
       }
     }
