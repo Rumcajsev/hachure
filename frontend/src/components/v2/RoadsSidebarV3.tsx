@@ -241,11 +241,10 @@ export function RoadShapeFlyout({ onClose }: { onClose: () => void }) {
     roadPathSmoothing, setRoadPathSmoothing,
     roadSmoothing, setRoadSmoothing,
     roadCenterPull, setRoadCenterPull,
-    roadWiggleDragging, setRoadWiggleDragging,
   } = useMapStore()
 
-  // Heavy-compute sliders: commit to store only on drag end to avoid
-  // queueing a full buildRoadChainsV2 call on every slider tick.
+  const wiggleAmpSlider = useDeferredSlider(Math.round(roadWiggleAmp * 100), v => setRoadWiggleAmp(v / 100))
+  const wiggleFreqSlider = useDeferredSlider(Math.round(roadWiggleFreq * 10), v => setRoadWiggleFreq(v / 10))
   const pathSlider   = useDeferredSlider(roadPathSmoothing, setRoadPathSmoothing)
   const smoothSlider = useDeferredSlider(roadSmoothing, setRoadSmoothing)
   const pullSlider   = useDeferredSlider(Math.round(roadCenterPull * 100), v => setRoadCenterPull(v / 100))
@@ -268,8 +267,8 @@ export function RoadShapeFlyout({ onClose }: { onClose: () => void }) {
   return (
     <FlyoutShell title="Road shape" subtitle={isModified ? 'Modified from default' : 'Default for all tiers'} onClose={onClose}>
       <FSectionDivider />
-      <MiniSlider label="Wiggle amp"   display={`${Math.round(roadWiggleAmp * 100)}%`} value={Math.round(roadWiggleAmp * 100)}  min={0} max={100} step={1}  accentColor={t.rust} onChange={v => setRoadWiggleAmp(v / 100)}   onDragStart={() => setRoadWiggleDragging(true)} onDragEnd={() => setRoadWiggleDragging(false)} />
-      <MiniSlider label="Wiggle freq"  display={roadWiggleFreq.toFixed(1)}               value={Math.round(roadWiggleFreq * 10)} min={5} max={100} step={1}  accentColor={t.rust} onChange={v => setRoadWiggleFreq(v / 10)}  onDragStart={() => setRoadWiggleDragging(true)} onDragEnd={() => setRoadWiggleDragging(false)} />
+      <MiniSlider label="Wiggle amp"   display={`${wiggleAmpSlider.value}%`}              value={wiggleAmpSlider.value}  min={0} max={100} step={1}  accentColor={t.rust} onChange={wiggleAmpSlider.onChange}  onDragEnd={wiggleAmpSlider.onDragEnd} />
+      <MiniSlider label="Wiggle freq"  display={(wiggleFreqSlider.value / 10).toFixed(1)} value={wiggleFreqSlider.value} min={5} max={100} step={1}  accentColor={t.rust} onChange={wiggleFreqSlider.onChange} onDragEnd={wiggleFreqSlider.onDragEnd} />
       <MiniSlider label="Path smooth"  display={pathSlider.value}   value={pathSlider.value}   min={0} max={50}  step={1}  accentColor={t.rust} onChange={pathSlider.onChange}   onDragEnd={pathSlider.onDragEnd} />
       <MiniSlider label="Line smooth"  display={smoothSlider.value} value={smoothSlider.value} min={0} max={30}  step={1}  accentColor={t.rust} onChange={smoothSlider.onChange} onDragEnd={smoothSlider.onDragEnd} />
       <MiniSlider label="Center pull"  display={`${pullSlider.value}%`} value={pullSlider.value} min={0} max={100} step={1}  accentColor={t.rust} onChange={pullSlider.onChange}   onDragEnd={pullSlider.onDragEnd} />
@@ -296,9 +295,10 @@ export function RailShapeFlyout({ onClose }: { onClose: () => void }) {
     railWiggleFreq, setRailWiggleFreq,
     railPathSmoothing, setRailPathSmoothing,
     railSmoothing, setRailSmoothing,
-    setRailWiggleDragging,
   } = useMapStore()
 
+  const wiggleAmpSlider  = useDeferredSlider(Math.round(railWiggleAmp * 100), v => setRailWiggleAmp(v / 100))
+  const wiggleFreqSlider = useDeferredSlider(Math.round(railWiggleFreq * 10), v => setRailWiggleFreq(v / 10))
   const pathSlider   = useDeferredSlider(railPathSmoothing, setRailPathSmoothing)
   const smoothSlider = useDeferredSlider(railSmoothing, setRailSmoothing)
 
@@ -317,8 +317,8 @@ export function RailShapeFlyout({ onClose }: { onClose: () => void }) {
 
   return (
     <FlyoutShell title="Rail shape" subtitle={isModified ? 'Modified from default' : 'Default'} onClose={onClose}>
-      <MiniSlider label="Wiggle amp"  display={`${Math.round(railWiggleAmp * 100)}%`} value={Math.round(railWiggleAmp * 100)}  min={0} max={100} step={1} accentColor={RAIL_COLOR} onChange={v => setRailWiggleAmp(v / 100)}  onDragStart={() => setRailWiggleDragging(true)} onDragEnd={() => setRailWiggleDragging(false)} />
-      <MiniSlider label="Wiggle freq" display={railWiggleFreq.toFixed(1)}              value={Math.round(railWiggleFreq * 10)} min={5} max={100} step={1} accentColor={RAIL_COLOR} onChange={v => setRailWiggleFreq(v / 10)} onDragStart={() => setRailWiggleDragging(true)} onDragEnd={() => setRailWiggleDragging(false)} />
+      <MiniSlider label="Wiggle amp"  display={`${wiggleAmpSlider.value}%`}              value={wiggleAmpSlider.value}  min={0} max={100} step={1} accentColor={RAIL_COLOR} onChange={wiggleAmpSlider.onChange}  onDragEnd={wiggleAmpSlider.onDragEnd} />
+      <MiniSlider label="Wiggle freq" display={(wiggleFreqSlider.value / 10).toFixed(1)} value={wiggleFreqSlider.value} min={5} max={100} step={1} accentColor={RAIL_COLOR} onChange={wiggleFreqSlider.onChange} onDragEnd={wiggleFreqSlider.onDragEnd} />
       <MiniSlider label="Path smooth" display={pathSlider.value}   value={pathSlider.value}   min={0} max={50}  step={1} accentColor={RAIL_COLOR} onChange={pathSlider.onChange}   onDragEnd={pathSlider.onDragEnd} />
       <MiniSlider label="Line smooth" display={smoothSlider.value} value={smoothSlider.value} min={0} max={30}  step={1} accentColor={RAIL_COLOR} onChange={smoothSlider.onChange} onDragEnd={smoothSlider.onDragEnd} />
       {isModified && (
