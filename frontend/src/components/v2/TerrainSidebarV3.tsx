@@ -653,6 +653,7 @@ function TerrainCogFlyout({ terrain, onClose }: { terrain: string; onClose: () =
   const textureBlendMode: GlobalCompositeOperation = terrainTextureBlendModes[terrain] ?? 'multiply'
   const textureOpacity = terrainTextureOpacities[terrain] ?? (terrain === 'clear' ? 0.3 : 0.6)
   const textureShadeRange = terrainTextureShadeRanges[terrain] ?? 0
+  const isColorModeActive = textureBlendMode === ('color' as string) || textureBlendMode === ('color-bg' as string)
 
   const typeStyle = terrainTypeBlobStyles[terrain]
   const overrideEnabled = typeStyle?.enabled ?? false
@@ -819,13 +820,15 @@ function TerrainCogFlyout({ terrain, onClose }: { terrain: string; onClose: () =
               <option value="overlay">Overlay</option>
             </select>
           </div>
-          <MiniSlider
-            label="Shade var."
-            display={`${Math.round(textureShadeRange * 100)}%`}
-            value={Math.round(textureShadeRange * 100)}
-            min={0} max={100} step={1}
-            onChange={v => setTerrainTextureShadeRange(terrain, v / 100)}
-          />
+          {isColorModeActive && (
+            <MiniSlider
+              label="Shade var."
+              display={`${Math.round(textureShadeRange * 100)}%`}
+              value={Math.round(textureShadeRange * 100)}
+              min={0} max={100} step={1}
+              onChange={v => setTerrainTextureShadeRange(terrain, v / 100)}
+            />
+          )}
         </div>}
       </div>
 
