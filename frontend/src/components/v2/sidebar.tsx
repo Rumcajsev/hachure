@@ -768,11 +768,24 @@ export function DetailSection({
 export function useDeferredSlider(storeVal: number, commit: (v: number) => void) {
   const [local, setLocal] = useState(storeVal)
   const ref = useRef(storeVal)
+  const throttleRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   useEffect(() => { setLocal(storeVal); ref.current = storeVal }, [storeVal])
   return {
     value: local,
-    onChange: (v: number) => { ref.current = v; setLocal(v) },
-    onDragEnd: () => commit(ref.current),
+    onChange: (v: number) => {
+      ref.current = v
+      setLocal(v)
+      if (!throttleRef.current) {
+        throttleRef.current = setTimeout(() => {
+          throttleRef.current = null
+          commit(ref.current)
+        }, 100)
+      }
+    },
+    onDragEnd: () => {
+      if (throttleRef.current) { clearTimeout(throttleRef.current); throttleRef.current = null }
+      commit(ref.current)
+    },
   }
 }
 
