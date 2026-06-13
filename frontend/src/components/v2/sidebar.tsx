@@ -767,24 +767,41 @@ export function DetailSection({
 
 export function useDeferredSlider(storeVal: number, commit: (v: number) => void) {
   const [local, setLocal] = useState(storeVal)
-  const ref = useRef(storeVal)
-  const throttleRef = useRef<ReturnType<typeof setTimeout> | null>(null)
-  useEffect(() => { setLocal(storeVal); ref.current = storeVal }, [storeVal])
+  const dragRef = useRef(storeVal)        // latest value user dragged to
+  const inflightRef = useRef(false)       // true = commit sent, waiting for store to echo it back
+  const commitRef = useRef(commit)
+  commitRef.current = commit
+
+  useEffect(() => {
+    if (!inflightRef.current) {
+      // No drag active — sync display to external store change (reset, preset, etc.)
+      setLocal(storeVal)
+      dragRef.current = storeVal
+    } else {
+      // Our commit landed; the computation is done (useMemo ran before this effect)
+      inflightRef.current = false
+      if (dragRef.current !== storeVal) {
+        // User dragged further while computing — send latest value now
+        inflightRef.current = true
+        commitRef.current(dragRef.current)
+      }
+    }
+  }, [storeVal])
+
   return {
     value: local,
     onChange: (v: number) => {
-      ref.current = v
+      dragRef.current = v
       setLocal(v)
-      if (!throttleRef.current) {
-        throttleRef.current = setTimeout(() => {
-          throttleRef.current = null
-          commit(ref.current)
-        }, 100)
+      if (!inflightRef.current) {
+        inflightRef.current = true
+        commitRef.current(v)
       }
+      // else: inflight — latest value is in dragRef, will be sent when commit lands
     },
     onDragEnd: () => {
-      if (throttleRef.current) { clearTimeout(throttleRef.current); throttleRef.current = null }
-      commit(ref.current)
+      inflightRef.current = false
+      commitRef.current(dragRef.current)
     },
   }
 }
