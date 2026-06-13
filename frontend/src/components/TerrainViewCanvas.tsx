@@ -643,6 +643,8 @@ terrainColors, terrainTextureScales, terrainTextureBlendModes, terrainTextureOpa
   const setActiveBlobEditIdRef = useRef(setActiveBlobEditId)
   // canonicalKey → { terrain, handles, simplifiedPolys } — updated by blob useMemo
   const blobHandleDataRef = useRef<Map<string, { terrain: string; handles: { edgeKey: string; cx: number; cy: number }[]; simplifiedPolys: [number, number][][] }>>(new Map())
+  // Live drag state — handle position during drag, committed to Zustand only on mouseup
+  const blobDragLiveRef = useRef<{ ck: string; edgeKey: string; cx: number; cy: number; offset: [number, number] } | null>(null)
   const activeToolRef = useRef(activeTool)
   const setHexHighlightRef = useRef(setHexHighlight)
   const clearHexHighlightRef = useRef(clearHexHighlight)
@@ -1342,6 +1344,7 @@ const roadV3TierGeomRef = useRef(roadV3TierGeom)
   type TerrainBlobCacheEntry = { hexKey: string; rawPolys: [number, number][][]; hexCenters: [number, number][]; styleKey: string; blobs: { terrain: string; polys: [number, number][][]; blobKeys: string[] }[]; handleGroups?: Map<string, { edgeKey: string; cx: number; cy: number }[]>; simplifiedPolyGroups?: Map<string, [number, number][][]> }
   const perTerrainBlobCache = useRef(new Map<string, TerrainBlobCacheEntry>())
   const defaultTerrainBlobs = useMemo(() => {
+    const _tMemo0 = performance.now()
     if (projectedHexes.length === 0 || hexRadius === 0) return []
     if (isTerrainPainting) return prevTerrainBlobsRef.current
     const overriddenKeys = new Set(Object.keys(terrainBlobOverrides))
@@ -1491,7 +1494,9 @@ const roadV3TierGeomRef = useRef(roadV3TierGeom)
       }
 
       const hexCenters = [...hexOrigCenterByKey.values()]
+      const _tBlob0 = performance.now()
       const blobs = shapeTerrainBlobs([{ terrain, rawPolys: displacedPolys, hexCenters }], smooth, offset, bump, sweepFreq, lobeFreq, lobeAmp, lobeThreshold, lobeDirection, hexRadius, blobSeeds)
+      console.log(`[blobUseMemo] shapeTerrainBlobs terrain=${terrain} polys=${displacedPolys.length} took ${(performance.now()-_tBlob0).toFixed(1)}ms`)
 
       perTerrainBlobCache.current.set(terrain, { hexKey, rawPolys, hexCenters, styleKey, blobs, handleGroups: newHandleGroups, simplifiedPolyGroups: newSimplifiedPolys })
       return blobs
@@ -1500,6 +1505,7 @@ const roadV3TierGeomRef = useRef(roadV3TierGeom)
       if (!terrainTypeSet.has(t)) perTerrainBlobCache.current.delete(t)
     }
     prevTerrainBlobsRef.current = result
+    console.log(`[blobUseMemo] total ${(performance.now()-_tMemo0).toFixed(1)}ms`)
     return result
   }, [isTerrainPainting, projectedHexes, blobComponentsByTerrain, terrainBlobOverrides, terrainTypeBlobStyles, terrainBlobSmooth, terrainBlobOffset, terrainBlobBump, terrainBlobSweepFreq, terrainBlobLobeFreq, terrainBlobLobeAmp, terrainBlobLobeThreshold, terrainBlobLobeDirection, terrainBlobSimplify, terrainBlobTopoStyle, hexRadius, realisticCoastline, blobSeeds, elevationOverridesTerrain, blobHandleOverrides, riverAutoCorridors])
   const defaultTerrainBlobsRef = useRef(defaultTerrainBlobs)
@@ -1973,6 +1979,8 @@ const roadV3TierGeomRef = useRef(roadV3TierGeom)
       const papW = Math.ceil(pw), papH = Math.ceil(ph)
       if (!isPaintingRef.current && (terrainDirtyRef.current || !terrainLayerRef.current ||
           terrainLayerPapWRef.current !== papW || terrainLayerPapHRef.current !== papH)) {
+        console.log(`[draw] terrain rebuild triggered  dirty=${terrainDirtyRef.current}`)
+        const _tTR = performance.now()
         const offW = Math.ceil(pw * dpr * offZoom), offH = Math.ceil(ph * dpr * offZoom)
         const existingT = terrainLayerRef.current
         let oCtx: OffscreenCanvasRenderingContext2D
@@ -1996,6 +2004,7 @@ const roadV3TierGeomRef = useRef(roadV3TierGeom)
         terrainDirtyRef.current = false
         terrainLayerPapWRef.current = papW
         terrainLayerPapHRef.current = papH
+        console.log(`[draw] terrain rebuild done in ${(performance.now()-_tTR).toFixed(1)}ms`)
       }
     }
 
@@ -2706,10 +2715,17 @@ const roadV3TierGeomRef = useRef(roadV3TierGeom)
     if (!isExport && blobEditModeRef.current) {
       const activeId = activeBlobEditIdRef.current
       const handleData = blobHandleDataRef.current
+      const live = blobDragLiveRef.current
       const zoom = zoomRef.current ?? 1
       const handleR = Math.max(2, 3 / zoom)
       const lw = 1 / zoom
       ctx.save()
+
+      // Resolve live canvas position for a handle — overrides committed position during drag
+      const liveCx = (ck: string, edgeKey: string, cx: number) =>
+        (live?.ck === ck && live.edgeKey === edgeKey) ? live.cx : cx
+      const liveCy = (ck: string, edgeKey: string, cy: number) =>
+        (live?.ck === ck && live.edgeKey === edgeKey) ? live.cy : cy
 
       // Draw dashed simplified polygon for active blob — using live handle positions
       // so it updates as handles are dragged
@@ -2728,8 +2744,8 @@ const roadV3TierGeomRef = useRef(roadV3TierGeom)
             hIdx += poly.length
             if (polyHandles.length < 3) continue
             ctx.beginPath()
-            ctx.moveTo(polyHandles[0].cx, polyHandles[0].cy)
-            for (let i = 1; i < polyHandles.length; i++) ctx.lineTo(polyHandles[i].cx, polyHandles[i].cy)
+            ctx.moveTo(liveCx(activeId, polyHandles[0].edgeKey, polyHandles[0].cx), liveCy(activeId, polyHandles[0].edgeKey, polyHandles[0].cy))
+            for (let i = 1; i < polyHandles.length; i++) ctx.lineTo(liveCx(activeId, polyHandles[i].edgeKey, polyHandles[i].cx), liveCy(activeId, polyHandles[i].edgeKey, polyHandles[i].cy))
             ctx.closePath()
             ctx.stroke()
           }
@@ -2742,8 +2758,8 @@ const roadV3TierGeomRef = useRef(roadV3TierGeom)
             hIdx += poly.length
             if (polyHandles.length < 3) continue
             ctx.beginPath()
-            ctx.moveTo(polyHandles[0].cx, polyHandles[0].cy)
-            for (let i = 1; i < polyHandles.length; i++) ctx.lineTo(polyHandles[i].cx, polyHandles[i].cy)
+            ctx.moveTo(liveCx(activeId, polyHandles[0].edgeKey, polyHandles[0].cx), liveCy(activeId, polyHandles[0].edgeKey, polyHandles[0].cy))
+            for (let i = 1; i < polyHandles.length; i++) ctx.lineTo(liveCx(activeId, polyHandles[i].edgeKey, polyHandles[i].cx), liveCy(activeId, polyHandles[i].edgeKey, polyHandles[i].cy))
             ctx.closePath()
             ctx.stroke()
           }
@@ -2756,9 +2772,12 @@ const roadV3TierGeomRef = useRef(roadV3TierGeom)
         const isActive = ck === activeId
         if (!isActive && activeId) continue  // only show handles for active blob
         for (const { edgeKey, cx, cy } of handles) {
-          const hasOverride = !!(blobHandleOverridesRef.current[ck]?.[edgeKey])
+          const hx = liveCx(ck, edgeKey, cx)
+          const hy = liveCy(ck, edgeKey, cy)
+          // A handle counts as overridden if it has a committed store value OR is being actively dragged
+          const hasOverride = !!(blobHandleOverridesRef.current[ck]?.[edgeKey]) || (live?.ck === ck && live.edgeKey === edgeKey)
           ctx.beginPath()
-          ctx.arc(cx, cy, handleR, 0, Math.PI * 2)
+          ctx.arc(hx, hy, handleR, 0, Math.PI * 2)
           ctx.fillStyle = hasOverride ? 'rgba(255,180,80,0.9)' : 'rgba(255,255,255,0.75)'
           ctx.fill()
           ctx.lineWidth = lw
@@ -5070,7 +5089,7 @@ const roadV3TierGeomRef = useRef(roadV3TierGeom)
     const el = canvasRef.current
     if (!el) return
     const HANDLE_HIT_R = Math.max(6, hexRadiusRef.current * 0.12)
-    let dragging: { canonicalKey: string; hexKey: string; startLx: number; startLy: number; baseOffset: [number, number] } | null = null
+    let dragging: { canonicalKey: string; hexKey: string; startLx: number; startLy: number; baseOffset: [number, number]; baseCx: number; baseCy: number } | null = null
 
     const onRightClick = (e: MouseEvent) => {
       if (!blobEditModeRef.current) return
@@ -5104,7 +5123,11 @@ const roadV3TierGeomRef = useRef(roadV3TierGeom)
           const hitHandle = handleGroup.handles.find(h => Math.hypot(lx - h.cx, ly - h.cy) < HANDLE_HIT_R * 1.5)
           if (hitHandle) {
             const existingOff = blobHandleOverridesRef.current[activeId]?.[hitHandle.edgeKey] ?? [0, 0]
-            dragging = { canonicalKey: activeId, hexKey: hitHandle.edgeKey, startLx: lx, startLy: ly, baseOffset: existingOff as [number, number] }
+            const baseOffset = existingOff as [number, number]
+            // Compute the canvas position the handle sits at before any current offset
+            const baseCx = hitHandle.cx - baseOffset[0] * hexRadiusRef.current
+            const baseCy = hitHandle.cy - baseOffset[1] * hexRadiusRef.current
+            dragging = { canonicalKey: activeId, hexKey: hitHandle.edgeKey, startLx: lx, startLy: ly, baseOffset, baseCx, baseCy }
             e.stopPropagation()
             e.preventDefault()
             return
@@ -5144,11 +5167,26 @@ const roadV3TierGeomRef = useRef(roadV3TierGeom)
       const { lx, ly } = logical
       const dx = (lx - dragging.startLx) / hexRadiusRef.current
       const dy = (ly - dragging.startLy) / hexRadiusRef.current
-      const newOffset: [number, number] = [dragging.baseOffset[0] + dx, dragging.baseOffset[1] + dy]
-      setBlobHandleOverrideRef.current(dragging.canonicalKey, dragging.hexKey, newOffset)
+      const liveOffset: [number, number] = [dragging.baseOffset[0] + dx, dragging.baseOffset[1] + dy]
+      // Update the live ref — no Zustand state change, no React re-render, no useMemo recompute
+      blobDragLiveRef.current = {
+        ck: dragging.canonicalKey,
+        edgeKey: dragging.hexKey,
+        cx: dragging.baseCx + liveOffset[0] * hexRadiusRef.current,
+        cy: dragging.baseCy + liveOffset[1] * hexRadiusRef.current,
+        offset: liveOffset,
+      }
+      if (rafRef.current === null) rafRef.current = requestAnimationFrame(() => { rafRef.current = null; draw() })
     }
 
-    const onUp = () => { dragging = null }
+    const onUp = () => {
+      // Commit the final drag position to Zustand exactly once, triggering one blob recompute
+      if (dragging && blobDragLiveRef.current) {
+        setBlobHandleOverrideRef.current(dragging.canonicalKey, dragging.hexKey, blobDragLiveRef.current.offset)
+      }
+      blobDragLiveRef.current = null
+      dragging = null
+    }
 
     el.addEventListener('mousedown', onDown, { capture: true })
     el.addEventListener('contextmenu', onRightClick, { capture: true })
