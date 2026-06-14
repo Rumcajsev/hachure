@@ -8,7 +8,7 @@
 import type { RoadTierStyle, RailStyle } from '../store/mapStore'
 import { DEFAULT_STROKE_EFFECT } from '../store/mapStore'
 import { offsetPolyline } from './geometry'
-import { dashArray, drawLineGlow } from './strokeEffect'
+import { dashArray } from './strokeEffect'
 
 type Ctx = CanvasRenderingContext2D | OffscreenCanvasRenderingContext2D
 
@@ -50,24 +50,6 @@ export function drawRoadsAndRails(rCtx: Ctx, {
     for (const { tier, chain, bbox } of roadChains) {
       if (viewport && !bboxVisible(bbox, viewport)) continue
       chainsByTier[tier].push(chain)
-    }
-
-    // Pass 0: outer glow per tier (behind everything)
-    for (const tier of [2, 1, 0] as const) {
-      const s = tierStyles[tier]
-      if (!s.effect?.glowEnabled) continue
-      for (const pts of chainsByTier[tier]) {
-        if (pts.length < 2) continue
-        const xs = pts.map(p => p[0]), ys = pts.map(p => p[1])
-        const bounds = { x: Math.min(...xs), y: Math.min(...ys), w: Math.max(...xs) - Math.min(...xs), h: Math.max(...ys) - Math.min(...ys) }
-        drawLineGlow(rCtx, s.effect, s.outerW / 2, bounds, (ctx, halfW, color) => {
-          ctx.lineJoin = 'round'; ctx.lineCap = 'round'
-          ctx.strokeStyle = color; ctx.lineWidth = halfW * 2
-          ctx.beginPath(); ctx.moveTo(pts[0][0], pts[0][1])
-          for (let i = 1; i < pts.length; i++) ctx.lineTo(pts[i][0], pts[i][1])
-          ctx.stroke()
-        })
-      }
     }
 
     // Pass 1: casing (outline) — skipped if effect.outlineEnabled is explicitly false

@@ -216,12 +216,6 @@ export const WATER_COLOR = '#3a6898'
 export type StrokeDash = 'solid' | 'dashed' | 'dotted' | 'longdash' | 'dashdot'
 
 export interface StrokeEffect {
-  // Outer glow — blurred halo rendered behind the feature
-  glowEnabled: boolean
-  glowColor:   string   // use rgba for subtlety, e.g. 'rgba(0,0,0,0.3)'
-  glowBlur:    number   // blur radius in canvas px
-  glowSpread:  number   // extra half-width beyond feature edge (px)
-
   // Hard outline — sharp border drawn behind the feature fill
   outlineEnabled: boolean
   outlineColor:   string
@@ -233,10 +227,6 @@ export interface StrokeEffect {
 }
 
 export const DEFAULT_STROKE_EFFECT: StrokeEffect = {
-  glowEnabled:    false,
-  glowColor:      'rgba(0,0,0,0.25)',
-  glowBlur:       6,
-  glowSpread:     3,
   outlineEnabled: false,
   outlineColor:   '#2a4a6a',
   outlineWidth:   2,

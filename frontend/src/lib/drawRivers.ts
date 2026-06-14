@@ -3,7 +3,7 @@
 import type { RiverStyleConfig, RiverTierStyle, LabelBBox } from '../store/mapStore'
 import { DEFAULT_STROKE_EFFECT } from '../store/mapStore'
 import { riverSmooth, applyWobble, drawVariableWidthStroke } from './riverChains'
-import { dashArray, drawLineGlow } from './strokeEffect'
+import { dashArray } from './strokeEffect'
 import type { LabelSpec } from './labelPresets'
 import { specToFont } from './labelPresets'
 
@@ -129,13 +129,6 @@ function drawRiverLayer(
 
   const effect = style.effect ?? DEFAULT_STROKE_EFFECT
 
-  // Compute canvas bounds for the whole layer (needed for glow offscreen sizing)
-  const allPts = projected.flatMap(p => p.pts)
-  const xs = allPts.map(p => p[0]), ys = allPts.map(p => p[1])
-  const bx = Math.min(...xs), by = Math.min(...ys)
-  const bw = Math.max(...xs) - bx, bh = Math.max(...ys) - by
-  const layerBounds = { x: bx, y: by, w: bw, h: bh }
-
   // Pass -1: bank clearance (drawn under everything else)
   if (style.bankEnabled && style.bankWidth && style.bankWidth > 0 && clearColor) {
     rCtx.save()
@@ -154,16 +147,6 @@ function drawRiverLayer(
       drawRiverBank(rCtx, pts, hw[0], hw[1], style.bankWidth, clearColor, widthMults)
     }
     rCtx.restore()
-  }
-
-  // Pass 0: outer glow (blurred halo behind everything)
-  if (effect.glowEnabled) {
-    for (const { pts, segKey, hw, widthMults } of projected) {
-      if (selectedKeys.has(segKey)) continue
-      const maxHW = Math.max(hw[0], hw[1])
-      drawLineGlow(rCtx, effect, maxHW, layerBounds,
-        (ctx, halfW, color) => drawVariableWidthStroke(ctx, pts, halfW, halfW, color, widthMults))
-    }
   }
 
   // Pass 1: outline

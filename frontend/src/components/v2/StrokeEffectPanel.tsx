@@ -10,11 +10,6 @@ const DASH_OPTIONS: { value: StrokeDash; label: string }[] = [
   { value: 'dashdot',  label: '-·-' },
 ]
 
-const DEFAULT_GLOW_GROUPS = [{
-  label: 'Shadow',
-  colors: ['rgba(0,0,0,0.15)', 'rgba(0,0,0,0.25)', 'rgba(0,0,0,0.4)', 'rgba(30,60,30,0.3)', 'rgba(60,40,20,0.3)', 'rgba(20,40,80,0.3)'],
-}]
-
 function SectionToggle({ label, enabled, onChange }: { label: string; enabled: boolean; onChange: (v: boolean) => void }) {
   const t = useTheme()
   return (
@@ -53,16 +48,6 @@ export function StrokeEffectPanel({ effect, onChange, colorGroups, showOutline =
 
   return (
     <div>
-      {divider}
-      <SectionToggle label="Outer glow" enabled={effect.glowEnabled} onChange={v => onChange({ glowEnabled: v })} />
-      {effect.glowEnabled && (
-        <>
-          <BigColorSwatch value={effect.glowColor} onChange={c => onChange({ glowColor: c })} groups={colorGroups ?? DEFAULT_GLOW_GROUPS} />
-          <MiniSlider label="Blur" display={`${effect.glowBlur}px`}   value={effect.glowBlur}   min={1} max={30} step={1} onChange={v => onChange({ glowBlur: v })} />
-          <MiniSlider label="Spread" display={`${effect.glowSpread}px`} value={effect.glowSpread} min={0} max={20} step={1} onChange={v => onChange({ glowSpread: v })} />
-        </>
-      )}
-
       {showOutline && (
         <>
           {divider}

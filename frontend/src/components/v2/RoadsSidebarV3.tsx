@@ -260,20 +260,6 @@ export function RoadStyleFlyout({ tier, onClose }: { tier: 0 | 1 | 2; onClose: (
         </>
       )}
 
-      {/* ── Outer glow ── */}
-      <SectionToggle label="Outer glow" enabled={fx.glowEnabled} onChange={v => setFx({ glowEnabled: v })} accentColor={tierColor} />
-      {fx.glowEnabled && (
-        <>
-          <BigColorSwatch
-            value={fx.glowColor}
-            onChange={c => setFx({ glowColor: c })}
-            groups={[{ label: 'Shadow', colors: ['rgba(0,0,0,0.15)', 'rgba(0,0,0,0.25)', 'rgba(0,0,0,0.4)', 'rgba(60,40,10,0.3)', 'rgba(20,40,80,0.25)'] }]}
-          />
-          <MiniSlider label="Blur"   display={`${fx.glowBlur}px`}   value={fx.glowBlur}   min={1} max={30} step={1} accentColor={tierColor} onChange={v => setFx({ glowBlur: v })} />
-          <MiniSlider label="Spread" display={`${fx.glowSpread}px`} value={fx.glowSpread} min={0} max={20} step={1} accentColor={tierColor} onChange={v => setFx({ glowSpread: v })} />
-        </>
-      )}
-
       {/* ── Geometry override ── */}
       <SectionToggle
         label="Geometry override"

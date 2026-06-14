@@ -3,7 +3,7 @@
 
 import type { GeneratedHex, BlobOverride, StrokeEffect } from '../store/mapStore'
 import { DEFAULT_STROKE_EFFECT } from '../store/mapStore'
-import { drawPolyGlow, resolveBlobEffect } from './strokeEffect'
+import { resolveBlobEffect } from './strokeEffect'
 import { buildTerrainBlobsV2, bleedPolygon } from './terrainBlobs'
 import { clipPolygonToConvex, pointInPolygon } from './geometry'
 import { makePermutation, perlinNoise2D } from './noise'
@@ -433,11 +433,6 @@ export function drawTerrain(tCtx: Ctx, params: DrawTerrainParams): void {
       const clsStyle = elevationTypeBlobStyles[cls]
       const fx = resolveBlobEffect(clsStyle, params.terrainBlobEffect ?? DEFAULT_STROKE_EFFECT, terrainBlobOutlineEnabled, terrainBlobOutlineColor, terrainBlobOutlineWidth)
       if (polys.length === 0) continue
-      if (fx.glowEnabled) {
-        const xs = polys.flat().map(p => p[0]), ys = polys.flat().map(p => p[1])
-        const bounds = { x: Math.min(...xs), y: Math.min(...ys), w: Math.max(...xs) - Math.min(...xs), h: Math.max(...ys) - Math.min(...ys) }
-        drawPolyGlow(tCtx, polys as [number,number][][], fx.glowColor, fx.glowBlur, fx.glowSpread, bounds)
-      }
       if (!fx.outlineEnabled) continue
       tCtx.save()
       tCtx.strokeStyle = fx.outlineColor
@@ -606,11 +601,6 @@ export function drawTerrain(tCtx: Ctx, params: DrawTerrainParams): void {
       if (defaultPolys.length > 0) {
         const typeStyle = params.terrainTypeBlobStyles[terrain]
         const fx = resolveBlobEffect(typeStyle, params.terrainBlobEffect ?? DEFAULT_STROKE_EFFECT, terrainBlobOutlineEnabled, terrainBlobOutlineColor, terrainBlobOutlineWidth)
-        if (fx.glowEnabled) {
-          const xs = defaultPolys.flat().map(p => p[0]), ys = defaultPolys.flat().map(p => p[1])
-          const bounds = { x: Math.min(...xs), y: Math.min(...ys), w: Math.max(...xs) - Math.min(...xs), h: Math.max(...ys) - Math.min(...ys) }
-          drawPolyGlow(tCtx, defaultPolys, fx.glowColor, fx.glowBlur, fx.glowSpread, bounds)
-        }
         if (fx.outlineEnabled) {
           tCtx.save()
           tCtx.strokeStyle = fx.outlineColor
