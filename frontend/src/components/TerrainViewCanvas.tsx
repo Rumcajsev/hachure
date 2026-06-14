@@ -2011,9 +2011,15 @@ terrainColors, terrainTextureScales, terrainTextureBlendModes, terrainTextureOpa
     ctx.rect(0, 0, pw, ph)
     ctx.clip()
 
+    // Per-blit timing — measures time spent in drawImage() for each layer.
+    // High blit time with low section-compute time = GPU stall (memory pressure).
+    // High compute time with low blit time = expensive algorithm.
+    let _blitTerrain = 0, _blitHexBorder = 0, _blitHighlights = 0
+    let _blitRivers = 0, _blitBuildings = 0, _blitRoads = 0, _blitSettlements = 0
+
     // Blit terrain layer for screen rendering
     if (!isExport && !isPaintingRef.current) {
-      terrainLayer.current.blit(ctx, 0, 0, pw, ph)
+      const _b0 = performance.now(); terrainLayer.current.blit(ctx, 0, 0, pw, ph); _blitTerrain = performance.now() - _b0
     }
     if (isExport || isPaintingRef.current) {
       let exportTerrainBlobs = terrainParams.defaultTerrainBlobs
@@ -2130,7 +2136,7 @@ terrainColors, terrainTextureScales, terrainTextureBlendModes, terrainTextureOpa
           _drawHexBorders(oCtxHB, projected, borderMode, edgeMode, inMargin, 1, bordersExcludedSet, hexBorderOpacityRef.current, hexBorderColorRef.current, false)
           oCtxHB.restore()
         }
-        hexBorderLayer.current.blit(ctx, 0, 0, pw, ph)
+        const _b0 = performance.now(); hexBorderLayer.current.blit(ctx, 0, 0, pw, ph); _blitHexBorder = performance.now() - _b0
       }
       if (!isExport && hexBorderDifferenceRef.current) {
         _drawHexBorders(ctx, projected, borderMode, edgeMode, inMargin, 1, bordersExcludedSet, hexBorderOpacityRef.current, hexBorderColorRef.current, true)
@@ -2191,7 +2197,7 @@ terrainColors, terrainTextureScales, terrainTextureBlendModes, terrainTextureOpa
           oCtx.scale(dpr * offZoom, dpr * offZoom)
           _drawHighlights(oCtx, { highlights: highlightsRef.current, highlightedHexes: highlightedHexesRef.current, highlightLines: highlightLinesRef.current, highlightEdgePaths: highlightEdgePathsRef.current, projected, edgeMode, R, project, inMargin })
         }
-        joinedHighlightsLayer.current.blit(ctx, 0, 0, pw, ph)
+        const _b0 = performance.now(); joinedHighlightsLayer.current.blit(ctx, 0, 0, pw, ph); _blitHighlights = performance.now() - _b0
       }
       if (isExport) {
         _drawHighlights(ctx, { highlights: highlightsRef.current, highlightedHexes: highlightedHexesRef.current, highlightLines: highlightLinesRef.current, highlightEdgePaths: highlightEdgePathsRef.current, projected, edgeMode, R, project, inMargin, lineScale })
@@ -2355,7 +2361,7 @@ terrainColors, terrainTextureScales, terrainTextureBlendModes, terrainTextureOpa
           _drawRivers(oCtx, riverParams)
           oCtx.restore()
         }
-        riversLayer.current.blit(ctx, 0, 0, pw, ph)
+        const _b0 = performance.now(); riversLayer.current.blit(ctx, 0, 0, pw, ph); _blitRivers = performance.now() - _b0
       }
     }
     if (isExport) {
@@ -2406,7 +2412,7 @@ terrainColors, terrainTextureScales, terrainTextureBlendModes, terrainTextureOpa
             _drawAllBuildingsV2(oCtx, { hexes: hexesRef.current, urbanHexes: urbanHexesRef.current, urbanStyle: urbanStyleRef.current, settlements: settlementsRef.current, settlementTierStyles: settlementTierStylesRef.current, roadChains, roadTierStyles: roadTierStylesRef.current, project })
             oCtx.restore()
           }
-          buildingsLayer.current.blit(ctx, 0, 0, pw, ph)
+          const _b0 = performance.now(); buildingsLayer.current.blit(ctx, 0, 0, pw, ph); _blitBuildings = performance.now() - _b0
         }
       }
       if (isExport) {
@@ -2577,7 +2583,7 @@ terrainColors, terrainTextureScales, terrainTextureBlendModes, terrainTextureOpa
               _drawRoadsAndRails(oCtx, { roadChains: roadChainsPx, junctions: junctionsPx, railChains: railChainsPx, tierStyles, railStyle: railStyleRef.current, viewport: paperViewport })
               oCtx.restore()
             }
-            roadsLayer.current.blit(ctx, 0, 0, pw, ph)
+            const _b0 = performance.now(); roadsLayer.current.blit(ctx, 0, 0, pw, ph); _blitRoads = performance.now() - _b0
             _tRRoads3_afterBlit.t = performance.now()
           }
         }
@@ -2824,7 +2830,7 @@ terrainColors, terrainTextureScales, terrainTextureBlendModes, terrainTextureOpa
           _drawSettlements(oCtxS, { settlements: settlementsRef.current, tierStyles: settlementTierStylesRef.current, labelSpecs: resolvedLabelSpecsRef.current, roadChains: activeRoadDataS.chains, roadJunctions: activeRoadDataS.junctions, railChains: smoothedRailDataRef.current.chains, project, hexCenterOf: (q, r) => { const h = hexesRef.current.find(h => h.q === q && h.r === r); return h ? project(h.center[0], h.center[1]) : null }, hexRadiusPx: hexRadiusRef.current, labelOffsets: labelOffsetsRef.current, liveLabelOffset: liveLabelOffsetRef.current ?? undefined, labelBBoxOut: labelBBoxCacheRef.current, pixelSampler })
           oCtxS.restore()
         }
-        settlementsLayer.current.blit(ctx, 0, 0, pw, ph)
+        const _b0 = performance.now(); settlementsLayer.current.blit(ctx, 0, 0, pw, ph); _blitSettlements = performance.now() - _b0
       }
       if (isExport) {
         const activeRoadDataS = smoothedRoadDataRef.current
@@ -3054,6 +3060,15 @@ terrainColors, terrainTextureScales, terrainTextureBlendModes, terrainTextureOpa
           rivers:      _tRoads0 - _tRivers0,
           roads:       _tSettlements0 - _tRoads0,
           settlements: _tEnd - _tSettlements0,
+        },
+        blitMs: {
+          terrain:     _blitTerrain,
+          hexBorder:   _blitHexBorder,
+          highlights:  _blitHighlights,
+          rivers:      _blitRivers,
+          buildings:   _blitBuildings,
+          roads:       _blitRoads,
+          settlements: _blitSettlements,
         },
       })
 
@@ -4541,6 +4556,51 @@ terrainColors, terrainTextureScales, terrainTextureBlendModes, terrainTextureOpa
       window.removeEventListener('mouseup', onUp)
     }
   }, [clientToLogical])
+
+  // Perf HUD — toggle with backtick (`), auto-shows when frames exceed threshold
+  const [perfHudVisible, setPerfHudVisible] = useState(false)
+  const perfHudRef = useRef<HTMLDivElement>(null)
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === '`' && !shouldSuppressShortcut(e)) setPerfHudVisible(v => !v)
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [])
+  useEffect(() => {
+    const perf = (window as any).__ig2perf
+    if (!perf || !perfHudVisible) return
+    const id = setInterval(() => {
+      const el = perfHudRef.current
+      if (!el) return
+      const frames: import('../lib/perfMonitor').DrawFrameRecord[] = perf.dump(8)
+      if (!frames.length) return
+      const last = frames[frames.length - 1]
+      const avgMs = frames.reduce((s, f) => s + f.ms, 0) / frames.length
+      const fps = avgMs > 0 ? Math.round(1000 / avgMs) : 0
+      const slow = avgMs > 30
+      const { terrain, rivers, roads, settlements } = last.sectionMs
+      const b = last.blitMs
+      const totalBlit = b.terrain + b.hexBorder + b.highlights + b.rivers + b.buildings + b.roads + b.settlements
+      el.style.borderColor = slow ? '#f55' : '#0f0'
+      el.style.color = slow ? '#f88' : '#8f8'
+      el.innerHTML =
+        `<b>${avgMs.toFixed(0)}ms avg &nbsp; ${fps}fps</b>\n` +
+        `rebuilt: ${last.rebuiltLayers.join(',') || 'none'}\n` +
+        `terrain  ${terrain.toFixed(0)}ms\n` +
+        `rivers   ${rivers.toFixed(0)}ms\n` +
+        `roads    ${roads.toFixed(0)}ms\n` +
+        `settle   ${settlements.toFixed(0)}ms\n` +
+        `─────────────────\n` +
+        `blits    ${totalBlit.toFixed(0)}ms total\n` +
+        (b.terrain > 1   ? ` T=${b.terrain.toFixed(0)}` : '') +
+        (b.hexBorder > 1 ? ` HB=${b.hexBorder.toFixed(0)}` : '') +
+        (b.rivers > 1    ? ` Rv=${b.rivers.toFixed(0)}` : '') +
+        (b.roads > 1     ? ` Rd=${b.roads.toFixed(0)}` : '') +
+        (b.settlements > 1 ? ` S=${b.settlements.toFixed(0)}` : '')
+    }, 250)
+    return () => clearInterval(id)
+  }, [perfHudVisible])
 
   // Context menu
   const [ctxMenu, setCtxMenu] = useState<{ x: number; y: number; items: CtxItem[] } | null>(null)
@@ -6674,6 +6734,19 @@ terrainColors, terrainTextureScales, terrainTextureBlendModes, terrainTextureOpa
           onClear={clearBlobMaskEdits}
           subtractWidth={blobMaskSubtractWidthRef.current}
           onSubtractWidthChange={v => { blobMaskSubtractWidthRef.current = v; draw() }}
+        />
+      )}
+      {perfHudVisible && (
+        <div
+          ref={perfHudRef}
+          style={{
+            position: 'absolute', bottom: 8, right: 8, zIndex: 9999,
+            background: 'rgba(0,0,0,0.82)', color: '#8f8',
+            fontFamily: 'monospace', fontSize: 11, lineHeight: 1.5,
+            padding: '6px 8px', borderRadius: 4, whiteSpace: 'pre',
+            pointerEvents: 'none', border: '1px solid #0f0',
+            userSelect: 'none',
+          }}
         />
       )}
     </div>

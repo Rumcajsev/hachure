@@ -14,6 +14,18 @@ export interface DrawFrameRecord {
     roads: number          // _tRoads0 → _tSettlements0
     settlements: number    // _tSettlements0 → _tEnd
   }
+  // Time spent in drawImage() for each layer's blit — if a layer's blitMs is high
+  // but its section compute time is low, the GPU is stalling (memory pressure).
+  // If compute is high and blitMs is low, the algorithm itself is expensive.
+  blitMs: {
+    terrain: number
+    hexBorder: number
+    highlights: number
+    rivers: number
+    buildings: number
+    roads: number
+    settlements: number
+  }
 }
 
 const RING_SIZE = 120
@@ -28,6 +40,14 @@ const RATE_WINDOW_MS = 1000
 const RATE_ALARM_THRESHOLD = 120
 let rateAlarmed = false
 
+function fmtBlit(b: DrawFrameRecord['blitMs']): string {
+  const pairs = [
+    ['T', b.terrain], ['HB', b.hexBorder], ['HL', b.highlights],
+    ['R', b.rivers], ['Bld', b.buildings], ['Rd', b.roads], ['S', b.settlements],
+  ] as [string, number][]
+  return pairs.filter(([, v]) => v > 1).map(([k, v]) => `${k}=${v.toFixed(0)}`).join(' ') || '<1ms each'
+}
+
 export function recordDrawFrame(r: DrawFrameRecord): void {
   ring[head % RING_SIZE] = r
   head++
@@ -40,7 +60,7 @@ export function recordDrawFrame(r: DrawFrameRecord): void {
   callWindow.push(now)
   const rate = callWindow.length
 
-  // Slow-frame escalation
+  // Slow-frame escalation — include blit breakdown to distinguish GPU stall vs compute
   if (r.ms > 100) {
     const { setup, terrain, rivers, roads, settlements } = r.sectionMs
     const rebuilt = r.rebuiltLayers.join(',') || 'none'
@@ -49,7 +69,8 @@ export function recordDrawFrame(r: DrawFrameRecord): void {
       `  rebuilt=[${rebuilt}]` +
       `  riverChains=${r.riverChainRebuilt} bridgeChains=${r.bridgeChainRebuilt}\n` +
       `  setup=${setup.toFixed(0)} terrain=${terrain.toFixed(0)} rivers=${rivers.toFixed(0)}` +
-      `  roads=${roads.toFixed(0)} settle=${settlements.toFixed(0)}`,
+      `  roads=${roads.toFixed(0)} settle=${settlements.toFixed(0)}\n` +
+      `  blits: ${fmtBlit(r.blitMs)}`,
       '\nRecent context:', getRecent(10),
     )
   } else if (r.ms > 30) {
@@ -59,7 +80,8 @@ export function recordDrawFrame(r: DrawFrameRecord): void {
       `[ig2:perf] slow frame ${r.ms.toFixed(0)}ms` +
       `  rebuilt=[${rebuilt}]` +
       `  terrain=${terrain.toFixed(0)} rivers=${rivers.toFixed(0)}` +
-      `  roads=${roads.toFixed(0)} settle=${settlements.toFixed(0)}`,
+      `  roads=${roads.toFixed(0)} settle=${settlements.toFixed(0)}` +
+      `  blits: ${fmtBlit(r.blitMs)}`,
     )
   }
 
@@ -104,12 +126,15 @@ if (typeof window !== 'undefined') {
       let totalMs = 0
       let slowCount = 0
       let riverRebuildCount = 0
+      const avgBlit = { terrain: 0, hexBorder: 0, highlights: 0, rivers: 0, buildings: 0, roads: 0, settlements: 0 }
       for (const f of frames) {
         totalMs += f.ms
         if (f.ms > 30) slowCount++
         if (f.riverChainRebuilt) riverRebuildCount++
         for (const l of f.rebuiltLayers) counts[l] = (counts[l] ?? 0) + 1
+        for (const k of Object.keys(avgBlit) as (keyof typeof avgBlit)[]) avgBlit[k] += f.blitMs[k]
       }
+      for (const k of Object.keys(avgBlit) as (keyof typeof avgBlit)[]) avgBlit[k] = Math.round(avgBlit[k] / frames.length)
       return {
         frames: frames.length,
         avgMs: (totalMs / frames.length).toFixed(1) + 'ms',
@@ -117,6 +142,7 @@ if (typeof window !== 'undefined') {
         callsPerSec: callWindow.length,
         rebuildsPerLayer: counts,
         riverChainRebuilds: riverRebuildCount,
+        avgBlitMs: avgBlit,
       }
     },
     clear() {
