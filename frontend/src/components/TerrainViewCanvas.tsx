@@ -91,6 +91,8 @@ function makePixelSampler(
   cssW: number,
   cssH: number,
   bgHex: string,
+  paperX: number,
+  paperY: number,
 ): (candidates: Array<[number, number, number, number]>) => number[] {
   const bg = parseHexColor(bgHex)
   const threshold = 18
@@ -99,10 +101,11 @@ function makePixelSampler(
   const MAX_SAMPLE_PX = 240
   const canvasW = ctx.canvas.width, canvasH = ctx.canvas.height
 
-  // CSS paper coord → physical canvas pixel (unrounded, for sub-pixel accuracy)
+  // Paper-local coord → physical canvas pixel (unrounded, for sub-pixel accuracy).
+  // paperX/paperY converts paper-local to canvas-space before applying pan/zoom.
   const toPhys = (x: number, y: number): [number, number] => [
-    dpr * (zoom * (x - cssW / 2) + cssW / 2 + pan.x),
-    dpr * (zoom * (y - cssH / 2) + cssH / 2 + pan.y),
+    dpr * (zoom * (x + paperX - cssW / 2) + cssW / 2 + pan.x),
+    dpr * (zoom * (y + paperY - cssH / 2) + cssH / 2 + pan.y),
   ]
 
   return (candidates) => {
@@ -1118,6 +1121,21 @@ terrainColors, terrainTextureScales, terrainTextureBlendModes, terrainTextureOpa
   const paperDimsRef = useRef(paperDims)
   paperDimsRef.current = paperDims
 
+  // Stable pw/ph reference: identity only changes when pw/ph actually change (not on px/py shifts
+  // from window resize). projectedHexes depends on this so that resize never triggers blob
+  // recomputation — only a new map generation (new metadata → new pw/ph) does.
+  const paperSizeStableRef = useRef<{ pw: number; ph: number } | null>(null)
+  const paperSizeFrozen = useMemo(() => {
+    if (!generatedMetadata || frameDims.w === 0) return null
+    const { pw, ph } = getPaper(frameDims.w, frameDims.h)
+    const prev = paperSizeStableRef.current
+    if (prev && prev.pw === pw && prev.ph === ph) return prev
+    const next = { pw, ph }
+    paperSizeStableRef.current = next
+    return next
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [generatedMetadata, frameDims])
+
   const hexRadius = useMemo(() => {
     if (!paperDims || !generatedMetadata) return 0
     return generatedMetadata.outer_radius_m * (paperDims.pw / (generatedMetadata.scale_m_per_mm * generatedMetadata.paper_mm[0]))
@@ -1201,15 +1219,15 @@ terrainColors, terrainTextureScales, terrainTextureBlendModes, terrainTextureOpa
   hexNumberMapRef.current = hexNumberMap
 
   const projectedHexes = useMemo(() => {
-    if (!generatedMetadata || !paperDims || generatedHexes.length === 0) return []
-    const { pw, ph, px, py } = paperDims
+    if (!generatedMetadata || !paperSizeFrozen || generatedHexes.length === 0) return []
+    const { pw, ph } = paperSizeFrozen
     return generatedHexes.map(hex => {
       const verts = hex.vertices.map(([lon, lat]) =>
-        projectToCanvas(lon, lat, generatedMetadata, pw, ph, px, py) as [number, number]
+        projectToCanvas(lon, lat, generatedMetadata, pw, ph, 0, 0) as [number, number]
       )
       return { hex, verts }
     })
-  }, [generatedHexes, generatedMetadata, paperDims])
+  }, [generatedHexes, generatedMetadata, paperSizeFrozen])
   const projectedHexesRef = useRef(projectedHexes)
   projectedHexesRef.current = projectedHexes
 
@@ -1825,22 +1843,24 @@ terrainColors, terrainTextureScales, terrainTextureBlendModes, terrainTextureOpa
     ctx.translate(cssW / 2 + pan.x, cssH / 2 + pan.y)
     ctx.scale(zoom, zoom)
     ctx.translate(-cssW / 2, -cssH / 2)
+    // Shift origin to paper top-left so all subsequent drawing uses paper-local coords
+    // (0,0 = paper TL, pw×ph = paper BR). projectedHexes are in paper-local space too.
+    ctx.translate(px, py)
 
     // Paper shadow
-    _drawPaperBackground({ ctx, px, py, pw, ph, mapBgColor: mapBgColorRef.current })
+    _drawPaperBackground({ ctx, px: 0, py: 0, pw, ph, mapBgColor: mapBgColorRef.current })
 
     const mmToPx = pw / meta.paper_mm[0]
     const mgPx = meta.margin_mm * mmToPx
-    const marginL = px + mgPx, marginR = px + pw - mgPx
-    const marginT = py + mgPx, marginB = py + ph - mgPx
 
-    // Full hexes: only draw if all vertices inside margin.
+    // Full hexes: only draw if all vertices inside margin (paper-local bounds).
     // Partial hexes: draw clipped at the margin boundary.
     const inMargin = (verts: [number, number][]) =>
-      verts.every(([x, y]) => x >= marginL && x <= marginR && y >= marginT && y <= marginB)
+      verts.every(([x, y]) => x >= mgPx && x <= pw - mgPx && y >= mgPx && y <= ph - mgPx)
 
+    // project returns paper-local coords (px=py=0) consistent with projectedHexes verts.
     const project = (lon: number, lat: number): [number, number] =>
-      projectToCanvas(lon, lat, meta, pw, ph, px, py)
+      projectToCanvas(lon, lat, meta, pw, ph, 0, 0)
 
     const scalePxPerM = pw / (meta.scale_m_per_mm * meta.paper_mm[0])
     const R = meta.outer_radius_m * scalePxPerM
@@ -1892,7 +1912,7 @@ terrainColors, terrainTextureScales, terrainTextureBlendModes, terrainTextureOpa
       terrainTextureTintOpacities: terrainTextureTintOpacitiesRef.current,
       terrainTextureShadeRanges: terrainTextureShadeRangesRef.current,
       terrainTextures: buildTerrainTextures(),
-      px, py, pw, ph,
+      px: 0, py: 0, pw, ph,
       backgroundTerrainBlobs: defaultBackgroundBlobsRef.current,
       defaultTerrainBlobs: defaultTerrainBlobsMaskedRef.current,
       defaultWaterBlobs: defaultWaterBlobsRef.current,
@@ -1957,10 +1977,9 @@ terrainColors, terrainTextureScales, terrainTextureBlendModes, terrainTextureOpa
         console.log('[draw] terrain rebuild triggered')
         const _tTR = performance.now()
         oCtx.scale(dpr * offZoom, dpr * offZoom)
-        oCtx.translate(-px, -py)
         oCtx.save()
         oCtx.beginPath()
-        oCtx.rect(px, py, pw, ph)
+        oCtx.rect(0, 0, pw, ph)
         oCtx.clip()
         _drawTerrain(oCtx, terrainParams)
         oCtx.restore()
@@ -1971,12 +1990,12 @@ terrainColors, terrainTextureScales, terrainTextureBlendModes, terrainTextureOpa
     // Draw with paper-edge clip active (clips content at paper boundary)
     ctx.save()
     ctx.beginPath()
-    ctx.rect(px, py, pw, ph)
+    ctx.rect(0, 0, pw, ph)
     ctx.clip()
 
     // Blit terrain layer for screen rendering
     if (!isExport && !isPaintingRef.current) {
-      terrainLayer.current.blit(ctx, px, py, pw, ph)
+      terrainLayer.current.blit(ctx, 0, 0, pw, ph)
     }
     if (isExport || isPaintingRef.current) {
       let exportTerrainBlobs = terrainParams.defaultTerrainBlobs
@@ -2048,9 +2067,9 @@ terrainColors, terrainTextureScales, terrainTextureBlendModes, terrainTextureOpa
       if (wcBbox) {
         const { minLon, minLat, maxLon, maxLat } = wcBbox
         // image (0,0) = top-left = (minLon, maxLat); image (W,0) = (maxLon, maxLat); image (0,H) = (minLon, minLat)
-        const tl = projectToCanvas(minLon, maxLat, meta, pw, ph, px, py)
-        const tr = projectToCanvas(maxLon, maxLat, meta, pw, ph, px, py)
-        const bl = projectToCanvas(minLon, minLat, meta, pw, ph, px, py)
+        const tl = projectToCanvas(minLon, maxLat, meta, pw, ph, 0, 0)
+        const tr = projectToCanvas(maxLon, maxLat, meta, pw, ph, 0, 0)
+        const bl = projectToCanvas(minLon, minLat, meta, pw, ph, 0, 0)
         const iw = img.naturalWidth, ih = img.naturalHeight
         ctx.save()
         ctx.globalAlpha = 0.55
@@ -2074,7 +2093,7 @@ terrainColors, terrainTextureScales, terrainTextureBlendModes, terrainTextureOpa
           image: mapImageElementRef.current,
           transform: mapImageTransformRef.current,
           opacity: peekMode ? 1.0 : mapImageOpacityRef.current,
-          px, py, pw, ph,
+          px: 0, py: 0, pw, ph,
         })
       }
     }
@@ -2086,15 +2105,14 @@ terrainColors, terrainTextureScales, terrainTextureBlendModes, terrainTextureOpa
         const { ctx: oCtxHB, rebuilt } = hexBorderLayer.current.prepare(pw, ph, dpr)
         if (rebuilt) {
           oCtxHB.scale(dpr * offZoom, dpr * offZoom)
-          oCtxHB.translate(-px, -py)
           oCtxHB.save()
           oCtxHB.beginPath()
-          oCtxHB.rect(px, py, pw, ph)
+          oCtxHB.rect(0, 0, pw, ph)
           oCtxHB.clip()
           _drawHexBorders(oCtxHB, projected, borderMode, edgeMode, inMargin, 1, bordersExcludedSet, hexBorderOpacityRef.current, hexBorderColorRef.current, false)
           oCtxHB.restore()
         }
-        hexBorderLayer.current.blit(ctx, px, py, pw, ph)
+        hexBorderLayer.current.blit(ctx, 0, 0, pw, ph)
       }
       if (!isExport && hexBorderDifferenceRef.current) {
         _drawHexBorders(ctx, projected, borderMode, edgeMode, inMargin, 1, bordersExcludedSet, hexBorderOpacityRef.current, hexBorderColorRef.current, true)
@@ -2153,10 +2171,9 @@ terrainColors, terrainTextureScales, terrainTextureBlendModes, terrainTextureOpa
         const { ctx: oCtx, rebuilt } = joinedHighlightsLayer.current.prepare(pw, ph, dpr)
         if (rebuilt) {
           oCtx.scale(dpr * offZoom, dpr * offZoom)
-          oCtx.translate(-px, -py)
           _drawHighlights(oCtx, { highlights: highlightsRef.current, highlightedHexes: highlightedHexesRef.current, highlightLines: highlightLinesRef.current, highlightEdgePaths: highlightEdgePathsRef.current, projected, edgeMode, R, project, inMargin })
         }
-        joinedHighlightsLayer.current.blit(ctx, px, py, pw, ph)
+        joinedHighlightsLayer.current.blit(ctx, 0, 0, pw, ph)
       }
       if (isExport) {
         _drawHighlights(ctx, { highlights: highlightsRef.current, highlightedHexes: highlightedHexesRef.current, highlightLines: highlightLinesRef.current, highlightEdgePaths: highlightEdgePathsRef.current, projected, edgeMode, R, project, inMargin, lineScale })
@@ -2305,7 +2322,7 @@ terrainColors, terrainTextureScales, terrainTextureBlendModes, terrainTextureOpa
       if (isDraggingRiverDense) {
         ctx.save()
         ctx.beginPath()
-        ctx.rect(px, py, pw, ph)
+        ctx.rect(0, 0, pw, ph)
         ctx.clip()
         _drawRivers(ctx, liveRiverParams)
         ctx.restore()
@@ -2313,15 +2330,14 @@ terrainColors, terrainTextureScales, terrainTextureBlendModes, terrainTextureOpa
         const { ctx: oCtx, rebuilt } = riversLayer.current.prepare(pw, ph, dpr)
         if (rebuilt) {
           oCtx.scale(dpr * offZoom, dpr * offZoom)
-          oCtx.translate(-px, -py)
           oCtx.save()
           oCtx.beginPath()
-          oCtx.rect(px, py, pw, ph)
+          oCtx.rect(0, 0, pw, ph)
           oCtx.clip()
           _drawRivers(oCtx, riverParams)
           oCtx.restore()
         }
-        riversLayer.current.blit(ctx, px, py, pw, ph)
+        riversLayer.current.blit(ctx, 0, 0, pw, ph)
       }
     }
     if (isExport) {
@@ -2364,16 +2380,15 @@ terrainColors, terrainTextureScales, terrainTextureBlendModes, terrainTextureOpa
           if (rebuilt) {
             hexBuildingGeoCacheRef.current.clear()
             oCtx.scale(dpr * offZoom, dpr * offZoom)
-            oCtx.translate(-px, -py)
             oCtx.save()
             oCtx.beginPath()
-            oCtx.rect(px, py, pw, ph)
+            oCtx.rect(0, 0, pw, ph)
             oCtx.clip()
             _drawAllBuildings(oCtx, { hexes: hexesRef.current, urbanHexes: urbanHexesRef.current, urbanStyle: urbanStyleRef.current, settlements: settlementsRef.current, settlementTierStyles: settlementTierStylesRef.current, roadChains, roadTierStyles: roadTierStylesRef.current, hexBuildingGeoCache: hexBuildingGeoCacheRef.current, project })
             _drawAllBuildingsV2(oCtx, { hexes: hexesRef.current, urbanHexes: urbanHexesRef.current, urbanStyle: urbanStyleRef.current, settlements: settlementsRef.current, settlementTierStyles: settlementTierStylesRef.current, roadChains, roadTierStyles: roadTierStylesRef.current, project })
             oCtx.restore()
           }
-          buildingsLayer.current.blit(ctx, px, py, pw, ph)
+          buildingsLayer.current.blit(ctx, 0, 0, pw, ph)
         }
       }
       if (isExport) {
@@ -2480,7 +2495,7 @@ terrainColors, terrainTextureScales, terrainTextureBlendModes, terrainTextureOpa
           let projCacheMiss = false
 
           if (rpc && rpc.roadData === liveRoadData && rpc.railData === liveRailData &&
-              rpc.pw === pw && rpc.ph === ph && rpc.px === px && rpc.py === py) {
+              rpc.pw === pw && rpc.ph === ph && rpc.px === 0 && rpc.py === 0) {
             roadChainsPx = rpc.roadChainsPx
             junctionsPx  = rpc.junctionsPx
             railChainsPx = rpc.railChainsPx
@@ -2505,7 +2520,7 @@ terrainColors, terrainTextureScales, terrainTextureBlendModes, terrainTextureOpa
               const baseChain = c.baseChain?.map(([lon, lat]) => project(lon, lat)) as [number,number][] | undefined
               return { ...c, chain, baseChain, bbox: chainBBox(chain) }
             })
-            roadProjectionCacheRef.current = { roadData: liveRoadData, railData: liveRailData, pw, ph, px, py, roadChainsPx, junctionsPx, railChainsPx }
+            roadProjectionCacheRef.current = { roadData: liveRoadData, railData: liveRailData, pw, ph, px: 0, py: 0, roadChainsPx, junctionsPx, railChainsPx }
           }
 
           const isLiveDrag = isDraggingCP || isDraggingDense || isDraggingRailCP
@@ -2513,16 +2528,16 @@ terrainColors, terrainTextureScales, terrainTextureBlendModes, terrainTextureOpa
 
           if (isLiveDrag) {
             // Live drag: liveRoadData/liveRailData is rebuilt every frame — draw directly
-            // to ctx with screen-viewport culling, same as before LayerCache existed.
+            // to ctx with screen-viewport culling. Convert to paper-local by subtracting px/py.
             const roadsViewport = {
-              minX: cssW / 2 - (cssW / 2 + pan.x) / zoom - vpad,
-              maxX: cssW / 2 + (cssW / 2 - pan.x) / zoom + vpad,
-              minY: cssH / 2 - (cssH / 2 + pan.y) / zoom - vpad,
-              maxY: cssH / 2 + (cssH / 2 - pan.y) / zoom + vpad,
+              minX: cssW / 2 - (cssW / 2 + pan.x) / zoom - vpad - px,
+              maxX: cssW / 2 + (cssW / 2 - pan.x) / zoom + vpad - px,
+              minY: cssH / 2 - (cssH / 2 + pan.y) / zoom - vpad - py,
+              maxY: cssH / 2 + (cssH / 2 - pan.y) / zoom + vpad - py,
             }
             ctx.save()
             ctx.beginPath()
-            ctx.rect(px, py, pw, ph)
+            ctx.rect(0, 0, pw, ph)
             ctx.clip()
             _drawRoadsAndRails(ctx, { roadChains: roadChainsPx, junctions: junctionsPx, railChains: railChainsPx, tierStyles, railStyle: railStyleRef.current, viewport: roadsViewport })
             ctx.restore()
@@ -2535,17 +2550,16 @@ terrainColors, terrainTextureScales, terrainTextureBlendModes, terrainTextureOpa
             _tRRoads2_beforeBlit.t = performance.now()
             if (rebuilt) {
               oCtx.scale(dpr * offZoom, dpr * offZoom)
-              oCtx.translate(-px, -py)
               oCtx.save()
               oCtx.beginPath()
-              oCtx.rect(px, py, pw, ph)
+              oCtx.rect(0, 0, pw, ph)
               oCtx.clip()
-              // Offscreen covers the full paper, so cull against paper bounds not screen bounds.
-              const paperViewport = { minX: px - vpad, maxX: px + pw + vpad, minY: py - vpad, maxY: py + ph + vpad }
+              // Offscreen covers the full paper — cull against paper-local bounds.
+              const paperViewport = { minX: -vpad, maxX: pw + vpad, minY: -vpad, maxY: ph + vpad }
               _drawRoadsAndRails(oCtx, { roadChains: roadChainsPx, junctions: junctionsPx, railChains: railChainsPx, tierStyles, railStyle: railStyleRef.current, viewport: paperViewport })
               oCtx.restore()
             }
-            roadsLayer.current.blit(ctx, px, py, pw, ph)
+            roadsLayer.current.blit(ctx, 0, 0, pw, ph)
             _tRRoads3_afterBlit.t = performance.now()
           }
         }
@@ -2567,7 +2581,7 @@ terrainColors, terrainTextureScales, terrainTextureBlendModes, terrainTextureOpa
       if (!isExport && showRawOsmRoadsRef.current) {
         ctx.save()
         ctx.beginPath()
-        ctx.rect(px, py, pw, ph)
+        ctx.rect(0, 0, pw, ph)
         ctx.clip()
         if (showRawOsmRoadsRef.current) {
           const tierColor = ['rgba(220,50,50,0.9)', 'rgba(220,140,30,0.9)', 'rgba(180,180,30,0.85)']
@@ -2602,7 +2616,7 @@ terrainColors, terrainTextureScales, terrainTextureBlendModes, terrainTextureOpa
     if (bridgesEnabledRef.current && detectedBridgesRef.current.length > 0) {
       ctx.save()
       ctx.beginPath()
-      ctx.rect(px, py, pw, ph)
+      ctx.rect(0, 0, pw, ph)
       ctx.clip()
       _drawBridges({
         ctx,
@@ -2780,20 +2794,19 @@ terrainColors, terrainTextureScales, terrainTextureBlendModes, terrainTextureOpa
         const { ctx: oCtxS, rebuilt } = settlementsLayer.current.prepare(pw, ph, dpr)
         if (rebuilt) {
           oCtxS.scale(dpr * offZoom, dpr * offZoom)
-          oCtxS.translate(-px, -py)
           oCtxS.save()
           oCtxS.beginPath()
-          oCtxS.rect(px, py, pw, ph)
+          oCtxS.rect(0, 0, pw, ph)
           oCtxS.clip()
           const activeRoadDataS = smoothedRoadDataRef.current
           // Skip the pixel sampler during live-drag repaints — it's only useful for
           // initial auto-placement, not when repainting because a label is being moved.
           const isLiveDrag = liveLabelOffsetRef.current?.id.startsWith('settlement:') ?? false
-          const pixelSampler = isLiveDrag ? undefined : makePixelSampler(ctx, dpr, zoom, pan, cssW, cssH, mapBgColorRef.current)
+          const pixelSampler = isLiveDrag ? undefined : makePixelSampler(ctx, dpr, zoom, pan, cssW, cssH, mapBgColorRef.current, px, py)
           _drawSettlements(oCtxS, { settlements: settlementsRef.current, tierStyles: settlementTierStylesRef.current, labelSpecs: resolvedLabelSpecsRef.current, roadChains: activeRoadDataS.chains, roadJunctions: activeRoadDataS.junctions, railChains: smoothedRailDataRef.current.chains, project, hexCenterOf: (q, r) => { const h = hexesRef.current.find(h => h.q === q && h.r === r); return h ? project(h.center[0], h.center[1]) : null }, hexRadiusPx: hexRadiusRef.current, labelOffsets: labelOffsetsRef.current, liveLabelOffset: liveLabelOffsetRef.current ?? undefined, labelBBoxOut: labelBBoxCacheRef.current, pixelSampler })
           oCtxS.restore()
         }
-        settlementsLayer.current.blit(ctx, px, py, pw, ph)
+        settlementsLayer.current.blit(ctx, 0, 0, pw, ph)
       }
       if (isExport) {
         const activeRoadDataS = smoothedRoadDataRef.current
@@ -2937,14 +2950,14 @@ terrainColors, terrainTextureScales, terrainTextureBlendModes, terrainTextureOpa
 
     // Hex grid mask — covers margin area (paper minus hex polygons) with background color
     if (clipToHexGridRef.current && projected.length > 0) {
-      _drawHexGridMask(ctx, projected, edgeMode, inMargin, px, py, pw, ph, mapBgColorRef.current, excludedSet)
+      _drawHexGridMask(ctx, projected, edgeMode, inMargin, 0, 0, pw, ph, mapBgColorRef.current, excludedSet)
     }
 
     // Map border — stroke along the outer boundary of the hex grid
     if (mapBorderEnabledRef.current && projected.length > 0) {
       ctx.save()
       ctx.beginPath()
-      ctx.rect(px, py, pw, ph)
+      ctx.rect(0, 0, pw, ph)
       ctx.clip()
       _drawMapBoundary(ctx, projected, edgeMode, inMargin, mapBorderColorRef.current, mapBorderWidthRef.current, lineScale, excludedSet)
       ctx.restore()
@@ -2953,7 +2966,7 @@ terrainColors, terrainTextureScales, terrainTextureBlendModes, terrainTextureOpa
     if (!exportTarget) {
       // Margin indicator + diptych seam (screen only)
       _drawPaperMargin({
-        ctx, px, py, pw, ph, mgPx, zoom,
+        ctx, px: 0, py: 0, pw, ph, mgPx, zoom,
         pageGrid: pageGridRef.current,
       })
 
@@ -5470,9 +5483,12 @@ terrainColors, terrainTextureScales, terrainTextureBlendModes, terrainTextureOpa
     }
     const logical = clientToLogical(e.clientX, e.clientY)
     if (!logical) return
-    const { lx: mx, ly: my } = logical
+    // projectedHexesRef verts are paper-local; convert canvas-space mouse to paper-local
+    const { lx: mx0, ly: my0, cssW: edgeCssW, cssH: edgeCssH } = logical
+    const { px: edgePx, py: edgePy } = getPaper(edgeCssW, edgeCssH)
+    const mx = mx0 - edgePx, my = my0 - edgePy
 
-    // Find nearest edge midpoint among all projected hexes
+    // Find nearest edge midpoint among all projected hexes (paper-local coords)
     let best: { hexQ: number; hexR: number; edgeI: number } | null = null
     let bestDist = hexRadiusRef.current * 0.8
     for (const { hex, verts } of projectedHexesRef.current) {
