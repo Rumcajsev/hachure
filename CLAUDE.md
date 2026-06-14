@@ -59,6 +59,34 @@ Supporting geometry and data libs:
 
 **Rule: new canvas rendering logic always goes in `src/lib/`, never inline in a component.** Each lib function takes an explicit params struct so it's testable and reusable without React.
 
+### Offscreen layer caching — `LayerCache`
+
+Every visual layer that uses an offscreen `OffscreenCanvas` (terrain, hexBorders, rivers, buildings, settlements, highlights, roads) is managed by a `LayerCache` instance from `src/lib/LayerCache.ts`. It owns the canvas ref, dirty flag, and alloc/reuse/rebuild logic — replacing the old pattern of 4 separate refs per layer.
+
+**Pattern for any new offscreen layer:**
+
+```ts
+// 1. In component body — one ref, no size refs, no dirty ref
+const myLayer = useRef(new LayerCache())
+
+// 2. When layer data changes (in a useEffect):
+myLayer.current.markDirty()
+
+// 3. Inside draw() — always in the !isExport branch:
+const { ctx, rebuilt } = myLayer.current.prepare(pw, ph, dpr)
+if (rebuilt) {
+  ctx.scale(dpr * offZoom, dpr * offZoom)
+  ctx.translate(-px, -py)
+  // ... draw layer content into ctx
+}
+myLayer.current.blit(mainCtx, px, py, pw, ph)
+
+// 4. On unmount (add to the component's cleanup effect):
+myLayer.current.dispose()
+```
+
+`prepare()` rebuilds only when the layer is dirty or the paper size changed — pan and zoom never trigger a rebuild. The dpr cap (`Math.min(dpr, 1.5)`) lives inside `prepare()` and must not be applied again by the caller.
+
 ### Shared UI primitives — `src/components/ui.tsx`
 
 `SliderRow`, `ResetButton`, and `SectionLabel` live in `ui.tsx`. **Before writing any of these patterns inline, import from there.** If a new pattern appears in more than one place, add it to `ui.tsx` instead of duplicating it.
