@@ -216,7 +216,7 @@ export function RoadStyleFlyout({ tier, onClose }: { tier: 0 | 1 | 2; onClose: (
   const globalGeom = { wiggleAmp: roadWiggleAmp, wiggleFreq: roadWiggleFreq, pathSmoothing: roadPathSmoothing, smoothing: roadSmoothing, centerPull: roadCenterPull }
   const effectiveGeom = geomOverride ?? globalGeom
 
-  // Per-tier geom sliders all flow through roadTierGeomMap → buildRoadChainsV2,
+  // Per-tier geom sliders all flow through roadTierGeomMap → buildRoadChains,
   // so defer each to commit only on drag end.
   const tierWiggleAmpSlider  = useDeferredSlider(Math.round(effectiveGeom.wiggleAmp * 100), v => setRoadTierGeometry(tier, { wiggleAmp: v / 100 }))
   const tierWiggleFreqSlider = useDeferredSlider(Math.round(effectiveGeom.wiggleFreq * 10),  v => setRoadTierGeometry(tier, { wiggleFreq: v / 10 }))

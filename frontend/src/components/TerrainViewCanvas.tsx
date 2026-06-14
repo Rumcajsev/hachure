@@ -15,8 +15,8 @@ import { riverChainCache, buildRiverChains, buildRiverChainsV2 } from '../lib/ri
 
 const RIVER_V2 = true
 import { drawRivers as _drawRivers } from '../lib/drawRivers'
-import { buildRailChains, spineSideCpKey, applyRailWiggle } from '../lib/roadChains'
-import { buildRoadChainsV2, applyRoadWiggleV2 } from '../lib/roadChainsV2'
+import { buildRoadChains, applyRoadWiggle } from '../lib/roadChains'
+import { buildRailChains, applyRailWiggle } from '../lib/railChains'
 import { drawHighlights as _drawHighlights } from '../lib/drawHighlights'
 import { drawIcons as _drawIcons } from '../lib/drawIcons'
 import { drawLabels as _drawLabels, getLabelBoxBounds } from '../lib/drawLabels'
@@ -1057,14 +1057,14 @@ terrainColors, terrainTextureScales, terrainTextureBlendModes, terrainTextureOpa
   )
 
   const roadBaseData = useMemo(
-    () => buildRoadChainsV2(roadEdges, hexCenterIdx, roadControlOverrides, 0, 0, roadSmoothing, roadPathSmoothing, roadChainOverrides, {}, {}, roadSnapBindings, 2, roadTierGeomMap, roadCenterPull),
+    () => buildRoadChains(roadEdges, hexCenterIdx, roadControlOverrides, 0, 0, roadSmoothing, roadPathSmoothing, roadChainOverrides, {}, {}, roadSnapBindings, 2, roadTierGeomMap, roadCenterPull),
     [roadEdges, hexCenterIdx, roadControlOverrides, roadSmoothing, roadPathSmoothing, roadChainOverrides, roadSnapBindings, roadTierGeomMap, roadCenterPull],
   )
 
   const smoothedRoadData = useMemo(
     () => {
       const chaikinPasses = (roadWiggleDragging || isRoadPainting) ? 0 : 2
-      const data = applyRoadWiggleV2(roadBaseData, roadWiggleAmp, roadWiggleFreq, roadSegmentProps, roadHopProps, chaikinPasses, roadTierGeomMap)
+      const data = applyRoadWiggle(roadBaseData, roadWiggleAmp, roadWiggleFreq, roadSegmentProps, roadHopProps, chaikinPasses, roadTierGeomMap)
       if (roadDensityMinChain <= 1) return data
       const chains = data.chains.filter(c => {
         if (c.id.startsWith('stub|')) return true
@@ -2472,7 +2472,7 @@ terrainColors, terrainTextureScales, terrainTextureBlendModes, terrainTextureOpa
     })()
 
     const liveRoadData = isDraggingCP
-      ? buildRoadChainsV2(
+      ? buildRoadChains(
             roadEdgesRef.current,
             hexIdxRef.current as Map<string, { center: [number, number] }>,
             { ...roadControlOverridesRef.current, ...dragLiveOverrideRef.current },
@@ -2489,7 +2489,7 @@ terrainColors, terrainTextureScales, terrainTextureBlendModes, terrainTextureOpa
             roadCenterPullRef.current,
           )
         : isDraggingDense
-          ? buildRoadChainsV2(
+          ? buildRoadChains(
               roadEdgesRef.current,
               hexIdxRef.current as Map<string, { center: [number, number] }>,
               roadControlOverridesRef.current,
