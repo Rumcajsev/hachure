@@ -3493,25 +3493,22 @@ terrainColors, terrainTextureScales, terrainTextureBlendModes, terrainTextureOpa
   // ResizeObserver — canvas fills the full container.
   // setFrameDims is debounced (150ms) so rapid window resizing doesn't trigger
   // repeated expensive useMemo recomputes (projectedHexes → terrain blobs → dirty flags).
-  // The canvas buffer only resizes once per resize sequence, eliminating lag accumulation.
   const meta = generatedMetadata
   useEffect(() => {
     const el = containerRef.current
     if (!el || !meta) return
-    let debounceTimer: ReturnType<typeof setTimeout> | null = null
+    let rafId: number | null = null
     const compute = () => {
-      const w = Math.round(el.clientWidth), h = Math.round(el.clientHeight)
-      if (debounceTimer !== null) clearTimeout(debounceTimer)
-      debounceTimer = setTimeout(() => {
-        debounceTimer = null
-        setFrameDims({ w, h })
-      }, 150)
+      if (rafId !== null) return
+      rafId = requestAnimationFrame(() => {
+        rafId = null
+        setFrameDims({ w: Math.round(el.clientWidth), h: Math.round(el.clientHeight) })
+      })
     }
-    // Fire immediately on mount (no debounce needed for initial size)
     setFrameDims({ w: Math.round(el.clientWidth), h: Math.round(el.clientHeight) })
     const ro = new ResizeObserver(compute)
     ro.observe(el)
-    return () => { ro.disconnect(); if (debounceTimer !== null) clearTimeout(debounceTimer) }
+    return () => { ro.disconnect(); if (rafId !== null) cancelAnimationFrame(rafId) }
   }, [meta])
 
   // Set zoom so 1 CSS pixel = 1/96 inch → physical hex size matches screen
