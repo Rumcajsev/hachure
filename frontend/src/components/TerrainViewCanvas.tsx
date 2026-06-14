@@ -222,10 +222,7 @@ export const TerrainViewCanvas = forwardRef<TerrainViewCanvasHandle, { surroundC
   const terrainLayer = useRef(new LayerCache())
 
   // Offscreen canvas refs for non-terrain layers
-  const hexBorderLayerRef = useRef<OffscreenCanvas | null>(null)
-  const hexBorderDirtyRef = useRef(true)
-  const hexBorderLayerPapWRef = useRef(0)
-  const hexBorderLayerPapHRef = useRef(0)
+  const hexBorderLayer = useRef(new LayerCache())
 
   const joinedHighlightsLayerRef = useRef<OffscreenCanvas | null>(null)
   const joinedHighlightsDirtyRef = useRef(true)
@@ -1767,7 +1764,6 @@ terrainColors, terrainTextureScales, terrainTextureBlendModes, terrainTextureOpa
   const draw = useCallback((exportTarget?: ExportTarget) => {
     const _t0 = performance.now()
     const _dirtySnap = {
-      hexBorder: hexBorderDirtyRef.current,
       rivers: riversDirtyRef.current,
       buildings: buildingsDirtyRef.current,
       settlements: settlementsDirtyRef.current,
@@ -2099,20 +2095,8 @@ terrainColors, terrainTextureScales, terrainTextureBlendModes, terrainTextureOpa
     // Difference blend mode must draw directly onto main canvas so it composites against terrain.
     if (borderMode !== 'none') {
       if (!isExport && !hexBorderDifferenceRef.current) {
-        const offW = Math.ceil(pw * dpr * offZoom), offH = Math.ceil(ph * dpr * offZoom)
-        if (hexBorderDirtyRef.current || !hexBorderLayerRef.current ||
-            hexBorderLayerPapWRef.current !== offW || hexBorderLayerPapHRef.current !== offH) {
-          const existingHB = hexBorderLayerRef.current
-          let oCtxHB: OffscreenCanvasRenderingContext2D
-          if (existingHB && existingHB.width === offW && existingHB.height === offH) {
-            oCtxHB = existingHB.getContext('2d')!
-            oCtxHB.setTransform(1, 0, 0, 1, 0, 0)
-            oCtxHB.clearRect(0, 0, offW, offH)
-          } else {
-            const offscreen = new OffscreenCanvas(offW, offH)
-            oCtxHB = offscreen.getContext('2d')!
-            hexBorderLayerRef.current = offscreen
-          }
+        const { ctx: oCtxHB, rebuilt } = hexBorderLayer.current.prepare(pw, ph, dpr)
+        if (rebuilt) {
           oCtxHB.scale(dpr * offZoom, dpr * offZoom)
           oCtxHB.translate(-px, -py)
           oCtxHB.save()
@@ -2121,11 +2105,8 @@ terrainColors, terrainTextureScales, terrainTextureBlendModes, terrainTextureOpa
           oCtxHB.clip()
           _drawHexBorders(oCtxHB, projected, borderMode, edgeMode, inMargin, 1, bordersExcludedSet, hexBorderOpacityRef.current, hexBorderColorRef.current, false)
           oCtxHB.restore()
-          hexBorderDirtyRef.current = false
-          hexBorderLayerPapWRef.current = offW
-          hexBorderLayerPapHRef.current = offH
         }
-        ctx.drawImage(hexBorderLayerRef.current, px, py, pw, ph)
+        hexBorderLayer.current.blit(ctx, px, py, pw, ph)
       }
       if (!isExport && hexBorderDifferenceRef.current) {
         _drawHexBorders(ctx, projected, borderMode, edgeMode, inMargin, 1, bordersExcludedSet, hexBorderOpacityRef.current, hexBorderColorRef.current, true)
@@ -3340,7 +3321,7 @@ terrainColors, terrainTextureScales, terrainTextureBlendModes, terrainTextureOpa
   }, [contoursEnabled, contourInterval, contourBaseElevation, contourSmoothPasses, contourLineWidth, contourIndexEvery, contourIndexWidthMult, contourColor, contourOpacity])
 
   // Mark other layer caches dirty when their relevant data changes
-  useEffect(() => { hexBorderDirtyRef.current = true }, [hexBorderMode, hexEdgeMode, hexBorderOpacity, hexBorderColor, hexBorderDifference, generatedHexes, excludedHexKeys, disabledHexKeys, autoDisabledOceanHexKeys])
+  useEffect(() => { hexBorderLayer.current.markDirty() }, [hexBorderMode, hexEdgeMode, hexBorderOpacity, hexBorderColor, hexBorderDifference, generatedHexes, excludedHexKeys, disabledHexKeys, autoDisabledOceanHexKeys])
   useEffect(() => { riversDirtyRef.current = true }, [riverEdges, riverTierStyles, riverWidthScale, riverCurveSteps, riverWobble, riverDetail, riverWiggleFreq, riverWiggleAmp, riverSmoothing, riverPathSmoothing, showRiverLabels, riverLabelColor, riverSegmentProps, riverSelectMode, selectedSegmentKeys, riverStyle, riverHopProps, selectedHopKey, labelOffsets, generatedHexes, terrainColors])
   useEffect(() => { buildingsDirtyRef.current = true }, [urbanHexes, urbanStyle, settlements, settlementTierStyles, roadBaseData])
   useEffect(() => { bridgesDirtyRef.current = true }, [bridgesEnabled, smoothedRoadData, smoothedRailData, riverEdges, generatedHexes])
@@ -3467,7 +3448,7 @@ terrainColors, terrainTextureScales, terrainTextureBlendModes, terrainTextureOpa
     zoomRef.current = targetZoom
     panRef.current = { x: 0, y: 0 }
     terrainLayer.current.markDirty()
-    hexBorderDirtyRef.current = true
+    hexBorderLayer.current.markDirty()
     joinedHighlightsDirtyRef.current = true
     riversDirtyRef.current = true
     buildingsDirtyRef.current = true
