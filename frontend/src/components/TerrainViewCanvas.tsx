@@ -3390,6 +3390,17 @@ terrainColors, terrainTextureScales, terrainTextureBlendModes, terrainTextureOpa
     return () => { ro.disconnect(); if (rafId !== null) cancelAnimationFrame(rafId) }
   }, [meta])
 
+  useEffect(() => {
+    return () => {
+      terrainLayer.current.dispose()
+      hexBorderLayer.current.dispose()
+      joinedHighlightsLayer.current.dispose()
+      riversLayer.current.dispose()
+      buildingsLayer.current.dispose()
+      settlementsLayer.current.dispose()
+    }
+  }, [])
+
   // Set zoom so 1 CSS pixel = 1/96 inch → physical hex size matches screen
   const zoomToPhysical = useCallback(() => {
     const meta = generatedMetadata
