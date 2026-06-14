@@ -1791,7 +1791,7 @@ terrainColors, terrainTextureScales, terrainTextureBlendModes, terrainTextureOpa
     // Offscreen layers at native Retina resolution (dpr²). Each blit is a GPU→GPU copy so
     // scale doesn't hurt frame time. At zoom ≤ dpr the blit is 1:1 or better; beyond that
     // it stretches by zoom/dpr — crisp up to zoom=2 on Retina, acceptable above.
-    const offZoom = isExport ? 1 : Math.min(dpr, 1.5)
+    const offZoom = isExport ? 1 : dpr
     const pan = isExport ? { x: 0, y: 0 } : panRef.current
     const borderMode = hexBorderModeRef.current
     const edgeMode = hexEdgeModeRef.current
