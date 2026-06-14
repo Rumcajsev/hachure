@@ -224,10 +224,7 @@ export const TerrainViewCanvas = forwardRef<TerrainViewCanvasHandle, { surroundC
   // Offscreen canvas refs for non-terrain layers
   const hexBorderLayer = useRef(new LayerCache())
 
-  const joinedHighlightsLayerRef = useRef<OffscreenCanvas | null>(null)
-  const joinedHighlightsDirtyRef = useRef(true)
-  const joinedHighlightsLayerPapWRef = useRef(0)
-  const joinedHighlightsLayerPapHRef = useRef(0)
+  const joinedHighlightsLayer = useRef(new LayerCache())
 
   const riversLayerRef = useRef<OffscreenCanvas | null>(null)
   const riversDirtyRef = useRef(true)
@@ -2162,20 +2159,13 @@ terrainColors, terrainTextureScales, terrainTextureBlendModes, terrainTextureOpa
     {
 
       if (!isExport) {
-        const offW = Math.ceil(pw * dpr * offZoom), offH = Math.ceil(ph * dpr * offZoom)
-        if (joinedHighlightsDirtyRef.current || !joinedHighlightsLayerRef.current ||
-            joinedHighlightsLayerPapWRef.current !== offW || joinedHighlightsLayerPapHRef.current !== offH) {
-          const offscreen = new OffscreenCanvas(offW, offH)
-          const oCtx = offscreen.getContext('2d')!
+        const { ctx: oCtx, rebuilt } = joinedHighlightsLayer.current.prepare(pw, ph, dpr)
+        if (rebuilt) {
           oCtx.scale(dpr * offZoom, dpr * offZoom)
           oCtx.translate(-px, -py)
           _drawHighlights(oCtx, { highlights: highlightsRef.current, highlightedHexes: highlightedHexesRef.current, highlightLines: highlightLinesRef.current, highlightEdgePaths: highlightEdgePathsRef.current, projected, edgeMode, R, project, inMargin })
-          joinedHighlightsLayerRef.current = offscreen
-          joinedHighlightsDirtyRef.current = false
-          joinedHighlightsLayerPapWRef.current = offW
-          joinedHighlightsLayerPapHRef.current = offH
         }
-        ctx.drawImage(joinedHighlightsLayerRef.current, px, py, pw, ph)
+        joinedHighlightsLayer.current.blit(ctx, px, py, pw, ph)
       }
       if (isExport) {
         _drawHighlights(ctx, { highlights: highlightsRef.current, highlightedHexes: highlightedHexesRef.current, highlightLines: highlightLinesRef.current, highlightEdgePaths: highlightEdgePathsRef.current, projected, edgeMode, R, project, inMargin, lineScale })
@@ -3415,7 +3405,7 @@ terrainColors, terrainTextureScales, terrainTextureBlendModes, terrainTextureOpa
   }, [draw])
 
   // Invalidate highlights offscreen layer whenever highlight data changes
-  useEffect(() => { joinedHighlightsDirtyRef.current = true }, [highlights, highlightedHexes, highlightLines, highlightEdgePaths])
+  useEffect(() => { joinedHighlightsLayer.current.markDirty() }, [highlights, highlightedHexes, highlightLines, highlightEdgePaths])
 
   // ResizeObserver — canvas fills the full container.
   // setFrameDims is debounced (150ms) so rapid window resizing doesn't trigger
@@ -3449,7 +3439,7 @@ terrainColors, terrainTextureScales, terrainTextureBlendModes, terrainTextureOpa
     panRef.current = { x: 0, y: 0 }
     terrainLayer.current.markDirty()
     hexBorderLayer.current.markDirty()
-    joinedHighlightsDirtyRef.current = true
+    joinedHighlightsLayer.current.markDirty()
     riversDirtyRef.current = true
     buildingsDirtyRef.current = true
     settlementsDirtyRef.current = true
@@ -5299,7 +5289,7 @@ terrainColors, terrainTextureScales, terrainTextureBlendModes, terrainTextureOpa
         }
       }
       setHighlightEdgePathRef.current(hlId, nextSegments)
-      joinedHighlightsDirtyRef.current = true
+      joinedHighlightsLayer.current.markDirty()
       return exists ? 'remove' : 'add'
     }
   }, [isEdgePaintActive])
