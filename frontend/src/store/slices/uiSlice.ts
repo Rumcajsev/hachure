@@ -373,7 +373,7 @@ export const createUiSlice = (set: Set, get: () => MapStore): UiSlice => ({
   saveProject: () => {
     const s = get()
     const snapshot = {
-      version: 39,
+      version: 40,
       state: {
         step: s.step, paperSize: s.paperSize, orientation: s.orientation,
         pageGrid: s.pageGrid,
@@ -390,9 +390,13 @@ export const createUiSlice = (set: Set, get: () => MapStore): UiSlice => ({
         settlementLabelColor: s.settlementLabelColor,
         settlementLabelSizeScale: s.settlementLabelSizeScale,
         settlementLabelOverrides: s.settlementLabelOverrides,
+        rawRoadWays: s.rawRoadWays, osmHexPaths: s.osmHexPaths,
         roadEdges: s.roadEdges, roadsDisplayMode: s.roadsDisplayMode,
         roadsVisibleTiers: s.roadsVisibleTiers, roadsStatus: s.roadsStatus,
+        rawRailWays: s.rawRailWays, osmRailHexPaths: s.osmRailHexPaths,
         railEdges: s.railEdges, railsFetchTypes: s.railsFetchTypes, railsStatus: s.railsStatus,
+        osmRiverWays: s.osmRiverWays, appliedOsmRiverIndices: s.appliedOsmRiverIndices,
+        riversOsmStatus: s.riversOsmStatus,
         railStyle: s.railStyle, railControlOverrides: s.railControlOverrides,
         railSnapBindings: s.railSnapBindings, railWiggleAmp: s.railWiggleAmp,
         railWiggleFreq: s.railWiggleFreq, railSmoothing: s.railSmoothing,
@@ -416,6 +420,7 @@ export const createUiSlice = (set: Set, get: () => MapStore): UiSlice => ({
         riverSmoothing: s.riverSmoothing, riverWidthScale: s.riverWidthScale,
         riverPathSmoothing: s.riverPathSmoothing,
         showRiverLabels: s.showRiverLabels, riverLabelColor: s.riverLabelColor,
+        heightmapUrl: s.heightmapUrl,
         elevationStatus: s.elevationStatus,
         classificationParams: s.classificationParams,
         mapStyle: s.mapStyle,
@@ -1023,6 +1028,11 @@ if (fromVersion < 64) {
     if (s.terrainBlobSplatSize === undefined) s.terrainBlobSplatSize = 0.3
     if (s.terrainBlobHoleDensity === undefined) s.terrainBlobHoleDensity = 0
     if (s.terrainBlobHoleSize === undefined) s.terrainBlobHoleSize = 0.35
+  }
+  if (fromVersion < 83) {
+    // rawRoadWays, osmHexPaths, rawRailWays, osmRailHexPaths, osmRiverWays,
+    // appliedOsmRiverIndices, riversOsmStatus, heightmapUrl added to persist.
+    // Missing fields default to slice initialiser values — no fixup needed.
   }
   if (fromVersion < 80) {
     const tiers = s.riverTierStyles as Array<Record<string, unknown>> | undefined
