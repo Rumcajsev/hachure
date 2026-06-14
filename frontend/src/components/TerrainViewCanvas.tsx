@@ -27,6 +27,7 @@ import { drawAllBuildings as _drawAllBuildings, type BuildingCmd } from '../lib/
 import { drawAllBuildingsV2 as _drawAllBuildingsV2 } from '../lib/drawBuildingsV2'
 import { drawHexBorders as _drawHexBorders, drawMapBoundary as _drawMapBoundary, drawHexGridMask as _drawHexGridMask, drawExcludedHexOverlay as _drawExcludedHexOverlay } from '../lib/drawHexBorders'
 import { drawTerrain as _drawTerrain } from '../lib/drawTerrain'
+import { LayerCache } from '../lib/LayerCache'
 import { TEXTURE_OPTIONS, TEXTURE_PATHS, DEFAULT_TERRAIN_TEXTURES } from '../lib/terrainTextures'
 import { computeHillshade } from '../lib/drawHillshade'
 import { computeContours } from '../lib/drawContours'
@@ -218,10 +219,7 @@ export const TerrainViewCanvas = forwardRef<TerrainViewCanvasHandle, { surroundC
   const textureCacheRef = useRef<Map<string, HTMLImageElement>>(new Map())
   const patternCacheRef = useRef<WeakMap<HTMLImageElement, CanvasPattern>>(new WeakMap())
   const historicalIconSetsRef = useRef<Record<string, HTMLImageElement[]>>({})
-  const terrainLayerRef = useRef<OffscreenCanvas | null>(null)
-  const terrainDirtyRef = useRef(true)
-  const terrainLayerPapWRef = useRef(0)
-  const terrainLayerPapHRef = useRef(0)
+  const terrainLayer = useRef(new LayerCache())
 
   // Offscreen canvas refs for non-terrain layers
   const hexBorderLayerRef = useRef<OffscreenCanvas | null>(null)
@@ -1769,7 +1767,6 @@ terrainColors, terrainTextureScales, terrainTextureBlendModes, terrainTextureOpa
   const draw = useCallback((exportTarget?: ExportTarget) => {
     const _t0 = performance.now()
     const _dirtySnap = {
-      terrain: terrainDirtyRef.current,
       hexBorder: hexBorderDirtyRef.current,
       rivers: riversDirtyRef.current,
       buildings: buildingsDirtyRef.current,
@@ -1970,24 +1967,11 @@ terrainColors, terrainTextureScales, terrainTextureBlendModes, terrainTextureOpa
     // Skip rebuild while actively painting: blobs are frozen during drag so the terrain
     // visually doesn't change, and rebuilding on every mousemove event (~30ms each) blocks
     // the main thread. The rebuild runs once on mouseup when isPaintingRef goes false.
-    if (!isExport) {
-      const papW = Math.ceil(pw), papH = Math.ceil(ph)
-      const offW = Math.ceil(pw * dpr * offZoom), offH = Math.ceil(ph * dpr * offZoom)
-      if (!isPaintingRef.current && (terrainDirtyRef.current || !terrainLayerRef.current ||
-          terrainLayerPapWRef.current !== offW || terrainLayerPapHRef.current !== offH)) {
-        console.log(`[draw] terrain rebuild triggered  dirty=${terrainDirtyRef.current}`)
+    if (!isExport && !isPaintingRef.current) {
+      const { ctx: oCtx, rebuilt } = terrainLayer.current.prepare(pw, ph, dpr)
+      if (rebuilt) {
+        console.log('[draw] terrain rebuild triggered')
         const _tTR = performance.now()
-        const existingT = terrainLayerRef.current
-        let oCtx: OffscreenCanvasRenderingContext2D
-        if (existingT && existingT.width === offW && existingT.height === offH) {
-          oCtx = existingT.getContext('2d')!
-          oCtx.setTransform(1, 0, 0, 1, 0, 0)
-          oCtx.clearRect(0, 0, offW, offH)
-        } else {
-          const offscreen = new OffscreenCanvas(offW, offH)
-          oCtx = offscreen.getContext('2d')!
-          terrainLayerRef.current = offscreen
-        }
         oCtx.scale(dpr * offZoom, dpr * offZoom)
         oCtx.translate(-px, -py)
         oCtx.save()
@@ -1996,9 +1980,6 @@ terrainColors, terrainTextureScales, terrainTextureBlendModes, terrainTextureOpa
         oCtx.clip()
         _drawTerrain(oCtx, terrainParams)
         oCtx.restore()
-        terrainDirtyRef.current = false
-        terrainLayerPapWRef.current = offW
-        terrainLayerPapHRef.current = offH
         console.log(`[draw] terrain rebuild done in ${(performance.now()-_tTR).toFixed(1)}ms`)
       }
     }
@@ -2010,10 +1991,10 @@ terrainColors, terrainTextureScales, terrainTextureBlendModes, terrainTextureOpa
     ctx.clip()
 
     // Blit terrain layer for screen rendering
-    if (!isExport && terrainLayerRef.current) {
-      ctx.drawImage(terrainLayerRef.current, px, py, pw, ph)
+    if (!isExport && !isPaintingRef.current) {
+      terrainLayer.current.blit(ctx, px, py, pw, ph)
     }
-    if (isExport || !terrainLayerRef.current) {
+    if (isExport || isPaintingRef.current) {
       let exportTerrainBlobs = terrainParams.defaultTerrainBlobs
       let exportWaterBlobs = terrainParams.defaultWaterBlobs
       if (isExport) {
@@ -3072,7 +3053,7 @@ terrainColors, terrainTextureScales, terrainTextureBlendModes, terrainTextureOpa
         const rLiveData = _tRRoads1_afterLiveData.t > 0 ? (_tRRoads1_afterLiveData.t - _tRRoads0).toFixed(1) : '?'
         const rBlit = _tRRoads2_beforeBlit.t > 0 ? (_tRRoads3_afterBlit.t - _tRRoads2_beforeBlit.t).toFixed(1) : '?'
         const rRebuild = _tRRoads2_beforeBlit.t > 0 ? (_tRRoads2_beforeBlit.t - _tRRoads1_afterLiveData.t).toFixed(1) : '?'
-        const actualTerrainSz = terrainLayerRef.current ? `${terrainLayerRef.current.width}×${terrainLayerRef.current.height}` : 'null'
+        const actualTerrainSz = 'LayerCache'
         console.warn(
           `[draw] ${total.toFixed(1)}ms (${perf.fps}fps)  terrain=${terrain.toFixed(1)} rivers=${rivers.toFixed(1)} roads=${roads.toFixed(1)}[bldg=${rBuildings.toFixed(1)} rdlayer=${rRoads.toFixed(1)} bridges=${rBridges.toFixed(1)} handles=${rHandles.toFixed(1)}] settle=${settle.toFixed(1)}` +
           `  dirty=${dirty}  targetCanvas=${offW}×${offH}  terrainLayer=${actualTerrainSz}  zoom=${zoom.toFixed(2)} offZoom=${offZoom.toFixed(2)}` +
@@ -3263,8 +3244,8 @@ terrainColors, terrainTextureScales, terrainTextureBlendModes, terrainTextureOpa
   //   forestTextureVersion, frameDims, draw])
 
   // Mark terrain layer dirty when terrain-affecting data changes
-  useEffect(() => { terrainDirtyRef.current = true }, [defaultTerrainBlobsSplatted, defaultTerrainBlobsMasked, defaultTerrainBlobs, defaultWaterBlobs, defaultElevationBlobs, terrainColors, terrainTextureScales, terrainTextureBlendModes, terrainTextureOpacities, terrainTextureTintColors, terrainTextureTintOpacities, terrainTextureShadeRanges, terrainTextureFile, terrainTextureEnabled, terrainBlobOverrides, terrainTypeBlobStyles, waterOverrides, terrainRenderMode, hexEdgeMode, generatedHexes, realisticCoastline, coastlineDebugRaw, smoothedCoastlineBoundary, rawCoastlineBoundary, beachStrip, beachColor, beachWidth, hillsColor, mountainsColor, reliefShadingOpacity, coastlineDPEpsilon, coastlineChaikinPasses, edgeBlobPainted, edgeBlobOverrides, edgeBlobWidth, mapStyle, historicalIconParams, elevationTypeBlobStyles, terrainBlobOutlineEnabled, terrainBlobOutlineColor, terrainBlobOutlineWidth, terrainBlobEffect, elevationOverridesTerrain])
-  useEffect(() => { terrainDirtyRef.current = true; draw() }, [hillshadeDisabledTerrains, hillshadeDisabledElevClasses, contourDisabledTerrains, contourDisabledElevClasses]) // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { terrainLayer.current.markDirty() }, [defaultTerrainBlobsSplatted, defaultTerrainBlobsMasked, defaultTerrainBlobs, defaultWaterBlobs, defaultElevationBlobs, terrainColors, terrainTextureScales, terrainTextureBlendModes, terrainTextureOpacities, terrainTextureTintColors, terrainTextureTintOpacities, terrainTextureShadeRanges, terrainTextureFile, terrainTextureEnabled, terrainBlobOverrides, terrainTypeBlobStyles, waterOverrides, terrainRenderMode, hexEdgeMode, generatedHexes, realisticCoastline, coastlineDebugRaw, smoothedCoastlineBoundary, rawCoastlineBoundary, beachStrip, beachColor, beachWidth, hillsColor, mountainsColor, reliefShadingOpacity, coastlineDPEpsilon, coastlineChaikinPasses, edgeBlobPainted, edgeBlobOverrides, edgeBlobWidth, mapStyle, historicalIconParams, elevationTypeBlobStyles, terrainBlobOutlineEnabled, terrainBlobOutlineColor, terrainBlobOutlineWidth, terrainBlobEffect, elevationOverridesTerrain])
+  useEffect(() => { terrainLayer.current.markDirty(); draw() }, [hillshadeDisabledTerrains, hillshadeDisabledElevClasses, contourDisabledTerrains, contourDisabledElevClasses]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // Decode heightmap PNG → ImageData when URL changes, then recompute derived canvases
   useEffect(() => {
@@ -3272,7 +3253,7 @@ terrainColors, terrainTextureScales, terrainTextureBlendModes, terrainTextureOpa
       heightmapImgDataRef.current = null
       hillshadeCanvasRef.current = null
       contourCanvasRef.current = null
-      terrainDirtyRef.current = true
+      terrainLayer.current.markDirty()
       draw()
       return
     }
@@ -3304,7 +3285,7 @@ terrainColors, terrainTextureScales, terrainTextureBlendModes, terrainTextureOpa
           }, pw, ph)
         }
       }
-      terrainDirtyRef.current = true
+      terrainLayer.current.markDirty()
       draw()
     }
     img.src = heightmapUrl
@@ -3322,7 +3303,7 @@ terrainColors, terrainTextureScales, terrainTextureBlendModes, terrainTextureOpa
       intensity: hillshadeIntensity,
       mode: hillshadeMode,
     })
-    terrainDirtyRef.current = true
+    terrainLayer.current.markDirty()
     draw()
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [hillshadeEnabled, hillshadeAzimuth, hillshadeAltitude, hillshadeIntensity, hillshadeMode])
@@ -3332,7 +3313,7 @@ terrainColors, terrainTextureScales, terrainTextureBlendModes, terrainTextureOpa
   useEffect(() => {
     if (!contoursEnabled) {
       contourCanvasRef.current = null
-      terrainDirtyRef.current = true
+      terrainLayer.current.markDirty()
       draw()
       return
     }
@@ -3351,7 +3332,7 @@ terrainColors, terrainTextureScales, terrainTextureBlendModes, terrainTextureOpa
         indexWidth: contourLineWidthRef.current * contourIndexWidthMultRef.current,
         opacity: contourOpacityRef.current,
       }, pw, ph)
-      terrainDirtyRef.current = true
+      terrainLayer.current.markDirty()
       draw()
     }, 200)
     return () => clearTimeout(tid)
@@ -3413,7 +3394,7 @@ terrainColors, terrainTextureScales, terrainTextureBlendModes, terrainTextureOpa
     for (const { id } of TEXTURE_OPTIONS) {
       const img = new Image()
       img.src = TEXTURE_PATHS[id] ?? `/textures/${id}.png`
-      img.onload = () => { textureCacheRef.current.set(id, img); terrainDirtyRef.current = true; draw() }
+      img.onload = () => { textureCacheRef.current.set(id, img); terrainLayer.current.markDirty(); draw() }
       img.onerror = () => { /* texture not present — silently skip */ }
     }
   }, [draw])
@@ -3436,7 +3417,7 @@ terrainColors, terrainTextureScales, terrainTextureBlendModes, terrainTextureOpa
           remaining--
           if (remaining === 0) {
             historicalIconSetsRef.current = { ...historicalIconSetsRef.current, [terrain]: loaded }
-            terrainDirtyRef.current = true
+            terrainLayer.current.markDirty()
             draw()
           }
         }
@@ -3444,7 +3425,7 @@ terrainColors, terrainTextureScales, terrainTextureBlendModes, terrainTextureOpa
           remaining--
           if (remaining === 0 && loaded.length > 0) {
             historicalIconSetsRef.current = { ...historicalIconSetsRef.current, [terrain]: loaded }
-            terrainDirtyRef.current = true
+            terrainLayer.current.markDirty()
             draw()
           }
         }
@@ -3485,7 +3466,7 @@ terrainColors, terrainTextureScales, terrainTextureBlendModes, terrainTextureOpa
     const targetZoom = Math.max(0.2, Math.min(6, meta.paper_mm[0] * 96 / (pw * 25.4)))
     zoomRef.current = targetZoom
     panRef.current = { x: 0, y: 0 }
-    terrainDirtyRef.current = true
+    terrainLayer.current.markDirty()
     hexBorderDirtyRef.current = true
     joinedHighlightsDirtyRef.current = true
     riversDirtyRef.current = true
@@ -3532,7 +3513,7 @@ terrainColors, terrainTextureScales, terrainTextureBlendModes, terrainTextureOpa
       // equal the unzoomed paperDims coords (zoom=1 → no transform needed)
       zoomRef.current = 1
       panRef.current = { x: 0, y: 0 }
-      terrainDirtyRef.current = true
+      terrainLayer.current.markDirty()
       draw()
       const { px, py, pw, ph } = getPaper(cssW, cssH)
       setExpandPaperRect({ px, py, pw, ph })
