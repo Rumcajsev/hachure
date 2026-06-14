@@ -1,9 +1,10 @@
-import type { GeneratedHex } from '../store/mapStore'
+import type { ClassificationParams, GeneratedHex } from '../store/mapStore'
 
 export interface DrawElevationDebugParams {
   ctx: CanvasRenderingContext2D
   projected: Array<{ hex: GeneratedHex; verts: [number, number][] }>
   R: number
+  liveParams?: ClassificationParams
 }
 
 const CLASS_BG: Record<string, string> = {
@@ -20,11 +21,26 @@ const CLASS_FILL: Record<string, string> = {
 }
 const NO_DATA_FILL = 'rgba(0,0,0,0.18)'
 
-export function drawElevationClassOverlay({ ctx, projected, R: _R }: DrawElevationDebugParams): void {
+function classifyLive(hex: GeneratedHex, params: ClassificationParams): string | null {
+  if (hex.elevation_manual_override) return hex.elevation_class ?? null
+  if (hex.terrain === 'water' || hex.elevation_range_m == null || hex.elevation_median_m == null) return null
+  const { rangeHillsM, rangeMountainsM, medianHillsM, medianMountainsM } = params
+  let byRange = 'flat'
+  if (hex.elevation_range_m >= rangeMountainsM) byRange = 'mountains'
+  else if (hex.elevation_range_m >= rangeHillsM) byRange = 'hills'
+  let byMedian = 'flat'
+  if (hex.elevation_median_m >= medianMountainsM) byMedian = 'mountains'
+  else if (hex.elevation_median_m >= medianHillsM) byMedian = 'hills'
+  const RANK: Record<string, number> = { flat: 0, hills: 1, mountains: 2 }
+  return (RANK[byRange] ?? 0) >= (RANK[byMedian] ?? 0) ? byRange : byMedian
+}
+
+export function drawElevationClassOverlay({ ctx, projected, R: _R, liveParams }: DrawElevationDebugParams): void {
   ctx.save()
   for (const { hex, verts } of projected) {
-    const fill = hex.elevation_class
-      ? (CLASS_FILL[hex.elevation_class] ?? NO_DATA_FILL)
+    const cls = liveParams ? classifyLive(hex, liveParams) : (hex.elevation_class ?? null)
+    const fill = cls
+      ? (CLASS_FILL[cls] ?? NO_DATA_FILL)
       : hex.elevation_avg_m != null ? CLASS_FILL.flat : NO_DATA_FILL
     ctx.fillStyle = fill
     ctx.beginPath()

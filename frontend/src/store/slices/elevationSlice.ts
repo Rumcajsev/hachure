@@ -2,6 +2,7 @@ import type { MapStore, GeneratedHex, GenerateProgress, ClassificationParams, Bl
 import { DEFAULT_CLASSIFICATION_PARAMS } from '../mapStore'
 import { classifyElevation as _classify } from '../../lib/elevationClassify'
 
+
 export type HeightmapMeta = {
   minElev: number
   maxElev: number
@@ -183,8 +184,7 @@ export const createElevationSlice = (set: Set, get: () => MapStore): ElevationSl
 
   setClassificationParam: (key, v) => {
     const next = { ...get().classificationParams, [key]: v }
-    const updated = _classify(get().generatedHexes, next)
-    set({ classificationParams: next, generatedHexes: updated })
+    set({ classificationParams: next, generatedHexes: _classify(get().generatedHexes, next) })
   },
 
   classifyElevation: () => {

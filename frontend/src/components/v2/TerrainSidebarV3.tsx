@@ -9,6 +9,7 @@ import { PALETTE_TERRAIN_GROUPS } from '../../palettes'
 import { AddTerrainFlyout } from '../AddTerrainFlyout'
 import { useTheme } from '../../context/ThemeContext'
 import { shouldSuppressShortcut } from '../../lib/keyboard'
+import { liveClassParamsRef, requestDraw } from '../../lib/liveClassParamsRef'
 import {
   BrushRow, ElevBrushRow, ToggleRow, ToggleSwitch, DashedAddBtn, MiniSlider, BigColorSwatch, tintBg,
   STRIP_W, FLYOUT_W, StripShell, FlyoutShell, V2Divider, TriggerRow, TGap,
@@ -280,7 +281,32 @@ function ElevationFlyout({ onClose }: { onClose: () => void }) {
     setShowElevationClassOverlay,
   } = useMapStore()
 
-  const showOverlay = () => setShowElevationClassOverlay(true)
+  // Local state for sliders — updated live during drag, committed to store on mouseup
+  const [localParams, setLocalParams] = useState(classificationParams)
+  const localParamsRef = useRef(localParams)
+  useEffect(() => {
+    setLocalParams(classificationParams)
+    localParamsRef.current = classificationParams
+  }, [classificationParams])
+
+  const handleParamChange = (key: keyof typeof classificationParams, v: number) => {
+    const next = { ...localParamsRef.current, [key]: v }
+    localParamsRef.current = next
+    setLocalParams(next)
+    liveClassParamsRef.current = next
+    requestDraw.fn?.()
+  }
+
+  const commitParam = (key: keyof typeof classificationParams) => {
+    setClassificationParam(key, localParamsRef.current[key])
+    liveClassParamsRef.current = null
+    setShowElevationClassOverlay(false)
+  }
+
+  const showOverlay = () => {
+    liveClassParamsRef.current = localParamsRef.current
+    setShowElevationClassOverlay(true)
+  }
   const hideOverlay = () => setShowElevationClassOverlay(false)
 
   const hasData = generatedHexes.some(h => h.elevation_avg_m != null)
@@ -335,10 +361,10 @@ function ElevationFlyout({ onClose }: { onClose: () => void }) {
             </div>
             <ToggleSwitch enabled={elevationImportEnabled} onChange={setElevationImportEnabled} />
           </div>
-          <MiniSlider label="Hills Δ ≥" display={`${classificationParams.rangeHillsM}m`} value={classificationParams.rangeHillsM} min={10} max={500} step={10} onChange={v => setClassificationParam('rangeHillsM', v)} accentColor='#9a8a5a' onDragStart={showOverlay} onDragEnd={hideOverlay} />
-          <MiniSlider label="Hills alt ≥" display={`${classificationParams.medianHillsM}m`} value={classificationParams.medianHillsM} min={0} max={2000} step={50} onChange={v => setClassificationParam('medianHillsM', v)} accentColor='#9a8a5a' onDragStart={showOverlay} onDragEnd={hideOverlay} />
-          <MiniSlider label="Mtns Δ ≥" display={`${classificationParams.rangeMountainsM}m`} value={classificationParams.rangeMountainsM} min={50} max={1000} step={25} onChange={v => setClassificationParam('rangeMountainsM', v)} accentColor='#7a6a5a' onDragStart={showOverlay} onDragEnd={hideOverlay} />
-          <MiniSlider label="Mtns alt ≥" display={`${classificationParams.medianMountainsM}m`} value={classificationParams.medianMountainsM} min={100} max={4000} step={50} onChange={v => setClassificationParam('medianMountainsM', v)} accentColor='#7a6a5a' onDragStart={showOverlay} onDragEnd={hideOverlay} />
+          <MiniSlider label="Hills Δ ≥" display={`${localParams.rangeHillsM}m`} value={localParams.rangeHillsM} min={10} max={500} step={10} onChange={v => handleParamChange('rangeHillsM', v)} accentColor='#9a8a5a' onDragStart={showOverlay} onDragEnd={() => commitParam('rangeHillsM')} />
+          <MiniSlider label="Hills alt ≥" display={`${localParams.medianHillsM}m`} value={localParams.medianHillsM} min={0} max={2000} step={50} onChange={v => handleParamChange('medianHillsM', v)} accentColor='#9a8a5a' onDragStart={showOverlay} onDragEnd={() => commitParam('medianHillsM')} />
+          <MiniSlider label="Mtns Δ ≥" display={`${localParams.rangeMountainsM}m`} value={localParams.rangeMountainsM} min={50} max={1000} step={25} onChange={v => handleParamChange('rangeMountainsM', v)} accentColor='#7a6a5a' onDragStart={showOverlay} onDragEnd={() => commitParam('rangeMountainsM')} />
+          <MiniSlider label="Mtns alt ≥" display={`${localParams.medianMountainsM}m`} value={localParams.medianMountainsM} min={100} max={4000} step={50} onChange={v => handleParamChange('medianMountainsM', v)} accentColor='#7a6a5a' onDragStart={showOverlay} onDragEnd={() => commitParam('medianMountainsM')} />
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 4, padding: '6px 12px 2px' }}>
             {[
               { label: 'Flat',  count: flatCount,      color: '#5a7a5a' },
