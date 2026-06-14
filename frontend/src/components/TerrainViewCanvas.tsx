@@ -229,10 +229,7 @@ export const TerrainViewCanvas = forwardRef<TerrainViewCanvasHandle, { surroundC
   const riversLayer = useRef(new LayerCache())
   const riversDirtyRef = useRef(true)  // gates chain-data rebuild; also drives riversLayer.markDirty()
 
-  const buildingsLayerRef = useRef<OffscreenCanvas | null>(null)
-  const buildingsDirtyRef = useRef(true)
-  const buildingsLayerPapWRef = useRef(0)
-  const buildingsLayerPapHRef = useRef(0)
+  const buildingsLayer = useRef(new LayerCache())
 
   // Cached pixel-space projections of road/rail chains.
   // project() is deterministic for a given viewport (pw/ph/px/py) — no need to re-project
@@ -1760,7 +1757,6 @@ terrainColors, terrainTextureScales, terrainTextureBlendModes, terrainTextureOpa
     const _t0 = performance.now()
     const _dirtySnap = {
       rivers: riversDirtyRef.current,
-      buildings: buildingsDirtyRef.current,
       settlements: settlementsDirtyRef.current,
       bridges: bridgesDirtyRef.current,
     }
@@ -2365,15 +2361,11 @@ terrainColors, terrainTextureScales, terrainTextureBlendModes, terrainTextureOpa
       if (!isExport) {
         const hasBuildings = urbanHexesRef.current.length > 0
         if (!hasBuildings) {
-          buildingsLayerRef.current = null
-          buildingsDirtyRef.current = false
+          buildingsLayer.current.dispose()
         } else {
-          const offW = Math.ceil(pw * dpr * offZoom), offH = Math.ceil(ph * dpr * offZoom)
-          if (buildingsDirtyRef.current || !buildingsLayerRef.current ||
-              buildingsLayerPapWRef.current !== offW || buildingsLayerPapHRef.current !== offH) {
+          const { ctx: oCtx, rebuilt } = buildingsLayer.current.prepare(pw, ph, dpr)
+          if (rebuilt) {
             hexBuildingGeoCacheRef.current.clear()
-            const offscreen = new OffscreenCanvas(offW, offH)
-            const oCtx = offscreen.getContext('2d')!
             oCtx.scale(dpr * offZoom, dpr * offZoom)
             oCtx.translate(-px, -py)
             oCtx.save()
@@ -2383,12 +2375,8 @@ terrainColors, terrainTextureScales, terrainTextureBlendModes, terrainTextureOpa
             _drawAllBuildings(oCtx, { hexes: hexesRef.current, urbanHexes: urbanHexesRef.current, urbanStyle: urbanStyleRef.current, settlements: settlementsRef.current, settlementTierStyles: settlementTierStylesRef.current, roadChains, roadTierStyles: roadTierStylesRef.current, hexBuildingGeoCache: hexBuildingGeoCacheRef.current, project })
             _drawAllBuildingsV2(oCtx, { hexes: hexesRef.current, urbanHexes: urbanHexesRef.current, urbanStyle: urbanStyleRef.current, settlements: settlementsRef.current, settlementTierStyles: settlementTierStylesRef.current, roadChains, roadTierStyles: roadTierStylesRef.current, project })
             oCtx.restore()
-            buildingsLayerRef.current = offscreen
-            buildingsDirtyRef.current = false
-            buildingsLayerPapWRef.current = offW
-            buildingsLayerPapHRef.current = offH
           }
-          ctx.drawImage(buildingsLayerRef.current, px, py, pw, ph)
+          buildingsLayer.current.blit(ctx, px, py, pw, ph)
         }
       }
       if (isExport) {
@@ -3306,7 +3294,7 @@ terrainColors, terrainTextureScales, terrainTextureBlendModes, terrainTextureOpa
   // Mark other layer caches dirty when their relevant data changes
   useEffect(() => { hexBorderLayer.current.markDirty() }, [hexBorderMode, hexEdgeMode, hexBorderOpacity, hexBorderColor, hexBorderDifference, generatedHexes, excludedHexKeys, disabledHexKeys, autoDisabledOceanHexKeys])
   useEffect(() => { riversDirtyRef.current = true }, [riverEdges, riverTierStyles, riverWidthScale, riverCurveSteps, riverWobble, riverDetail, riverWiggleFreq, riverWiggleAmp, riverSmoothing, riverPathSmoothing, showRiverLabels, riverLabelColor, riverSegmentProps, riverSelectMode, selectedSegmentKeys, riverStyle, riverHopProps, selectedHopKey, labelOffsets, generatedHexes, terrainColors])
-  useEffect(() => { buildingsDirtyRef.current = true }, [urbanHexes, urbanStyle, settlements, settlementTierStyles, roadBaseData])
+  useEffect(() => { buildingsLayer.current.markDirty() }, [urbanHexes, urbanStyle, settlements, settlementTierStyles, roadBaseData])
   useEffect(() => { bridgesDirtyRef.current = true }, [bridgesEnabled, smoothedRoadData, smoothedRailData, riverEdges, generatedHexes])
   useEffect(() => { settlementsDirtyRef.current = true }, [settlements, settlementTierStyles, labelPresetId, labelOverrides, smoothedRoadData, smoothedRailData, labelOffsets, defaultTerrainBlobs, terrainBlobOverrides, riverEdges, highlights, highlightedHexes, mapBgColor])
   // When entering label-drag mode, rebuild label layers so the bbox cache is populated for hit-testing
@@ -3434,7 +3422,7 @@ terrainColors, terrainTextureScales, terrainTextureBlendModes, terrainTextureOpa
     hexBorderLayer.current.markDirty()
     joinedHighlightsLayer.current.markDirty()
     riversDirtyRef.current = true
-    buildingsDirtyRef.current = true
+    buildingsLayer.current.markDirty()
     settlementsDirtyRef.current = true
     draw()
   }, [generatedMetadata, draw])
