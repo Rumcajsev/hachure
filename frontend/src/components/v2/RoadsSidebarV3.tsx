@@ -5,7 +5,8 @@ import {
 } from '../../store/mapStore'
 import type { RoadTierStyle, StrokeDash } from '../../store/mapStore'
 import { DEFAULT_STROKE_EFFECT } from '../../store/mapStore'
-import { buildRoadChains, buildRailChains } from '../../lib/roadChains'
+import { buildRailChains } from '../../lib/roadChains'
+import { buildRoadChainsV2 } from '../../lib/roadChainsV2'
 import { drawRoadsAndRails } from '../../lib/drawRoadsRails'
 import { PALETTE_RAIL_LIGHT, PALETTE_RAIL_DARK } from '../../palettes'
 import { computePaper } from '../../lib/projection'
@@ -129,7 +130,7 @@ function HexPreview({ mode, tier = 0 }: { mode: 'road' | 'rail'; tier?: 0 | 1 | 
       const wiggleFreq    = geom?.wiggleFreq    ?? roadWiggleFreq
       const smoothing     = geom?.smoothing     ?? roadSmoothing
       const pathSmoothing = geom?.pathSmoothing ?? roadPathSmoothing
-      const { chains } = buildRoadChains(edges, hexIdx, {}, wiggleAmp, wiggleFreq, smoothing, pathSmoothing)
+      const { chains } = buildRoadChainsV2(edges, hexIdx, {}, wiggleAmp, wiggleFreq, smoothing, pathSmoothing)
 
       const tierStyles = DEFAULT_ROAD_TIER_STYLES.map(
         (def, idx) => idx === tier
