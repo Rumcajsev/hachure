@@ -223,7 +223,6 @@ export const TerrainViewCanvas = forwardRef<TerrainViewCanvasHandle, { surroundC
   const terrainDirtyRef = useRef(true)
   const terrainLayerPapWRef = useRef(0)
   const terrainLayerPapHRef = useRef(0)
-  const terrainZoomSettleRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   // Offscreen canvas refs for non-terrain layers
   const hexBorderLayerRef = useRef<OffscreenCanvas | null>(null)
@@ -3551,24 +3550,10 @@ terrainColors, terrainTextureScales, terrainTextureBlendModes, terrainTextureOpa
       }
       if (rafRef.current === null) rafRef.current = requestAnimationFrame(() => { rafRef.current = null; draw() })
       if (mapOverlayRef.current) snapOverlay()
-      // Rebuild all offscreen layers at settled zoom for crisp quality
-      if (terrainZoomSettleRef.current !== null) clearTimeout(terrainZoomSettleRef.current)
-      terrainZoomSettleRef.current = setTimeout(() => {
-        terrainZoomSettleRef.current = null
-        terrainDirtyRef.current = true
-        hexBorderDirtyRef.current = true
-        joinedHighlightsDirtyRef.current = true
-        riversDirtyRef.current = true
-        buildingsDirtyRef.current = true
-        roadsDirtyRef.current = true
-        settlementsDirtyRef.current = true
-        draw()
-      }, 150)
     }
     el.addEventListener('wheel', onWheel, { passive: false })
     return () => {
       el.removeEventListener('wheel', onWheel)
-      if (terrainZoomSettleRef.current !== null) clearTimeout(terrainZoomSettleRef.current)
     }
   }, [draw, snapOverlay])
 
