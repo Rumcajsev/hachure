@@ -251,12 +251,25 @@ export const TerrainViewCanvas = forwardRef<TerrainViewCanvasHandle, { surroundC
   const roadsLayerPapWRef = useRef(0)
   const roadsLayerPapHRef = useRef(0)
 
+  // Cached pixel-space projections of road/rail chains.
+  // project() is deterministic for a given viewport (pw/ph/px/py) — no need to re-project
+  // on every frame. Invalidated when chain data or paper dims change.
+  const roadProjectionCacheRef = useRef<{
+    roadData: unknown; railData: unknown
+    pw: number; ph: number; px: number; py: number
+    roadChainsPx: { tier: 0|1|2; chain: [number,number][]; bbox: { minX: number; maxX: number; minY: number; maxY: number } }[]
+    junctionsPx:  { pos: [number,number]; tier: 0|1|2 }[]
+    railChainsPx: { chain: [number,number][]; baseChain?: [number,number][]; id?: string; isShared: boolean; isLoop: boolean; hopKeys?: string[]; hopRanges?: [number,number][]; bbox: { minX: number; maxX: number; minY: number; maxY: number } }[]
+  } | null>(null)
+
   const settlementsLayerRef = useRef<OffscreenCanvas | null>(null)
   const settlementsDirtyRef = useRef(true)
   const settlementsLayerPapWRef = useRef(0)
   const settlementsLayerPapHRef = useRef(0)
   const [frameDims, setFrameDims] = useState({ w: 0, h: 0 })
   const frameDimsRef = useRef({ w: 0, h: 0 })
+  const basePaperRef = useRef<{pw: number, ph: number} | null>(null)
+  const lastFrozenMetaRef = useRef<unknown>(null)
 
   const rafRef = useRef<number | null>(null)
   const drawPerfRef = useRef({ frames: 0, lastSec: 0, fps: 0 })
@@ -1123,12 +1136,28 @@ terrainColors, terrainTextureScales, terrainTextureBlendModes, terrainTextureOpa
   const smoothedRoadDataV2Ref = useRef(smoothedRoadDataV2)
   smoothedRoadDataV2Ref.current = smoothedRoadDataV2
 
+  // Returns paper dims with pw/ph frozen at map-generation time so window resize
+  // only recenters the paper (changes px/py) without rescaling it.
+  const getPaper = useCallback((cssW: number, cssH: number) => {
+    const meta = metaRef.current
+    if (!meta || cssW === 0) return { pw: 0, ph: 0, px: 0, py: 0 }
+    if (!basePaperRef.current || lastFrozenMetaRef.current !== meta) {
+      const fitted = computePaper(cssW, cssH, meta)
+      basePaperRef.current = { pw: fitted.pw, ph: fitted.ph }
+      lastFrozenMetaRef.current = meta
+    }
+    const { pw, ph } = basePaperRef.current
+    return { pw, ph, px: (cssW - pw) / 2, py: (cssH - ph) / 2 }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
   // Memoize paper dims, projected hex coords, and default blob geometry outside draw().
   // These are all stable across zoom/pan (which is handled by canvas transform, not coordinate recalculation),
   // so caching them here means draw() skips the expensive recomputation on every scroll/zoom frame.
   const paperDims = useMemo(() => {
     if (!generatedMetadata || frameDims.w === 0) return null
-    return computePaper(frameDims.w, frameDims.h, generatedMetadata)
+    return getPaper(frameDims.w, frameDims.h)
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [generatedMetadata, frameDims])
   const paperDimsRef = useRef(paperDims)
   paperDimsRef.current = paperDims
@@ -1687,7 +1716,7 @@ terrainColors, terrainTextureScales, terrainTextureBlendModes, terrainTextureOpa
     const meta = metaRef.current
     if (!meta) return
     const { w: cssW, h: cssH } = frameDimsRef.current
-    const { pw, ph } = computePaper(cssW, cssH, meta)
+    const { pw, ph } = getPaper(cssW, cssH)
     const canvasZoom = zoomRef.current
     const pan = panRef.current
 
@@ -1808,9 +1837,11 @@ terrainColors, terrainTextureScales, terrainTextureBlendModes, terrainTextureOpa
     const isExport = !!exportTarget
     const dpr = isExport ? 1 : (window.devicePixelRatio || 1)
     const zoom = isExport ? 1 : zoomRef.current
-    // Offscreen canvases capped at 2× — higher values cause CPU blit cost to dominate
-    // (OffscreenCanvas drawImage is software-rendered). Canvas transform handles the rest.
-    const offZoom = Math.min(zoom, 2)
+    // Offscreen canvases at dpr resolution only — OffscreenCanvas drawImage is CPU-rendered
+    // (not GPU-accelerated), so blit cost scales linearly with pixel count. cap=2 still pushes
+    // ~170MB/frame across 5 layers at 10.5MP each. cap=1 drops this to ~40MB/frame (~20ms).
+    // Canvas transform handles zoom; layers look the same at zoom=1, slightly softer above.
+    const offZoom = Math.min(zoom, 1)
     const pan = isExport ? { x: 0, y: 0 } : panRef.current
     const borderMode = hexBorderModeRef.current
     const edgeMode = hexEdgeModeRef.current
@@ -1822,7 +1853,7 @@ terrainColors, terrainTextureScales, terrainTextureBlendModes, terrainTextureOpa
       : excludedSet
     const { pw, ph, px, py } = exportTarget
       ? { pw: exportTarget.pw, ph: exportTarget.ph, px: 0, py: 0 }
-      : computePaper(frameCssW, frameCssH, meta)
+      : getPaper(frameCssW, frameCssH)
     if (!isExport) screenPwRef.current = pw
     const lineScale = isExport && screenPwRef.current > 0 ? pw / screenPwRef.current : 1
     const cssW = exportTarget ? pw : frameCssW
@@ -2336,6 +2367,9 @@ terrainColors, terrainTextureScales, terrainTextureBlendModes, terrainTextureOpa
 
     // Compute drag state upfront — needed for both river and road live previews below
     const isDraggingCP = Object.keys(dragLiveOverrideRef.current).length > 0
+    if (isDraggingCP && process.env.NODE_ENV === 'development') console.warn('[draw] isDraggingCP=true keys=', Object.keys(dragLiveOverrideRef.current).slice(0,3).join(','))
+    const _isDraggingDenseForDiag = !!(draggingDensePtRef.current && dragLiveDensePosRef.current)
+    if (_isDraggingDenseForDiag && process.env.NODE_ENV === 'development') console.warn('[draw] isDraggingDense=true kind=', draggingDensePtRef.current?.kind)
     const isDraggingRailCP = isDraggingCP && draggingCpKindRef.current === 'rail'
     const liveDenseDrag = draggingDensePtRef.current
     const liveDensePos = dragLiveDensePosRef.current
@@ -2465,6 +2499,7 @@ terrainColors, terrainTextureScales, terrainTextureBlendModes, terrainTextureOpa
     }
 
     const _tRRoads0 = performance.now()
+    const _tRRoads1_afterLiveData = { t: 0 }, _tRRoads2_beforeBlit = { t: 0 }, _tRRoads3_afterBlit = { t: 0 }
     // During a CP drag, compute road geometry with the live position directly — no store update,
     // no React re-render cycle, no useMemo. On drop, the store is updated once for the full rebuild.
     const liveTierGeomMap = (() => {
@@ -2533,61 +2568,82 @@ terrainColors, terrainTextureScales, terrainTextureBlendModes, terrainTextureOpa
         )
       : smoothedRailDataRef.current
 
+    _tRRoads1_afterLiveData.t = performance.now()
+
     // Road chains + Rail chains — offscreen cached together
     {
       const { chains: roadChains, junctions } = liveRoadData
       const tierStyles = roadTierStylesRef.current
 
       if (!isExport) {
-        if (isDraggingCP || isDraggingDense) {
-          // Bypass offscreen cache during drag — draw directly so the road bends live
+        const hasRoads = roadEdgesRef.current.length > 0 || railEdgesRef.current.length > 0
+        if (hasRoads) {
+          // project() is deterministic for a given viewport — cache projected chain coords.
+          // Re-project only when the source chain data or paper dims change.
+          const rpc = roadProjectionCacheRef.current
+          let roadChainsPx: { tier: 0|1|2; chain: [number,number][]; bbox: { minX: number; maxX: number; minY: number; maxY: number } }[]
+          let junctionsPx:  { pos: [number,number]; tier: 0|1|2 }[]
+          let railChainsPx: { chain: [number,number][]; baseChain?: [number,number][]; id?: string; isShared: boolean; isLoop: boolean; hopKeys?: string[]; hopRanges?: [number,number][]; bbox: { minX: number; maxX: number; minY: number; maxY: number } }[]
+
+          if (rpc && rpc.roadData === liveRoadData && rpc.railData === liveRailData &&
+              rpc.pw === pw && rpc.ph === ph && rpc.px === px && rpc.py === py) {
+            roadChainsPx = rpc.roadChainsPx
+            junctionsPx  = rpc.junctionsPx
+            railChainsPx = rpc.railChainsPx
+          } else {
+            if (process.env.NODE_ENV === 'development') {
+              const reason = !rpc ? 'no-cache'
+                : rpc.roadData !== liveRoadData ? `road-identity(isDragCP=${isDraggingCP},isDragDense=${isDraggingDense})`
+                : rpc.railData !== liveRailData ? `rail-identity(isDragRailCP=${isDraggingRailCP})`
+                : `paper(pw ${rpc.pw.toFixed(1)}→${pw.toFixed(1)})`
+              console.warn('[roads-proj] miss reason=', reason, 'chains=', roadChains.length, 'pts=', roadChains.reduce((s,c)=>s+c.chain.length,0))
+            }
+            const chainBBox = (pts: [number,number][]) => {
+              let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity
+              for (const [x, y] of pts) { if (x < minX) minX = x; if (x > maxX) maxX = x; if (y < minY) minY = y; if (y > maxY) maxY = y }
+              return { minX, maxX, minY, maxY }
+            }
+            roadChainsPx = roadChains.map(c => { const chain = c.chain.map(([lon, lat]) => project(lon, lat)) as [number,number][]; return { tier: c.tier, chain, bbox: chainBBox(chain) } })
+            junctionsPx  = junctions.map(j => ({ tier: j.tier, pos: project(j.pos[0], j.pos[1]) as [number,number] }))
+            railChainsPx = liveRailData.chains.map(c => {
+              const chain = c.chain.map(([lon, lat]) => project(lon, lat)) as [number,number][]
+              const baseChain = c.baseChain?.map(([lon, lat]) => project(lon, lat)) as [number,number][] | undefined
+              return { ...c, chain, baseChain, bbox: chainBBox(chain) }
+            })
+            roadProjectionCacheRef.current = { roadData: liveRoadData, railData: liveRailData, pw, ph, px, py, roadChainsPx, junctionsPx, railChainsPx }
+          }
+
+          // Visible CSS rect for viewport culling — chains outside are skipped.
+          // A 50px margin covers max stroke widths and glow spread.
+          const vpad = 50
+          const roadsViewport = {
+            minX: cssW / 2 - (cssW / 2 + pan.x) / zoom - vpad,
+            maxX: cssW / 2 + (cssW / 2 - pan.x) / zoom + vpad,
+            minY: cssH / 2 - (cssH / 2 + pan.y) / zoom - vpad,
+            maxY: cssH / 2 + (cssH / 2 - pan.y) / zoom + vpad,
+          }
           ctx.save()
           ctx.beginPath()
           ctx.rect(px, py, pw, ph)
           ctx.clip()
-          _drawRoadsAndRails(ctx, { roadChains, junctions, railChains: liveRailData.chains, tierStyles, railStyle: railStyleRef.current, project })
+          _drawRoadsAndRails(ctx, { roadChains: roadChainsPx, junctions: junctionsPx, railChains: railChainsPx, tierStyles, railStyle: railStyleRef.current, viewport: roadsViewport })
           ctx.restore()
-        } else {
-          const hasRoads = roadEdgesRef.current.length > 0 || railEdgesRef.current.length > 0
-          if (!hasRoads) {
-            roadsLayerRef.current = null
-            roadsDirtyRef.current = false
-          } else {
-            const papW = Math.ceil(pw), papH = Math.ceil(ph)
-            if (roadsDirtyRef.current || !roadsLayerRef.current ||
-                roadsLayerPapWRef.current !== papW || roadsLayerPapHRef.current !== papH) {
-              const offW = Math.ceil(pw * dpr * offZoom), offH = Math.ceil(ph * dpr * offZoom)
-              const existingR = roadsLayerRef.current
-              let oCtxR: OffscreenCanvasRenderingContext2D
-              if (existingR && existingR.width === offW && existingR.height === offH) {
-                oCtxR = existingR.getContext('2d')!
-                oCtxR.setTransform(1, 0, 0, 1, 0, 0)
-                oCtxR.clearRect(0, 0, offW, offH)
-              } else {
-                const offscreen = new OffscreenCanvas(offW, offH)
-                oCtxR = offscreen.getContext('2d')!
-                roadsLayerRef.current = offscreen
-              }
-              oCtxR.scale(dpr * offZoom, dpr * offZoom)
-              oCtxR.translate(-px, -py)
-              oCtxR.save()
-              oCtxR.beginPath()
-              oCtxR.rect(px, py, pw, ph)
-              oCtxR.clip()
-              _drawRoadsAndRails(oCtxR, { roadChains, junctions, railChains: liveRailData.chains, tierStyles, railStyle: railStyleRef.current, project })
-              oCtxR.restore()
-              roadsDirtyRef.current = false
-              roadsLayerPapWRef.current = papW
-              roadsLayerPapHRef.current = papH
-            }
-            ctx.drawImage(roadsLayerRef.current!, px, py, pw, ph)
-          }
         }
+        roadsDirtyRef.current = false
+        _tRRoads2_beforeBlit.t = performance.now()
+        _tRRoads3_afterBlit.t = _tRRoads2_beforeBlit.t
       }
       if (isExport) {
         const scaledTierStyles = tierStyles.map(s => ({ ...s, outerW: s.outerW * lineScale })) as [RoadTierStyle, RoadTierStyle, RoadTierStyle]
         const scaledRailStyle = { ...railStyleRef.current, thickness: railStyleRef.current.thickness * lineScale }
-        _drawRoadsAndRails(ctx, { roadChains, junctions, railChains: liveRailData.chains, tierStyles: scaledTierStyles, railStyle: scaledRailStyle, project, mapStyle: mapStyleRef.current })
+        const exportRoadChainsPx = roadChains.map(c => ({ tier: c.tier, chain: c.chain.map(([lon, lat]) => project(lon, lat)) as [number,number][] }))
+        const exportJunctionsPx  = junctions.map(j => ({ tier: j.tier, pos: project(j.pos[0], j.pos[1]) as [number,number] }))
+        const exportRailChainsPx = liveRailData.chains.map(c => ({
+          ...c,
+          chain:     c.chain.map(([lon, lat]) => project(lon, lat)) as [number,number][],
+          baseChain: c.baseChain?.map(([lon, lat]) => project(lon, lat)) as [number,number][] | undefined,
+        }))
+        _drawRoadsAndRails(ctx, { roadChains: exportRoadChainsPx, junctions: exportJunctionsPx, railChains: exportRailChainsPx, tierStyles: scaledTierStyles, railStyle: scaledRailStyle })
       }
 
       // Debug: raw OSM way overlay (screen-only, never exported)
@@ -3052,11 +3108,15 @@ terrainColors, terrainTextureScales, terrainTextureBlendModes, terrainTextureOpa
         const rRoads = _tRBridges0 - _tRRoads0
         const rBridges = _tRHandles0 - _tRBridges0
         const rHandles = _tSettlements0 - _tRHandles0
+        const rLiveData = _tRRoads1_afterLiveData.t > 0 ? (_tRRoads1_afterLiveData.t - _tRRoads0).toFixed(1) : '?'
+        const rBlit = _tRRoads2_beforeBlit.t > 0 ? (_tRRoads3_afterBlit.t - _tRRoads2_beforeBlit.t).toFixed(1) : '?'
+        const rRebuild = _tRRoads2_beforeBlit.t > 0 ? (_tRRoads2_beforeBlit.t - _tRRoads1_afterLiveData.t).toFixed(1) : '?'
         const actualTerrainSz = terrainLayerRef.current ? `${terrainLayerRef.current.width}×${terrainLayerRef.current.height}` : 'null'
         const actualRoadsSz   = roadsLayerRef.current   ? `${roadsLayerRef.current.width}×${roadsLayerRef.current.height}`   : 'null'
         console.warn(
           `[draw] ${total.toFixed(1)}ms (${perf.fps}fps)  terrain=${terrain.toFixed(1)} rivers=${rivers.toFixed(1)} roads=${roads.toFixed(1)}[bldg=${rBuildings.toFixed(1)} rdlayer=${rRoads.toFixed(1)} bridges=${rBridges.toFixed(1)} handles=${rHandles.toFixed(1)}] settle=${settle.toFixed(1)}` +
-          `  dirty=${dirty}  targetCanvas=${offW}×${offH}  terrainLayer=${actualTerrainSz}  roadsLayer=${actualRoadsSz}  zoom=${zoom.toFixed(2)} offZoom=${offZoom.toFixed(2)}`
+          `  dirty=${dirty}  targetCanvas=${offW}×${offH}  terrainLayer=${actualTerrainSz}  roadsLayer=${actualRoadsSz}  zoom=${zoom.toFixed(2)} offZoom=${offZoom.toFixed(2)}` +
+          `  roads_breakdown: liveData=${rLiveData} rebuild=${rRebuild} blit=${rBlit}`
         )
       }
     }
@@ -3087,7 +3147,7 @@ terrainColors, terrainTextureScales, terrainTextureBlendModes, terrainTextureOpa
 
     const zoom = zoomRef.current
     const pan = panRef.current
-    const { pw, ph, px, py } = computePaper(frameCssW, frameCssH, meta)
+    const { pw, ph, px, py } = getPaper(frameCssW, frameCssH)
     const mmToPx = pw / meta.paper_mm[0]
     const mgPx = meta.margin_mm * mmToPx
     const marginL = px + mgPx, marginR = px + pw - mgPx
@@ -3271,7 +3331,7 @@ terrainColors, terrainTextureScales, terrainTextureBlendModes, terrainTextureOpa
           mode: hillshadeModeRef.current,
         })
         if (contoursEnabledRef.current) {
-          const { pw, ph } = computePaper(frameDimsRef.current.w, frameDimsRef.current.h, metaRef.current!)
+          const { pw, ph } = getPaper(frameDimsRef.current.w, frameDimsRef.current.h)
           contourCanvasRef.current = computeContours(heightmapImgDataRef.current, meta, {
             interval: contourIntervalRef.current,
             baseElevation: contourBaseElevationRef.current,
@@ -3320,7 +3380,7 @@ terrainColors, terrainTextureScales, terrainTextureBlendModes, terrainTextureOpa
       const imgData = heightmapImgDataRef.current
       const meta = heightmapMetaRef.current
       if (!imgData || !meta || !metaRef.current) return
-      const { pw, ph } = computePaper(frameDimsRef.current.w, frameDimsRef.current.h, metaRef.current)
+      const { pw, ph } = getPaper(frameDimsRef.current.w, frameDimsRef.current.h)
       contourCanvasRef.current = computeContours(imgData, meta, {
         interval: contourIntervalRef.current,
         baseElevation: contourBaseElevationRef.current,
@@ -3455,7 +3515,7 @@ terrainColors, terrainTextureScales, terrainTextureBlendModes, terrainTextureOpa
     const meta = generatedMetadata
     if (!meta) return
     const { w: cssW, h: cssH } = frameDimsRef.current
-    const { pw } = computePaper(cssW, cssH, meta)
+    const { pw } = getPaper(cssW, cssH)
     const targetZoom = Math.max(0.2, Math.min(6, meta.paper_mm[0] * 96 / (pw * 25.4)))
     zoomRef.current = targetZoom
     panRef.current = { x: 0, y: 0 }
@@ -3523,7 +3583,7 @@ terrainColors, terrainTextureScales, terrainTextureBlendModes, terrainTextureOpa
       panRef.current = { x: 0, y: 0 }
       terrainDirtyRef.current = true
       draw()
-      const { px, py, pw, ph } = computePaper(cssW, cssH, meta)
+      const { px, py, pw, ph } = getPaper(cssW, cssH)
       setExpandPaperRect({ px, py, pw, ph })
       snapOverlay()
       setMapOverlay(true)
@@ -3632,7 +3692,7 @@ terrainColors, terrainTextureScales, terrainTextureBlendModes, terrainTextureOpa
     const logical = clientToLogical(clientX, clientY)
     if (!logical) return null
     const { lx, ly, cssW, cssH } = logical
-    const { pw, ph, px, py } = computePaper(cssW, cssH, meta)
+    const { pw, ph, px, py } = getPaper(cssW, cssH)
     const scalePxPerM = pw / (meta.scale_m_per_mm * meta.paper_mm[0])
     const R = meta.outer_radius_m * scalePxPerM
     const mgPx = meta.margin_mm * (pw / meta.paper_mm[0])
@@ -3837,7 +3897,7 @@ terrainColors, terrainTextureScales, terrainTextureBlendModes, terrainTextureOpa
     const logical = clientToLogical(clientX, clientY)
     if (!logical) return
     const { lx, ly, cssW, cssH } = logical
-    const { pw, ph, px, py } = computePaper(cssW, cssH, meta)
+    const { pw, ph, px, py } = getPaper(cssW, cssH)
     for (const hex of hexesRef.current) {
       const verts = hex.vertices.map(([lon, lat]) => projectToCanvas(lon, lat, meta, pw, ph, px, py))
       if (pointInPolygon(lx, ly, verts)) {
@@ -3889,7 +3949,7 @@ terrainColors, terrainTextureScales, terrainTextureBlendModes, terrainTextureOpa
     const logical = clientToLogical(clientX, clientY)
     if (!logical) return
     const { lx, ly, cssW, cssH } = logical
-    const { pw, ph, px, py } = computePaper(cssW, cssH, meta)
+    const { pw, ph, px, py } = getPaper(cssW, cssH)
     for (const hex of hexesRef.current) {
       const verts = hex.vertices.map(([lon, lat]) => projectToCanvas(lon, lat, meta, pw, ph, px, py))
       if (pointInPolygon(lx, ly, verts)) {
@@ -3964,7 +4024,7 @@ terrainColors, terrainTextureScales, terrainTextureBlendModes, terrainTextureOpa
       const logical = clientToLogicalRef.current(clientX, clientY)
       if (!logical) return
       const { lx, ly, cssW, cssH } = logical
-      const { pw, ph, px, py } = computePaper(cssW, cssH, meta)
+      const { pw, ph, px, py } = getPaper(cssW, cssH)
       for (const hex of hexesRef.current) {
         const verts = hex.vertices.map(([lon, lat]) => projectToCanvas(lon, lat, meta, pw, ph, px, py))
         if (pointInPolygon(lx, ly, verts)) {
@@ -4004,7 +4064,7 @@ terrainColors, terrainTextureScales, terrainTextureBlendModes, terrainTextureOpa
     const logical = clientToLogical(clientX, clientY)
     if (!logical) return
     const { lx, ly, cssW, cssH } = logical
-    const { pw, ph, px, py } = computePaper(cssW, cssH, meta)
+    const { pw, ph, px, py } = getPaper(cssW, cssH)
     const mgPx = meta.margin_mm * (pw / meta.paper_mm[0])
     const marginL = px + mgPx, marginR = px + pw - mgPx
     const marginT = py + mgPx, marginB = py + ph - mgPx
@@ -4097,7 +4157,7 @@ terrainColors, terrainTextureScales, terrainTextureBlendModes, terrainTextureOpa
       if (!meta || cssW === 0) return
       const logical = clientToLogical(e.clientX, e.clientY)
       if (!logical) return
-      const { pw, ph, px, py } = computePaper(cssW, cssH, meta)
+      const { pw, ph, px, py } = getPaper(cssW, cssH)
       const { controlPoints } = smoothedRoadDataRef.current
 
       const dissolvedHexesHit = new Set<string>()
@@ -4243,7 +4303,7 @@ terrainColors, terrainTextureScales, terrainTextureBlendModes, terrainTextureOpa
       if (!meta || cssW === 0) return
       const logical = clientToLogical(e.clientX, e.clientY)
       if (!logical) return
-      const { pw, ph, px, py } = computePaper(cssW, cssH, meta)
+      const { pw, ph, px, py } = getPaper(cssW, cssH)
 
       // CP drag — move all keys in the group together
       if (draggingCpKeyRef.current) {
@@ -4424,7 +4484,7 @@ terrainColors, terrainTextureScales, terrainTextureBlendModes, terrainTextureOpa
       const logical = clientToLogical(clientX, clientY)
       if (!logical) return null
       const { lx, ly, cssW, cssH } = logical
-      const { pw, ph, px, py } = computePaper(cssW, cssH, meta)
+      const { pw, ph, px, py } = getPaper(cssW, cssH)
       for (const hex of hexesRef.current) {
         if (hexEdgeModeRef.current === 'whole' && hex.partial) continue
         const verts = hex.vertices.map(([lon, lat]) => projectToCanvas(lon, lat, meta, pw, ph, px, py))
@@ -4537,7 +4597,7 @@ terrainColors, terrainTextureScales, terrainTextureBlendModes, terrainTextureOpa
     const logical = clientToLogical(clientX, clientY)
     if (!logical) return null
     const { lx, ly, cssW, cssH } = logical
-    const { pw, ph, px, py } = computePaper(cssW, cssH, meta)
+    const { pw, ph, px, py } = getPaper(cssW, cssH)
     const mgPx = meta.margin_mm * (pw / meta.paper_mm[0])
     const inMargin = (verts: [number, number][]) =>
       verts.every(([x, y]) => x >= px + mgPx && x <= px + pw - mgPx && y >= py + mgPx && y <= py + ph - mgPx)
@@ -4565,7 +4625,7 @@ terrainColors, terrainTextureScales, terrainTextureBlendModes, terrainTextureOpa
       const lx2 = logical2?.lx ?? 0, ly2 = logical2?.ly ?? 0
       const cssW2 = logical2?.cssW ?? 0, cssH2 = logical2?.cssH ?? 0
       const { pw: pw2, ph: ph2, px: px2, py: py2 } = meta2 && cssW2 > 0
-        ? computePaper(cssW2, cssH2, meta2)
+        ? getPaper(cssW2, cssH2)
         : { pw: 0, ph: 0, px: 0, py: 0 }
       const R2 = hexRadiusRef.current
       const projectPt = (lon: number, lat: number): [number, number] =>
@@ -5390,7 +5450,7 @@ terrainColors, terrainTextureScales, terrainTextureBlendModes, terrainTextureOpa
       const meta = metaRef.current
       if (logical && meta) {
         const { lx, ly, cssW, cssH } = logical
-        const { pw, ph, px, py } = computePaper(cssW, cssH, meta)
+        const { pw, ph, px, py } = getPaper(cssW, cssH)
         const [lon, lat] = unprojectFromCanvas(lx, ly, meta, pw, ph, px, py)
         const bbox = computeWorldcoverBbox(meta)
         if (bbox) {
@@ -5436,7 +5496,7 @@ terrainColors, terrainTextureScales, terrainTextureBlendModes, terrainTextureOpa
         const { lx, ly, cssW, cssH } = logical
         const meta = metaRef.current
         if (meta) {
-          const { pw, ph, px, py } = computePaper(cssW, cssH, meta)
+          const { pw, ph, px, py } = getPaper(cssW, cssH)
           const scalePxPerM = pw / (meta.scale_m_per_mm * meta.paper_mm[0])
           const R2 = meta.outer_radius_m * scalePxPerM
           const snapRadius = R2 * 0.1
@@ -5470,7 +5530,7 @@ terrainColors, terrainTextureScales, terrainTextureBlendModes, terrainTextureOpa
         const { lx, ly, cssW, cssH } = logical
         const meta = metaRef.current
         if (meta) {
-          const { pw, ph, px, py } = computePaper(cssW, cssH, meta)
+          const { pw, ph, px, py } = getPaper(cssW, cssH)
           const scalePxPerM = pw / (meta.scale_m_per_mm * meta.paper_mm[0])
           const R2 = meta.outer_radius_m * scalePxPerM
           const snapRadius = R2 * 0.1
@@ -5558,7 +5618,7 @@ terrainColors, terrainTextureScales, terrainTextureBlendModes, terrainTextureOpa
     const logical = clientToLogical(e.clientX, e.clientY)
     if (!logical) return
     const { lx, ly, cssW, cssH } = logical
-    const { pw, ph, px, py } = computePaper(cssW, cssH, meta)
+    const { pw, ph, px, py } = getPaper(cssW, cssH)
     const mmToPx = pw / meta.paper_mm[0]
     const mgPx = meta.margin_mm * mmToPx
     const marginL = px + mgPx, marginR = px + pw - mgPx
@@ -5900,7 +5960,7 @@ terrainColors, terrainTextureScales, terrainTextureBlendModes, terrainTextureOpa
     const meta = metaRef.current
     const canvas = canvasRef.current
     if (!meta || !canvas) return
-    const { pw, ph, px, py } = computePaper(cssW, cssH, meta)
+    const { pw, ph, px, py } = getPaper(cssW, cssH)
     const rect = canvas.getBoundingClientRect()
     const zoom = zoomRef.current, pan = panRef.current
     const ctx = canvas.getContext('2d')
@@ -6002,7 +6062,7 @@ terrainColors, terrainTextureScales, terrainTextureBlendModes, terrainTextureOpa
         const meta = metaRef.current
         const canvas = canvasRef.current
         if (meta && canvas) {
-          const { pw, ph, px, py } = computePaper(cssW, cssH, meta)
+          const { pw, ph, px, py } = getPaper(cssW, cssH)
           const ctx = canvas.getContext('2d')
           if (ctx) {
             for (const overlay of labelOverlaysRef.current) {
@@ -6062,7 +6122,7 @@ terrainColors, terrainTextureScales, terrainTextureBlendModes, terrainTextureOpa
         const meta = metaRef.current
         const canvas = canvasRef.current
         if (!meta || !canvas) { draw(); return }
-        const { pw, ph, px, py } = computePaper(canvas.width / window.devicePixelRatio, canvas.height / window.devicePixelRatio, meta)
+        const { pw, ph, px, py } = getPaper(canvas.width / window.devicePixelRatio, canvas.height / window.devicePixelRatio)
         const unproj = (p: [number, number]): [number, number] =>
           unprojectFromCanvas(p[0], p[1], meta, pw, ph, px, py)
         let polygon: [number, number][]
@@ -6216,7 +6276,7 @@ terrainColors, terrainTextureScales, terrainTextureBlendModes, terrainTextureOpa
       const meta = metaRef.current
       const { w, h } = frameDimsRef.current
       if (!meta || w === 0) return null
-      return computePaper(w, h, meta)
+      return getPaper(w, h)
     },
     peekStart: () => { snapOverlay(); setMapOverlay(true) },
     peekEnd: () => setMapOverlay(false),
