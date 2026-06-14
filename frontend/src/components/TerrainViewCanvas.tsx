@@ -223,6 +223,7 @@ export const TerrainViewCanvas = forwardRef<TerrainViewCanvasHandle, { surroundC
 
   // Offscreen canvas refs for non-terrain layers
   const hexBorderLayer = useRef(new LayerCache())
+  const roadsLayer = useRef(new LayerCache())
 
   const joinedHighlightsLayer = useRef(new LayerCache())
 
@@ -2476,6 +2477,7 @@ terrainColors, terrainTextureScales, terrainTextureBlendModes, terrainTextureOpa
           let roadChainsPx: { tier: 0|1|2; chain: [number,number][]; bbox: { minX: number; maxX: number; minY: number; maxY: number } }[]
           let junctionsPx:  { pos: [number,number]; tier: 0|1|2 }[]
           let railChainsPx: { chain: [number,number][]; baseChain?: [number,number][]; id?: string; isShared: boolean; isLoop: boolean; hopKeys?: string[]; hopRanges?: [number,number][]; bbox: { minX: number; maxX: number; minY: number; maxY: number } }[]
+          let projCacheMiss = false
 
           if (rpc && rpc.roadData === liveRoadData && rpc.railData === liveRailData &&
               rpc.pw === pw && rpc.ph === ph && rpc.px === px && rpc.py === py) {
@@ -2483,6 +2485,7 @@ terrainColors, terrainTextureScales, terrainTextureBlendModes, terrainTextureOpa
             junctionsPx  = rpc.junctionsPx
             railChainsPx = rpc.railChainsPx
           } else {
+            projCacheMiss = true
             if (process.env.NODE_ENV === 'development') {
               const reason = !rpc ? 'no-cache'
                 : rpc.roadData !== liveRoadData ? `road-identity(isDragCP=${isDraggingCP},isDragDense=${isDraggingDense})`
@@ -2505,24 +2508,47 @@ terrainColors, terrainTextureScales, terrainTextureBlendModes, terrainTextureOpa
             roadProjectionCacheRef.current = { roadData: liveRoadData, railData: liveRailData, pw, ph, px, py, roadChainsPx, junctionsPx, railChainsPx }
           }
 
-          // Visible CSS rect for viewport culling — chains outside are skipped.
-          // A 50px margin covers max stroke widths and glow spread.
+          const isLiveDrag = isDraggingCP || isDraggingDense || isDraggingRailCP
           const vpad = 50
-          const roadsViewport = {
-            minX: cssW / 2 - (cssW / 2 + pan.x) / zoom - vpad,
-            maxX: cssW / 2 + (cssW / 2 - pan.x) / zoom + vpad,
-            minY: cssH / 2 - (cssH / 2 + pan.y) / zoom - vpad,
-            maxY: cssH / 2 + (cssH / 2 - pan.y) / zoom + vpad,
+
+          if (isLiveDrag) {
+            // Live drag: liveRoadData/liveRailData is rebuilt every frame — draw directly
+            // to ctx with screen-viewport culling, same as before LayerCache existed.
+            const roadsViewport = {
+              minX: cssW / 2 - (cssW / 2 + pan.x) / zoom - vpad,
+              maxX: cssW / 2 + (cssW / 2 - pan.x) / zoom + vpad,
+              minY: cssH / 2 - (cssH / 2 + pan.y) / zoom - vpad,
+              maxY: cssH / 2 + (cssH / 2 - pan.y) / zoom + vpad,
+            }
+            ctx.save()
+            ctx.beginPath()
+            ctx.rect(px, py, pw, ph)
+            ctx.clip()
+            _drawRoadsAndRails(ctx, { roadChains: roadChainsPx, junctions: junctionsPx, railChains: railChainsPx, tierStyles, railStyle: railStyleRef.current, viewport: roadsViewport })
+            ctx.restore()
+            _tRRoads2_beforeBlit.t = performance.now()
+            _tRRoads3_afterBlit.t = _tRRoads2_beforeBlit.t
+          } else {
+            // Static: use offscreen cache. Projection miss → layer also needs rebuild.
+            if (projCacheMiss) roadsLayer.current.markDirty()
+            const { ctx: oCtx, rebuilt } = roadsLayer.current.prepare(pw, ph, dpr)
+            _tRRoads2_beforeBlit.t = performance.now()
+            if (rebuilt) {
+              oCtx.scale(dpr * offZoom, dpr * offZoom)
+              oCtx.translate(-px, -py)
+              oCtx.save()
+              oCtx.beginPath()
+              oCtx.rect(px, py, pw, ph)
+              oCtx.clip()
+              // Offscreen covers the full paper, so cull against paper bounds not screen bounds.
+              const paperViewport = { minX: px - vpad, maxX: px + pw + vpad, minY: py - vpad, maxY: py + ph + vpad }
+              _drawRoadsAndRails(oCtx, { roadChains: roadChainsPx, junctions: junctionsPx, railChains: railChainsPx, tierStyles, railStyle: railStyleRef.current, viewport: paperViewport })
+              oCtx.restore()
+            }
+            roadsLayer.current.blit(ctx, px, py, pw, ph)
+            _tRRoads3_afterBlit.t = performance.now()
           }
-          ctx.save()
-          ctx.beginPath()
-          ctx.rect(px, py, pw, ph)
-          ctx.clip()
-          _drawRoadsAndRails(ctx, { roadChains: roadChainsPx, junctions: junctionsPx, railChains: railChainsPx, tierStyles, railStyle: railStyleRef.current, viewport: roadsViewport })
-          ctx.restore()
         }
-        _tRRoads2_beforeBlit.t = performance.now()
-        _tRRoads3_afterBlit.t = _tRRoads2_beforeBlit.t
       }
       if (isExport) {
         const scaledTierStyles = tierStyles.map(s => ({ ...s, outerW: s.outerW * lineScale })) as [RoadTierStyle, RoadTierStyle, RoadTierStyle]
@@ -3276,6 +3302,7 @@ terrainColors, terrainTextureScales, terrainTextureBlendModes, terrainTextureOpa
   useEffect(() => { hexBorderLayer.current.markDirty() }, [hexBorderMode, hexEdgeMode, hexBorderOpacity, hexBorderColor, hexBorderDifference, generatedHexes, excludedHexKeys, disabledHexKeys, autoDisabledOceanHexKeys])
   useEffect(() => { riversDirtyRef.current = true }, [riverEdges, riverTierStyles, riverWidthScale, riverCurveSteps, riverWobble, riverDetail, riverWiggleFreq, riverWiggleAmp, riverSmoothing, riverPathSmoothing, showRiverLabels, riverLabelColor, riverSegmentProps, riverSelectMode, selectedSegmentKeys, riverStyle, riverHopProps, selectedHopKey, labelOffsets, generatedHexes, terrainColors])
   useEffect(() => { buildingsLayer.current.markDirty() }, [urbanHexes, urbanStyle, settlements, settlementTierStyles, roadBaseData])
+  useEffect(() => { roadsLayer.current.markDirty() }, [smoothedRoadData, smoothedRailData, roadTierStyles, railStyle, roadSegmentProps, roadHopProps, selectedRoadSegmentKeys, selectedRoadHopKey, roadSelectMode, railSegmentProps, railHopProps, selectedRailSegmentKeys, selectedRailHopKey, railSelectMode])
   useEffect(() => { bridgesDirtyRef.current = true }, [bridgesEnabled, smoothedRoadData, smoothedRailData, riverEdges, generatedHexes])
   useEffect(() => { settlementsLayer.current.markDirty() }, [settlements, settlementTierStyles, labelPresetId, labelOverrides, smoothedRoadData, smoothedRailData, labelOffsets, defaultTerrainBlobs, terrainBlobOverrides, riverEdges, highlights, highlightedHexes, mapBgColor])
   // When entering label-drag mode, rebuild label layers so the bbox cache is populated for hit-testing
@@ -3398,6 +3425,7 @@ terrainColors, terrainTextureScales, terrainTextureBlendModes, terrainTextureOpa
       riversLayer.current.dispose()
       buildingsLayer.current.dispose()
       settlementsLayer.current.dispose()
+      roadsLayer.current.dispose()
     }
   }, [])
 
