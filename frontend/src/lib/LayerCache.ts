@@ -1,6 +1,8 @@
 export class LayerCache {
   private canvas: OffscreenCanvas | null = null
   private dirty = true
+  /** True if the most recent prepare() call triggered a rebuild (false = cache hit). */
+  lastRebuilt = false
 
   markDirty(): void {
     this.dirty = true
@@ -17,6 +19,7 @@ export class LayerCache {
     const sizeMatch = this.canvas !== null && this.canvas.width === offW && this.canvas.height === offH
 
     if (!this.dirty && sizeMatch) {
+      this.lastRebuilt = false
       return { ctx: this.canvas!.getContext('2d')!, rebuilt: false }
     }
 
@@ -31,6 +34,7 @@ export class LayerCache {
     }
 
     this.dirty = false
+    this.lastRebuilt = true
     return { ctx, rebuilt: true }
   }
 

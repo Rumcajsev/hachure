@@ -44,6 +44,7 @@ import { drawRoadHandles as _drawRoadHandles, drawRailHandles as _drawRailHandle
 import { drawPaperBackground as _drawPaperBackground, drawPaperMargin as _drawPaperMargin } from '../lib/drawPaperChrome'
 import { shouldSuppressShortcut } from '../lib/keyboard'
 import { resolveLabels } from '../lib/labelPresets'
+import { recordDrawFrame } from '../lib/perfMonitor'
 
 const OSM_OVERLAY_STYLE: maplibregl.StyleSpecification = {
   version: 8,
@@ -3028,6 +3029,34 @@ terrainColors, terrainTextureScales, terrainTextureBlendModes, terrainTextureOpa
         perf.lastSec = _tEnd
       }
 
+      // Named span for Chrome DevTools Performance recordings
+      performance.measure('ig2:draw', { start: _t0, end: _tEnd, detail: { total } })
+
+      // Collect which LayerCaches actually rebuilt this frame
+      const _rebuiltLayers: string[] = []
+      if (terrainLayer.current.lastRebuilt)        _rebuiltLayers.push('terrain')
+      if (hexBorderLayer.current.lastRebuilt)      _rebuiltLayers.push('hexBorder')
+      if (riversLayer.current.lastRebuilt)         _rebuiltLayers.push('rivers')
+      if (buildingsLayer.current.lastRebuilt)      _rebuiltLayers.push('buildings')
+      if (roadsLayer.current.lastRebuilt)          _rebuiltLayers.push('roads')
+      if (settlementsLayer.current.lastRebuilt)    _rebuiltLayers.push('settlements')
+      if (joinedHighlightsLayer.current.lastRebuilt) _rebuiltLayers.push('highlights')
+
+      recordDrawFrame({
+        t: _t0,
+        ms: total,
+        rebuiltLayers: _rebuiltLayers,
+        riverChainRebuilt: _dirtySnap.rivers,
+        bridgeChainRebuilt: _dirtySnap.bridges,
+        sectionMs: {
+          setup:       _tTerrain0 - _t0,
+          terrain:     _tRivers0 - _tTerrain0,
+          rivers:      _tRoads0 - _tRivers0,
+          roads:       _tSettlements0 - _tRoads0,
+          settlements: _tEnd - _tSettlements0,
+        },
+      })
+
       if (total > 8) {
         const terrain = _tRivers0 - _tTerrain0
         const rivers = _tRoads0 - _tRivers0
@@ -3042,10 +3071,9 @@ terrainColors, terrainTextureScales, terrainTextureBlendModes, terrainTextureOpa
         const rLiveData = _tRRoads1_afterLiveData.t > 0 ? (_tRRoads1_afterLiveData.t - _tRRoads0).toFixed(1) : '?'
         const rBlit = _tRRoads2_beforeBlit.t > 0 ? (_tRRoads3_afterBlit.t - _tRRoads2_beforeBlit.t).toFixed(1) : '?'
         const rRebuild = _tRRoads2_beforeBlit.t > 0 ? (_tRRoads2_beforeBlit.t - _tRRoads1_afterLiveData.t).toFixed(1) : '?'
-        const actualTerrainSz = 'LayerCache'
         console.warn(
-          `[draw] ${total.toFixed(1)}ms (${perf.fps}fps)  terrain=${terrain.toFixed(1)} rivers=${rivers.toFixed(1)} roads=${roads.toFixed(1)}[bldg=${rBuildings.toFixed(1)} rdlayer=${rRoads.toFixed(1)} bridges=${rBridges.toFixed(1)} handles=${rHandles.toFixed(1)}] settle=${settle.toFixed(1)}` +
-          `  dirty=${dirty}  targetCanvas=${offW}×${offH}  terrainLayer=${actualTerrainSz}  zoom=${zoom.toFixed(2)} offZoom=${offZoom.toFixed(2)}` +
+          `[draw] ${total.toFixed(1)}ms (${perf.fps}fps)  rebuilt=[${_rebuiltLayers.join(',')||'none'}]  terrain=${terrain.toFixed(1)} rivers=${rivers.toFixed(1)} roads=${roads.toFixed(1)}[bldg=${rBuildings.toFixed(1)} rdlayer=${rRoads.toFixed(1)} bridges=${rBridges.toFixed(1)} handles=${rHandles.toFixed(1)}] settle=${settle.toFixed(1)}` +
+          `  dirty=${dirty}  targetCanvas=${offW}×${offH}  zoom=${zoom.toFixed(2)} offZoom=${offZoom.toFixed(2)}` +
           `  roads_breakdown: liveData=${rLiveData} rebuild=${rRebuild} blit=${rBlit}`
         )
       }

@@ -1,0 +1,129 @@
+// Performance black-box recorder for draw() diagnostics.
+// Exposes window.__ig2perf for live console inspection.
+
+export interface DrawFrameRecord {
+  t: number                // performance.now() at draw start
+  ms: number               // total frame time
+  rebuiltLayers: string[]  // which LayerCache instances actually rebuilt
+  riverChainRebuilt: boolean
+  bridgeChainRebuilt: boolean
+  sectionMs: {
+    setup: number          // _t0 → _tTerrain0
+    terrain: number        // _tTerrain0 → _tRivers0
+    rivers: number         // _tRivers0 → _tRoads0
+    roads: number          // _tRoads0 → _tSettlements0
+    settlements: number    // _tSettlements0 → _tEnd
+  }
+}
+
+const RING_SIZE = 120
+const ring: (DrawFrameRecord | undefined)[] = new Array(RING_SIZE).fill(undefined)
+let head = 0
+
+// Sliding window of draw timestamps for rate detection
+const callWindow: number[] = []
+const RATE_WINDOW_MS = 1000
+// 120/sec = 2× the 60fps RAF budget. Anything above this means draw() is being
+// called faster than requestAnimationFrame can deliver frames — a tight loop.
+const RATE_ALARM_THRESHOLD = 120
+let rateAlarmed = false
+
+export function recordDrawFrame(r: DrawFrameRecord): void {
+  ring[head % RING_SIZE] = r
+  head++
+
+  // Sliding window maintenance
+  const now = r.t
+  let lo = 0
+  while (lo < callWindow.length && now - callWindow[lo] > RATE_WINDOW_MS) lo++
+  if (lo > 0) callWindow.splice(0, lo)
+  callWindow.push(now)
+  const rate = callWindow.length
+
+  // Slow-frame escalation
+  if (r.ms > 100) {
+    const { setup, terrain, rivers, roads, settlements } = r.sectionMs
+    const rebuilt = r.rebuiltLayers.join(',') || 'none'
+    console.error(
+      `[ig2:perf] very slow frame ${r.ms.toFixed(0)}ms` +
+      `  rebuilt=[${rebuilt}]` +
+      `  riverChains=${r.riverChainRebuilt} bridgeChains=${r.bridgeChainRebuilt}\n` +
+      `  setup=${setup.toFixed(0)} terrain=${terrain.toFixed(0)} rivers=${rivers.toFixed(0)}` +
+      `  roads=${roads.toFixed(0)} settle=${settlements.toFixed(0)}`,
+      '\nRecent context:', getRecent(10),
+    )
+  } else if (r.ms > 30) {
+    const { terrain, rivers, roads, settlements } = r.sectionMs
+    const rebuilt = r.rebuiltLayers.join(',') || 'none'
+    console.warn(
+      `[ig2:perf] slow frame ${r.ms.toFixed(0)}ms` +
+      `  rebuilt=[${rebuilt}]` +
+      `  terrain=${terrain.toFixed(0)} rivers=${rivers.toFixed(0)}` +
+      `  roads=${roads.toFixed(0)} settle=${settlements.toFixed(0)}`,
+    )
+  }
+
+  // Rate alarm — fires once, resets when rate drops to half threshold
+  if (rate > RATE_ALARM_THRESHOLD && !rateAlarmed) {
+    rateAlarmed = true
+    console.error(
+      `[ig2:perf] TIGHT LOOP: draw() called ${rate}× in last ${RATE_WINDOW_MS}ms` +
+      ' (expected ≤120 for 60fps+hover).\n' +
+      'Open Chrome DevTools → Performance and record while reproducing.\n' +
+      'Or call window.__ig2perf.dump() to inspect the ring buffer.',
+      '\nLast 20 frames:', getRecent(20),
+    )
+  } else if (rate <= RATE_ALARM_THRESHOLD * 0.5) {
+    rateAlarmed = false
+  }
+}
+
+export function getRecent(n = RING_SIZE): DrawFrameRecord[] {
+  const count = Math.min(n, head)
+  const out: DrawFrameRecord[] = []
+  for (let i = head - count; i < head; i++) {
+    const r = ring[i % RING_SIZE]
+    if (r !== undefined) out.push(r)
+  }
+  return out
+}
+
+if (typeof window !== 'undefined') {
+  ;(window as any).__ig2perf = {
+    /** Last N draw frame records (default: all 120). */
+    dump: (n?: number) => getRecent(n),
+    /** Draws observed in the last second. */
+    get callsPerSec() { return callWindow.length },
+    /** Most recent frame record. */
+    get lastFrame() { return head > 0 ? ring[(head - 1) % RING_SIZE] : null },
+    /** Per-layer rebuild frequency + average frame time over the last N frames. */
+    summary(n = 60) {
+      const frames = getRecent(n)
+      if (!frames.length) return 'no data'
+      const counts: Record<string, number> = {}
+      let totalMs = 0
+      let slowCount = 0
+      let riverRebuildCount = 0
+      for (const f of frames) {
+        totalMs += f.ms
+        if (f.ms > 30) slowCount++
+        if (f.riverChainRebuilt) riverRebuildCount++
+        for (const l of f.rebuiltLayers) counts[l] = (counts[l] ?? 0) + 1
+      }
+      return {
+        frames: frames.length,
+        avgMs: (totalMs / frames.length).toFixed(1) + 'ms',
+        slowFrames: slowCount,
+        callsPerSec: callWindow.length,
+        rebuildsPerLayer: counts,
+        riverChainRebuilds: riverRebuildCount,
+      }
+    },
+    clear() {
+      ring.fill(undefined)
+      head = 0
+      callWindow.length = 0
+      rateAlarmed = false
+    },
+  }
+}
