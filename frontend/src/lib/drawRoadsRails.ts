@@ -1,33 +1,43 @@
-/** Road and rail layer rendering. Pure canvas operations — no React or store imports. */
+/** Road and rail layer rendering. Pure canvas operations — no React or store imports.
+ *
+ * Chain coordinates are in CSS pixel space (already projected by the caller).
+ * The caller is responsible for caching projected coordinates across frames so
+ * project() is not called on every draw pass.
+ */
 
-import type { RoadTierStyle, RailStyle, RoadDashStyle } from '../store/mapStore'
+import type { RoadTierStyle, RailStyle } from '../store/mapStore'
 import { DEFAULT_STROKE_EFFECT } from '../store/mapStore'
 import { offsetPolyline } from './geometry'
 import { dashArray, drawLineGlow } from './strokeEffect'
 
-function dashPattern(style: RoadDashStyle, w: number): number[] {
-  if (style === 'dashed') return [w * 2.5, w * 1.5]
-  if (style === 'dotted') return [w * 0.5, w * 1.5]
-  return []
-}
-
 type Ctx = CanvasRenderingContext2D | OffscreenCanvasRenderingContext2D
 
+export type BBox           = { minX: number; maxX: number; minY: number; maxY: number }
+export type RoadChainPx    = { tier: 0 | 1 | 2; chain: [number, number][]; bbox?: BBox }
+export type JunctionPx     = { pos: [number, number]; tier: 0 | 1 | 2 }
+export type RailChainPx    = { chain: [number, number][]; baseChain?: [number, number][]; id?: string; isShared: boolean; isLoop: boolean; hopKeys?: string[]; hopRanges?: [number, number][]; bbox?: BBox }
+
 export type DrawRoadsRailsParams = {
-  roadChains: { tier: 0 | 1 | 2; chain: [number, number][] }[]
-  junctions: { pos: [number, number]; tier: 0 | 1 | 2 }[]
-  railChains: { chain: [number, number][]; baseChain?: [number, number][]; id?: string; isShared: boolean; isLoop: boolean; hopKeys?: string[]; hopRanges?: [number, number][] }[]
+  roadChains: RoadChainPx[]
+  junctions:  JunctionPx[]
+  railChains: RailChainPx[]
   tierStyles: [RoadTierStyle, RoadTierStyle, RoadTierStyle]
-  railStyle: RailStyle
-  project: (lon: number, lat: number) => [number, number]
+  railStyle:  RailStyle
+  viewport?:  BBox
+}
+
+const bboxVisible = (bbox: BBox | undefined, vp: BBox): boolean => {
+  if (!bbox) return true
+  return bbox.maxX >= vp.minX && bbox.minX <= vp.maxX &&
+         bbox.maxY >= vp.minY && bbox.minY <= vp.maxY
 }
 
 export function drawRoadsAndRails(rCtx: Ctx, {
-  roadChains, junctions, railChains, tierStyles, railStyle, project,
+  roadChains, junctions, railChains, tierStyles, railStyle, viewport,
 }: DrawRoadsRailsParams) {
   rCtx.save()
-  const drawChain = (chain: [number, number][]) => {
-    const pts = chain.map(([lon, lat]) => project(lon, lat))
+
+  const drawChain = (pts: [number, number][]) => {
     if (pts.length < 2) return
     rCtx.beginPath()
     rCtx.moveTo(pts[0][0], pts[0][1])
@@ -37,14 +47,16 @@ export function drawRoadsAndRails(rCtx: Ctx, {
 
   if (roadChains.length > 0) {
     const chainsByTier: [[number,number][][], [number,number][][], [number,number][][]] = [[], [], []]
-    for (const { tier, chain } of roadChains) chainsByTier[tier].push(chain)
+    for (const { tier, chain, bbox } of roadChains) {
+      if (viewport && !bboxVisible(bbox, viewport)) continue
+      chainsByTier[tier].push(chain)
+    }
 
     // Pass 0: outer glow per tier (behind everything)
     for (const tier of [2, 1, 0] as const) {
       const s = tierStyles[tier]
       if (!s.effect?.glowEnabled) continue
-      for (const chain of chainsByTier[tier]) {
-        const pts = chain.map(([lon, lat]) => project(lon, lat)) as [number, number][]
+      for (const pts of chainsByTier[tier]) {
         if (pts.length < 2) continue
         const xs = pts.map(p => p[0]), ys = pts.map(p => p[1])
         const bounds = { x: Math.min(...xs), y: Math.min(...ys), w: Math.max(...xs) - Math.min(...xs), h: Math.max(...ys) - Math.min(...ys) }
@@ -69,12 +81,12 @@ export function drawRoadsAndRails(rCtx: Ctx, {
       rCtx.strokeStyle = s.outer
       rCtx.lineWidth = s.outerW
       rCtx.setLineDash(dashArray(outlineDash, s.outerW))
-      for (const chain of chainsByTier[tier]) drawChain(chain)
+      for (const pts of chainsByTier[tier]) drawChain(pts)
     }
     rCtx.setLineDash([])
     rCtx.lineCap = 'round'
     for (const { pos, tier } of junctions) {
-      const [x, y] = project(pos[0], pos[1])
+      const [x, y] = pos
       const s = tierStyles[tier]
       const fx = s.effect ?? DEFAULT_STROKE_EFFECT
       if (fx.outlineEnabled === false) continue
@@ -88,12 +100,12 @@ export function drawRoadsAndRails(rCtx: Ctx, {
       rCtx.strokeStyle = s.inner
       rCtx.lineWidth = s.outerW * 0.5
       rCtx.setLineDash(dashArray(fillDash, s.outerW * 0.5))
-      for (const chain of chainsByTier[tier]) drawChain(chain)
+      for (const pts of chainsByTier[tier]) drawChain(pts)
     }
     rCtx.setLineDash([])
     rCtx.lineCap = 'round'
     for (const { pos, tier } of junctions) {
-      const [x, y] = project(pos[0], pos[1])
+      const [x, y] = pos
       const s = tierStyles[tier]
       rCtx.beginPath(); rCtx.arc(x, y, s.outerW * 0.25, 0, Math.PI * 2)
       rCtx.fillStyle = s.inner; rCtx.fill()
@@ -107,10 +119,9 @@ export function drawRoadsAndRails(rCtx: Ctx, {
     const sharedOffsetEnds = new Map<string, [number, number]>()
     for (const { chain, isShared } of railChains) {
       if (!isShared || chain.length < 2) continue
-      const rawPts = chain.map(([lon, lat]) => project(lon, lat)) as [number, number][]
-      const full = offsetPolyline(rawPts, RAIL_OFFSET_PX)
-      sharedOffsetEnds.set(geoKey(chain[0] as [number, number]), full[0])
-      sharedOffsetEnds.set(geoKey(chain[chain.length - 1] as [number, number]), full[full.length - 1])
+      const full = offsetPolyline(chain, RAIL_OFFSET_PX)
+      sharedOffsetEnds.set(geoKey(chain[0]), full[0])
+      sharedOffsetEnds.set(geoKey(chain[chain.length - 1]), full[full.length - 1])
     }
 
     const rs = railStyle
@@ -163,8 +174,8 @@ export function drawRoadsAndRails(rCtx: Ctx, {
     const endpointCount = new Map<string, number>()
     for (const { chain, isLoop } of railChains) {
       if (isLoop || chain.length < 2) continue
-      const sk = geoKey(chain[0] as [number, number])
-      const ek = geoKey(chain[chain.length - 1] as [number, number])
+      const sk = geoKey(chain[0])
+      const ek = geoKey(chain[chain.length - 1])
       endpointCount.set(sk, (endpointCount.get(sk) ?? 0) + 1)
       endpointCount.set(ek, (endpointCount.get(ek) ?? 0) + 1)
     }
@@ -173,20 +184,20 @@ export function drawRoadsAndRails(rCtx: Ctx, {
       if (isLoop || chain.length < 2) continue
       for (const endPt of [chain[0], chain[chain.length - 1]] as [number, number][]) {
         if ((endpointCount.get(geoKey(endPt)) ?? 0) >= 2) {
-          const [x, y] = project(endPt[0], endPt[1])
-          junctionPts.push([x, y])
+          junctionPts.push(endPt)
         }
       }
     }
 
-    for (const { chain, isShared, isLoop } of railChains) {
-      let pts = chain.map(([lon, lat]) => project(lon, lat)) as [number, number][]
+    for (const { chain, isShared, isLoop, bbox } of railChains) {
+      if (viewport && !bboxVisible(bbox, viewport)) continue
+      let pts = [...chain] as [number, number][]
       if (!isLoop) {
         if (isShared) {
           pts = offsetPolyline(pts, RAIL_OFFSET_PX)
         } else {
-          const s = sharedOffsetEnds.get(geoKey(chain[0] as [number, number]))
-          const e = sharedOffsetEnds.get(geoKey(chain[chain.length - 1] as [number, number]))
+          const s = sharedOffsetEnds.get(geoKey(chain[0]))
+          const e = sharedOffsetEnds.get(geoKey(chain[chain.length - 1]))
           if (s) pts[0] = s
           if (e) pts[pts.length - 1] = e
         }

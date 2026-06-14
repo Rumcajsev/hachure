@@ -115,17 +115,12 @@ export function buildRoadChainsV2(
     if (ok.startsWith('ja|')) junctionPositions.set(ok.slice(3), pos)
   }
 
-  // Staggered spine junction model (identical to V1).
+  // Pass A: find the most-collinear neighbour pair (spine) for each junction hex.
   const spineNeighbors = new Map<string, [string, string]>()
-  const armToTerminal = new Map<string, [number, number]>()
-  const sideTerminals = new Map<string, [number, number]>()
-
   for (const [k] of adj) {
     const neighbors = [...(adj.get(k) ?? [])]
     if (neighbors.length <= 2) continue
     const h = hexIdx.get(k); if (!h) continue
-    const jc = junctionPositions.get(k) ?? h.center
-
     let bestPair: [string, string] | null = null
     let bestDot = 1
     for (let i = 0; i < neighbors.length; i++) {
@@ -140,9 +135,38 @@ export function buildRoadChainsV2(
         if (dot < bestDot) { bestDot = dot; bestPair = [neighbors[i], neighbors[j]] }
       }
     }
-    if (!bestPair) continue
-    spineNeighbors.set(k, bestPair)
+    if (bestPair) spineNeighbors.set(k, bestPair)
+  }
 
+  // Apply centerPull to junction positions.
+  // centerPull=0 → junction sits at the midpoint of the two spine border crossings,
+  //   i.e. exactly where the spine road naturally passes — same logic as a regular
+  //   non-junction hex at centerPull=0. The spine road flows straight through and
+  //   branch arms connect to that point.
+  // centerPull=1 → junction stays at the averaged-midpoint position (original behaviour).
+  if (centerPull < 1) {
+    for (const [k, spinePair] of spineNeighbors) {
+      if (effectiveOverrides[`ja|${k}`]) continue
+      const basePos = junctionPositions.get(k); if (!basePos) continue
+      const h = hexIdx.get(k); if (!h) continue
+      const hA = hexIdx.get(spinePair[0]), hB = hexIdx.get(spinePair[1])
+      if (!hA || !hB) continue
+      const midAx = (h.center[0] + hA.center[0]) / 2, midAy = (h.center[1] + hA.center[1]) / 2
+      const midBx = (h.center[0] + hB.center[0]) / 2, midBy = (h.center[1] + hB.center[1]) / 2
+      const targetX = (midAx + midBx) / 2, targetY = (midAy + midBy) / 2
+      junctionPositions.set(k, [
+        targetX + centerPull * (basePos[0] - targetX),
+        targetY + centerPull * (basePos[1] - targetY),
+      ])
+    }
+  }
+
+  // Pass B: compute arm terminals using the (possibly adjusted) junction positions.
+  const armToTerminal = new Map<string, [number, number]>()
+  const sideTerminals = new Map<string, [number, number]>()
+  for (const [k, bestPair] of spineNeighbors) {
+    const h = hexIdx.get(k); if (!h) continue
+    const jc = junctionPositions.get(k) ?? h.center
     const hA = hexIdx.get(bestPair[0]), hB = hexIdx.get(bestPair[1])
     if (!hA || !hB) continue
 
@@ -150,7 +174,8 @@ export function buildRoadChainsV2(
     const sLen = Math.hypot(sdx, sdy)
     const snx = sLen > 1e-6 ? sdx / sLen : 1, sny = sLen > 1e-6 ? sdy / sLen : 0
 
-    const branches = neighbors.filter(n => n !== bestPair![0] && n !== bestPair![1]).sort()
+    const neighbors = [...(adj.get(k) ?? [])]
+    const branches = neighbors.filter(n => n !== bestPair[0] && n !== bestPair[1]).sort()
     const sideA = new Set<string>(), sideB = new Set<string>()
     let tieIdx = 0
     for (const bn of branches) {
