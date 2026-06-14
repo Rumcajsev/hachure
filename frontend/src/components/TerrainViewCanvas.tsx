@@ -1837,11 +1837,10 @@ terrainColors, terrainTextureScales, terrainTextureBlendModes, terrainTextureOpa
     const isExport = !!exportTarget
     const dpr = isExport ? 1 : (window.devicePixelRatio || 1)
     const zoom = isExport ? 1 : zoomRef.current
-    // Offscreen canvases at dpr resolution only — OffscreenCanvas drawImage is CPU-rendered
-    // (not GPU-accelerated), so blit cost scales linearly with pixel count. cap=2 still pushes
-    // ~170MB/frame across 5 layers at 10.5MP each. cap=1 drops this to ~40MB/frame (~20ms).
-    // Canvas transform handles zoom; layers look the same at zoom=1, slightly softer above.
-    const offZoom = Math.min(zoom, 1)
+    // Offscreen layers at native Retina resolution (dpr²). Each blit is a GPU→GPU copy so
+    // scale doesn't hurt frame time. At zoom ≤ dpr the blit is 1:1 or better; beyond that
+    // it stretches by zoom/dpr — crisp up to zoom=2 on Retina, acceptable above.
+    const offZoom = isExport ? 1 : dpr
     const pan = isExport ? { x: 0, y: 0 } : panRef.current
     const borderMode = hexBorderModeRef.current
     const edgeMode = hexEdgeModeRef.current
@@ -2003,11 +2002,11 @@ terrainColors, terrainTextureScales, terrainTextureBlendModes, terrainTextureOpa
     // the main thread. The rebuild runs once on mouseup when isPaintingRef goes false.
     if (!isExport) {
       const papW = Math.ceil(pw), papH = Math.ceil(ph)
+      const offW = Math.ceil(pw * dpr * offZoom), offH = Math.ceil(ph * dpr * offZoom)
       if (!isPaintingRef.current && (terrainDirtyRef.current || !terrainLayerRef.current ||
-          terrainLayerPapWRef.current !== papW || terrainLayerPapHRef.current !== papH)) {
+          terrainLayerPapWRef.current !== offW || terrainLayerPapHRef.current !== offH)) {
         console.log(`[draw] terrain rebuild triggered  dirty=${terrainDirtyRef.current}`)
         const _tTR = performance.now()
-        const offW = Math.ceil(pw * dpr * offZoom), offH = Math.ceil(ph * dpr * offZoom)
         const existingT = terrainLayerRef.current
         let oCtx: OffscreenCanvasRenderingContext2D
         if (existingT && existingT.width === offW && existingT.height === offH) {
@@ -2028,8 +2027,8 @@ terrainColors, terrainTextureScales, terrainTextureBlendModes, terrainTextureOpa
         _drawTerrain(oCtx, terrainParams)
         oCtx.restore()
         terrainDirtyRef.current = false
-        terrainLayerPapWRef.current = papW
-        terrainLayerPapHRef.current = papH
+        terrainLayerPapWRef.current = offW
+        terrainLayerPapHRef.current = offH
         console.log(`[draw] terrain rebuild done in ${(performance.now()-_tTR).toFixed(1)}ms`)
       }
     }
@@ -2149,10 +2148,9 @@ terrainColors, terrainTextureScales, terrainTextureBlendModes, terrainTextureOpa
     // Difference blend mode must draw directly onto main canvas so it composites against terrain.
     if (borderMode !== 'none') {
       if (!isExport && !hexBorderDifferenceRef.current) {
-        const papW = Math.ceil(pw), papH = Math.ceil(ph)
+        const offW = Math.ceil(pw * dpr * offZoom), offH = Math.ceil(ph * dpr * offZoom)
         if (hexBorderDirtyRef.current || !hexBorderLayerRef.current ||
-            hexBorderLayerPapWRef.current !== papW || hexBorderLayerPapHRef.current !== papH) {
-          const offW = Math.ceil(pw * dpr * offZoom), offH = Math.ceil(ph * dpr * offZoom)
+            hexBorderLayerPapWRef.current !== offW || hexBorderLayerPapHRef.current !== offH) {
           const existingHB = hexBorderLayerRef.current
           let oCtxHB: OffscreenCanvasRenderingContext2D
           if (existingHB && existingHB.width === offW && existingHB.height === offH) {
@@ -2173,8 +2171,8 @@ terrainColors, terrainTextureScales, terrainTextureBlendModes, terrainTextureOpa
           _drawHexBorders(oCtxHB, projected, borderMode, edgeMode, inMargin, 1, bordersExcludedSet, hexBorderOpacityRef.current, hexBorderColorRef.current, false)
           oCtxHB.restore()
           hexBorderDirtyRef.current = false
-          hexBorderLayerPapWRef.current = papW
-          hexBorderLayerPapHRef.current = papH
+          hexBorderLayerPapWRef.current = offW
+          hexBorderLayerPapHRef.current = offH
         }
         ctx.drawImage(hexBorderLayerRef.current, px, py, pw, ph)
       }
@@ -2232,10 +2230,9 @@ terrainColors, terrainTextureScales, terrainTextureBlendModes, terrainTextureOpa
     {
 
       if (!isExport) {
-        const papW = Math.ceil(pw), papH = Math.ceil(ph)
+        const offW = Math.ceil(pw * dpr * offZoom), offH = Math.ceil(ph * dpr * offZoom)
         if (joinedHighlightsDirtyRef.current || !joinedHighlightsLayerRef.current ||
-            joinedHighlightsLayerPapWRef.current !== papW || joinedHighlightsLayerPapHRef.current !== papH) {
-          const offW = Math.ceil(pw * dpr * offZoom), offH = Math.ceil(ph * dpr * offZoom)
+            joinedHighlightsLayerPapWRef.current !== offW || joinedHighlightsLayerPapHRef.current !== offH) {
           const offscreen = new OffscreenCanvas(offW, offH)
           const oCtx = offscreen.getContext('2d')!
           oCtx.scale(dpr * offZoom, dpr * offZoom)
@@ -2243,8 +2240,8 @@ terrainColors, terrainTextureScales, terrainTextureBlendModes, terrainTextureOpa
           _drawHighlights(oCtx, { highlights: highlightsRef.current, highlightedHexes: highlightedHexesRef.current, highlightLines: highlightLinesRef.current, highlightEdgePaths: highlightEdgePathsRef.current, projected, edgeMode, R, project, inMargin })
           joinedHighlightsLayerRef.current = offscreen
           joinedHighlightsDirtyRef.current = false
-          joinedHighlightsLayerPapWRef.current = papW
-          joinedHighlightsLayerPapHRef.current = papH
+          joinedHighlightsLayerPapWRef.current = offW
+          joinedHighlightsLayerPapHRef.current = offH
         }
         ctx.drawImage(joinedHighlightsLayerRef.current, px, py, pw, ph)
       }
@@ -2400,10 +2397,9 @@ terrainColors, terrainTextureScales, terrainTextureBlendModes, terrainTextureOpa
         _drawRivers(ctx, liveRiverParams)
         ctx.restore()
       } else {
-        const papW = Math.ceil(pw), papH = Math.ceil(ph)
+        const offW = Math.ceil(pw * dpr * offZoom), offH = Math.ceil(ph * dpr * offZoom)
         if (riversDirtyRef.current || !riversLayerRef.current ||
-            riversLayerPapWRef.current !== papW || riversLayerPapHRef.current !== papH) {
-          const offW = Math.ceil(pw * dpr * offZoom), offH = Math.ceil(ph * dpr * offZoom)
+            riversLayerPapWRef.current !== offW || riversLayerPapHRef.current !== offH) {
           const offscreen = new OffscreenCanvas(offW, offH)
           const oCtx = offscreen.getContext('2d')!
           oCtx.scale(dpr * offZoom, dpr * offZoom)
@@ -2416,8 +2412,8 @@ terrainColors, terrainTextureScales, terrainTextureBlendModes, terrainTextureOpa
           oCtx.restore()
           riversLayerRef.current = offscreen
           riversDirtyRef.current = false
-          riversLayerPapWRef.current = papW
-          riversLayerPapHRef.current = papH
+          riversLayerPapWRef.current = offW
+          riversLayerPapHRef.current = offH
         }
         ctx.drawImage(riversLayerRef.current, px, py, pw, ph)
       }
@@ -2459,11 +2455,10 @@ terrainColors, terrainTextureScales, terrainTextureBlendModes, terrainTextureOpa
           buildingsLayerRef.current = null
           buildingsDirtyRef.current = false
         } else {
-          const papW = Math.ceil(pw), papH = Math.ceil(ph)
+          const offW = Math.ceil(pw * dpr * offZoom), offH = Math.ceil(ph * dpr * offZoom)
           if (buildingsDirtyRef.current || !buildingsLayerRef.current ||
-              buildingsLayerPapWRef.current !== papW || buildingsLayerPapHRef.current !== papH) {
+              buildingsLayerPapWRef.current !== offW || buildingsLayerPapHRef.current !== offH) {
             hexBuildingGeoCacheRef.current.clear()
-            const offW = Math.ceil(pw * dpr * offZoom), offH = Math.ceil(ph * dpr * offZoom)
             const offscreen = new OffscreenCanvas(offW, offH)
             const oCtx = offscreen.getContext('2d')!
             oCtx.scale(dpr * offZoom, dpr * offZoom)
@@ -2477,8 +2472,8 @@ terrainColors, terrainTextureScales, terrainTextureBlendModes, terrainTextureOpa
             oCtx.restore()
             buildingsLayerRef.current = offscreen
             buildingsDirtyRef.current = false
-            buildingsLayerPapWRef.current = papW
-            buildingsLayerPapHRef.current = papH
+            buildingsLayerPapWRef.current = offW
+            buildingsLayerPapHRef.current = offH
           }
           ctx.drawImage(buildingsLayerRef.current, px, py, pw, ph)
         }
@@ -2860,10 +2855,9 @@ terrainColors, terrainTextureScales, terrainTextureBlendModes, terrainTextureOpa
     {
 
       if (!isExport) {
-        const papW = Math.ceil(pw), papH = Math.ceil(ph)
+        const offW = Math.ceil(pw * dpr * offZoom), offH = Math.ceil(ph * dpr * offZoom)
         if (settlementsDirtyRef.current || !settlementsLayerRef.current ||
-            settlementsLayerPapWRef.current !== papW || settlementsLayerPapHRef.current !== papH) {
-          const offW = Math.ceil(pw * dpr * offZoom), offH = Math.ceil(ph * dpr * offZoom)
+            settlementsLayerPapWRef.current !== offW || settlementsLayerPapHRef.current !== offH) {
           const existingS = settlementsLayerRef.current
           let oCtxS: OffscreenCanvasRenderingContext2D
           if (existingS && existingS.width === offW && existingS.height === offH) {
@@ -2889,8 +2883,8 @@ terrainColors, terrainTextureScales, terrainTextureBlendModes, terrainTextureOpa
           _drawSettlements(oCtxS, { settlements: settlementsRef.current, tierStyles: settlementTierStylesRef.current, labelSpecs: resolvedLabelSpecsRef.current, roadChains: activeRoadDataS.chains, roadJunctions: activeRoadDataS.junctions, railChains: smoothedRailDataRef.current.chains, project, hexCenterOf: (q, r) => { const h = hexesRef.current.find(h => h.q === q && h.r === r); return h ? project(h.center[0], h.center[1]) : null }, hexRadiusPx: hexRadiusRef.current, labelOffsets: labelOffsetsRef.current, liveLabelOffset: liveLabelOffsetRef.current ?? undefined, labelBBoxOut: labelBBoxCacheRef.current, pixelSampler })
           oCtxS.restore()
           settlementsDirtyRef.current = false
-          settlementsLayerPapWRef.current = papW
-          settlementsLayerPapHRef.current = papH
+          settlementsLayerPapWRef.current = offW
+          settlementsLayerPapHRef.current = offH
         }
         ctx.drawImage(settlementsLayerRef.current!, px, py, pw, ph)
       }
