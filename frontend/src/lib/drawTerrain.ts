@@ -88,17 +88,28 @@ export type { EdgeBlobParams, EdgeBlobChain }
 
 
 // Tinted-texture cache: key = `${tex.src}_${hexColor}_${invert}`.
-// Each entry is a GPU-backed OffscreenCanvas. Without a size cap, repeated
-// terrain color slider tweaks fill VRAM indefinitely — once past ~400MB the
-// browser stalls every drawImage() call on a GPU sync, causing 95ms+ frames.
-// Cap at 40: typical active set is ≤20 (10 terrain types × 2 invert modes),
-// so the cap is hit only by dead entries from past color values.
+// Each entry is a GPU-backed OffscreenCanvas (~6MB each for typical texture sizes).
+// 24 terrain-type × color combinations × 6MB = 144MB, which combined with the
+// 7 layer canvases (~239MB) pushes Chrome past its ~256MB GPU eviction threshold,
+// causing all drawImage() calls to stall at 18–22ms each.
+// Cap at 8 with LRU eviction. 8 × 6MB = 48MB + 239MB layers = ~287MB total — safe.
 const colorModeTextureCache = new Map<string, OffscreenCanvas>()
-const COLOR_TEXTURE_CACHE_MAX = 40
+const COLOR_TEXTURE_CACHE_MAX = 8
+
+export function getColorTextureCacheStats(): { entries: number; estimatedBytes: number } {
+  let bytes = 0
+  for (const c of colorModeTextureCache.values()) bytes += c.width * c.height * 4
+  return { entries: colorModeTextureCache.size, estimatedBytes: bytes }
+}
 
 function getTintedTexture(tex: HTMLImageElement, hexColor: string, invert: boolean): OffscreenCanvas | null {
   const key = `${tex.src}_${hexColor}_${invert}`
-  if (colorModeTextureCache.has(key)) return colorModeTextureCache.get(key)!
+  if (colorModeTextureCache.has(key)) {
+    const cached = colorModeTextureCache.get(key)!
+    colorModeTextureCache.delete(key)
+    colorModeTextureCache.set(key, cached)
+    return cached
+  }
   if (!tex.complete || tex.naturalWidth === 0) return null
   const r = parseInt(hexColor.slice(1, 3), 16)
   const g = parseInt(hexColor.slice(3, 5), 16)
@@ -115,7 +126,12 @@ function getTintedTexture(tex: HTMLImageElement, hexColor: string, invert: boole
     d[i + 3] = Math.round(invert ? lum : 255 - lum)
   }
   octx.putImageData(img, 0, 0)
-  if (colorModeTextureCache.size >= COLOR_TEXTURE_CACHE_MAX) colorModeTextureCache.clear()
+  if (colorModeTextureCache.size >= COLOR_TEXTURE_CACHE_MAX) {
+    const oldestKey = colorModeTextureCache.keys().next().value!
+    const evicted = colorModeTextureCache.get(oldestKey)!
+    colorModeTextureCache.delete(oldestKey)
+    try { evicted.transferToImageBitmap().close() } catch {}
+  }
   colorModeTextureCache.set(key, oc)
   return oc
 }

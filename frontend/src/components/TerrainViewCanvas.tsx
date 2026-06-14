@@ -26,7 +26,7 @@ import { drawSettlements as _drawSettlements } from '../lib/drawSettlements'
 import { drawAllBuildings as _drawAllBuildings, type BuildingCmd } from '../lib/drawBuildings'
 import { drawAllBuildingsV2 as _drawAllBuildingsV2 } from '../lib/drawBuildingsV2'
 import { drawHexBorders as _drawHexBorders, drawMapBoundary as _drawMapBoundary, drawHexGridMask as _drawHexGridMask, drawExcludedHexOverlay as _drawExcludedHexOverlay } from '../lib/drawHexBorders'
-import { drawTerrain as _drawTerrain } from '../lib/drawTerrain'
+import { drawTerrain as _drawTerrain, getColorTextureCacheStats } from '../lib/drawTerrain'
 import { LayerCache } from '../lib/LayerCache'
 import { TEXTURE_OPTIONS, TEXTURE_PATHS, DEFAULT_TERRAIN_TEXTURES } from '../lib/terrainTextures'
 import { computeHillshade } from '../lib/drawHillshade'
@@ -256,6 +256,7 @@ export const TerrainViewCanvas = forwardRef<TerrainViewCanvasHandle, { surroundC
 
   const rafRef = useRef<number | null>(null)
   const drawPerfRef = useRef({ frames: 0, lastSec: 0, fps: 0 })
+  const roadsRebuildCountRef = useRef(0)
   const zoomRef = useRef(1)
   const panRef = useRef({ x: 0, y: 0 })
   const isPanningRef = useRef(false)
@@ -2002,6 +2003,7 @@ terrainColors, terrainTextureScales, terrainTextureBlendModes, terrainTextureOpa
         _drawTerrain(oCtx, terrainParams)
         oCtx.restore()
         console.log(`[draw] terrain rebuild done in ${(performance.now()-_tTR).toFixed(1)}ms`)
+        terrainLayer.current.commitRebuild()
       }
     }
 
@@ -2135,6 +2137,7 @@ terrainColors, terrainTextureScales, terrainTextureBlendModes, terrainTextureOpa
           oCtxHB.clip()
           _drawHexBorders(oCtxHB, projected, borderMode, edgeMode, inMargin, 1, bordersExcludedSet, hexBorderOpacityRef.current, hexBorderColorRef.current, false)
           oCtxHB.restore()
+          hexBorderLayer.current.commitRebuild()
         }
         const _b0 = performance.now(); hexBorderLayer.current.blit(ctx, 0, 0, pw, ph); _blitHexBorder = performance.now() - _b0
       }
@@ -2196,6 +2199,7 @@ terrainColors, terrainTextureScales, terrainTextureBlendModes, terrainTextureOpa
         if (rebuilt) {
           oCtx.scale(dpr * offZoom, dpr * offZoom)
           _drawHighlights(oCtx, { highlights: highlightsRef.current, highlightedHexes: highlightedHexesRef.current, highlightLines: highlightLinesRef.current, highlightEdgePaths: highlightEdgePathsRef.current, projected, edgeMode, R, project, inMargin })
+          joinedHighlightsLayer.current.commitRebuild()
         }
         const _b0 = performance.now(); joinedHighlightsLayer.current.blit(ctx, 0, 0, pw, ph); _blitHighlights = performance.now() - _b0
       }
@@ -2360,6 +2364,7 @@ terrainColors, terrainTextureScales, terrainTextureBlendModes, terrainTextureOpa
           oCtx.clip()
           _drawRivers(oCtx, riverParams)
           oCtx.restore()
+          riversLayer.current.commitRebuild()
         }
         const _b0 = performance.now(); riversLayer.current.blit(ctx, 0, 0, pw, ph); _blitRivers = performance.now() - _b0
       }
@@ -2411,6 +2416,7 @@ terrainColors, terrainTextureScales, terrainTextureBlendModes, terrainTextureOpa
             _drawAllBuildings(oCtx, { hexes: hexesRef.current, urbanHexes: urbanHexesRef.current, urbanStyle: urbanStyleRef.current, settlements: settlementsRef.current, settlementTierStyles: settlementTierStylesRef.current, roadChains, roadTierStyles: roadTierStylesRef.current, hexBuildingGeoCache: hexBuildingGeoCacheRef.current, project })
             _drawAllBuildingsV2(oCtx, { hexes: hexesRef.current, urbanHexes: urbanHexesRef.current, urbanStyle: urbanStyleRef.current, settlements: settlementsRef.current, settlementTierStyles: settlementTierStylesRef.current, roadChains, roadTierStyles: roadTierStylesRef.current, project })
             oCtx.restore()
+            buildingsLayer.current.commitRebuild()
           }
           const _b0 = performance.now(); buildingsLayer.current.blit(ctx, 0, 0, pw, ph); _blitBuildings = performance.now() - _b0
         }
@@ -2582,6 +2588,8 @@ terrainColors, terrainTextureScales, terrainTextureBlendModes, terrainTextureOpa
               const paperViewport = { minX: -vpad, maxX: pw + vpad, minY: -vpad, maxY: ph + vpad }
               _drawRoadsAndRails(oCtx, { roadChains: roadChainsPx, junctions: junctionsPx, railChains: railChainsPx, tierStyles, railStyle: railStyleRef.current, viewport: paperViewport })
               oCtx.restore()
+              roadsLayer.current.commitRebuild()
+              roadsRebuildCountRef.current++
             }
             const _b0 = performance.now(); roadsLayer.current.blit(ctx, 0, 0, pw, ph); _blitRoads = performance.now() - _b0
             _tRRoads3_afterBlit.t = performance.now()
@@ -2829,6 +2837,7 @@ terrainColors, terrainTextureScales, terrainTextureBlendModes, terrainTextureOpa
           const pixelSampler = isLiveDrag ? undefined : makePixelSampler(ctx, dpr, zoom, pan, cssW, cssH, mapBgColorRef.current, px, py)
           _drawSettlements(oCtxS, { settlements: settlementsRef.current, tierStyles: settlementTierStylesRef.current, labelSpecs: resolvedLabelSpecsRef.current, roadChains: activeRoadDataS.chains, roadJunctions: activeRoadDataS.junctions, railChains: smoothedRailDataRef.current.chains, project, hexCenterOf: (q, r) => { const h = hexesRef.current.find(h => h.q === q && h.r === r); return h ? project(h.center[0], h.center[1]) : null }, hexRadiusPx: hexRadiusRef.current, labelOffsets: labelOffsetsRef.current, liveLabelOffset: liveLabelOffsetRef.current ?? undefined, labelBBoxOut: labelBBoxCacheRef.current, pixelSampler })
           oCtxS.restore()
+          settlementsLayer.current.commitRebuild()
         }
         const _b0 = performance.now(); settlementsLayer.current.blit(ctx, 0, 0, pw, ph); _blitSettlements = performance.now() - _b0
       }
@@ -3669,13 +3678,15 @@ terrainColors, terrainTextureScales, terrainTextureBlendModes, terrainTextureOpa
     if (!meta) return null
     const logical = clientToLogical(clientX, clientY)
     if (!logical) return null
-    const { lx, ly, cssW, cssH } = logical
+    const { lx: lxCanvas, ly: lyCanvas, cssW, cssH } = logical
     const { pw, ph, px, py } = getPaper(cssW, cssH)
+    // Convert canvas-space mouse to paper-local (matching draw()'s ctx.translate(px, py))
+    const lx = lxCanvas - px, ly = lyCanvas - py
     const scalePxPerM = pw / (meta.scale_m_per_mm * meta.paper_mm[0])
     const R = meta.outer_radius_m * scalePxPerM
     const mgPx = meta.margin_mm * (pw / meta.paper_mm[0])
     const inMarginCheck = (verts: [number, number][]) =>
-      verts.every(([x, y]) => x >= px + mgPx && x <= px + pw - mgPx && y >= py + mgPx && y <= py + ph - mgPx)
+      verts.every(([x, y]) => x >= mgPx && x <= pw - mgPx && y >= mgPx && y <= ph - mgPx)
 
     const HEX_DIRS: [number, number][] = [[1, 0], [1, -1], [0, -1], [-1, 0], [-1, 1], [0, 1]]
     const SNAP = 2
@@ -3691,7 +3702,7 @@ terrainColors, terrainTextureScales, terrainTextureBlendModes, terrainTextureOpa
 
       for (const hex of hexesRef.current) {
         if (hexEdgeModeRef.current === 'whole' && hex.partial) continue
-        const verts = hex.vertices.map(([lon, lat]) => projectToCanvas(lon, lat, meta, pw, ph, px, py) as [number, number])
+        const verts = hex.vertices.map(([lon, lat]) => projectToCanvas(lon, lat, meta, pw, ph, 0, 0) as [number, number])
         const cx = verts.reduce((s, v) => s + v[0], 0) / 6
         const cy = verts.reduce((s, v) => s + v[1], 0) / 6
         if (Math.hypot(lx - cx, ly - cy) > R * 2) continue
@@ -3700,7 +3711,7 @@ terrainColors, terrainTextureScales, terrainTextureBlendModes, terrainTextureOpa
           const nq = hex.q + dq, nr = hex.r + dr
           const neighbor = hexMap.get(`${nq},${nr}`)
           if (!neighbor) continue
-          const nverts = neighbor.vertices.map(([lon, lat]) => projectToCanvas(lon, lat, meta, pw, ph, px, py) as [number, number])
+          const nverts = neighbor.vertices.map(([lon, lat]) => projectToCanvas(lon, lat, meta, pw, ph, 0, 0) as [number, number])
           const nkeys = new Set(nverts.map(vk2))
           const shared = verts.filter(v => nkeys.has(vk2(v)))
           if (shared.length < 2) continue
@@ -3719,7 +3730,7 @@ terrainColors, terrainTextureScales, terrainTextureBlendModes, terrainTextureOpa
 
     for (const hex of hexesRef.current) {
       if (hexEdgeModeRef.current === 'whole' && hex.partial) continue
-      const verts = hex.vertices.map(([lon, lat]) => projectToCanvas(lon, lat, meta, pw, ph, px, py) as [number, number])
+      const verts = hex.vertices.map(([lon, lat]) => projectToCanvas(lon, lat, meta, pw, ph, 0, 0) as [number, number])
       if (!hex.partial && !inMarginCheck(verts)) continue
       if (pointInPolygon(lx, ly, verts)) {
         return { type: 'hex', q: hex.q, r: hex.r, verts }
@@ -4593,11 +4604,34 @@ terrainColors, terrainTextureScales, terrainTextureBlendModes, terrainTextureOpa
         `settle   ${settlements.toFixed(0)}ms\n` +
         `─────────────────\n` +
         `blits    ${totalBlit.toFixed(0)}ms total\n` +
-        (b.terrain > 1   ? ` T=${b.terrain.toFixed(0)}` : '') +
-        (b.hexBorder > 1 ? ` HB=${b.hexBorder.toFixed(0)}` : '') +
-        (b.rivers > 1    ? ` Rv=${b.rivers.toFixed(0)}` : '') +
-        (b.roads > 1     ? ` Rd=${b.roads.toFixed(0)}` : '') +
-        (b.settlements > 1 ? ` S=${b.settlements.toFixed(0)}` : '')
+        (b.terrain > 1     ? ` T=${b.terrain.toFixed(0)}` : '') +
+        (b.hexBorder > 1   ? ` HB=${b.hexBorder.toFixed(0)}` : '') +
+        (b.highlights > 1  ? ` HL=${b.highlights.toFixed(0)}` : '') +
+        (b.rivers > 1      ? ` Rv=${b.rivers.toFixed(0)}` : '') +
+        (b.buildings > 1   ? ` Bld=${b.buildings.toFixed(0)}` : '') +
+        (b.roads > 1       ? ` Rd=${b.roads.toFixed(0)}` : '') +
+        (b.settlements > 1 ? ` S=${b.settlements.toFixed(0)}` : '') +
+        (() => {
+          const layerVram = [terrainLayer, hexBorderLayer, riversLayer, buildingsLayer, roadsLayer, settlementsLayer, joinedHighlightsLayer]
+            .reduce((s, r) => s + r.current.estimatedBytes, 0)
+          const texStats = getColorTextureCacheStats()
+          const totalMB = ((layerVram + texStats.estimatedBytes) / 1024 / 1024).toFixed(0)
+          const layerMB = (layerVram / 1024 / 1024).toFixed(0)
+          const texMB = (texStats.estimatedBytes / 1024 / 1024).toFixed(0)
+          const mem = (performance as any).memory
+          const heapMB = mem ? (mem.usedJSHeapSize / 1024 / 1024).toFixed(0) : '?'
+          const roadsRebuilds = roadsRebuildCountRef.current
+          const bitmapFlags = [
+            ['T', terrainLayer], ['HB', hexBorderLayer], ['HL', joinedHighlightsLayer],
+            ['Rv', riversLayer], ['Bld', buildingsLayer], ['Rd', roadsLayer], ['S', settlementsLayer],
+          ] as const
+          const bitmapStatus = bitmapFlags.map(([name, ref]) => `${name}:${ref.current.hasBitmap ? 'B' : 'C'}`).join(' ')
+          return (
+            `\n─────────────────\nVRAM ~${totalMB}MB  layers:${layerMB} tex:${texMB}(${texStats.entries})` +
+            `\nJS heap ${heapMB}MB  roads ×${roadsRebuilds}` +
+            `\n${bitmapStatus}`
+          )
+        })()
     }, 250)
     return () => clearInterval(id)
   }, [perfHudVisible])
@@ -5028,12 +5062,18 @@ terrainColors, terrainTextureScales, terrainTextureBlendModes, terrainTextureOpa
       if (hex) {
         const hexKey = `${hex.q},${hex.r}`
         const storedHexForBlob = hexesRef.current.find(h => h.q === hex.q && h.r === hex.r)
+        // Blob polys are paper-local (px=0,py=0); convert mouse to paper-local for hit-testing,
+        // then shift polys to canvas-space for drawHighlightPolys.
+        const blobLogical = clientToLogicalRef.current(e.clientX, e.clientY)
+        const blobLx = blobLogical ? blobLogical.lx - px2 : 0
+        const blobLy = blobLogical ? blobLogical.ly - py2 : 0
+        const blobToCanvas = (poly: [number, number][]) =>
+          poly.map(([x, y]) => [x + px2, y + py2] as [number, number])
         if (hex.terrain === 'water') {
           const canonicalKey = blobComponentsRef.current.get(hexKey)
           if (canonicalKey) {
             const waterPolys = defaultWaterBlobsRef.current.find(b => b.terrain === 'water')?.polys ?? []
-            const logical3 = clientToLogicalRef.current(e.clientX, e.clientY)
-            const hitWaterPoly = logical3 ? waterPolys.filter(p => pointInPolygon(logical3.lx, logical3.ly, p)) : []
+            const hitWaterPoly = blobLogical ? waterPolys.filter(p => pointInPolygon(blobLx, blobLy, p)).map(blobToCanvas) : []
             items.push({ label: 'Terrain', action: () => {}, dim: true })
             items.push({
               label: 'Edit water…',
@@ -5044,14 +5084,13 @@ terrainColors, terrainTextureScales, terrainTextureBlendModes, terrainTextureOpa
           }
         } else if (storedHexForBlob) {
           const editableLayers = hexTerrainLayers(storedHexForBlob).filter(t => t !== 'water')
-          const logical3 = clientToLogicalRef.current(e.clientX, e.clientY)
           let addedHeader = false
           for (const t of editableLayers) {
             const componentMap = blobComponentsByTerrainRef.current.get(t)
             const canonicalKey = componentMap?.get(hexKey)
             if (!canonicalKey) continue
             const terrainPolys = defaultTerrainBlobsRef.current.find(b => b.terrain === t)?.polys ?? []
-            const hitTerrainPoly = logical3 ? terrainPolys.filter(p => pointInPolygon(logical3.lx, logical3.ly, p)) : []
+            const hitTerrainPoly = blobLogical ? terrainPolys.filter(p => pointInPolygon(blobLx, blobLy, p)).map(blobToCanvas) : []
             if (!addedHeader) { items.push({ label: 'Terrain', action: () => {}, dim: true }); addedHeader = true }
             items.push({
               label: `Edit ${t.replace(/_/g, ' ')} blob…`,
@@ -5063,14 +5102,12 @@ terrainColors, terrainTextureScales, terrainTextureBlendModes, terrainTextureOpa
         }
 
         // Terrain blob randomize (always available)
-        const logical2b = clientToLogicalRef.current(e.clientX, e.clientY)
-        if (logical2b) {
-          const { lx: lx2b, ly: ly2b } = logical2b
+        if (blobLogical) {
           const allBlobs = defaultTerrainBlobsRef.current
           let hitBlobKey: string | null = null
           outer: for (const entry of allBlobs) {
             for (let i = 0; i < entry.polys.length; i++) {
-              if (pointInPolygon(lx2b, ly2b, entry.polys[i])) {
+              if (pointInPolygon(blobLx, blobLy, entry.polys[i])) {
                 hitBlobKey = entry.blobKeys[i] ?? null
                 break outer
               }
@@ -5081,7 +5118,7 @@ terrainColors, terrainTextureScales, terrainTextureBlendModes, terrainTextureOpa
             const hitPoly = (() => {
               for (const entry of allBlobs) {
                 for (let i = 0; i < entry.polys.length; i++) {
-                  if ((entry.blobKeys[i] ?? null) === captured) return [entry.polys[i]]
+                  if ((entry.blobKeys[i] ?? null) === captured) return [blobToCanvas(entry.polys[i])]
                 }
               }
               return []
