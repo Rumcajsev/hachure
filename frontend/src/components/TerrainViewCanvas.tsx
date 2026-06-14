@@ -242,10 +242,7 @@ export const TerrainViewCanvas = forwardRef<TerrainViewCanvasHandle, { surroundC
     railChainsPx: { chain: [number,number][]; baseChain?: [number,number][]; id?: string; isShared: boolean; isLoop: boolean; hopKeys?: string[]; hopRanges?: [number,number][]; bbox: { minX: number; maxX: number; minY: number; maxY: number } }[]
   } | null>(null)
 
-  const settlementsLayerRef = useRef<OffscreenCanvas | null>(null)
-  const settlementsDirtyRef = useRef(true)
-  const settlementsLayerPapWRef = useRef(0)
-  const settlementsLayerPapHRef = useRef(0)
+  const settlementsLayer = useRef(new LayerCache())
   const [frameDims, setFrameDims] = useState({ w: 0, h: 0 })
   const frameDimsRef = useRef({ w: 0, h: 0 })
   const basePaperRef = useRef<{pw: number, ph: number} | null>(null)
@@ -1757,7 +1754,6 @@ terrainColors, terrainTextureScales, terrainTextureBlendModes, terrainTextureOpa
     const _t0 = performance.now()
     const _dirtySnap = {
       rivers: riversDirtyRef.current,
-      settlements: settlementsDirtyRef.current,
       bridges: bridgesDirtyRef.current,
     }
     const canvas = exportTarget ? exportTarget.canvas : canvasRef.current
@@ -1775,7 +1771,7 @@ terrainColors, terrainTextureScales, terrainTextureBlendModes, terrainTextureOpa
     const live = liveLabelOffsetRef.current
     if (!exportTarget && live) {
       if (live.id.startsWith('river:')) riversDirtyRef.current = true
-      else if (live.id.startsWith('settlement:')) settlementsDirtyRef.current = true
+      else if (live.id.startsWith('settlement:')) settlementsLayer.current.markDirty()
     }
 
     const getPattern = (img: HTMLImageElement): CanvasPattern | null => {
@@ -2755,20 +2751,8 @@ terrainColors, terrainTextureScales, terrainTextureBlendModes, terrainTextureOpa
     {
 
       if (!isExport) {
-        const offW = Math.ceil(pw * dpr * offZoom), offH = Math.ceil(ph * dpr * offZoom)
-        if (settlementsDirtyRef.current || !settlementsLayerRef.current ||
-            settlementsLayerPapWRef.current !== offW || settlementsLayerPapHRef.current !== offH) {
-          const existingS = settlementsLayerRef.current
-          let oCtxS: OffscreenCanvasRenderingContext2D
-          if (existingS && existingS.width === offW && existingS.height === offH) {
-            oCtxS = existingS.getContext('2d')!
-            oCtxS.setTransform(1, 0, 0, 1, 0, 0)
-            oCtxS.clearRect(0, 0, offW, offH)
-          } else {
-            const offscreen = new OffscreenCanvas(offW, offH)
-            oCtxS = offscreen.getContext('2d')!
-            settlementsLayerRef.current = offscreen
-          }
+        const { ctx: oCtxS, rebuilt } = settlementsLayer.current.prepare(pw, ph, dpr)
+        if (rebuilt) {
           oCtxS.scale(dpr * offZoom, dpr * offZoom)
           oCtxS.translate(-px, -py)
           oCtxS.save()
@@ -2782,11 +2766,8 @@ terrainColors, terrainTextureScales, terrainTextureBlendModes, terrainTextureOpa
           const pixelSampler = isLiveDrag ? undefined : makePixelSampler(ctx, dpr, zoom, pan, cssW, cssH, mapBgColorRef.current)
           _drawSettlements(oCtxS, { settlements: settlementsRef.current, tierStyles: settlementTierStylesRef.current, labelSpecs: resolvedLabelSpecsRef.current, roadChains: activeRoadDataS.chains, roadJunctions: activeRoadDataS.junctions, railChains: smoothedRailDataRef.current.chains, project, hexCenterOf: (q, r) => { const h = hexesRef.current.find(h => h.q === q && h.r === r); return h ? project(h.center[0], h.center[1]) : null }, hexRadiusPx: hexRadiusRef.current, labelOffsets: labelOffsetsRef.current, liveLabelOffset: liveLabelOffsetRef.current ?? undefined, labelBBoxOut: labelBBoxCacheRef.current, pixelSampler })
           oCtxS.restore()
-          settlementsDirtyRef.current = false
-          settlementsLayerPapWRef.current = offW
-          settlementsLayerPapHRef.current = offH
         }
-        ctx.drawImage(settlementsLayerRef.current!, px, py, pw, ph)
+        settlementsLayer.current.blit(ctx, px, py, pw, ph)
       }
       if (isExport) {
         const activeRoadDataS = smoothedRoadDataRef.current
@@ -3296,12 +3277,12 @@ terrainColors, terrainTextureScales, terrainTextureBlendModes, terrainTextureOpa
   useEffect(() => { riversDirtyRef.current = true }, [riverEdges, riverTierStyles, riverWidthScale, riverCurveSteps, riverWobble, riverDetail, riverWiggleFreq, riverWiggleAmp, riverSmoothing, riverPathSmoothing, showRiverLabels, riverLabelColor, riverSegmentProps, riverSelectMode, selectedSegmentKeys, riverStyle, riverHopProps, selectedHopKey, labelOffsets, generatedHexes, terrainColors])
   useEffect(() => { buildingsLayer.current.markDirty() }, [urbanHexes, urbanStyle, settlements, settlementTierStyles, roadBaseData])
   useEffect(() => { bridgesDirtyRef.current = true }, [bridgesEnabled, smoothedRoadData, smoothedRailData, riverEdges, generatedHexes])
-  useEffect(() => { settlementsDirtyRef.current = true }, [settlements, settlementTierStyles, labelPresetId, labelOverrides, smoothedRoadData, smoothedRailData, labelOffsets, defaultTerrainBlobs, terrainBlobOverrides, riverEdges, highlights, highlightedHexes, mapBgColor])
+  useEffect(() => { settlementsLayer.current.markDirty() }, [settlements, settlementTierStyles, labelPresetId, labelOverrides, smoothedRoadData, smoothedRailData, labelOffsets, defaultTerrainBlobs, terrainBlobOverrides, riverEdges, highlights, highlightedHexes, mapBgColor])
   // When entering label-drag mode, rebuild label layers so the bbox cache is populated for hit-testing
   useEffect(() => {
     if (activeTool.type === 'label-drag') {
       riversDirtyRef.current = true
-      settlementsDirtyRef.current = true
+      settlementsLayer.current.markDirty()
     }
   }, [activeTool.type])
 
@@ -3423,7 +3404,7 @@ terrainColors, terrainTextureScales, terrainTextureBlendModes, terrainTextureOpa
     joinedHighlightsLayer.current.markDirty()
     riversDirtyRef.current = true
     buildingsLayer.current.markDirty()
-    settlementsDirtyRef.current = true
+    settlementsLayer.current.markDirty()
     draw()
   }, [generatedMetadata, draw])
 
