@@ -226,10 +226,8 @@ export const TerrainViewCanvas = forwardRef<TerrainViewCanvasHandle, { surroundC
 
   const joinedHighlightsLayer = useRef(new LayerCache())
 
-  const riversLayerRef = useRef<OffscreenCanvas | null>(null)
-  const riversDirtyRef = useRef(true)
-  const riversLayerPapWRef = useRef(0)
-  const riversLayerPapHRef = useRef(0)
+  const riversLayer = useRef(new LayerCache())
+  const riversDirtyRef = useRef(true)  // gates chain-data rebuild; also drives riversLayer.markDirty()
 
   const buildingsLayerRef = useRef<OffscreenCanvas | null>(null)
   const buildingsDirtyRef = useRef(true)
@@ -2206,6 +2204,7 @@ terrainColors, terrainTextureScales, terrainTextureBlendModes, terrainTextureOpa
 
     // Rebuild chains only when dirty — Catmull-Rom is expensive and must not run every frame
     if (riversDirtyRef.current || !cachedRiverChainDataRef.current) {
+      riversLayer.current.markDirty()
       const tierEdges: [typeof riverEdgesRef.current, typeof riverEdgesRef.current, typeof riverEdgesRef.current] = [[], [], []]
       for (const e of riverEdgesRef.current) tierEdges[e.tier ?? 1].push(e)
 
@@ -2230,6 +2229,7 @@ terrainColors, terrainTextureScales, terrainTextureBlendModes, terrainTextureOpa
       }
       computedRiverChainsRef.current = cachedRiverChainDataRef.current
       riverChainCache.chains = cachedRiverChainDataRef.current
+      riversDirtyRef.current = false
     }
     const riverTierChainData = cachedRiverTierChainDataRef.current!
     const riverChainData = cachedRiverChainDataRef.current!
@@ -2317,11 +2317,8 @@ terrainColors, terrainTextureScales, terrainTextureBlendModes, terrainTextureOpa
         _drawRivers(ctx, liveRiverParams)
         ctx.restore()
       } else {
-        const offW = Math.ceil(pw * dpr * offZoom), offH = Math.ceil(ph * dpr * offZoom)
-        if (riversDirtyRef.current || !riversLayerRef.current ||
-            riversLayerPapWRef.current !== offW || riversLayerPapHRef.current !== offH) {
-          const offscreen = new OffscreenCanvas(offW, offH)
-          const oCtx = offscreen.getContext('2d')!
+        const { ctx: oCtx, rebuilt } = riversLayer.current.prepare(pw, ph, dpr)
+        if (rebuilt) {
           oCtx.scale(dpr * offZoom, dpr * offZoom)
           oCtx.translate(-px, -py)
           oCtx.save()
@@ -2330,12 +2327,8 @@ terrainColors, terrainTextureScales, terrainTextureBlendModes, terrainTextureOpa
           oCtx.clip()
           _drawRivers(oCtx, riverParams)
           oCtx.restore()
-          riversLayerRef.current = offscreen
-          riversDirtyRef.current = false
-          riversLayerPapWRef.current = offW
-          riversLayerPapHRef.current = offH
         }
-        ctx.drawImage(riversLayerRef.current, px, py, pw, ph)
+        riversLayer.current.blit(ctx, px, py, pw, ph)
       }
     }
     if (isExport) {
