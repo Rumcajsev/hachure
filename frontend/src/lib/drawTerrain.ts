@@ -87,15 +87,15 @@ export type { EdgeBlobParams, EdgeBlobChain }
 
 
 
-/** Cache of pre-processed color-mode textures: key = `${tex.src}_${hexColor}` */
+// Tinted-texture cache: key = `${tex.src}_${hexColor}_${invert}`.
+// Each entry is a GPU-backed OffscreenCanvas. Without a size cap, repeated
+// terrain color slider tweaks fill VRAM indefinitely — once past ~400MB the
+// browser stalls every drawImage() call on a GPU sync, causing 95ms+ frames.
+// Cap at 40: typical active set is ≤20 (10 terrain types × 2 invert modes),
+// so the cap is hit only by dead entries from past color values.
 const colorModeTextureCache = new Map<string, OffscreenCanvas>()
+const COLOR_TEXTURE_CACHE_MAX = 40
 
-/**
- * Converts a B&W texture to a colored, alpha-masked canvas.
- * invert=false (Marks):     dark pixels → terrain color (opaque), bright → transparent
- * invert=true  (Background): bright pixels → terrain color (opaque), dark → transparent
- * Result is cached per (texture src, color, invert) triple.
- */
 function getTintedTexture(tex: HTMLImageElement, hexColor: string, invert: boolean): OffscreenCanvas | null {
   const key = `${tex.src}_${hexColor}_${invert}`
   if (colorModeTextureCache.has(key)) return colorModeTextureCache.get(key)!
@@ -115,6 +115,7 @@ function getTintedTexture(tex: HTMLImageElement, hexColor: string, invert: boole
     d[i + 3] = Math.round(invert ? lum : 255 - lum)
   }
   octx.putImageData(img, 0, 0)
+  if (colorModeTextureCache.size >= COLOR_TEXTURE_CACHE_MAX) colorModeTextureCache.clear()
   colorModeTextureCache.set(key, oc)
   return oc
 }
@@ -879,7 +880,7 @@ export function drawTerrain(tCtx: Ctx, params: DrawTerrainParams): void {
   }
 
   // ── Hillshade overlay ─────────────────────────────────────────────────────
-  if (params.hillshadeCanvas) {
+  if (params.hillshadeCanvas && params.hillshadeCanvas.width > 0 && params.hillshadeCanvas.height > 0) {
     tCtx.save()
     const hsDT = params.hillshadeDisabledTerrains
     const hsDEC = params.hillshadeDisabledElevClasses
@@ -899,7 +900,7 @@ export function drawTerrain(tCtx: Ctx, params: DrawTerrainParams): void {
   }
 
   // ── Contour lines ─────────────────────────────────────────────────────────
-  if (params.contourCanvas) {
+  if (params.contourCanvas && params.contourCanvas.width > 0 && params.contourCanvas.height > 0) {
     tCtx.save()
     const cDT = params.contourDisabledTerrains
     const cDEC = params.contourDisabledElevClasses
