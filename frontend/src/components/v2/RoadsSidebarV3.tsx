@@ -1,15 +1,11 @@
-import { useEffect, useRef, useMemo, useState } from 'react'
+import { useEffect, useState } from 'react'
 import {
   useMapStore,
   DEFAULT_ROAD_TIER_STYLES, DEFAULT_RAIL_STYLE, DEFAULT_ROAD_GEOM, DEFAULT_RAIL_GEOM,
 } from '../../store/mapStore'
 import type { RoadTierStyle, StrokeDash } from '../../store/mapStore'
 import { DEFAULT_STROKE_EFFECT } from '../../store/mapStore'
-import { buildRailChains } from '../../lib/roadChains'
-import { buildRoadChainsV2 } from '../../lib/roadChainsV2'
-import { drawRoadsAndRails } from '../../lib/drawRoadsRails'
 import { PALETTE_RAIL_LIGHT, PALETTE_RAIL_DARK } from '../../palettes'
-import { computePaper } from '../../lib/projection'
 import { useTheme } from '../../context/ThemeContext'
 import {
   BrushRow, MiniSlider, BigColorSwatch, SegmentedControl, ToggleRow, tintBg,
@@ -54,167 +50,6 @@ const IMPORT_ICON = (
 
 type FlyoutId = 'road-style' | 'rail-style' | 'road-shape' | 'rail-shape' | 'road-import' | 'rail-import' | 'bridges' | 'segment' | null
 
-// ── HexPreview ─────────────────────────────────────────────────────────────────
-
-function HexPreview({ mode, tier = 0 }: { mode: 'road' | 'rail'; tier?: 0 | 1 | 2 }) {
-  const t = useTheme()
-  const {
-    hexSizeMm, hexOrientation,
-    roadTierStyles, roadWiggleAmp, roadWiggleFreq, roadSmoothing, roadPathSmoothing,
-    roadTierGeometry, mapStyle,
-    railStyle, railWiggleAmp, railWiggleFreq, railSmoothing, railGeomOverride,
-    generatedMetadata,
-  } = useMapStore()
-
-  const canvasRef = useRef<HTMLCanvasElement>(null)
-  const PX_PER_MM = 96 / 25.4
-  const sqrt3 = Math.sqrt(3)
-
-  const hexR = (hexSizeMm / sqrt3) * PX_PER_MM
-  const isFlat = hexOrientation === 'flat'
-  const interHexDist = hexSizeMm * PX_PER_MM
-
-  const physicalScale = (() => {
-    if (!generatedMetadata) return 1
-    const canvasAreaW = window.innerWidth - t.sidebarWidth - 32
-    const canvasAreaH = window.innerHeight - 48
-    const { pw } = computePaper(canvasAreaW, canvasAreaH, generatedMetadata)
-    return PX_PER_MM * generatedMetadata.paper_mm[0] / pw
-  })()
-
-  const W = FLYOUT_W
-  const hexH = (isFlat ? sqrt3 : 2) * hexR
-  const H = Math.min(140, Math.max(70, Math.round(hexH * 2.4)))
-  const cy = H / 2
-
-  useEffect(() => {
-    const canvas = canvasRef.current
-    if (!canvas) return
-    const ctx = canvas.getContext('2d')
-    if (!ctx) return
-    ctx.clearRect(0, 0, W, H)
-
-    const numHexes = Math.ceil(W / interHexDist) + 6
-    const hexIdx = new Map<string, { center: [number, number] }>()
-
-    const keyPts: [number, number][] = [
-      [0,    0.30], [0.20, 0.22], [0.42, -0.10],
-      [0.60, -0.28], [0.78, -0.20], [1, 0.00],
-    ]
-    const pathY = (t: number) => {
-      for (let k = 0; k < keyPts.length - 1; k++) {
-        const [t0, y0] = keyPts[k], [t1, y1] = keyPts[k + 1]
-        if (t <= t1) {
-          const f = (t - t0) / (t1 - t0)
-          const sf = f * f * (3 - 2 * f)
-          return cy + H * (y0 + sf * (y1 - y0))
-        }
-      }
-      return cy + H * keyPts[keyPts.length - 1][1]
-    }
-
-    for (let i = 0; i < numHexes; i++) {
-      const frac = i / (numHexes - 1)
-      hexIdx.set(`${i},0`, { center: [(i - 2) * interHexDist, pathY(frac)] })
-    }
-
-    const project = (x: number, y: number): [number, number] => [x, y]
-
-    if (mode === 'road') {
-      const edges = Array.from({ length: numHexes - 1 }, (_, i) => ({
-        q1: i, r1: 0, q2: i + 1, r2: 0, tier,
-      }))
-
-      const geom = roadTierGeometry[tier]
-      const wiggleAmp     = geom?.wiggleAmp     ?? roadWiggleAmp
-      const wiggleFreq    = geom?.wiggleFreq    ?? roadWiggleFreq
-      const smoothing     = geom?.smoothing     ?? roadSmoothing
-      const pathSmoothing = geom?.pathSmoothing ?? roadPathSmoothing
-      const { chains } = buildRoadChainsV2(edges, hexIdx, {}, wiggleAmp, wiggleFreq, smoothing, pathSmoothing)
-
-      const tierStyles = DEFAULT_ROAD_TIER_STYLES.map(
-        (def, idx) => idx === tier
-          ? { ...roadTierStyles[tier], outerW: roadTierStyles[tier].outerW * physicalScale }
-          : { ...def, outerW: def.outerW * physicalScale },
-      ) as [RoadTierStyle, RoadTierStyle, RoadTierStyle]
-
-      drawRoadsAndRails(ctx, {
-        roadChains: chains, junctions: [], railChains: [],
-        tierStyles, railStyle: DEFAULT_RAIL_STYLE,
-        project, mapStyle: mapStyle ?? 'standard',
-      })
-    } else {
-      const wiggleAmp  = railGeomOverride?.wiggleAmp  ?? railWiggleAmp
-      const wiggleFreq = railGeomOverride?.wiggleFreq ?? railWiggleFreq
-      const smoothing  = railGeomOverride?.smoothing  ?? railSmoothing
-
-      const edges = Array.from({ length: numHexes - 1 }, (_, i) => ({
-        q1: i, r1: 0, q2: i + 1, r2: 0,
-      }))
-      const { chains } = buildRailChains(
-        edges, [], hexIdx, new Map(), new Map(), {}, wiggleAmp, wiggleFreq, smoothing,
-      )
-
-      drawRoadsAndRails(ctx, {
-        roadChains: [], junctions: [], railChains: chains,
-        tierStyles: DEFAULT_ROAD_TIER_STYLES,
-        railStyle: { ...railStyle, thickness: railStyle.thickness * physicalScale },
-        project,
-      })
-    }
-  }, [
-    mode, tier, W, H, cy, interHexDist, physicalScale,
-    roadTierStyles, roadWiggleAmp, roadWiggleFreq, roadSmoothing, roadPathSmoothing,
-    roadTierGeometry, mapStyle,
-    railStyle, railWiggleAmp, railWiggleFreq, railSmoothing, railGeomOverride,
-    generatedMetadata,
-  ])
-
-  const centers = useMemo(() => {
-    const cx = W / 2
-    const cs: { x: number; y: number }[] = []
-    if (isFlat) {
-      const colStep = 1.5 * hexR, rowStep = sqrt3 * hexR
-      const cols = Math.ceil(cx / colStep) + 2, rows = Math.ceil(cy / rowStep) + 2
-      for (let c = -cols; c <= cols; c++) {
-        const yOff = Math.abs(c) % 2 === 1 ? rowStep / 2 : 0
-        for (let r = -rows; r <= rows; r++)
-          cs.push({ x: cx + c * colStep, y: cy + r * rowStep + yOff })
-      }
-    } else {
-      const colStep = sqrt3 * hexR, rowStep = 1.5 * hexR
-      const cols = Math.ceil(cx / colStep) + 2, rows = Math.ceil(cy / rowStep) + 2
-      for (let r = -rows; r <= rows; r++) {
-        const xOff = Math.abs(r) % 2 === 1 ? colStep / 2 : 0
-        for (let c = -cols; c <= cols; c++)
-          cs.push({ x: cx + c * colStep + xOff, y: cy + r * rowStep })
-      }
-    }
-    return cs
-  }, [isFlat, hexR, cy, sqrt3, W])
-
-  const hexPolyPts = (hx: number, hy: number) => {
-    const off = isFlat ? 0 : -30
-    return Array.from({ length: 6 }, (_, i) => {
-      const a = ((i * 60) + off) * Math.PI / 180
-      return `${hx + Math.cos(a) * hexR},${hy + Math.sin(a) * hexR}`
-    }).join(' ')
-  }
-
-  return (
-    <div style={{ position: 'relative', width: W, height: H }}>
-      <svg width={W} height={H} style={{ display: 'block', position: 'absolute', top: 0, left: 0 }}>
-        {centers.map(({ x, y }, i) => (
-          <polygon key={i} points={hexPolyPts(x, y)} fill="none" stroke={t.line} strokeWidth={0.8} />
-        ))}
-      </svg>
-      <canvas
-        ref={canvasRef} width={W} height={H}
-        style={{ display: 'block', position: 'absolute', top: 0, left: 0, pointerEvents: 'none' }}
-      />
-    </div>
-  )
-}
 
 // ── Flyout section label helper ────────────────────────────────────────────────
 
@@ -403,8 +238,6 @@ export function RoadStyleFlyout({ tier, onClose }: { tier: 0 | 1 | 2; onClose: (
       subtitle={isModified ? 'Modified from default' : 'Default style'}
       onClose={onClose}
     >
-      <HexPreview mode="road" tier={tier} />
-
       {/* ── Always-on: thickness + surface + fill dash ── */}
       <MiniSlider label="Thickness" display={s.outerW.toFixed(1)} value={s.outerW * 10} min={5} max={100} step={5} accentColor={tierColor} onChange={v => setRoadTierStyle(tier, { outerW: v / 10 })} />
       <FSectionDivider />
@@ -495,7 +328,6 @@ export function RailStyleFlyout({ onClose }: { onClose: () => void }) {
 
   return (
     <FlyoutShell title="Rail" subtitle={isModified ? 'Modified from default' : 'Default style'} onClose={onClose}>
-      <HexPreview mode="rail" />
       <div style={{ padding: '4px 12px' }}>
         <SegmentedControl
           options={[{ value: 'classic', label: 'Classic' }, { value: 'cross', label: 'Cross' }]}
