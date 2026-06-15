@@ -1316,10 +1316,11 @@ terrainColors, terrainTextureScales, terrainTextureBlendModes, terrainTextureOpa
   // goes through the full organic shaping pipeline (inset, bump, lobe) just like any other blob edge.
   const riverAutoCorridors = useMemo((): [number, number][][] => {
     if (!riverBlobCutEnabled || riverEdges.length === 0 || generatedHexes.length === 0 || !generatedMetadata || !paperDims) return EMPTY_CORRIDORS
-    const { pw, ph, px, py } = paperDims
+    const { pw, ph } = paperDims
     const meta = generatedMetadata
+    // Use px=0,py=0 to match the paper-local coordinate system used by projectedHexes/rawPolys.
     const proj = (lonlat: [number, number]): [number, number] =>
-      projectToCanvas(lonlat[0], lonlat[1], meta, pw, ph, px, py)
+      projectToCanvas(lonlat[0], lonlat[1], meta, pw, ph, 0, 0)
     const chains = buildRiverChainsV2(riverEdges, generatedHexes, {}, riverWiggleFreq, riverWiggleAmp, riverSmoothing)
     const halfW = hexRadius * riverBlobCutWidth
     const corridors: [number, number][][] = []
@@ -2316,8 +2317,6 @@ terrainColors, terrainTextureScales, terrainTextureBlendModes, terrainTextureOpa
       labelOffsets: labelOffsetsRef.current,
       liveLabelOffset: liveLabelOffsetRef.current ?? undefined,
       labelBBoxOut: labelBBoxCacheRef.current,
-      clearColor: terrainColorsRef.current['clear'] ?? TERRAIN_COLORS['clear'],
-      bankBlobs: defaultTerrainBlobsMaskedRef.current,
     }
 
     // Compute drag state upfront — needed for both river and road live previews below

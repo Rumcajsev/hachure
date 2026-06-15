@@ -107,49 +107,6 @@ export function GlobalShapeFlyout({ onClose }: { onClose: () => void }) {
   )
 }
 
-// ── BankTerrainPicker ─────────────────────────────────────────────────────────
-
-const BANK_TERRAINS = [
-  { id: 'woods',       label: 'Woods' },
-  { id: 'light_woods', label: 'Light woods' },
-  { id: 'rough',       label: 'Rough' },
-  { id: 'marsh',       label: 'Marsh' },
-  { id: 'beach',       label: 'Beach' },
-]
-
-function BankTerrainPicker({ value, onChange, terrainColors }: {
-  value: string[]
-  onChange: (v: string[]) => void
-  terrainColors: Record<string, string>
-}) {
-  const t = useTheme()
-  const toggle = (id: string) => {
-    const next = value.includes(id) ? value.filter(x => x !== id) : [...value, id]
-    onChange(next)
-  }
-  return (
-    <div style={{ padding: '2px 14px 6px' }}>
-      <div style={{ fontFamily: t.mono, fontSize: 8, letterSpacing: 0.6, color: t.inkFaint, textTransform: 'uppercase', marginBottom: 4 }}>
-        {value.length === 0 ? 'Show on all terrain' : 'Show only on selected'}
-      </div>
-      {BANK_TERRAINS.map(({ id, label }) => {
-        const active = value.includes(id)
-        const color = terrainColors[id] ?? '#888'
-        return (
-          <div key={id} onClick={() => toggle(id)}
-            style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '2px 0', cursor: 'pointer', userSelect: 'none' }}>
-            <div style={{ width: 10, height: 10, borderRadius: 2, background: color, flexShrink: 0, border: `1px solid rgba(0,0,0,0.15)` }} />
-            <span style={{ fontFamily: t.sans, fontSize: 11, color: active ? t.ink : t.inkMute, flex: 1 }}>{label}</span>
-            <div style={{ width: 12, height: 12, borderRadius: 2, border: `1px solid ${active ? t.rust : t.inkFaint}`, background: active ? t.rust : 'transparent', flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-              {active && <span style={{ color: '#fff', fontSize: 8, lineHeight: 1 }}>✓</span>}
-            </div>
-          </div>
-        )
-      })}
-    </div>
-  )
-}
-
 // ── RiverTierFlyout ───────────────────────────────────────────────────────────
 
 export function RiverTierFlyout({ tier, onClose }: { tier: RiverTier; onClose: () => void }) {
@@ -182,14 +139,11 @@ export function RiverTierFlyout({ tier, onClose }: { tier: RiverTier; onClose: (
   const tierSmoothSlider = useDeferredSlider(smoothing,     v => setS({ smoothing: v }))
   const tierPathSlider   = useDeferredSlider(pathSmoothing, v => setS({ pathSmoothing: v }))
 
-  const { terrainColors } = useMapStore()
-
   const isModified =
     s.color !== def.color || s.widthScale !== def.widthScale ||
     JSON.stringify(s.effect) !== JSON.stringify(def.effect) ||
     s.wiggleAmp !== undefined || s.wiggleFreq !== undefined ||
-    s.smoothing !== undefined || s.pathSmoothing !== undefined ||
-    s.bankEnabled || s.bankWidth !== def.bankWidth || (s.bankTerrains?.length ?? 0) > 0
+    s.smoothing !== undefined || s.pathSmoothing !== undefined
 
   return (
     <FlyoutShell title={s.label} subtitle={isModified ? 'modified' : undefined} onClose={onClose}>
@@ -220,15 +174,6 @@ export function RiverTierFlyout({ tier, onClose }: { tier: RiverTier; onClose: (
       <MiniSlider label="Wiggle freq" display={(tierFreqSlider.value / 10).toFixed(1)}  value={tierFreqSlider.value}   min={5} max={100} step={1} accentColor={shapeOverrideEnabled ? accentColor : undefined} onChange={tierFreqSlider.onChange}   onDragEnd={tierFreqSlider.onDragEnd}   disabled={!shapeOverrideEnabled} />
       <MiniSlider label="Line smooth" display={String(tierSmoothSlider.value)}           value={tierSmoothSlider.value} min={2} max={30}  step={1} accentColor={shapeOverrideEnabled ? accentColor : undefined} onChange={tierSmoothSlider.onChange} onDragEnd={tierSmoothSlider.onDragEnd} disabled={!shapeOverrideEnabled} />
       <MiniSlider label="Path smooth" display={String(tierPathSlider.value)}             value={tierPathSlider.value}   min={0} max={50}  step={1} accentColor={shapeOverrideEnabled ? accentColor : undefined} onChange={tierPathSlider.onChange}   onDragEnd={tierPathSlider.onDragEnd}   disabled={!shapeOverrideEnabled} />
-
-      {/* Bank clearance */}
-      <SectionToggle label="Bank clearance" enabled={s.bankEnabled ?? false} onChange={v => setS({ bankEnabled: v })} accentColor={accentColor} />
-      {s.bankEnabled && (
-        <>
-          <MiniSlider label="Width" display={`${s.bankWidth ?? 4}px`} value={s.bankWidth ?? 4} min={1} max={30} step={1} accentColor={accentColor} onChange={v => setS({ bankWidth: v })} />
-          <BankTerrainPicker value={s.bankTerrains ?? []} onChange={v => setS({ bankTerrains: v })} terrainColors={{ ...TERRAIN_COLORS, ...terrainColors }} />
-        </>
-      )}
 
       {isModified && (
         <div style={{ margin: '8px 14px 0', borderTop: `1px solid ${t.line2}`, paddingTop: 8 }}>

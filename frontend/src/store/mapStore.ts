@@ -249,18 +249,12 @@ export interface RiverTierStyle {
   wiggleFreq?:    number
   smoothing?:     number
   pathSmoothing?: number
-  // Bank clearance
-  bankEnabled:    boolean
-  bankWidth:      number    // extra half-width on each side (canvas px)
-  bankTerrains:   string[]  // terrain types that trigger bank; empty = show everywhere
 }
 
-const DEFAULT_BANK = { bankEnabled: false, bankWidth: 4, bankTerrains: [] as string[] }
-
 export const DEFAULT_RIVER_TIER_STYLES: [RiverTierStyle, RiverTierStyle, RiverTierStyle] = [
-  { label: 'Major River', color: WATER_COLOR, widthScale: 1.5,  visible: true, effect: { ...DEFAULT_STROKE_EFFECT }, ...DEFAULT_BANK },
-  { label: 'River',       color: WATER_COLOR, widthScale: 1.0,  visible: true, effect: { ...DEFAULT_STROKE_EFFECT }, ...DEFAULT_BANK },
-  { label: 'Stream',      color: '#5878a0',   widthScale: 0.55, visible: true, effect: { ...DEFAULT_STROKE_EFFECT }, ...DEFAULT_BANK },
+  { label: 'Major River', color: WATER_COLOR, widthScale: 1.5,  visible: true, effect: { ...DEFAULT_STROKE_EFFECT } },
+  { label: 'River',       color: WATER_COLOR, widthScale: 1.0,  visible: true, effect: { ...DEFAULT_STROKE_EFFECT } },
+  { label: 'Stream',      color: '#5878a0',   widthScale: 0.55, visible: true, effect: { ...DEFAULT_STROKE_EFFECT } },
 ]
 
 /** Maps OSM waterway type string to river tier (0=Major River, 1=River, 2=Stream) */
@@ -984,7 +978,7 @@ export const useMapStore = create<MapStore>()(persist((set, get) => ({
     labelPresetId: s.labelPresetId,
     labelOverrides: s.labelOverrides,
   }),
-  version: 83,
+  version: 84,
   migrate: migratePersisted,
   merge: (persisted, current) => rehydrateState({ ...current, ...(persisted as Partial<MapStore>) }),
 }))

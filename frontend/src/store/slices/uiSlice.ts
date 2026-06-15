@@ -1029,20 +1029,22 @@ if (fromVersion < 64) {
     if (s.terrainBlobHoleDensity === undefined) s.terrainBlobHoleDensity = 0
     if (s.terrainBlobHoleSize === undefined) s.terrainBlobHoleSize = 0.35
   }
+  if (fromVersion < 84) {
+    const tiers = s.riverTierStyles as Array<Record<string, unknown>> | undefined
+    if (tiers) {
+      for (const ts of tiers) {
+        delete ts.bankEnabled
+        delete ts.bankWidth
+        delete ts.bankTerrains
+      }
+    }
+  }
   if (fromVersion < 83) {
     // rawRoadWays, osmHexPaths, rawRailWays, osmRailHexPaths, osmRiverWays,
     // appliedOsmRiverIndices, riversOsmStatus, heightmapUrl added to persist.
     // Missing fields default to slice initialiser values — no fixup needed.
   }
   if (fromVersion < 80) {
-    const tiers = s.riverTierStyles as Array<Record<string, unknown>> | undefined
-    if (tiers) {
-      for (const ts of tiers) {
-        if (ts.bankEnabled === undefined) ts.bankEnabled = false
-        if (ts.bankWidth === undefined) ts.bankWidth = 4
-        if (ts.bankTerrains === undefined) ts.bankTerrains = []
-      }
-    }
     if (!s.blobMaskEdits) s.blobMaskEdits = []
   }
   if (fromVersion < 79) {
