@@ -1511,10 +1511,10 @@ terrainColors, terrainTextureScales, terrainTextureBlendModes, terrainTextureOpa
   // the cut edge goes through the full organic pipeline like any other blob edge.
   const defaultTerrainBlobsMasked = useMemo(() => {
     if (blobMaskEdits.length === 0 || !generatedMetadata || !paperDims) return defaultTerrainBlobs
-    const { pw, ph, px, py } = paperDims
+    const { pw, ph } = paperDims
     const meta = generatedMetadata
     const projectFn = (lonlat: [number, number]): [number, number] =>
-      projectToCanvas(lonlat[0], lonlat[1], meta, pw, ph, px, py)
+      projectToCanvas(lonlat[0], lonlat[1], meta, pw, ph, 0, 0)
     const shapeParams = {
       R: hexRadius,
       smooth: terrainBlobSmooth,
