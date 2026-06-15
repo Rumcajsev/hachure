@@ -2794,21 +2794,23 @@ terrainColors, terrainTextureScales, terrainTextureBlendModes, terrainTextureOpa
     }
 
     // Blob mask freehand stroke preview
+    // pts are in logical canvas space; ctx is in paper-local space (after translate(px,py) and scale(zoom))
     if (!isExport && blobMaskDrawingRef.current) {
       const pts = blobMaskStrokeRef.current
       const tool = activeToolRef.current
       if (pts.length >= 2 && tool.type === 'blob-mask') {
         const isSubtract = tool.mode === 'subtract'
+        const iz = 1 / zoom
         ctx.save()
-        ctx.strokeStyle = isSubtract ? 'rgba(255,80,80,0.8)' : 'rgba(80,220,120,0.8)'
-        ctx.fillStyle = isSubtract ? 'rgba(255,80,80,0.08)' : 'rgba(80,220,120,0.08)'
-        ctx.lineWidth = 2
+        ctx.strokeStyle = isSubtract ? 'rgba(255,80,80,0.85)' : 'rgba(80,220,120,0.85)'
+        ctx.fillStyle = isSubtract ? 'rgba(255,80,80,0.1)' : 'rgba(80,220,120,0.1)'
+        ctx.lineWidth = 2 * iz
         ctx.lineCap = 'round'
         ctx.lineJoin = 'round'
-        ctx.setLineDash([6, 4])
+        ctx.setLineDash([6 * iz, 4 * iz])
         ctx.beginPath()
-        ctx.moveTo(pts[0][0], pts[0][1])
-        for (let i = 1; i < pts.length; i++) ctx.lineTo(pts[i][0], pts[i][1])
+        ctx.moveTo(pts[0][0] - px, pts[0][1] - py)
+        for (let i = 1; i < pts.length; i++) ctx.lineTo(pts[i][0] - px, pts[i][1] - py)
         ctx.closePath()
         ctx.fill()
         ctx.stroke()
