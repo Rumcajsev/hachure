@@ -572,7 +572,19 @@ export function applyBlobMaskEdits(
         }
         polys = next
       } else {
-        polys = [...polys, shaped]
+        // Union into existing polys so overlapping regions don't punch holes under evenodd fill
+        if (polys.length === 0) {
+          polys = [shaped]
+        } else {
+          try {
+            const existingMulti: polygonClipping.MultiPolygon = polys.filter(p => p.length >= 3).map(p => [p as polygonClipping.Ring])
+            const addMulti: polygonClipping.MultiPolygon = [[shaped as polygonClipping.Ring]]
+            const result = polygonClipping.union(existingMulti, addMulti)
+            polys = result.map(polygon => polygon[0] as [number, number][]).filter(p => p?.length >= 3)
+          } catch {
+            polys = [...polys, shaped]
+          }
+        }
       }
     }
     return { ...blob, polys }
