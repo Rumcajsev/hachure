@@ -3,7 +3,6 @@ import maplibregl from 'maplibre-gl'
 import 'maplibre-gl/dist/maplibre-gl.css'
 import { useMapStore, TERRAIN_COLORS, WATER_COLOR, TERRAIN_PRIORITY, hexTerrainLayers, edgeBlobCanonicalKey, WORLDCOVER_CLASSES, validColWidthsForRows, validRowHeightsForCols, cellPaperInfo, type GeneratedHex, type RoadTierStyle, type SettlementTier, type SettlementTierStyle, type BlobMaskEdit } from '../store/mapStore'
 import { BlobOverrideFlyout } from './BlobOverrideFlyout'
-import { BlobMaskTestPanel } from './BlobMaskTestPanel'
 import { useTheme } from '../context/ThemeContext'
 import { hexAdjacent, catmullRom, offsetPolyline, pointInPolygon, distToSeg, douglasPeucker, douglasPeuckerClosed, chaikin } from '../lib/geometry'
 import { mulberry32, makePermutation } from '../lib/noise'
@@ -681,7 +680,6 @@ terrainColors, terrainTextureScales, terrainTextureBlendModes, terrainTextureOpa
   const blobMaskDrawingRef = useRef(false)
   const addBlobMaskEditRef = useRef(addBlobMaskEdit)
   addBlobMaskEditRef.current = addBlobMaskEdit
-  const blobMaskSubtractWidthRef = useRef(0.012)
 
   pageGridRef.current = pageGrid
   paperSizeRef.current = paperSize
@@ -2801,16 +2799,18 @@ terrainColors, terrainTextureScales, terrainTextureBlendModes, terrainTextureOpa
       const tool = activeToolRef.current
       if (pts.length >= 2 && tool.type === 'blob-mask') {
         const isSubtract = tool.mode === 'subtract'
-        const halfW = Math.max(pw, ph) * blobMaskSubtractWidthRef.current
         ctx.save()
         ctx.strokeStyle = isSubtract ? 'rgba(255,80,80,0.8)' : 'rgba(80,220,120,0.8)'
-        ctx.lineWidth = isSubtract ? halfW * 2 : 2
+        ctx.fillStyle = isSubtract ? 'rgba(255,80,80,0.08)' : 'rgba(80,220,120,0.08)'
+        ctx.lineWidth = 2
         ctx.lineCap = 'round'
         ctx.lineJoin = 'round'
-        ctx.setLineDash(isSubtract ? [] : [6, 4])
+        ctx.setLineDash([6, 4])
         ctx.beginPath()
         ctx.moveTo(pts[0][0], pts[0][1])
         for (let i = 1; i < pts.length; i++) ctx.lineTo(pts[i][0], pts[i][1])
+        ctx.closePath()
+        ctx.fill()
         ctx.stroke()
         ctx.restore()
       }
@@ -6186,16 +6186,8 @@ terrainColors, terrainTextureScales, terrainTextureBlendModes, terrainTextureOpa
         const { pw, ph, px, py } = getPaper(canvas.width / window.devicePixelRatio, canvas.height / window.devicePixelRatio)
         const unproj = (p: [number, number]): [number, number] =>
           unprojectFromCanvas(p[0], p[1], meta, pw, ph, px, py)
-        let polygon: [number, number][]
-        if (tool.mode === 'subtract') {
-          const halfW = Math.max(pw, ph) * blobMaskSubtractWidthRef.current
-          const upper = offsetPolyline(pts, +halfW)
-          const lower = offsetPolyline(pts, -halfW).slice().reverse()
-          polygon = [...upper, ...lower].map(unproj)
-        } else {
-          polygon = pts.map(unproj)
-          if (polygon.length > 2) polygon.push(polygon[0])
-        }
+        const polygon = pts.map(unproj)
+        if (polygon.length > 2) polygon.push(polygon[0])
         addBlobMaskEditRef.current({
           id: `mask-${Date.now()}`,
           terrain: tool.terrain,
@@ -6759,18 +6751,6 @@ terrainColors, terrainTextureScales, terrainTextureBlendModes, terrainTextureOpa
             }}
           />
         </div>
-      )}
-      {meta && (
-        <BlobMaskTestPanel
-          meta={meta}
-          blobMaskEdits={blobMaskEdits}
-          activeTool={activeTool}
-          setActiveTool={setActiveTool}
-          onRemove={removeBlobMaskEdit}
-          onClear={clearBlobMaskEdits}
-          subtractWidth={blobMaskSubtractWidthRef.current}
-          onSubtractWidthChange={v => { blobMaskSubtractWidthRef.current = v; draw() }}
-        />
       )}
       {perfHudVisible && (
         <div
