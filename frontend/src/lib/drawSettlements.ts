@@ -27,13 +27,6 @@ export type DrawSettlementsParams = {
   labelBBoxOut?: Record<string, LabelBBox>
   /** Scale factor for all pixel-based sizes — use lineScale during PDF export. */
   scale?: number
-  /**
-   * Batch pixel-density sampler. Given an array of CSS-coordinate bboxes (all candidates
-   * for one settlement), returns a matching array of 0–1 ink-density values. Doing one
-   * read per settlement (instead of one per candidate) is the key perf win.
-   * Omit for export paths.
-   */
-  pixelSampler?: (candidates: Array<[number, number, number, number]>) => number[]
 }
 
 function closestPointOnSegment(
@@ -49,28 +42,20 @@ function closestPointOnSegment(
 
 export function drawSettlements(sCtx: Ctx, {
   settlements, tierStyles, labelSpecs, roadChains, railChains, roadJunctions, project, hexCenterOf, hexRadiusPx,
-  labelOffsets, liveLabelOffset, labelBBoxOut, scale = 1, pixelSampler,
+  labelOffsets, liveLabelOffset, labelBBoxOut, scale = 1,
 }: DrawSettlementsParams) {
   const placed = settlements.filter(s => s.included && s.hex_q !== null)
 
-  // Project all road and rail chain segments for obstacle sampling and icon snapping.
+  // Project road and rail chain segments — used for icon snapping only.
   type Seg = { ax: number; ay: number; bx: number; by: number }
   const allSegs: Seg[] = []
-  const obstaclePts: [number, number][] = []
 
   const sampleChain = (chain: [number, number][]) => {
-    if (chain.length < 1) return
+    if (chain.length < 2) return
     let [scx, scy] = project(chain[0][0], chain[0][1])
-    obstaclePts.push([scx, scy])
     for (let i = 1; i < chain.length; i++) {
       const [nx, ny] = project(chain[i][0], chain[i][1])
       allSegs.push({ ax: scx, ay: scy, bx: nx, by: ny })
-      const segLen = Math.hypot(nx - scx, ny - scy)
-      const steps = Math.max(1, Math.ceil(segLen / 6))
-      for (let st = 1; st <= steps; st++) {
-        const t = st / steps
-        obstaclePts.push([scx + (nx - scx) * t, scy + (ny - scy) * t])
-      }
       ;[scx, scy] = [nx, ny]
     }
   }
@@ -78,25 +63,6 @@ export function drawSettlements(sCtx: Ctx, {
   for (const { chain } of railChains) sampleChain(chain)
 
   const scaledHexRadiusPx = hexRadiusPx * scale
-  // Spatial grid for obstacle point queries — avoids O(n) scan per label candidate.
-  const OBS_CELL = 24 * scale
-  const obsGrid = new Map<number, number>()
-  const obsKey = (gx: number, gy: number) => gx * 100003 + gy
-  for (const [rx, ry] of obstaclePts) {
-    const k = obsKey(Math.floor(rx / OBS_CELL), Math.floor(ry / OBS_CELL))
-    obsGrid.set(k, (obsGrid.get(k) ?? 0) + 1)
-  }
-  const obsScore = (ex: number, ey: number, ew: number, eh: number): number => {
-    let count = 0
-    const gx0 = Math.floor(ex / OBS_CELL), gx1 = Math.floor((ex + ew) / OBS_CELL)
-    const gy0 = Math.floor(ey / OBS_CELL), gy1 = Math.floor((ey + eh) / OBS_CELL)
-    for (let gx = gx0; gx <= gx1; gx++)
-      for (let gy = gy0; gy <= gy1; gy++)
-        count += obsGrid.get(obsKey(gx, gy)) ?? 0
-    return count
-  }
-
-  const placedBoxes: [number, number, number, number][] = []
 
   for (const s of placed) {
     const center = hexCenterOf(s.hex_q!, s.hex_r)
@@ -154,88 +120,35 @@ export function drawSettlements(sCtx: Ctx, {
 
     const gap = (ts.displayMode === 'icon' ? r : 0) + 3 * scale
 
-    type Cand = { x: number; y: number; bx: number; by: number; align: CanvasTextAlign; base: CanvasTextBaseline; bias: number }
-    const hw = tw / 2, hh = th / 2
-    const cands: Cand[] = [
-      { x: cx + gap, y: cy,       bx: cx + gap,      by: cy - hh,       align: 'left',   base: 'middle', bias: 0.0 },
-      { x: cx + gap, y: cy - gap, bx: cx + gap,      by: cy - gap - th, align: 'left',   base: 'bottom', bias: 0.3 },
-      { x: cx,       y: cy - gap, bx: cx - hw,       by: cy - gap - th, align: 'center', base: 'bottom', bias: 0.8 },
-      { x: cx - gap, y: cy - gap, bx: cx - gap - tw, by: cy - gap - th, align: 'right',  base: 'bottom', bias: 1.5 },
-      { x: cx - gap, y: cy,       bx: cx - gap - tw, by: cy - hh,       align: 'right',  base: 'middle', bias: 1.5 },
-      { x: cx - gap, y: cy + gap, bx: cx - gap - tw, by: cy + gap,      align: 'right',  base: 'top',    bias: 1.5 },
-      { x: cx,       y: cy + gap, bx: cx - hw,       by: cy + gap,      align: 'center', base: 'top',    bias: 0.8 },
-      { x: cx + gap, y: cy + gap, bx: cx + gap,      by: cy + gap,      align: 'left',   base: 'top',    bias: 0.3 },
-    ]
-
     // Manual offset takes precedence — stored as delta from the icon centre (cx, cy).
-    // When present, skip candidate selection entirely so the rendered position is
-    // independent of whatever the auto-placer would choose.
     const oid = `settlement:${s.name}`
     const off = liveLabelOffset?.id === oid ? liveLabelOffset : labelOffsets?.[oid]
 
+    let tx: number, ty: number, tAlign: CanvasTextAlign, tBase: CanvasTextBaseline
     if (off) {
       // Absolute manual position: centre the label at (cx + dx, cy + dy).
-      const tx = cx + off.dx, ty = cy + off.dy
-      // Exclude the live-dragged label from placedBoxes so other labels don't
-      // shift around in response to cursor movement during label-follow mode.
+      tx = cx + off.dx
+      ty = cy + off.dy
+      tAlign = 'center'
+      tBase = 'middle'
       const isLive = liveLabelOffset?.id === oid
-      if (!isLive) placedBoxes.push([tx - tw / 2, ty - th / 2, tw, th])
       if (labelBBoxOut) labelBBoxOut[oid] = { cx: tx, cy: ty, hw: tw / 2 + 3, hh: th / 2 + 3, angle: 0, iconCx: cx, iconCy: cy }
-      sCtx.fillStyle = resolved.color
-      sCtx.font = font
-      sCtx.textAlign = 'center'
-      sCtx.textBaseline = 'middle'
-      if (resolved.letterSpacing > 0) {
-        sCtx.save()
-        ;(sCtx as CanvasRenderingContext2D & { letterSpacing?: string }).letterSpacing = `${resolved.letterSpacing}em`
+      if (isLive) {
+        // Exclude live-dragged label from bbox tracking so other labels don't shift.
       }
-      if (resolved.strokeWidth && resolved.strokeWidth > 0) {
-        sCtx.strokeStyle = resolved.strokeColor ?? '#ffffff'
-        sCtx.lineWidth = resolved.strokeWidth * scale
-        sCtx.lineJoin = 'round'
-        sCtx.strokeText(label, tx, ty)
-      }
-      sCtx.fillText(label, tx, ty)
-      if (resolved.letterSpacing > 0) sCtx.restore()
-      continue
-    }
-
-    // Auto-placement: score all 8 candidates and pick the emptiest one.
-    const pad = 3 * scale
-    // Batch-sample pixel density for all candidates with a single getImageData read.
-    const candBBoxes = cands.map(c => [c.bx - pad, c.by - pad, tw + pad * 2, th + pad * 2] as [number, number, number, number])
-    const densities = pixelSampler ? pixelSampler(candBBoxes) : null
-    let bestScore = Infinity
-    let best = cands[0]
-    for (let ci = 0; ci < cands.length; ci++) {
-      const c = cands[ci]
-      const [ex, ey, ew, eh] = candBBoxes[ci]
-      const density = densities ? densities[ci] : obsScore(ex, ey, ew, eh) / 20
-      let score = c.bias * 0.4 + density * 5
-      for (const [plx, ply, plw, plh] of placedBoxes) {
-        if (ex < plx + plw && ex + ew > plx && ey < ply + plh && ey + eh > ply) score += 8
-      }
-      if (score < bestScore) { bestScore = score; best = c }
-    }
-
-    placedBoxes.push([best.bx, best.by, tw, th])
-
-    if (labelBBoxOut) {
-      labelBBoxOut[oid] = {
-        cx: best.bx + tw / 2,
-        cy: best.by + th / 2,
-        hw: tw / 2 + 3,
-        hh: th / 2 + 3,
-        angle: 0,
-        iconCx: cx,
-        iconCy: cy,
-      }
+    } else {
+      // Fixed placement: label to the right of the icon, vertically centred.
+      tx = cx + gap
+      ty = cy
+      tAlign = 'left'
+      tBase = 'middle'
+      if (labelBBoxOut) labelBBoxOut[oid] = { cx: tx + tw / 2, cy: ty, hw: tw / 2 + 3, hh: th / 2 + 3, angle: 0, iconCx: cx, iconCy: cy }
     }
 
     sCtx.fillStyle = resolved.color
     sCtx.font = font
-    sCtx.textAlign = best.align
-    sCtx.textBaseline = best.base
+    sCtx.textAlign = tAlign
+    sCtx.textBaseline = tBase
     if (resolved.letterSpacing > 0) {
       sCtx.save()
       ;(sCtx as CanvasRenderingContext2D & { letterSpacing?: string }).letterSpacing = `${resolved.letterSpacing}em`
@@ -244,9 +157,9 @@ export function drawSettlements(sCtx: Ctx, {
       sCtx.strokeStyle = resolved.strokeColor ?? '#ffffff'
       sCtx.lineWidth = resolved.strokeWidth * scale
       sCtx.lineJoin = 'round'
-      sCtx.strokeText(label, best.x, best.y)
+      sCtx.strokeText(label, tx, ty)
     }
-    sCtx.fillText(label, best.x, best.y)
+    sCtx.fillText(label, tx, ty)
     if (resolved.letterSpacing > 0) sCtx.restore()
   }
 }

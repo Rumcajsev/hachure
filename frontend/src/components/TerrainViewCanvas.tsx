@@ -10,9 +10,8 @@ import { projectToCanvas, unprojectFromCanvas, computePaper, computeWorldcoverBb
 import { coastalBlobTerrains, bleedPolygon, buildTerrainBlobsV2, buildTerrainBlobTopology, shapeTerrainBlobs, shapeInputPolygon, computeConnectedComponents, applyBlobMaskEdits, cutRawPolysWithCorridors, generateBlobSplats } from '../lib/terrainBlobs'
 import type { BlobTopologyEntry } from '../lib/terrainBlobs'
 import { findEdgeChains as findEdgeChainsSync } from '../lib/edgeBlobs'
-import { riverChainCache, buildRiverChains, buildRiverChainsV2 } from '../lib/riverChains'
+import { riverChainCache, buildRiverChainsV2 } from '../lib/riverChains'
 
-const RIVER_V2 = true
 import { drawRivers as _drawRivers } from '../lib/drawRivers'
 import { buildRoadChains, applyRoadWiggle } from '../lib/roadChains'
 import { buildRailChains, applyRailWiggle } from '../lib/railChains'
@@ -62,123 +61,6 @@ const OSM_OVERLAY_STYLE: maplibregl.StyleSpecification = {
 type CtxItem = { label: string; action: () => void; danger?: boolean; color?: string; dim?: boolean; icon?: 'edit' | 'dice' | 'erase'; highlightPolys?: [number,number][][]; highlightLines?: [number,number][][] }
 
 const EMPTY_CORRIDORS: [number, number][][] = []
-
-/** Parses a CSS hex color string (#rrggbb or #rgb) into {r,g,b}. */
-function parseHexColor(hex: string): { r: number; g: number; b: number } {
-  const s = hex.replace('#', '')
-  if (s.length === 3) {
-    return { r: parseInt(s[0] + s[0], 16), g: parseInt(s[1] + s[1], 16), b: parseInt(s[2] + s[2], 16) }
-  }
-  return { r: parseInt(s.slice(0, 2), 16), g: parseInt(s.slice(2, 4), 16), b: parseInt(s.slice(4, 6), 16) }
-}
-
-/**
- * Returns a pixel-density sampler that reads from `ctx` (the main composited canvas,
- * with terrain/roads/rivers already drawn). Candidate bboxes are in CSS paper-space
- * coordinates. Off-canvas areas return 1.0 (fully occupied) so labels don't leak
- * outside the map border.
- */
-/**
- * Returns a batch pixel-density sampler. For each settlement, call it with all 8
- * candidate bboxes at once — it does ONE getImageData covering their union (capped
- * at MAX_SAMPLE_PX to avoid blowup at high zoom), then derives each candidate's
- * density from that single read.
- */
-function makePixelSampler(
-  ctx: CanvasRenderingContext2D,
-  dpr: number,
-  zoom: number,
-  pan: { x: number; y: number },
-  cssW: number,
-  cssH: number,
-  bgHex: string,
-  paperX: number,
-  paperY: number,
-): (candidates: Array<[number, number, number, number]>) => number[] {
-  const bg = parseHexColor(bgHex)
-  const threshold = 18
-  // Max physical pixels per dimension for the union read — keeps getImageData fast
-  // regardless of zoom level.
-  const MAX_SAMPLE_PX = 240
-  const canvasW = ctx.canvas.width, canvasH = ctx.canvas.height
-
-  // Paper-local coord → physical canvas pixel (unrounded, for sub-pixel accuracy).
-  // paperX/paperY converts paper-local to canvas-space before applying pan/zoom.
-  const toPhys = (x: number, y: number): [number, number] => [
-    dpr * (zoom * (x + paperX - cssW / 2) + cssW / 2 + pan.x),
-    dpr * (zoom * (y + paperY - cssH / 2) + cssH / 2 + pan.y),
-  ]
-
-  return (candidates) => {
-    // --- 1. Compute the union bbox of all candidates in physical pixels ---
-    let ux0 = Infinity, uy0 = Infinity, ux1 = -Infinity, uy1 = -Infinity
-    for (const [bx, by, bw, bh] of candidates) {
-      const [px0, py0] = toPhys(bx, by)
-      const [px1, py1] = toPhys(bx + bw, by + bh)
-      if (px0 < ux0) ux0 = px0
-      if (py0 < uy0) uy0 = py0
-      if (px1 > ux1) ux1 = px1
-      if (py1 > uy1) uy1 = py1
-    }
-    ux0 = Math.round(ux0); uy0 = Math.round(uy0)
-    ux1 = Math.round(ux1); uy1 = Math.round(uy1)
-    const uW = ux1 - ux0, uH = uy1 - uy0
-    if (uW <= 0 || uH <= 0) return candidates.map(() => 0)
-
-    // --- 2. Clamp to canvas and cap size (prevents blowup at high zoom) ---
-    const scale = Math.min(1, MAX_SAMPLE_PX / Math.max(uW, uH))
-    const sW = Math.max(1, Math.round(uW * scale))
-    const sH = Math.max(1, Math.round(uH * scale))
-    const rx0 = Math.max(0, Math.min(canvasW - sW, ux0))
-    const ry0 = Math.max(0, Math.min(canvasH - sH, uy0))
-    const rx1 = rx0 + sW, ry1 = ry0 + sH
-
-    let imgData: ImageData
-    try { imgData = ctx.getImageData(rx0, ry0, sW, sH) } catch { return candidates.map(() => 0) }
-    const data = imgData.data
-
-    // Maps a physical pixel coordinate to a position in the read buffer (rx0,ry0)...(rx1,ry1)
-    // The buffer covers (ux0,uy0) at scale `scale` relative to the full union region.
-    const toBuffer = (px: number, py: number): [number, number] => [
-      rx0 + Math.round((px - ux0) * scale),
-      ry0 + Math.round((py - uy0) * scale),
-    ]
-
-    // --- 3. For each candidate, count non-background pixels in its sub-region ---
-    return candidates.map(([bx, by, bw, bh]) => {
-      const [px0r, py0r] = toPhys(bx, by)
-      const [px1r, py1r] = toPhys(bx + bw, by + bh)
-      const fullW = px1r - px0r, fullH = py1r - py0r
-      if (fullW <= 0 || fullH <= 0) return 1.0
-
-      const [bx0, by0] = toBuffer(px0r, py0r)
-      const [bx1, by1] = toBuffer(px1r, py1r)
-      const cx0 = Math.max(rx0, bx0), cy0 = Math.max(ry0, by0)
-      const cx1 = Math.min(rx1, bx1), cy1 = Math.min(ry1, by1)
-      // Fraction of the candidate that is off the read buffer → occupancy penalty
-      const sampledArea = Math.max(0, cx1 - cx0) * Math.max(0, cy1 - cy0)
-      const fullSampledArea = Math.max(1, (bx1 - bx0) * (by1 - by0))
-      const offFrac = 1 - sampledArea / fullSampledArea
-
-      let ink = 0, total = 0
-      const stride = sW * 4
-      for (let py = cy0; py < cy1; py += 2) {
-        const row = (py - ry0) * stride
-        for (let px = cx0; px < cx1; px += 2) {
-          const i = row + (px - rx0) * 4
-          if (i + 3 >= data.length) continue
-          const a = data[i + 3]
-          if (a < 10) { total++; continue }
-          const diff = Math.abs(data[i] - bg.r) + Math.abs(data[i + 1] - bg.g) + Math.abs(data[i + 2] - bg.b)
-          if (diff > threshold) ink++
-          total++
-        }
-      }
-      const density = total === 0 ? 0 : ink / total
-      return Math.min(1, density + offFrac * 0.8)
-    })
-  }
-}
 
 function CtxIcon({ type, color }: { type: 'edit' | 'dice' | 'erase'; color: string }) {
   const s: React.CSSProperties = { width: 12, height: 12, flexShrink: 0, display: 'block' }
@@ -327,7 +209,7 @@ terrainColors, terrainTextureScales, terrainTextureBlendModes, terrainTextureOpa
     selectedSegmentKeys,
     setSelectedSegmentKeys, toggleSegmentSelection,
     riverTierStyles, riverStyle,
-    riverWidthScale, riverCurveSteps, riverWobble, riverDetail,
+    riverWidthScale,
     riverWiggleFreq, riverWiggleAmp, riverSmoothing, riverPathSmoothing,
     riverBlobCutEnabled, riverBlobCutWidth,
     terrainBlobOverrides, setTerrainBlobOverride,
@@ -551,9 +433,6 @@ terrainColors, terrainTextureScales, terrainTextureBlendModes, terrainTextureOpa
   const riverStyleRef = useRef(riverStyle)
   const computedRiverChainsRef = useRef<{ vertices: [number,number][]; segKey: string }[]>([])
   const riverWidthScaleRef = useRef(riverWidthScale)
-  const riverCurveStepsRef = useRef(riverCurveSteps)
-  const riverWobbleRef = useRef(riverWobble)
-  const riverDetailRef = useRef(riverDetail)
   const riverHopPropsRef = useRef(riverHopProps)
   const selectedHopKeyRef = useRef(selectedHopKey)
   const setRiverHopPropRef = useRef(setRiverHopProp)
@@ -819,9 +698,6 @@ terrainColors, terrainTextureScales, terrainTextureBlendModes, terrainTextureOpa
   riverTierStylesRef.current = riverTierStyles
   riverStyleRef.current = riverStyle
   riverWidthScaleRef.current = riverWidthScale
-  riverCurveStepsRef.current = riverCurveSteps
-  riverWobbleRef.current = riverWobble
-  riverDetailRef.current = riverDetail
   riverHopPropsRef.current = riverHopProps
   selectedHopKeyRef.current = selectedHopKey
   setRiverHopPropRef.current = setRiverHopProp
@@ -1319,7 +1195,7 @@ terrainColors, terrainTextureScales, terrainTextureBlendModes, terrainTextureOpa
     // Use px=0,py=0 to match the paper-local coordinate system used by projectedHexes/rawPolys.
     const proj = (lonlat: [number, number]): [number, number] =>
       projectToCanvas(lonlat[0], lonlat[1], meta, pw, ph, 0, 0)
-    const chains = buildRiverChainsV2(riverEdges, generatedHexes, {}, riverWiggleFreq, riverWiggleAmp, riverSmoothing)
+    const chains = buildRiverChainsV2(riverEdges, generatedHexes, riverChainOverrides, riverWiggleFreq, riverWiggleAmp, riverSmoothing, riverHopProps, riverSegmentProps, riverPathSmoothing)
     const halfW = hexRadius * riverBlobCutWidth
     const corridors: [number, number][][] = []
     for (const chain of chains) {
@@ -1330,7 +1206,7 @@ terrainColors, terrainTextureScales, terrainTextureBlendModes, terrainTextureOpa
       if (upper.length + lower.length >= 3) corridors.push([...upper, ...lower])
     }
     return corridors
-  }, [riverBlobCutEnabled, riverBlobCutWidth, riverEdges, generatedHexes, riverWiggleFreq, riverWiggleAmp, riverSmoothing, hexRadius, generatedMetadata, paperDims])
+  }, [riverBlobCutEnabled, riverBlobCutWidth, riverEdges, generatedHexes, riverWiggleFreq, riverWiggleAmp, riverSmoothing, riverPathSmoothing, riverChainOverrides, riverHopProps, riverSegmentProps, hexRadius, generatedMetadata, paperDims])
 
   const prevTerrainBlobsRef = useRef<{ terrain: string; polys: [number, number][][]; blobKeys: string[] }[]>([])
   type TerrainBlobCacheEntry = { hexKey: string; rawPolys: [number, number][][]; hexCenters: [number, number][]; styleKey: string; blobs: { terrain: string; polys: [number, number][][]; blobKeys: string[] }[]; handleGroups?: Map<string, { edgeKey: string; cx: number; cy: number }[]>; simplifiedPolyGroups?: Map<string, [number, number][][]> }
@@ -2245,25 +2121,19 @@ terrainColors, terrainTextureScales, terrainTextureBlendModes, terrainTextureOpa
       const tierEdges: [typeof riverEdgesRef.current, typeof riverEdgesRef.current, typeof riverEdgesRef.current] = [[], [], []]
       for (const e of riverEdgesRef.current) tierEdges[e.tier ?? 1].push(e)
 
-      if (RIVER_V2) {
-        const ts = riverTierStylesRef.current
-        cachedRiverTierChainDataRef.current = ([0, 1, 2] as const).map(tier => {
-          const style = ts?.[tier]
-          const amp  = style?.wiggleAmp     ?? riverWiggleAmpRef.current
-          const freq = style?.wiggleFreq    ?? riverWiggleFreqRef.current
-          const sm   = style?.smoothing     ?? riverSmoothingRef.current
-          const ps   = style?.pathSmoothing ?? riverPathSmoothingRef.current
-          return buildRiverChainsV2(tierEdges[tier], hexesRef.current, riverChainOverridesRef.current, freq, amp, sm, riverHopPropsRef.current, riverSegmentPropsRef.current, ps)
-            .map(c => ({ vertices: c.chain, segKey: c.segKey, hopKeys: c.hopKeys, hopRanges: c.hopRanges }))
-        }) as typeof cachedRiverTierChainDataRef.current
-        const rv2 = buildRiverChainsV2(riverEdgesRef.current, hexesRef.current, riverChainOverridesRef.current, riverWiggleFreqRef.current, riverWiggleAmpRef.current, riverSmoothingRef.current, riverHopPropsRef.current, riverSegmentPropsRef.current, riverPathSmoothingRef.current)
-        riverChainsV2Ref.current = rv2
-        cachedRiverChainDataRef.current = rv2.map(c => ({ vertices: c.chain, segKey: c.segKey, hopKeys: c.hopKeys, hopRanges: c.hopRanges }))
-      } else {
-        cachedRiverTierChainDataRef.current = tierEdges.map(edges => buildRiverChains(edges, hexesRef.current)) as typeof cachedRiverTierChainDataRef.current
-        riverChainsV2Ref.current = []
-        cachedRiverChainDataRef.current = buildRiverChains(riverEdgesRef.current, hexesRef.current)
-      }
+      const ts = riverTierStylesRef.current
+      cachedRiverTierChainDataRef.current = ([0, 1, 2] as const).map(tier => {
+        const style = ts?.[tier]
+        const amp  = style?.wiggleAmp     ?? riverWiggleAmpRef.current
+        const freq = style?.wiggleFreq    ?? riverWiggleFreqRef.current
+        const sm   = style?.smoothing     ?? riverSmoothingRef.current
+        const ps   = style?.pathSmoothing ?? riverPathSmoothingRef.current
+        return buildRiverChainsV2(tierEdges[tier], hexesRef.current, riverChainOverridesRef.current, freq, amp, sm, riverHopPropsRef.current, riverSegmentPropsRef.current, ps)
+          .map(c => ({ vertices: c.chain, segKey: c.segKey, hopKeys: c.hopKeys, hopRanges: c.hopRanges }))
+      }) as typeof cachedRiverTierChainDataRef.current
+      const rv2 = buildRiverChainsV2(riverEdgesRef.current, hexesRef.current, riverChainOverridesRef.current, riverWiggleFreqRef.current, riverWiggleAmpRef.current, riverSmoothingRef.current, riverHopPropsRef.current, riverSegmentPropsRef.current, riverPathSmoothingRef.current)
+      riverChainsV2Ref.current = rv2
+      cachedRiverChainDataRef.current = rv2.map(c => ({ vertices: c.chain, segKey: c.segKey, hopKeys: c.hopKeys, hopRanges: c.hopRanges }))
       computedRiverChainsRef.current = cachedRiverChainDataRef.current
       riverChainCache.chains = cachedRiverChainDataRef.current
       riversDirtyRef.current = false
@@ -2298,9 +2168,9 @@ terrainColors, terrainTextureScales, terrainTextureBlendModes, terrainTextureOpa
       selectedRiverKeys: new Set(selectedSegmentKeysRef.current),
       riverBaseHW: 1.4 * lineScale,
       lakeProjCenters,
-      smoothPasses: RIVER_V2 ? 0 : riverCurveStepsRef.current,
-      wobbleBroad: RIVER_V2 ? 0 : riverWobbleRef.current * R * 0.5,
-      wobbleDetail: RIVER_V2 ? 0 : riverDetailRef.current * R * 0.18,
+      smoothPasses: 0,
+      wobbleBroad: 0,
+      wobbleDetail: 0,
       R,
       riverHopProps: riverHopPropsRef.current,
       selectedHopKey: selectedHopKeyRef.current,
@@ -2702,7 +2572,7 @@ terrainColors, terrainTextureScales, terrainTextureBlendModes, terrainTextureOpa
     }
 
     // River node edit handles
-    if (riverNodeEditModeRef.current && RIVER_V2) {
+    if (riverNodeEditModeRef.current) {
       _drawRiverHandles({
         ctx,
         zoom: zoomRef.current ?? 1,
@@ -2834,9 +2704,7 @@ terrainColors, terrainTextureScales, terrainTextureBlendModes, terrainTextureOpa
           const activeRoadDataS = smoothedRoadDataRef.current
           // Skip the pixel sampler during live-drag repaints — it's only useful for
           // initial auto-placement, not when repainting because a label is being moved.
-          const isLiveDrag = liveLabelOffsetRef.current?.id.startsWith('settlement:') ?? false
-          const pixelSampler = isLiveDrag ? undefined : makePixelSampler(ctx, dpr, zoom, pan, cssW, cssH, mapBgColorRef.current, px, py)
-          _drawSettlements(oCtxS, { settlements: settlementsRef.current, tierStyles: settlementTierStylesRef.current, labelSpecs: resolvedLabelSpecsRef.current, roadChains: activeRoadDataS.chains, roadJunctions: activeRoadDataS.junctions, railChains: smoothedRailDataRef.current.chains, project, hexCenterOf: (q, r) => { const h = hexesRef.current.find(h => h.q === q && h.r === r); return h ? project(h.center[0], h.center[1]) : null }, hexRadiusPx: hexRadiusRef.current, labelOffsets: labelOffsetsRef.current, liveLabelOffset: liveLabelOffsetRef.current ?? undefined, labelBBoxOut: labelBBoxCacheRef.current, pixelSampler })
+          _drawSettlements(oCtxS, { settlements: settlementsRef.current, tierStyles: settlementTierStylesRef.current, labelSpecs: resolvedLabelSpecsRef.current, roadChains: activeRoadDataS.chains, roadJunctions: activeRoadDataS.junctions, railChains: smoothedRailDataRef.current.chains, project, hexCenterOf: (q, r) => { const h = hexesRef.current.find(h => h.q === q && h.r === r); return h ? project(h.center[0], h.center[1]) : null }, hexRadiusPx: hexRadiusRef.current, labelOffsets: labelOffsetsRef.current, liveLabelOffset: liveLabelOffsetRef.current ?? undefined, labelBBoxOut: labelBBoxCacheRef.current })
           oCtxS.restore()
           settlementsLayer.current.commitRebuild()
         }
@@ -3383,7 +3251,7 @@ terrainColors, terrainTextureScales, terrainTextureBlendModes, terrainTextureOpa
 
   // Mark other layer caches dirty when their relevant data changes
   useEffect(() => { hexBorderLayer.current.markDirty() }, [hexBorderMode, hexEdgeMode, hexBorderOpacity, hexBorderColor, hexBorderDifference, generatedHexes, excludedHexKeys, disabledHexKeys, autoDisabledOceanHexKeys])
-  useEffect(() => { riversDirtyRef.current = true }, [riverEdges, riverTierStyles, riverWidthScale, riverCurveSteps, riverWobble, riverDetail, riverWiggleFreq, riverWiggleAmp, riverSmoothing, riverPathSmoothing, showRiverLabels, riverLabelColor, riverSegmentProps, riverSelectMode, selectedSegmentKeys, riverStyle, riverHopProps, selectedHopKey, labelOffsets, generatedHexes, terrainColors])
+  useEffect(() => { riversDirtyRef.current = true }, [riverEdges, riverTierStyles, riverWidthScale, riverWiggleFreq, riverWiggleAmp, riverSmoothing, riverPathSmoothing, showRiverLabels, riverLabelColor, riverSegmentProps, riverSelectMode, selectedSegmentKeys, riverStyle, riverHopProps, selectedHopKey, labelOffsets, generatedHexes, terrainColors])
   useEffect(() => { buildingsLayer.current.markDirty() }, [urbanHexes, urbanStyle, settlements, settlementTierStyles, roadBaseData])
   useEffect(() => { roadsLayer.current.markDirty() }, [smoothedRoadData, smoothedRailData, roadTierStyles, railStyle, roadSegmentProps, roadHopProps, selectedRoadSegmentKeys, selectedRoadHopKey, roadSelectMode, railSegmentProps, railHopProps, selectedRailSegmentKeys, selectedRailHopKey, railSelectMode])
   useEffect(() => { bridgesDirtyRef.current = true }, [bridgesEnabled, smoothedRoadData, smoothedRailData, riverEdges, generatedHexes])
@@ -3397,7 +3265,7 @@ terrainColors, terrainTextureScales, terrainTextureBlendModes, terrainTextureOpa
   }, [activeTool.type])
 
   // Redraw when data changes
-  useEffect(() => { draw() }, [defaultElevationBlobs, generatedHexes, hexBorderMode, hexEdgeMode, hexBorderOpacity, hexBorderColor, hexBorderDifference, hexNumbersEnabled, hexNumberEdge, hexNumberColor, hexNumberFontScale, hexNumberStartCorner, hexNumberMap, smoothedRoadData, smoothedRailData, showRawOsmRoads, roadNodeEditMode, riverNodeEditMode, riverChainOverrides, riverEdges, riverEditMode, riverWidthScale, riverCurveSteps, riverWobble, riverDetail, riverWiggleFreq, riverWiggleAmp, riverSmoothing, riverPathSmoothing, showRiverLabels, riverLabelColor, riverSegmentProps, riverSelectMode, selectedSegmentKeys, riverTierStyles, riverStyle, riverHopProps, selectedHopKey, defaultTerrainBlobs, defaultWaterBlobs, terrainColors, terrainTextureScales, terrainTextureBlendModes, terrainTextureOpacities, terrainTextureTintColors, terrainTextureTintOpacities, terrainTextureShadeRanges, terrainTextureFile, terrainTextureEnabled, terrainBlobOverrides, terrainTypeBlobStyles, waterOverrides, terrainRenderMode, settlements, settlementTierStyles, urbanHexes, urbanStyle, roadTierStyles, railStyle, highlights, highlightedHexes, highlightLines, highlightEdgePaths, iconOverlays, placedIcons, labelOverlays, placedLabels, realisticCoastline, coastlineDebugRaw, smoothedCoastlineBoundary, rawCoastlineBoundary, beachStrip, beachColor, beachWidth, coastlineDPEpsilon, coastlineChaikinPasses, edgeBlobPainted, edgeBlobOverrides, edgeBlobWidth, roadSegmentProps, roadHopProps, selectedRoadSegmentKeys, selectedRoadHopKey, roadSelectMode, railNodeEditMode, railControlOverrides, railSelectMode, railWiggleAmp, railWiggleFreq, railSmoothing, railSegmentProps, railHopProps, selectedRailSegmentKeys, selectedRailHopKey, mapBgColor, mapBorderEnabled, mapBorderColor, mapBorderWidth, clipToHexGrid, excludedHexKeys, disabledHexKeys, autoDisabledOceanHexKeys, megaHexEnabled, megaHexRadius, megaHexColor, megaHexOpacity, megaHexLineWidth, megaHexOriginQ, megaHexOriginR, bridgesEnabled, bridgeStyle, bridgeTiers, bridgeOverrides, showElevationDebug, showElevationClassOverlay, mapStyle, labelOffsets, labelPresetId, labelOverrides, activeTool, blobEditMode, activeBlobEditId, blobHandleOverrides, blobMaskEdits, defaultTerrainBlobsMasked, draw])
+  useEffect(() => { draw() }, [defaultElevationBlobs, generatedHexes, hexBorderMode, hexEdgeMode, hexBorderOpacity, hexBorderColor, hexBorderDifference, hexNumbersEnabled, hexNumberEdge, hexNumberColor, hexNumberFontScale, hexNumberStartCorner, hexNumberMap, smoothedRoadData, smoothedRailData, showRawOsmRoads, roadNodeEditMode, riverNodeEditMode, riverChainOverrides, riverEdges, riverEditMode, riverWidthScale, riverWiggleFreq, riverWiggleAmp, riverSmoothing, riverPathSmoothing, showRiverLabels, riverLabelColor, riverSegmentProps, riverSelectMode, selectedSegmentKeys, riverTierStyles, riverStyle, riverHopProps, selectedHopKey, defaultTerrainBlobs, defaultWaterBlobs, terrainColors, terrainTextureScales, terrainTextureBlendModes, terrainTextureOpacities, terrainTextureTintColors, terrainTextureTintOpacities, terrainTextureShadeRanges, terrainTextureFile, terrainTextureEnabled, terrainBlobOverrides, terrainTypeBlobStyles, waterOverrides, terrainRenderMode, settlements, settlementTierStyles, urbanHexes, urbanStyle, roadTierStyles, railStyle, highlights, highlightedHexes, highlightLines, highlightEdgePaths, iconOverlays, placedIcons, labelOverlays, placedLabels, realisticCoastline, coastlineDebugRaw, smoothedCoastlineBoundary, rawCoastlineBoundary, beachStrip, beachColor, beachWidth, coastlineDPEpsilon, coastlineChaikinPasses, edgeBlobPainted, edgeBlobOverrides, edgeBlobWidth, roadSegmentProps, roadHopProps, selectedRoadSegmentKeys, selectedRoadHopKey, roadSelectMode, railNodeEditMode, railControlOverrides, railSelectMode, railWiggleAmp, railWiggleFreq, railSmoothing, railSegmentProps, railHopProps, selectedRailSegmentKeys, selectedRailHopKey, mapBgColor, mapBorderEnabled, mapBorderColor, mapBorderWidth, clipToHexGrid, excludedHexKeys, disabledHexKeys, autoDisabledOceanHexKeys, megaHexEnabled, megaHexRadius, megaHexColor, megaHexOpacity, megaHexLineWidth, megaHexOriginQ, megaHexOriginR, bridgesEnabled, bridgeStyle, bridgeTiers, bridgeOverrides, showElevationDebug, showElevationClassOverlay, mapStyle, labelOffsets, labelPresetId, labelOverrides, activeTool, blobEditMode, activeBlobEditId, blobHandleOverrides, blobMaskEdits, defaultTerrainBlobsMasked, draw])
 
   useEffect(() => { drawOsmHighlight() }, [osmHighlightTier, osmSpotlightMode, osmSpotlightTiers, osmRailHighlight, hoveredOsmRiverIdx, drawOsmHighlight])
 

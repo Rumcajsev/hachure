@@ -22,9 +22,6 @@ export type RiversSlice = {
   riverEditMode: boolean
   riverPaintTier: RiverTier
   riverWidthScale: number        // legacy, kept for migration
-  riverCurveSteps: number
-  riverWobble: number
-  riverDetail: number
   riverWiggleFreq: number
   riverWiggleAmp: number
   riverSmoothing: number
@@ -53,9 +50,6 @@ export type RiversSlice = {
   setRiverTierStyle: (tier: RiverTier, s: Partial<RiverTierStyle>) => void
   setRiverStyle: (s: Partial<RiverStyleConfig>) => void   // legacy
   setRiverWidthScale: (v: number) => void
-  setRiverCurveSteps: (v: number) => void
-  setRiverWobble: (v: number) => void
-  setRiverDetail: (v: number) => void
   setRiverWiggleFreq: (v: number) => void
   setRiverWiggleAmp: (v: number) => void
   setRiverSmoothing: (v: number) => void
@@ -136,9 +130,6 @@ export const createRiversSlice = (set: Set, get: () => MapStore): RiversSlice =>
     riverTierStyles: DEFAULT_RIVER_TIER_STYLES.map(s => ({ ...s, effect: { ...s.effect } })) as [RiverTierStyle, RiverTierStyle, RiverTierStyle],
     riverStyle: { ...DEFAULT_RIVER_STYLE },   // legacy
     riverWidthScale: 1.0,   // legacy
-    riverCurveSteps: 3,
-    riverWobble: 0,
-    riverDetail: 0,
     riverWiggleFreq: 2.5,
     riverWiggleAmp: 0.25,
     riverSmoothing: 10,
@@ -252,9 +243,6 @@ export const createRiversSlice = (set: Set, get: () => MapStore): RiversSlice =>
     setRiverEdges: (edges) => set({ riverEdges: edges }),
 
     setRiverWidthScale: (v) => set({ riverWidthScale: v }),
-    setRiverCurveSteps: (v) => set({ riverCurveSteps: v }),
-    setRiverWobble: (v) => set({ riverWobble: v }),
-    setRiverDetail: (v) => set({ riverDetail: v }),
     setRiverWiggleFreq: (v) => set({ riverWiggleFreq: v }),
     setRiverWiggleAmp: (v) => set({ riverWiggleAmp: v }),
     setRiverSmoothing: (v) => set({ riverSmoothing: v }),

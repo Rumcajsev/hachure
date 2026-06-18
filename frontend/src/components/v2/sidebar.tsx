@@ -869,22 +869,32 @@ export function BigColorSwatch({
   const norm = (c: string) => c.toLowerCase()
   const paletteColors = groups.flatMap(g => g.colors)
 
-  const [customColors, setCustomColors] = useState<string[]>(() => {
-    // Seed with current value if it's already custom
-    return paletteColors.some(c => norm(c) === norm(value)) ? [] : [value]
+  const [customColor, setCustomColor] = useState<string | null>(() =>
+    paletteColors.some(c => norm(c) === norm(value)) ? null : value
+  )
+
+  const rafRef = useRef<number | null>(null)
+  const onChangeRef = useRef(onChange)
+  useEffect(() => { onChangeRef.current = onChange })
+
+  const handleCustomPickRef = useRef((color: string) => {
+    setCustomColor(color)
+    onChange(color)
+  })
+  useEffect(() => {
+    handleCustomPickRef.current = (color: string) => {
+      setCustomColor(color)
+      onChangeRef.current(color)
+    }
   })
 
-  const handleCustomPick = (color: string) => {
-    // If it matches a palette color, just select it without adding to custom list
-    if (paletteColors.some(c => norm(c) === norm(color))) {
-      onChange(color)
-      return
-    }
-    setCustomColors(prev =>
-      prev.some(c => norm(c) === norm(color)) ? prev : [...prev, color]
-    )
-    onChange(color)
-  }
+  useEffect(() => {
+    const el = inputRef.current
+    if (!el) return
+    const onCommit = (e: Event) => handleCustomPickRef.current((e.target as HTMLInputElement).value)
+    el.addEventListener('change', onCommit)
+    return () => el.removeEventListener('change', onCommit)
+  }, [])
 
   return (
     <div style={{ padding: '2px 14px 8px' }}>
@@ -904,18 +914,20 @@ export function BigColorSwatch({
         </div>
       ))}
 
-      {/* Custom colors + add button */}
+      {/* Custom color slot + add button */}
       <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4, marginTop: 4 }}>
-        {customColors.map(color => (
+        {customColor && (
           <SwatchBtn
-            key={color}
-            color={color}
-            active={norm(color) === norm(value)}
-            onClick={() => onChange(color)}
+            color={customColor}
+            active={norm(customColor) === norm(value)}
+            onClick={() => onChange(customColor)}
           />
-        ))}
+        )}
         <button
-          onClick={() => inputRef.current?.click()}
+          onClick={() => {
+            if (inputRef.current) inputRef.current.value = value
+            inputRef.current?.click()
+          }}
           title="Custom color…"
           style={{
             width: 26, height: 26,
@@ -938,8 +950,11 @@ export function BigColorSwatch({
       <input
         ref={inputRef}
         type="color"
-        value={value}
-        onChange={e => handleCustomPick(e.target.value)}
+        onChange={e => {
+          const color = e.target.value
+          if (rafRef.current) cancelAnimationFrame(rafRef.current)
+          rafRef.current = requestAnimationFrame(() => onChangeRef.current(color))
+        }}
         style={{ position: 'fixed', opacity: 0, width: 0, height: 0, pointerEvents: 'none' }}
       />
     </div>

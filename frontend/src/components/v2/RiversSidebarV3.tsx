@@ -100,7 +100,7 @@ export function GlobalShapeFlyout({ onClose }: { onClose: () => void }) {
   return (
     <FlyoutShell title="Shape defaults" subtitle="applied to all tiers unless overridden" onClose={onClose}>
       <MiniSlider label="Wiggle amp"  display={(ampSlider.value / 100).toFixed(2)}  value={ampSlider.value}    min={0} max={100} step={1} onChange={ampSlider.onChange}    onDragEnd={ampSlider.onDragEnd} />
-      <MiniSlider label="Wiggle freq" display={(freqSlider.value / 10).toFixed(1)}  value={freqSlider.value}   min={5} max={100} step={1} onChange={freqSlider.onChange}   onDragEnd={freqSlider.onDragEnd} />
+      <MiniSlider label="Wiggle freq" display={(freqSlider.value / 10).toFixed(1)}  value={freqSlider.value}   min={1} max={50} step={1} onChange={freqSlider.onChange}   onDragEnd={freqSlider.onDragEnd} />
       <MiniSlider label="Line smooth" display={String(smoothSlider.value)}           value={smoothSlider.value} min={2} max={30}  step={1} onChange={smoothSlider.onChange} onDragEnd={smoothSlider.onDragEnd} />
       <MiniSlider label="Path smooth" display={String(pathSlider.value)}             value={pathSlider.value}   min={0} max={50}  step={1} onChange={pathSlider.onChange}   onDragEnd={pathSlider.onDragEnd} />
     </FlyoutShell>
@@ -171,7 +171,7 @@ export function RiverTierFlyout({ tier, onClose }: { tier: RiverTier; onClose: (
         }}
       />
       <MiniSlider label="Wiggle amp"  display={(tierAmpSlider.value / 100).toFixed(2)}  value={tierAmpSlider.value}    min={0} max={100} step={1} accentColor={shapeOverrideEnabled ? accentColor : undefined} onChange={tierAmpSlider.onChange}    onDragEnd={tierAmpSlider.onDragEnd}    disabled={!shapeOverrideEnabled} />
-      <MiniSlider label="Wiggle freq" display={(tierFreqSlider.value / 10).toFixed(1)}  value={tierFreqSlider.value}   min={5} max={100} step={1} accentColor={shapeOverrideEnabled ? accentColor : undefined} onChange={tierFreqSlider.onChange}   onDragEnd={tierFreqSlider.onDragEnd}   disabled={!shapeOverrideEnabled} />
+      <MiniSlider label="Wiggle freq" display={(tierFreqSlider.value / 10).toFixed(1)}  value={tierFreqSlider.value}   min={1} max={50} step={1} accentColor={shapeOverrideEnabled ? accentColor : undefined} onChange={tierFreqSlider.onChange}   onDragEnd={tierFreqSlider.onDragEnd}   disabled={!shapeOverrideEnabled} />
       <MiniSlider label="Line smooth" display={String(tierSmoothSlider.value)}           value={tierSmoothSlider.value} min={2} max={30}  step={1} accentColor={shapeOverrideEnabled ? accentColor : undefined} onChange={tierSmoothSlider.onChange} onDragEnd={tierSmoothSlider.onDragEnd} disabled={!shapeOverrideEnabled} />
       <MiniSlider label="Path smooth" display={String(tierPathSlider.value)}             value={tierPathSlider.value}   min={0} max={50}  step={1} accentColor={shapeOverrideEnabled ? accentColor : undefined} onChange={tierPathSlider.onChange}   onDragEnd={tierPathSlider.onDragEnd}   disabled={!shapeOverrideEnabled} />
 
@@ -398,7 +398,7 @@ export function RiverSegmentFlyout({ onClose }: { onClose: () => void }) {
         <div style={{ borderTop: `1px solid ${t.line2}` }}>
           <SubLabel label="Wiggle" />
           <MiniSlider label="Amplitude"   display={`${Math.round(wiggleAmp * 100)}%${firstProps?.wiggleAmp !== undefined ? ' ●' : ''}`}                                value={Math.round(wiggleAmp * 100)}  min={0} max={100} step={1} onChange={v => setRiverSegmentPropMany(selectedKeys, { wiggleAmp: v / 100 })} />
-          <MiniSlider label="Frequency"   display={`${wiggleFreq.toFixed(1)}${firstProps?.wiggleFreq !== undefined ? ' ●' : ''}`}                                      value={Math.round(wiggleFreq * 10)} min={5} max={100} step={1} onChange={v => setRiverSegmentPropMany(selectedKeys, { wiggleFreq: v / 10 })} />
+          <MiniSlider label="Frequency"   display={`${wiggleFreq.toFixed(1)}${firstProps?.wiggleFreq !== undefined ? ' ●' : ''}`}                                      value={Math.round(wiggleFreq * 10)} min={1} max={50} step={1} onChange={v => setRiverSegmentPropMany(selectedKeys, { wiggleFreq: v / 10 })} />
           <MiniSlider label="Path smooth" display={`${pathSmooth}${(firstProps as { pathSmoothing?: number } | undefined)?.pathSmoothing !== undefined ? ' ●' : ''}`}  value={pathSmooth} min={0} max={50} step={1} onChange={v => setRiverSegmentPropMany(selectedKeys, { pathSmoothing: v } as Parameters<typeof setRiverSegmentPropMany>[1])} />
         </div>
       )}
@@ -426,7 +426,7 @@ export function RiverSegmentFlyout({ onClose }: { onClose: () => void }) {
             <MiniSlider label="Width"       display={`${Math.round(hopW * 100)}%`}        value={Math.round(hopW * 100)}   min={25} max={400} step={5} onChange={v => setRiverHopProp(selectedHopKey, { width: v / 100 })} />
             <MiniSlider label="Taper"       display={`${Math.round(hopT * 100)}%`}         value={Math.round(hopT * 100)}   min={0}  max={100} step={5} onChange={v => setRiverHopProp(selectedHopKey, { taper: v / 100 })} />
             <MiniSlider label="Wiggle amp"  display={`${Math.round(ampVal * 100)}%`}       value={Math.round(ampVal * 100)} min={0}  max={100} step={1} onChange={v => setRiverHopProp(selectedHopKey, { wiggleAmp: v / 100 })} />
-            <MiniSlider label="Wiggle freq" display={freqVal.toFixed(1)}                   value={Math.round(freqVal * 10)} min={5}  max={100} step={1} onChange={v => setRiverHopProp(selectedHopKey, { wiggleFreq: v / 10 })} />
+            <MiniSlider label="Wiggle freq" display={freqVal.toFixed(1)}                   value={Math.round(freqVal * 10)} min={1}  max={50} step={1} onChange={v => setRiverHopProp(selectedHopKey, { wiggleFreq: v / 10 })} />
           </div>
         )
       })()}

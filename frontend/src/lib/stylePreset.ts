@@ -39,7 +39,6 @@ export const STYLE_PRESET_KEYS: string[] = [
   // Rivers
   'riverStyle',
   'riverWidthScale',
-  'riverCurveSteps', 'riverWobble', 'riverDetail',
   'riverWiggleAmp', 'riverWiggleFreq', 'riverSmoothing',
   'showRiverLabels', 'riverLabelColor',
   // Bridges
@@ -157,9 +156,6 @@ function baseStructural(): StylePreset {
     railPathSmoothing: 0,
     railsFetchTypes: ['rail'],
     riverWidthScale: 1.0,
-    riverCurveSteps: 3,
-    riverWobble: 0,
-    riverDetail: 0,
     riverWiggleAmp: 0.25,
     riverWiggleFreq: 2.5,
     riverSmoothing: 10,

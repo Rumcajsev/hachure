@@ -412,9 +412,6 @@ export const createUiSlice = (set: Set, get: () => MapStore): UiSlice => ({
         roadDensityMinChain: s.roadDensityMinChain, roadTierGeometry: s.roadTierGeometry,
         riverStyle: s.riverStyle,
         riverChainOverrides: s.riverChainOverrides,
-        // riverFlowStyle / riverWiggliness — detached
-        riverCurveSteps: s.riverCurveSteps,
-        riverWobble: s.riverWobble, riverDetail: s.riverDetail,
         riverWiggleAmp: s.riverWiggleAmp, riverWiggleFreq: s.riverWiggleFreq,
         riverTierStyles: s.riverTierStyles,
         riverSmoothing: s.riverSmoothing, riverWidthScale: s.riverWidthScale,
@@ -554,15 +551,9 @@ export function migratePersisted(persisted: unknown, fromVersion: number): Recor
   if (fromVersion < 7) {
     delete s.riverMeander; delete s.riverMeanderSeed
     delete s.riverStraighten; delete s.riverPathStraighten; delete s.riverWiggleScale
-    if (s.riverCurveSteps === undefined) s.riverCurveSteps = 3
-  }
-  if (fromVersion < 8) {
-    if (s.riverWobble === undefined) s.riverWobble = 0
-  }
-  if (fromVersion < 9) {
-    if (s.riverDetail === undefined) s.riverDetail = 0
   }
   if (fromVersion < 10) {
+    delete s.riverCurveSteps; delete s.riverWobble; delete s.riverDetail
     const tiers = s.settlementTierStyles as Record<string, Record<string, unknown>> | undefined
     if (tiers) {
       for (const ts of Object.values(tiers)) {

@@ -794,10 +794,6 @@ export const useMapStore = create<MapStore>()(persist((set, get) => ({
     riverHopProps: s.riverHopProps,
     riverStyle: s.riverStyle,
     riverChainOverrides: s.riverChainOverrides,
-    // riverFlowStyle / riverWiggliness — detached
-    riverCurveSteps: s.riverCurveSteps,
-    riverWobble: s.riverWobble,
-    riverDetail: s.riverDetail,
     showRiverLabels: s.showRiverLabels,
     riverLabelColor: s.riverLabelColor,
     heightmapUrl: s.heightmapUrl,
