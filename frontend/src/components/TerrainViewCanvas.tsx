@@ -928,13 +928,17 @@ terrainColors, terrainTextureScales, terrainTextureBlendModes, terrainTextureOpa
   )
 
   // Keep RoadNetwork in sync with hex positions and geometry params
-  useEffect(() => { roadNetworkRef.current.setHexIdx(hexCenterIdx) }, [hexCenterIdx])
+  useEffect(() => {
+    roadNetworkRef.current.setHexIdx(hexCenterIdx)
+    roadsLayer.current.markDirty()
+  }, [hexCenterIdx])
   useEffect(() => {
     roadNetworkRef.current.setParams({
       smoothing: roadSmoothing, pathSmoothing: roadPathSmoothing, centerPull: roadCenterPull,
       overrides: roadControlOverrides, chainOverrides: roadChainOverrides,
       snapBindings: roadSnapBindings, tierGeom: roadTierGeomMap,
     })
+    roadsLayer.current.markDirty()
   }, [roadSmoothing, roadPathSmoothing, roadCenterPull, roadControlOverrides, roadChainOverrides, roadSnapBindings, roadTierGeomMap])
   // Rebuild network from store when edges change externally (undo, load, OSM generate)
   // Skip rebuild if the network already reflects the current edge set (just committed a paint batch)
@@ -2369,9 +2373,7 @@ terrainColors, terrainTextureScales, terrainTextureBlendModes, terrainTextureOpa
               liveTierGeomMap,
               roadCenterPullRef.current,
             )
-          : isRoadPaintingRef.current
-            ? roadNetworkRef.current.getBaseData(roadWiggleAmpRef.current, roadWiggleFreqRef.current, roadSegmentPropsRef.current, roadHopPropsRef.current, 2)
-            : smoothedRoadDataRef.current
+          : roadNetworkRef.current.getBaseData(roadWiggleAmpRef.current, roadWiggleFreqRef.current, roadSegmentPropsRef.current, roadHopPropsRef.current, 2)
 
     const liveRailGeomOverride = railGeomOverrideRef.current ?? undefined
     const liveRailData = isDraggingRailCP
@@ -3277,7 +3279,7 @@ terrainColors, terrainTextureScales, terrainTextureBlendModes, terrainTextureOpa
   useEffect(() => { hexBorderLayer.current.markDirty() }, [hexBorderMode, hexEdgeMode, hexBorderOpacity, hexBorderColor, hexBorderDifference, generatedHexes, excludedHexKeys, disabledHexKeys, autoDisabledOceanHexKeys])
   useEffect(() => { riversDirtyRef.current = true }, [riverEdges, riverTierStyles, riverWidthScale, riverWiggleFreq, riverWiggleAmp, riverSmoothing, riverPathSmoothing, showRiverLabels, riverLabelColor, riverSegmentProps, riverSelectMode, selectedSegmentKeys, riverStyle, riverHopProps, selectedHopKey, labelOffsets, generatedHexes, terrainColors])
   useEffect(() => { buildingsLayer.current.markDirty() }, [urbanHexes, urbanStyle, settlements, settlementTierStyles, roadBaseData])
-  useEffect(() => { roadsLayer.current.markDirty() }, [smoothedRoadData, smoothedRailData, roadTierStyles, railStyle, roadSegmentProps, roadHopProps, selectedRoadSegmentKeys, selectedRoadHopKey, roadSelectMode, railSegmentProps, railHopProps, selectedRailSegmentKeys, selectedRailHopKey, railSelectMode])
+  useEffect(() => { roadsLayer.current.markDirty() }, [smoothedRailData, roadTierStyles, railStyle, roadSegmentProps, roadHopProps, selectedRoadSegmentKeys, selectedRoadHopKey, roadSelectMode, railSegmentProps, railHopProps, selectedRailSegmentKeys, selectedRailHopKey, railSelectMode])
   useEffect(() => { bridgesDirtyRef.current = true }, [bridgesEnabled, smoothedRoadData, smoothedRailData, riverEdges, generatedHexes])
   useEffect(() => { settlementsLayer.current.markDirty() }, [settlements, settlementTierStyles, labelPresetId, labelOverrides, smoothedRoadData, smoothedRailData, labelOffsets, defaultTerrainBlobs, terrainBlobOverrides, riverEdges, highlights, highlightedHexes, mapBgColor])
   // When entering label-drag mode, rebuild label layers so the bbox cache is populated for hit-testing
