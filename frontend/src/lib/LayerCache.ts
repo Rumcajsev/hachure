@@ -58,6 +58,9 @@ export class LayerCache {
     if (source) mainCtx.drawImage(source, dx, dy, dw, dh)
   }
 
+  /** The current rasterized content — bitmap if committed, canvas if still drawing, null if never built. */
+  get source(): ImageBitmap | OffscreenCanvas | null { return this.bitmap ?? this.canvas }
+
   /** Whether the last blit used a pre-rasterized ImageBitmap (true) or raw OffscreenCanvas (false). */
   get hasBitmap(): boolean { return this.bitmap !== null }
 

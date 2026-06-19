@@ -4,7 +4,7 @@ import 'maplibre-gl/dist/maplibre-gl.css'
 import { useMapStore, TERRAIN_COLORS, WATER_COLOR, TERRAIN_PRIORITY, hexTerrainLayers, edgeBlobCanonicalKey, WORLDCOVER_CLASSES, validColWidthsForRows, validRowHeightsForCols, cellPaperInfo, type GeneratedHex, type RoadTierStyle, type SettlementTier, type SettlementTierStyle, type BlobMaskEdit } from '../store/mapStore'
 import { BlobOverrideFlyout } from './BlobOverrideFlyout'
 import { useTheme } from '../context/ThemeContext'
-import { hexAdjacent, catmullRom, offsetPolyline, pointInPolygon, distToSeg, douglasPeucker, douglasPeuckerClosed, chaikin } from '../lib/geometry'
+import { hexAdjacent, hexLineBetween, catmullRom, offsetPolyline, pointInPolygon, distToSeg, douglasPeucker, douglasPeuckerClosed, chaikin } from '../lib/geometry'
 import { mulberry32, makePermutation } from '../lib/noise'
 import { projectToCanvas, unprojectFromCanvas, computePaper, computeWorldcoverBbox } from '../lib/projection'
 import { coastalBlobTerrains, bleedPolygon, buildTerrainBlobsV2, buildTerrainBlobTopology, shapeTerrainBlobs, shapeInputPolygon, computeConnectedComponents, applyBlobMaskEdits, cutRawPolysWithCorridors, generateBlobSplats } from '../lib/terrainBlobs'
@@ -170,13 +170,13 @@ export const TerrainViewCanvas = forwardRef<TerrainViewCanvasHandle, { surroundC
     hexBorderMode, hexEdgeMode, hexBorderOpacity, hexBorderColor, hexBorderDifference,
     terrainBlobSmooth, terrainBlobOffset, terrainBlobBump,
     terrainBlobSweepFreq, terrainBlobLobeFreq, terrainBlobLobeAmp, terrainBlobLobeThreshold, terrainBlobLobeDirection,
-    terrainBlobSimplify, terrainBlobTopoStyle,
-    terrainBlobSplatDensity, terrainBlobSplatSize, terrainBlobHoleDensity, terrainBlobHoleSize,
+    terrainBlobTopoStyle,
+    terrainBlobSplatDensity, terrainBlobSplatSize,
     terrainBlobOutlineEnabled, terrainBlobOutlineColor, terrainBlobOutlineWidth, terrainBlobEffect,
 terrainColors, terrainTextureScales, terrainTextureBlendModes, terrainTextureOpacities,
-    terrainTextureTintColors, terrainTextureTintOpacities, terrainTextureShadeRanges,
+    terrainTextureTintColors, terrainTextureTintOpacities,
     terrainTextureFile, terrainTextureEnabled,
-    terrainPaintMode, terrainPaintBrush, overrideHexTerrain, resetHexOverride,
+    terrainPaintMode, terrainPaintBrush, overrideHexTerrain, batchOverrideHexTerrain, batchOverrideHexBackground, resetHexOverride,
     elevationPaintMode, elevationPaintBrush, overrideHexElevation,
     elevationTypeBlobStyles,
     terrainLayersEnabled,
@@ -472,7 +472,6 @@ terrainColors, terrainTextureScales, terrainTextureBlendModes, terrainTextureOpa
   const terrainBlobLobeAmpRef = useRef(terrainBlobLobeAmp)
   const terrainBlobLobeThresholdRef = useRef(terrainBlobLobeThreshold)
   const terrainBlobLobeDirectionRef = useRef(terrainBlobLobeDirection)
-  const terrainBlobSimplifyRef = useRef(terrainBlobSimplify)
   const terrainBlobTopoStyleRef = useRef(terrainBlobTopoStyle)
   const terrainBlobOutlineEnabledRef = useRef(terrainBlobOutlineEnabled)
   const terrainBlobOutlineColorRef = useRef(terrainBlobOutlineColor)
@@ -484,8 +483,7 @@ terrainColors, terrainTextureScales, terrainTextureBlendModes, terrainTextureOpa
   const terrainTextureOpacitiesRef = useRef(terrainTextureOpacities)
   const terrainTextureTintColorsRef = useRef(terrainTextureTintColors)
   const terrainTextureTintOpacitiesRef = useRef(terrainTextureTintOpacities)
-  const terrainTextureShadeRangesRef = useRef(terrainTextureShadeRanges)
-  const terrainTextureFileRef = useRef(terrainTextureFile)
+const terrainTextureFileRef = useRef(terrainTextureFile)
   const terrainTextureEnabledRef = useRef(terrainTextureEnabled)
   const terrainBlobOverridesRef = useRef(terrainBlobOverrides)
   const terrainTypeBlobStylesRef = useRef(terrainTypeBlobStyles)
@@ -762,7 +760,6 @@ terrainColors, terrainTextureScales, terrainTextureBlendModes, terrainTextureOpa
   terrainBlobLobeAmpRef.current = terrainBlobLobeAmp
   terrainBlobLobeThresholdRef.current = terrainBlobLobeThreshold
   terrainBlobLobeDirectionRef.current = terrainBlobLobeDirection
-  terrainBlobSimplifyRef.current = terrainBlobSimplify
   terrainBlobTopoStyleRef.current = terrainBlobTopoStyle
   terrainBlobOutlineEnabledRef.current = terrainBlobOutlineEnabled
   terrainBlobOutlineColorRef.current = terrainBlobOutlineColor
@@ -774,8 +771,7 @@ terrainColors, terrainTextureScales, terrainTextureBlendModes, terrainTextureOpa
   terrainTextureOpacitiesRef.current = terrainTextureOpacities
   terrainTextureTintColorsRef.current = terrainTextureTintColors
   terrainTextureTintOpacitiesRef.current = terrainTextureTintOpacities
-  terrainTextureShadeRangesRef.current = terrainTextureShadeRanges
-  terrainTextureFileRef.current = terrainTextureFile
+terrainTextureFileRef.current = terrainTextureFile
   terrainTextureEnabledRef.current = terrainTextureEnabled
 
   const realisticCoastlineRef = useRef(realisticCoastline)
@@ -1316,7 +1312,7 @@ terrainColors, terrainTextureScales, terrainTextureBlendModes, terrainTextureOpa
         })
       })()
       const corridorKey = relevantCorridors.map(c => `${c.length}:${c[0]?.[0].toFixed(0)},${c[0]?.[1].toFixed(0)}`).join('|')
-      const styleKey = `${smooth}|${offset}|${bump}|${sweepFreq}|${lobeFreq}|${lobeAmp}|${lobeThreshold}|${lobeDirection}|${terrainBlobSimplify}|${terrainBlobTopoStyle}|${hexRadius}|${JSON.stringify(blobSeeds)}|${handleKey}|${corridorKey}`
+      const styleKey = `${smooth}|${offset}|${bump}|${sweepFreq}|${lobeFreq}|${lobeAmp}|${lobeThreshold}|${lobeDirection}|${terrainBlobTopoStyle}|${hexRadius}|${JSON.stringify(blobSeeds)}|${handleKey}|${corridorKey}`
       const cached = perTerrainBlobCache.current.get(terrain)
 
       // Compute rawPolys (topology cache)
@@ -1335,7 +1331,7 @@ terrainColors, terrainTextureScales, terrainTextureBlendModes, terrainTextureOpa
       // Simplified polys — what handles are generated from and what the dashed overlay shows
       const simplifiedPolys = rawPolysForShaping.map(p => {
         const seed = Math.abs(Math.round(p[0][0] * 73 + p[0][1] * 97))
-        return shapeInputPolygon(p, terrainBlobSimplify, terrainBlobTopoStyle, hexRadius, seed)
+        return shapeInputPolygon(p, terrainBlobTopoStyle, hexRadius, seed)
       })
 
       // Build vertex handles from simplified poly corners — each vertex is one handle
@@ -1393,7 +1389,7 @@ terrainColors, terrainTextureScales, terrainTextureBlendModes, terrainTextureOpa
     prevTerrainBlobsRef.current = result
     console.log(`[blobUseMemo] total ${(performance.now()-_tMemo0).toFixed(1)}ms`)
     return result
-  }, [isTerrainPainting, projectedHexes, blobComponentsByTerrain, terrainBlobOverrides, terrainTypeBlobStyles, terrainBlobSmooth, terrainBlobOffset, terrainBlobBump, terrainBlobSweepFreq, terrainBlobLobeFreq, terrainBlobLobeAmp, terrainBlobLobeThreshold, terrainBlobLobeDirection, terrainBlobSimplify, terrainBlobTopoStyle, hexRadius, realisticCoastline, blobSeeds, elevationOverridesTerrain, blobHandleOverrides, riverAutoCorridors])
+  }, [isTerrainPainting, projectedHexes, blobComponentsByTerrain, terrainBlobOverrides, terrainTypeBlobStyles, terrainBlobSmooth, terrainBlobOffset, terrainBlobBump, terrainBlobSweepFreq, terrainBlobLobeFreq, terrainBlobLobeAmp, terrainBlobLobeThreshold, terrainBlobLobeDirection, terrainBlobTopoStyle, hexRadius, realisticCoastline, blobSeeds, elevationOverridesTerrain, blobHandleOverrides, riverAutoCorridors])
   const defaultTerrainBlobsRef = useRef(defaultTerrainBlobs)
   defaultTerrainBlobsRef.current = defaultTerrainBlobs
 
@@ -1419,9 +1415,8 @@ terrainColors, terrainTextureScales, terrainTextureBlendModes, terrainTextureOpa
     }
     return applyBlobMaskEdits(defaultTerrainBlobs, blobMaskEdits, projectFn, shapeParams)
   }, [defaultTerrainBlobs, blobMaskEdits, generatedMetadata, paperDims, hexRadius, terrainBlobSmooth, terrainBlobBump, terrainBlobSweepFreq, terrainBlobLobeFreq, terrainBlobLobeAmp, terrainBlobLobeThreshold, terrainBlobLobeDirection])
-  // Apply procedural splats (satellites + holes) after mask edits.
   const defaultTerrainBlobsSplatted = useMemo(() => {
-    if (terrainBlobSplatDensity <= 0 && terrainBlobHoleDensity <= 0) return defaultTerrainBlobsMasked
+    if (terrainBlobSplatDensity <= 0) return defaultTerrainBlobsMasked
     const shapeParams = {
       R: hexRadius,
       smooth: terrainBlobSmooth,
@@ -1434,11 +1429,11 @@ terrainColors, terrainTextureScales, terrainTextureBlendModes, terrainTextureOpa
     }
     return generateBlobSplats(
       defaultTerrainBlobsMasked,
-      { splatDensity: terrainBlobSplatDensity, splatSize: terrainBlobSplatSize, holeDensity: terrainBlobHoleDensity, holeSize: terrainBlobHoleSize },
+      { splatDensity: terrainBlobSplatDensity, splatSize: terrainBlobSplatSize },
       hexRadius,
       shapeParams,
     )
-  }, [defaultTerrainBlobsMasked, terrainBlobSplatDensity, terrainBlobSplatSize, terrainBlobHoleDensity, terrainBlobHoleSize, hexRadius, terrainBlobSmooth, terrainBlobBump, terrainBlobSweepFreq, terrainBlobLobeFreq, terrainBlobLobeAmp, terrainBlobLobeThreshold, terrainBlobLobeDirection])
+  }, [defaultTerrainBlobsMasked, terrainBlobSplatDensity, terrainBlobSplatSize, hexRadius, terrainBlobSmooth, terrainBlobBump, terrainBlobSweepFreq, terrainBlobLobeFreq, terrainBlobLobeAmp, terrainBlobLobeThreshold, terrainBlobLobeDirection])
   const defaultTerrainBlobsMaskedRef = useRef(defaultTerrainBlobsSplatted)
   defaultTerrainBlobsMaskedRef.current = defaultTerrainBlobsSplatted
 
@@ -1469,13 +1464,13 @@ terrainColors, terrainTextureScales, terrainTextureBlendModes, terrainTextureOpa
       const hexKey = `eot:${elevationOverridesTerrain}|` + bgProjected.map(p => `${p.hex.q},${p.hex.r}`).join('|')
       const cached = backgroundBlobCache.current.get(terrain)
       if (cached?.hexKey === hexKey) return cached.blobs
-      const blobs = buildTerrainBlobsV2(bgProjected, terrainBlobSmooth, terrainBlobOffset, terrainBlobBump, terrainBlobSweepFreq, terrainBlobLobeFreq, terrainBlobLobeAmp, terrainBlobLobeThreshold, terrainBlobLobeDirection, hexRadius, terrainBlobSimplify, terrainBlobTopoStyle)
+      const blobs = buildTerrainBlobsV2(bgProjected, terrainBlobSmooth, terrainBlobOffset, terrainBlobBump, terrainBlobSweepFreq, terrainBlobLobeFreq, terrainBlobLobeAmp, terrainBlobLobeThreshold, terrainBlobLobeDirection, hexRadius, terrainBlobTopoStyle)
       backgroundBlobCache.current.set(terrain, { hexKey, blobs })
       return blobs
     })
     prevBackgroundBlobsRef.current = result
     return result
-  }, [isTerrainPainting, projectedHexes, hexRadius, terrainLayersEnabled, terrainBlobSmooth, terrainBlobOffset, terrainBlobBump, terrainBlobSweepFreq, terrainBlobLobeFreq, terrainBlobLobeAmp, terrainBlobLobeThreshold, terrainBlobLobeDirection, terrainBlobSimplify, terrainBlobTopoStyle, elevationOverridesTerrain])
+  }, [isTerrainPainting, projectedHexes, hexRadius, terrainLayersEnabled, terrainBlobSmooth, terrainBlobOffset, terrainBlobBump, terrainBlobSweepFreq, terrainBlobLobeFreq, terrainBlobLobeAmp, terrainBlobLobeThreshold, terrainBlobLobeDirection, terrainBlobTopoStyle, elevationOverridesTerrain])
   const defaultBackgroundBlobsRef = useRef(defaultBackgroundBlobs)
   defaultBackgroundBlobsRef.current = defaultBackgroundBlobs
 
@@ -1497,7 +1492,7 @@ terrainColors, terrainTextureScales, terrainTextureBlendModes, terrainTextureOpa
       return prevLakeBlobsRef.current
     }
     const hexKey = defaultWaterProjected.map(p => `${p.hex.q},${p.hex.r}`).join('|')
-    const styleKey = `${terrainBlobSmooth}|${terrainBlobOffset}|${terrainBlobBump}|${terrainBlobSweepFreq}|${terrainBlobLobeFreq}|${terrainBlobLobeAmp}|${terrainBlobLobeThreshold}|${terrainBlobLobeDirection}|${terrainBlobSimplify}|${terrainBlobTopoStyle}|${hexRadius}`
+    const styleKey = `${terrainBlobSmooth}|${terrainBlobOffset}|${terrainBlobBump}|${terrainBlobSweepFreq}|${terrainBlobLobeFreq}|${terrainBlobLobeAmp}|${terrainBlobLobeThreshold}|${terrainBlobLobeDirection}|${terrainBlobTopoStyle}|${hexRadius}`
     if (lakeBlobCache.current?.hexKey === hexKey && lakeBlobCache.current?.styleKey === styleKey) {
       return lakeBlobCache.current.blobs
     }
@@ -1514,13 +1509,13 @@ terrainColors, terrainTextureScales, terrainTextureBlendModes, terrainTextureOpa
     }
     const shapedWaterPolys = waterRawPolys.map(p => {
       const seed = Math.abs(Math.round(p[0][0] * 73 + p[0][1] * 97))
-      return shapeInputPolygon(p, terrainBlobSimplify, terrainBlobTopoStyle, hexRadius, seed)
+      return shapeInputPolygon(p, terrainBlobTopoStyle, hexRadius, seed)
     })
     const result = shapeTerrainBlobs([{ terrain: 'water', rawPolys: shapedWaterPolys, hexCenters: waterHexCenters }], terrainBlobSmooth, terrainBlobOffset, terrainBlobBump, terrainBlobSweepFreq, terrainBlobLobeFreq, terrainBlobLobeAmp, terrainBlobLobeThreshold, terrainBlobLobeDirection, hexRadius, {})
     lakeBlobCache.current = { hexKey, rawPolys: waterRawPolys, hexCenters: waterHexCenters, styleKey, blobs: result }
     prevLakeBlobsRef.current = result
     return result
-  }, [isTerrainPainting, projectedHexes, blobComponents, waterOverrides, terrainBlobSmooth, terrainBlobOffset, terrainBlobBump, terrainBlobSweepFreq, terrainBlobLobeFreq, terrainBlobLobeAmp, terrainBlobLobeThreshold, terrainBlobLobeDirection, terrainBlobSimplify, terrainBlobTopoStyle, hexRadius])
+  }, [isTerrainPainting, projectedHexes, blobComponents, waterOverrides, terrainBlobSmooth, terrainBlobOffset, terrainBlobBump, terrainBlobSweepFreq, terrainBlobLobeFreq, terrainBlobLobeAmp, terrainBlobLobeThreshold, terrainBlobLobeDirection, terrainBlobTopoStyle, hexRadius])
   const defaultWaterBlobsRef = useRef(defaultWaterBlobs)
   defaultWaterBlobsRef.current = defaultWaterBlobs
 
@@ -1545,7 +1540,7 @@ terrainColors, terrainTextureScales, terrainTextureBlendModes, terrainTextureOpa
     const hexKey = `imp:${elevationImportEnabled}|${rangeHillsM},${rangeMountainsM},${medianHillsM},${medianMountainsM}|` + projectedHexes.map(p => { const h = p.hex as GeneratedHex; const cls = liveElevClass(h); return `${h.q},${h.r}:${cls ?? ''}:${cls === 'mountains' ? 'h' : ''}:${h.elevation_manual_override ? '1' : '0'}` }).join('|')
     const hillsStyle = elevationTypeBlobStyles['hills']
     const mountainsStyle = elevationTypeBlobStyles['mountains']
-    const styleKey = `${terrainBlobSmooth}|${terrainBlobOffset}|${terrainBlobBump}|${terrainBlobSweepFreq}|${terrainBlobLobeFreq}|${terrainBlobLobeAmp}|${terrainBlobLobeThreshold}|${terrainBlobLobeDirection}|${terrainBlobSimplify}|${terrainBlobTopoStyle}|${hexRadius}|${JSON.stringify(hillsStyle)}|${JSON.stringify(mountainsStyle)}`
+    const styleKey = `${terrainBlobSmooth}|${terrainBlobOffset}|${terrainBlobBump}|${terrainBlobSweepFreq}|${terrainBlobLobeFreq}|${terrainBlobLobeAmp}|${terrainBlobLobeThreshold}|${terrainBlobLobeDirection}|${terrainBlobTopoStyle}|${hexRadius}|${JSON.stringify(hillsStyle)}|${JSON.stringify(mountainsStyle)}`
     if (elevationBlobsCache.current?.hexKey === hexKey && elevationBlobsCache.current?.styleKey === styleKey) {
       return elevationBlobsCache.current.blobs
     }
@@ -1560,7 +1555,6 @@ terrainColors, terrainTextureScales, terrainTextureBlendModes, terrainTextureOpa
       const lobeAmp       = useCustom ? (clsStyle?.lobeAmp       ?? terrainBlobLobeAmp)       : terrainBlobLobeAmp
       const lobeThreshold = useCustom ? (clsStyle?.lobeThreshold ?? terrainBlobLobeThreshold) : terrainBlobLobeThreshold
       const lobeDirection = useCustom ? (clsStyle?.lobeDirection ?? terrainBlobLobeDirection) : terrainBlobLobeDirection
-      const simplifyVal   = useCustom ? (clsStyle?.simplify      ?? terrainBlobSimplify)      : terrainBlobSimplify
       const elevProjected = projectedHexes
         .filter(p => {
           const h = p.hex as GeneratedHex
@@ -1579,7 +1573,7 @@ terrainColors, terrainTextureScales, terrainTextureBlendModes, terrainTextureOpa
         ...topoEntry,
         rawPolys: topoEntry.rawPolys.map(p => {
           const seed = Math.abs(Math.round(p[0][0] * 73 + p[0][1] * 97))
-          return shapeInputPolygon(p, simplifyVal, terrainBlobTopoStyle, hexRadius, seed)
+          return shapeInputPolygon(p, terrainBlobTopoStyle, hexRadius, seed)
         }),
       }
       const shaped = shapeTerrainBlobs([shapedEntry], smooth, offset, bump, sweepFreq, lobeFreq, lobeAmp, lobeThreshold, lobeDirection, hexRadius, {})
@@ -1591,7 +1585,7 @@ terrainColors, terrainTextureScales, terrainTextureBlendModes, terrainTextureOpa
     elevationBlobsCache.current = { hexKey, topoHills: hillsResult.topo, topoMountains: mountainsResult.topo, styleKey, blobs }
     prevElevationBlobsRef.current = blobs
     return blobs
-  }, [isTerrainPainting, projectedHexes, terrainBlobSmooth, terrainBlobOffset, terrainBlobBump, terrainBlobSweepFreq, terrainBlobLobeFreq, terrainBlobLobeAmp, terrainBlobLobeThreshold, terrainBlobLobeDirection, terrainBlobSimplify, terrainBlobTopoStyle, hexRadius, elevationTypeBlobStyles, elevationImportEnabled, classificationParams])
+  }, [isTerrainPainting, projectedHexes, terrainBlobSmooth, terrainBlobOffset, terrainBlobBump, terrainBlobSweepFreq, terrainBlobLobeFreq, terrainBlobLobeAmp, terrainBlobLobeThreshold, terrainBlobLobeDirection, terrainBlobTopoStyle, hexRadius, elevationTypeBlobStyles, elevationImportEnabled, classificationParams])
   const defaultElevationBlobsRef = useRef(defaultElevationBlobs)
   defaultElevationBlobsRef.current = defaultElevationBlobs
 
@@ -1822,7 +1816,6 @@ terrainColors, terrainTextureScales, terrainTextureBlendModes, terrainTextureOpa
       terrainTextureOpacities: terrainTextureOpacitiesRef.current,
       terrainTextureTintColors: terrainTextureTintColorsRef.current,
       terrainTextureTintOpacities: terrainTextureTintOpacitiesRef.current,
-      terrainTextureShadeRanges: terrainTextureShadeRangesRef.current,
       terrainTextures: buildTerrainTextures(),
       px: 0, py: 0, pw, ph,
       backgroundTerrainBlobs: defaultBackgroundBlobsRef.current,
@@ -1837,7 +1830,7 @@ terrainColors, terrainTextureScales, terrainTextureBlendModes, terrainTextureOpa
         bump: terrainBlobBumpRef.current, sweepFreq: terrainBlobSweepFreqRef.current,
         lobeFreq: terrainBlobLobeFreqRef.current, lobeAmp: terrainBlobLobeAmpRef.current,
         lobeThreshold: terrainBlobLobeThresholdRef.current, lobeDirection: terrainBlobLobeDirectionRef.current,
-        simplify: terrainBlobSimplifyRef.current, topoStyle: terrainBlobTopoStyleRef.current,
+        topoStyle: terrainBlobTopoStyleRef.current,
       },
       terrainBlobOutlineEnabled: terrainBlobOutlineEnabledRef.current,
       terrainBlobOutlineColor: terrainBlobOutlineColorRef.current,
@@ -1958,7 +1951,6 @@ terrainColors, terrainTextureScales, terrainTextureBlendModes, terrainTextureOpa
             tsRef?.lobeThreshold   ?? terrainBlobLobeThresholdRef.current,
             tsRef?.lobeDirection   ?? terrainBlobLobeDirectionRef.current,
             R,
-            tsRef?.simplify        ?? terrainBlobSimplifyRef.current,
           )
         })
         const waterOverriddenKeys = new Set(Object.keys(waterOverridesRef.current))
@@ -1970,10 +1962,11 @@ terrainColors, terrainTextureScales, terrainTextureBlendModes, terrainTextureOpa
           })
           .map(p => ({ hex: { ...p.hex, terrain: 'water' }, verts: p.verts }))
         exportWaterBlobs = defaultWaterProjected.length > 0
-          ? buildTerrainBlobsV2(defaultWaterProjected, terrainBlobSmoothRef.current, terrainBlobOffsetRef.current, terrainBlobBumpRef.current, terrainBlobSweepFreqRef.current, terrainBlobLobeFreqRef.current, terrainBlobLobeAmpRef.current, terrainBlobLobeThresholdRef.current, terrainBlobLobeDirectionRef.current, R, terrainBlobSimplifyRef.current)
+          ? buildTerrainBlobsV2(defaultWaterProjected, terrainBlobSmoothRef.current, terrainBlobOffsetRef.current, terrainBlobBumpRef.current, terrainBlobSweepFreqRef.current, terrainBlobLobeFreqRef.current, terrainBlobLobeAmpRef.current, terrainBlobLobeThresholdRef.current, terrainBlobLobeDirectionRef.current, R)
           : []
       }
-      _drawTerrain(ctx, { ...terrainParams, backgroundTerrainBlobs: defaultBackgroundBlobsRef.current, defaultTerrainBlobs: exportTerrainBlobs, defaultWaterBlobs: exportWaterBlobs })
+      const exportTerrainParams = { ...terrainParams, backgroundTerrainBlobs: defaultBackgroundBlobsRef.current, defaultTerrainBlobs: exportTerrainBlobs, defaultWaterBlobs: exportWaterBlobs }
+      _drawTerrain(ctx, exportTerrainParams)
     }
 
     // WorldCover raw overlay — screen only, semi-transparent, never exported.
@@ -3141,8 +3134,8 @@ terrainColors, terrainTextureScales, terrainTextureBlendModes, terrainTextureOpa
   //   fieldOctaves, fieldPersistence, fieldWildness, terrainColors, terrainTextureScales,
   //   forestTextureVersion, frameDims, draw])
 
-  // Mark terrain layer dirty when terrain-affecting data changes
-  useEffect(() => { terrainLayer.current.markDirty() }, [defaultTerrainBlobsSplatted, defaultTerrainBlobsMasked, defaultTerrainBlobs, defaultWaterBlobs, defaultElevationBlobs, terrainColors, terrainTextureScales, terrainTextureBlendModes, terrainTextureOpacities, terrainTextureTintColors, terrainTextureTintOpacities, terrainTextureShadeRanges, terrainTextureFile, terrainTextureEnabled, terrainBlobOverrides, terrainTypeBlobStyles, waterOverrides, terrainRenderMode, hexEdgeMode, generatedHexes, realisticCoastline, coastlineDebugRaw, smoothedCoastlineBoundary, rawCoastlineBoundary, beachStrip, beachColor, beachWidth, hillsColor, mountainsColor, reliefShadingOpacity, coastlineDPEpsilon, coastlineChaikinPasses, edgeBlobPainted, edgeBlobOverrides, edgeBlobWidth, mapStyle, historicalIconParams, elevationTypeBlobStyles, terrainBlobOutlineEnabled, terrainBlobOutlineColor, terrainBlobOutlineWidth, terrainBlobEffect, elevationOverridesTerrain])
+  // Mark terrain layer dirty when terrain-affecting data changes (fills + textures are one layer)
+  useEffect(() => { terrainLayer.current.markDirty() }, [defaultTerrainBlobsSplatted, defaultTerrainBlobsMasked, defaultTerrainBlobs, defaultWaterBlobs, defaultElevationBlobs, terrainColors, terrainTextureBlendModes, terrainTextureScales, terrainTextureOpacities, terrainTextureTintColors, terrainTextureTintOpacities, terrainTextureFile, terrainTextureEnabled, terrainBlobOverrides, terrainTypeBlobStyles, waterOverrides, terrainRenderMode, hexEdgeMode, generatedHexes, realisticCoastline, coastlineDebugRaw, smoothedCoastlineBoundary, rawCoastlineBoundary, beachStrip, beachColor, beachWidth, hillsColor, mountainsColor, reliefShadingOpacity, coastlineDPEpsilon, coastlineChaikinPasses, edgeBlobPainted, edgeBlobOverrides, edgeBlobWidth, mapStyle, historicalIconParams, elevationTypeBlobStyles, terrainBlobOutlineEnabled, terrainBlobOutlineColor, terrainBlobOutlineWidth, terrainBlobEffect, elevationOverridesTerrain])
   useEffect(() => { terrainLayer.current.markDirty(); draw() }, [hillshadeDisabledTerrains, hillshadeDisabledElevClasses, contourDisabledTerrains, contourDisabledElevClasses]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // Decode heightmap PNG → ImageData when URL changes, then recompute derived canvases
@@ -3289,7 +3282,7 @@ terrainColors, terrainTextureScales, terrainTextureBlendModes, terrainTextureOpa
   }, [activeTool.type])
 
   // Redraw when data changes
-  useEffect(() => { draw() }, [defaultElevationBlobs, generatedHexes, hexBorderMode, hexEdgeMode, hexBorderOpacity, hexBorderColor, hexBorderDifference, hexNumbersEnabled, hexNumberEdge, hexNumberColor, hexNumberFontScale, hexNumberStartCorner, hexNumberMap, roadDataVersion, smoothedRailData, showRawOsmRoads, roadNodeEditMode, riverNodeEditMode, riverChainOverrides, riverEdges, riverEditMode, riverWidthScale, riverWiggleFreq, riverWiggleAmp, riverSmoothing, riverPathSmoothing, showRiverLabels, riverLabelColor, riverSegmentProps, riverSelectMode, selectedSegmentKeys, riverTierStyles, riverStyle, riverHopProps, selectedHopKey, defaultTerrainBlobs, defaultWaterBlobs, terrainColors, terrainTextureScales, terrainTextureBlendModes, terrainTextureOpacities, terrainTextureTintColors, terrainTextureTintOpacities, terrainTextureShadeRanges, terrainTextureFile, terrainTextureEnabled, terrainBlobOverrides, terrainTypeBlobStyles, waterOverrides, terrainRenderMode, settlements, settlementTierStyles, urbanHexes, urbanStyle, roadTierStyles, railStyle, highlights, highlightedHexes, highlightLines, highlightEdgePaths, iconOverlays, placedIcons, labelOverlays, placedLabels, realisticCoastline, coastlineDebugRaw, smoothedCoastlineBoundary, rawCoastlineBoundary, beachStrip, beachColor, beachWidth, coastlineDPEpsilon, coastlineChaikinPasses, edgeBlobPainted, edgeBlobOverrides, edgeBlobWidth, roadSegmentProps, roadHopProps, selectedRoadSegmentKeys, selectedRoadHopKey, roadSelectMode, railNodeEditMode, railControlOverrides, railSelectMode, railWiggleAmp, railWiggleFreq, railSmoothing, railSegmentProps, railHopProps, selectedRailSegmentKeys, selectedRailHopKey, mapBgColor, mapBorderEnabled, mapBorderColor, mapBorderWidth, clipToHexGrid, excludedHexKeys, disabledHexKeys, autoDisabledOceanHexKeys, megaHexEnabled, megaHexRadius, megaHexColor, megaHexOpacity, megaHexLineWidth, megaHexOriginQ, megaHexOriginR, bridgesEnabled, bridgeStyle, bridgeTiers, bridgeOverrides, showElevationDebug, showElevationClassOverlay, mapStyle, labelOffsets, labelPresetId, labelOverrides, activeTool, blobEditMode, activeBlobEditId, blobHandleOverrides, blobMaskEdits, defaultTerrainBlobsMasked, draw])
+  useEffect(() => { draw() }, [defaultElevationBlobs, generatedHexes, hexBorderMode, hexEdgeMode, hexBorderOpacity, hexBorderColor, hexBorderDifference, hexNumbersEnabled, hexNumberEdge, hexNumberColor, hexNumberFontScale, hexNumberStartCorner, hexNumberMap, roadDataVersion, smoothedRailData, showRawOsmRoads, roadNodeEditMode, riverNodeEditMode, riverChainOverrides, riverEdges, riverEditMode, riverWidthScale, riverWiggleFreq, riverWiggleAmp, riverSmoothing, riverPathSmoothing, showRiverLabels, riverLabelColor, riverSegmentProps, riverSelectMode, selectedSegmentKeys, riverTierStyles, riverStyle, riverHopProps, selectedHopKey, defaultTerrainBlobs, defaultWaterBlobs, terrainColors, terrainTextureScales, terrainTextureBlendModes, terrainTextureOpacities, terrainTextureTintColors, terrainTextureTintOpacities, terrainTextureFile, terrainTextureEnabled, terrainBlobOverrides, terrainTypeBlobStyles, waterOverrides, terrainRenderMode, settlements, settlementTierStyles, urbanHexes, urbanStyle, roadTierStyles, railStyle, highlights, highlightedHexes, highlightLines, highlightEdgePaths, iconOverlays, placedIcons, labelOverlays, placedLabels, realisticCoastline, coastlineDebugRaw, smoothedCoastlineBoundary, rawCoastlineBoundary, beachStrip, beachColor, beachWidth, coastlineDPEpsilon, coastlineChaikinPasses, edgeBlobPainted, edgeBlobOverrides, edgeBlobWidth, roadSegmentProps, roadHopProps, selectedRoadSegmentKeys, selectedRoadHopKey, roadSelectMode, railNodeEditMode, railControlOverrides, railSelectMode, railWiggleAmp, railWiggleFreq, railSmoothing, railSegmentProps, railHopProps, selectedRailSegmentKeys, selectedRailHopKey, mapBgColor, mapBorderEnabled, mapBorderColor, mapBorderWidth, clipToHexGrid, excludedHexKeys, disabledHexKeys, autoDisabledOceanHexKeys, megaHexEnabled, megaHexRadius, megaHexColor, megaHexOpacity, megaHexLineWidth, megaHexOriginQ, megaHexOriginR, bridgesEnabled, bridgeStyle, bridgeTiers, bridgeOverrides, showElevationDebug, showElevationClassOverlay, mapStyle, labelOffsets, labelPresetId, labelOverrides, activeTool, blobEditMode, activeBlobEditId, blobHandleOverrides, blobMaskEdits, defaultTerrainBlobsMasked, draw])
 
   useEffect(() => { drawOsmHighlight() }, [osmHighlightTier, osmSpotlightMode, osmSpotlightTiers, osmRailHighlight, hoveredOsmRiverIdx, drawOsmHighlight])
 
@@ -3565,6 +3558,15 @@ terrainColors, terrainTextureScales, terrainTextureBlendModes, terrainTextureOpa
   const isPaintingRef = useRef(false)
   const lastPaintedKeyRef = useRef<string | null>(null)
   const lastPaintedEdgeKeyRef = useRef<string | null>(null)
+  // Deferred paint ops — flushed as a single batch on mouseup to avoid per-hex store updates
+  const pendingTerrainPaintRef = useRef<{ q: number; r: number; terrain: string }[]>([])
+  const pendingBgPaintRef = useRef<{ q: number; r: number; terrain: string | undefined }[]>([])
+  // Fast hex lookup rebuilt at stroke start (vertices are stable geometry)
+  const hexGeomMapRef = useRef<Map<string, { vertices: [number, number][] }>>(new Map())
+  const batchOverrideHexTerrainRef = useRef(batchOverrideHexTerrain)
+  const batchOverrideHexBackgroundRef = useRef(batchOverrideHexBackground)
+  batchOverrideHexTerrainRef.current = batchOverrideHexTerrain
+  batchOverrideHexBackgroundRef.current = batchOverrideHexBackground
 
   const computeHoverTarget = useCallback((clientX: number, clientY: number): PaintHoverTarget => {
     const meta = metaRef.current
@@ -3687,17 +3689,33 @@ terrainColors, terrainTextureScales, terrainTextureBlendModes, terrainTextureOpa
       if (!target) return
       if (strokeTypeRef.current !== null && target.type !== strokeTypeRef.current) return
       if (target.type === 'hex') {
-        const key = `${target.q},${target.r}`
-        if (key !== lastPaintedKeyRef.current) {
+        // Interpolate from the last painted hex to the current one so fast drags leave no gaps.
+        const meta = metaRef.current
+        const { w: cssW, h: cssH } = frameDimsRef.current
+        const { pw, ph } = getPaper(cssW, cssH)
+        let hexPath: [number, number][]
+        if (lastPaintedKeyRef.current) {
+          const [lq, lr] = lastPaintedKeyRef.current.split(',').map(Number)
+          hexPath = hexLineBetween(lq, lr, target.q, target.r).slice(1) // skip already-painted start
+        } else {
+          hexPath = [[target.q, target.r]]
+        }
+        for (const [q, r] of hexPath) {
+          const key = `${q},${r}`
+          if (strokeTrailRef.current.has(`hex:${key}`)) continue
+          const hexGeom = hexGeomMapRef.current.get(key)
+          if (!hexGeom || !meta) continue
+          const verts = hexGeom.vertices.map(([lon, lat]) => projectToCanvas(lon, lat, meta, pw, ph, 0, 0) as [number, number])
           lastPaintedKeyRef.current = key
-          strokeTrailRef.current.set(`hex:${key}`, target)
+          strokeTrailRef.current.set(`hex:${key}`, { type: 'hex', q, r, verts })
           if (elevationPaintModeRef.current) {
-            overrideHexElevationRef.current(target.q, target.r, elevationPaintBrushRef.current)
+            // Elevation paint writes immediately — deferred batching not needed here
+            overrideHexElevationRef.current(q, r, elevationPaintBrushRef.current)
           } else if (terrainBackgroundPaintEnabledRef.current || bgPaintHoldRef.current) {
             const brush = terrainPaintBrushRef.current
-            overrideHexBackgroundRef.current(target.q, target.r, brush === 'clear' ? undefined : brush)
+            pendingBgPaintRef.current.push({ q, r, terrain: brush === 'clear' ? undefined : brush })
           } else {
-            overrideHexTerrainRef.current(target.q, target.r, terrainPaintBrushRef.current)
+            pendingTerrainPaintRef.current.push({ q, r, terrain: terrainPaintBrushRef.current })
           }
         }
       } else {
@@ -3724,6 +3742,10 @@ terrainColors, terrainTextureScales, terrainTextureBlendModes, terrainTextureOpa
       lastPaintedKeyRef.current = null
       lastPaintedEdgeKeyRef.current = null
       strokeTrailRef.current.clear()
+      pendingTerrainPaintRef.current = []
+      pendingBgPaintRef.current = []
+      // Build fast vertex lookup once per stroke — vertices are stable geometry
+      hexGeomMapRef.current = new Map(hexesRef.current.map(h => [`${h.q},${h.r}`, { vertices: h.vertices }]))
       setIsTerrainPainting(true)
       const target = computeHoverTarget(e.clientX, e.clientY)
       strokeTypeRef.current = target?.type ?? null
@@ -3751,7 +3773,18 @@ terrainColors, terrainTextureScales, terrainTextureBlendModes, terrainTextureOpa
     }
 
     const onUp = () => {
-      if (isPaintingRef.current && (terrainPaintModeRef.current || elevationPaintModeRef.current)) setIsTerrainPainting(false)
+      if (isPaintingRef.current && (terrainPaintModeRef.current || elevationPaintModeRef.current)) {
+        // Flush deferred terrain paint ops as a single store update
+        if (pendingTerrainPaintRef.current.length > 0) {
+          batchOverrideHexTerrainRef.current(pendingTerrainPaintRef.current)
+          pendingTerrainPaintRef.current = []
+        }
+        if (pendingBgPaintRef.current.length > 0) {
+          batchOverrideHexBackgroundRef.current(pendingBgPaintRef.current)
+          pendingBgPaintRef.current = []
+        }
+        setIsTerrainPainting(false)
+      }
       isPaintingRef.current = false
       strokeTrailRef.current.clear()
       strokeTypeRef.current = null
