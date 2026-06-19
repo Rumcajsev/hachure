@@ -37,19 +37,20 @@ export function drawRoadsAndRails(rCtx: Ctx, {
 }: DrawRoadsRailsParams) {
   rCtx.save()
 
-  const drawChain = (pts: [number, number][]) => {
+  const drawChain = (pts: [number, number][], isLoop = false) => {
     if (pts.length < 2) return
     rCtx.beginPath()
     rCtx.moveTo(pts[0][0], pts[0][1])
     for (let i = 1; i < pts.length; i++) rCtx.lineTo(pts[i][0], pts[i][1])
+    if (isLoop) rCtx.closePath()
     rCtx.stroke()
   }
 
   if (roadChains.length > 0) {
-    const chainsByTier: [[number,number][][], [number,number][][], [number,number][][]] = [[], [], []]
-    for (const { tier, chain, bbox } of roadChains) {
+    const chainsByTier: { pts: [number,number][]; isLoop: boolean }[][] = [[], [], []]
+    for (const { tier, chain, bbox, isLoop } of roadChains) {
       if (viewport && !bboxVisible(bbox, viewport)) continue
-      chainsByTier[tier].push(chain)
+      chainsByTier[tier].push({ pts: chain, isLoop: isLoop ?? false })
     }
 
     // Pass 1: casing (outline) — skipped if effect.outlineEnabled is explicitly false
@@ -63,7 +64,7 @@ export function drawRoadsAndRails(rCtx: Ctx, {
       rCtx.strokeStyle = s.outer
       rCtx.lineWidth = s.outerW
       rCtx.setLineDash(dashArray(outlineDash, s.outerW))
-      for (const pts of chainsByTier[tier]) drawChain(pts)
+      for (const { pts, isLoop } of chainsByTier[tier]) drawChain(pts, isLoop)
     }
     rCtx.setLineDash([])
     rCtx.lineCap = 'round'
@@ -82,7 +83,7 @@ export function drawRoadsAndRails(rCtx: Ctx, {
       rCtx.strokeStyle = s.inner
       rCtx.lineWidth = s.outerW * 0.5
       rCtx.setLineDash(dashArray(fillDash, s.outerW * 0.5))
-      for (const pts of chainsByTier[tier]) drawChain(pts)
+      for (const { pts, isLoop } of chainsByTier[tier]) drawChain(pts, isLoop)
     }
     rCtx.setLineDash([])
     rCtx.lineCap = 'round'

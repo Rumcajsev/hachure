@@ -162,16 +162,19 @@ export class RoadNetwork {
 
     const existingTier = this.adj.get(k1)!.get(k2)
 
-    this.rawEdges.push({ q1, r1, q2, r2, tier })
-
     if (existingTier !== undefined) {
-      if (tier >= existingTier) return  // no topology or tier change
-      // Tier improvement — same topology, just mark affected segment dirty
+      // Replace semantics: same as store's addRoadEdge — swap the tier, don't min
+      const pk = pairKey(k1, k2)
+      this.rawEdges = this.rawEdges.filter(e => pairKey(`${e.q1},${e.r1}`, `${e.q2},${e.r2}`) !== pk)
+      this.rawEdges.push({ q1, r1, q2, r2, tier })
+      if (tier === existingTier) return
       this.adj.get(k1)!.set(k2, tier)
       this.adj.get(k2)!.set(k1, tier)
       this.markEdgeSegmentDirty(k1, k2, tier)
       return
     }
+
+    this.rawEdges.push({ q1, r1, q2, r2, tier })
 
     // New edge — topology changes
     this.adj.get(k1)!.set(k2, tier)
@@ -324,9 +327,11 @@ export class RoadNetwork {
         : chainAmp
       if (effAmp > 0 && chaikinPasses > 0) chain = chaikin(chain, chaikinPasses, false)
 
+      const isLoop = seg.hexPath[0] === seg.hexPath[seg.hexPath.length - 1]
+
       // Emit chains, splitting at tier-change boundaries
       if (hopCount === 0) {
-        chains.push({ tier, chain, baseChain, id, hopKeys: [], hopRanges: [], hopTiers: [] })
+        chains.push({ tier, chain, baseChain, id, hopKeys: [], hopRanges: [], hopTiers: [], isLoop })
         continue
       }
 
@@ -341,7 +346,7 @@ export class RoadNetwork {
       tierRuns.push({ tier: (hopTiers[runStart] ?? 2) as 0 | 1 | 2, hopStart: runStart, hopEnd: hopCount })
 
       if (tierRuns.length === 1) {
-        chains.push({ tier: tierRuns[0].tier, chain, baseChain, id, hopKeys, hopRanges, hopTiers })
+        chains.push({ tier: tierRuns[0].tier, chain, baseChain, id, hopKeys, hopRanges, hopTiers, isLoop })
       } else {
         for (let ri = 0; ri < tierRuns.length; ri++) {
           const { tier: runTier, hopStart, hopEnd } = tierRuns[ri]

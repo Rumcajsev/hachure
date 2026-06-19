@@ -37,6 +37,7 @@ export type RoadChain = {
   hopKeys?: string[]
   hopRanges?: [number, number][]
   hopTiers?: (0 | 1 | 2)[]
+  isLoop?: boolean
 }
 
 export type RoadBaseData = {
@@ -455,8 +456,10 @@ export function buildRoadChains(
     }
     tierRuns.push({ tier: hopTiers[runStart] ?? 2, hopStart: runStart, hopEnd: hopCount })
 
+    const isLoop = startKey === endKey
+
     if (tierRuns.length === 1) {
-      chains.push({ tier: tierRuns[0].tier, chain, baseChain, id, hopKeys: hopKeysList, hopRanges, hopTiers })
+      chains.push({ tier: tierRuns[0].tier, chain, baseChain, id, hopKeys: hopKeysList, hopRanges, hopTiers, isLoop })
     } else {
       for (let ri = 0; ri < tierRuns.length; ri++) {
         const { tier: runTier, hopStart, hopEnd } = tierRuns[ri]
