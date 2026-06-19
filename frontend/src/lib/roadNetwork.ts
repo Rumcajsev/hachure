@@ -87,6 +87,11 @@ export class RoadNetwork {
   private hexIdx = new Map<string, { center: [number, number] }>()
   private params: NetworkParams = defaultParams()
   private interHexDist = 0
+  private _cachedBaseData: import('./roadChains').RoadBaseData | null = null
+  private _baseDataStale = true
+  private _cachedWiggleAmp = 0
+  private _cachedWiggleFreq = 0
+  private _cachedChaikinPasses = 0
 
   // ── Public API ──────────────────────────────────────────────────────────────
 
@@ -111,6 +116,7 @@ export class RoadNetwork {
     this.boundaryToSegs.clear()
     this.coveredPairs.clear()
     this.interHexDist = 0
+    this._baseDataStale = true
 
     // Build adjacency (min tier per pair, deduplicated)
     for (const e of edges) {
@@ -272,6 +278,13 @@ export class RoadNetwork {
     hopProps: Record<string, { wiggleAmp?: number; wiggleFreq?: number }> = {},
     chaikinPasses = 0,
   ): RoadBaseData {
+    if (!this._baseDataStale && this._cachedBaseData
+        && wiggleAmpFactor === this._cachedWiggleAmp
+        && wiggleFreqFactor === this._cachedWiggleFreq
+        && chaikinPasses === this._cachedChaikinPasses) {
+      return this._cachedBaseData
+    }
+
     for (const seg of this.segments.values()) {
       if (seg.dirty) this.computeSegmentGeometry(seg)
     }
@@ -450,7 +463,13 @@ export class RoadNetwork {
       }
     }
 
-    return { chains, junctions: junctionsList, controlPoints, interHexDist: this.interHexDist }
+    const result: RoadBaseData = { chains, junctions: junctionsList, controlPoints, interHexDist: this.interHexDist }
+    this._cachedBaseData = result
+    this._cachedWiggleAmp = wiggleAmpFactor
+    this._cachedWiggleFreq = wiggleFreqFactor
+    this._cachedChaikinPasses = chaikinPasses
+    this._baseDataStale = false
+    return result
   }
 
   /** True if the given edge list is identical to what this network was last built from. */
@@ -478,6 +497,7 @@ export class RoadNetwork {
 
   private markAllDirty(): void {
     for (const seg of this.segments.values()) seg.dirty = true
+    this._baseDataStale = true
   }
 
   private computeInterHexDist(): number {
@@ -489,21 +509,29 @@ export class RoadNetwork {
     return samples > 0 ? dist / samples : 0
   }
 
-  private markEdgeSegmentDirty(k1: string, k2: string, newTier: 0 | 1 | 2): void {
-    const segId = this.passToSeg.get(k1) ?? this.passToSeg.get(k2)
-    if (segId) {
-      const seg = this.segments.get(segId)
-      if (seg) { seg.tier = Math.min(seg.tier, newTier) as 0 | 1 | 2; seg.dirty = true }
+  private recomputeSegTier(seg: SegmentCache): void {
+    let minTier: 0 | 1 | 2 = 2
+    for (let i = 0; i < seg.hexPath.length - 1; i++) {
+      const t = this.adj.get(seg.hexPath[i])?.get(seg.hexPath[i + 1])
+      if (t !== undefined && (t as number) < minTier) minTier = t as 0 | 1 | 2
+    }
+    seg.tier = minTier
+  }
+
+  private markEdgeSegmentDirty(k1: string, k2: string, _newTier: 0 | 1 | 2): void {
+    this._baseDataStale = true
+    const sid = this.passToSeg.get(k1) ?? this.passToSeg.get(k2)
+    if (sid) {
+      const seg = this.segments.get(sid)
+      if (seg) { this.recomputeSegTier(seg); seg.dirty = true }
       return
     }
-    // Edge is at a boundary — find segment via boundaryToSegs
     for (const id of (this.boundaryToSegs.get(k1) ?? [])) {
       const seg = this.segments.get(id)
       if (!seg) continue
       const idx = seg.hexPath.indexOf(k1)
       if (idx >= 0 && (seg.hexPath[idx + 1] === k2 || seg.hexPath[idx - 1] === k2)) {
-        seg.tier = Math.min(seg.tier, newTier) as 0 | 1 | 2
-        seg.dirty = true
+        this.recomputeSegTier(seg); seg.dirty = true
         return
       }
     }
