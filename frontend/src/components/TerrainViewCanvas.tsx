@@ -14,6 +14,7 @@ import { riverChainCache, buildRiverChainsV2 } from '../lib/riverChains'
 
 import { drawRivers as _drawRivers } from '../lib/drawRivers'
 import { buildRoadChains, applyRoadWiggle } from '../lib/roadChains'
+import { RoadNetwork } from '../lib/roadNetwork'
 import { buildRailChains, applyRailWiggle } from '../lib/railChains'
 import { drawHighlights as _drawHighlights } from '../lib/drawHighlights'
 import { drawIcons as _drawIcons } from '../lib/drawIcons'
@@ -357,6 +358,10 @@ terrainColors, terrainTextureScales, terrainTextureBlendModes, terrainTextureOpa
   const addRoadEdgeRef = useRef(addRoadEdge)
   const removeRoadHexEdgesRef = useRef(removeRoadHexEdges)
   const removeRoadEdgeAllTiersRef = useRef(removeRoadEdgeAllTiers)
+  const roadNetworkRef = useRef(new RoadNetwork())
+  const isRoadPaintingRef = useRef(false)
+  const paintBufferedAdditionsRef = useRef<{ q1: number; r1: number; q2: number; r2: number; tier: 0 | 1 | 2 }[]>([])
+  const paintBufferedRemovalsRef = useRef<{ q1: number; r1: number; q2: number; r2: number }[]>([])
   const addRailEdgeRef = useRef(addRailEdge)
   const removeRailEdgeRef = useRef(removeRailEdge)
   const removeRailHexEdgesRef = useRef(removeRailHexEdges)
@@ -921,6 +926,23 @@ terrainColors, terrainTextureScales, terrainTextureBlendModes, terrainTextureOpa
     },
     [roadTierGeometry],
   )
+
+  // Keep RoadNetwork in sync with hex positions and geometry params
+  useEffect(() => { roadNetworkRef.current.setHexIdx(hexCenterIdx) }, [hexCenterIdx])
+  useEffect(() => {
+    roadNetworkRef.current.setParams({
+      smoothing: roadSmoothing, pathSmoothing: roadPathSmoothing, centerPull: roadCenterPull,
+      overrides: roadControlOverrides, chainOverrides: roadChainOverrides,
+      snapBindings: roadSnapBindings, tierGeom: roadTierGeomMap,
+    })
+  }, [roadSmoothing, roadPathSmoothing, roadCenterPull, roadControlOverrides, roadChainOverrides, roadSnapBindings, roadTierGeomMap])
+  // Rebuild network from store when edges change externally (undo, load, OSM generate)
+  // Skip rebuild if the network already reflects the current edge set (just committed a paint batch)
+  useEffect(() => {
+    if (roadNetworkRef.current.isEdgesEqual(roadEdges)) return
+    roadNetworkRef.current.rebuildAll(roadEdges)
+    roadsLayer.current.markDirty()
+  }, [roadEdges]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const roadBaseData = useMemo(
     () => buildRoadChains(roadEdges, hexCenterIdx, roadControlOverrides, 0, 0, roadSmoothing, roadPathSmoothing, roadChainOverrides, {}, {}, roadSnapBindings, 2, roadTierGeomMap, roadCenterPull),
@@ -2347,7 +2369,9 @@ terrainColors, terrainTextureScales, terrainTextureBlendModes, terrainTextureOpa
               liveTierGeomMap,
               roadCenterPullRef.current,
             )
-          : smoothedRoadDataRef.current
+          : isRoadPaintingRef.current
+            ? roadNetworkRef.current.getBaseData(roadWiggleAmpRef.current, roadWiggleFreqRef.current, roadSegmentPropsRef.current, roadHopPropsRef.current, 0)
+            : smoothedRoadDataRef.current
 
     const liveRailGeomOverride = railGeomOverrideRef.current ?? undefined
     const liveRailData = isDraggingRailCP
@@ -3942,14 +3966,16 @@ terrainColors, terrainTextureScales, terrainTextureBlendModes, terrainTextureOpa
         const tier = roadPaintBrushRef.current
         const eraser = roadPaintEraserRef.current
         const prev = prevEdgeHexRef.current
-        if (eraser) {
-          if (prev && (prev.q !== hex.q || prev.r !== hex.r) && hexAdjacent(prev.q, prev.r, hex.q, hex.r)) {
-            removeRoadEdgeAllTiersRef.current(prev.q, prev.r, hex.q, hex.r)
+        if (prev && (prev.q !== hex.q || prev.r !== hex.r) && hexAdjacent(prev.q, prev.r, hex.q, hex.r)) {
+          if (eraser) {
+            roadNetworkRef.current.removeEdge(prev.q, prev.r, hex.q, hex.r)
+            paintBufferedRemovalsRef.current.push({ q1: prev.q, r1: prev.r, q2: hex.q, r2: hex.r })
+          } else {
+            roadNetworkRef.current.addEdge(prev.q, prev.r, hex.q, hex.r, tier)
+            paintBufferedAdditionsRef.current.push({ q1: prev.q, r1: prev.r, q2: hex.q, r2: hex.r, tier })
           }
-        } else {
-          if (prev && (prev.q !== hex.q || prev.r !== hex.r) && hexAdjacent(prev.q, prev.r, hex.q, hex.r)) {
-            addRoadEdgeRef.current(prev.q, prev.r, hex.q, hex.r, tier)
-          }
+          roadsLayer.current.markDirty()
+          draw()
         }
       } else if (isRail) {
         const eraser = railPaintEraserRef.current
@@ -3976,7 +4002,12 @@ terrainColors, terrainTextureScales, terrainTextureBlendModes, terrainTextureOpa
       if ((e.target as HTMLElement).tagName !== 'CANVAS') return
       if (!roadPaintModeRef.current && !railPaintModeRef.current) return
       isPaintingRef.current = true
-      setIsRoadPainting(true)
+      if (roadPaintModeRef.current) {
+        isRoadPaintingRef.current = true
+        setIsRoadPainting(true)
+        paintBufferedAdditionsRef.current = []
+        paintBufferedRemovalsRef.current = []
+      }
       prevEdgeHexRef.current = null
       roadRailPaintAtClient(e.clientX, e.clientY)
     }
@@ -3985,7 +4016,20 @@ terrainColors, terrainTextureScales, terrainTextureBlendModes, terrainTextureOpa
       if (!roadPaintModeRef.current && !railPaintModeRef.current) return
       roadRailPaintAtClient(e.clientX, e.clientY)
     }
-    const onUp = () => { isPaintingRef.current = false; setIsRoadPainting(false) }
+    const onUp = () => {
+      isPaintingRef.current = false
+      isRoadPaintingRef.current = false
+      setIsRoadPainting(false)
+      // Commit buffered road edits to store in one batch (triggers one chain rebuild)
+      for (const e of paintBufferedAdditionsRef.current) {
+        addRoadEdgeRef.current(e.q1, e.r1, e.q2, e.r2, e.tier)
+      }
+      for (const e of paintBufferedRemovalsRef.current) {
+        removeRoadEdgeAllTiersRef.current(e.q1, e.r1, e.q2, e.r2)
+      }
+      paintBufferedAdditionsRef.current = []
+      paintBufferedRemovalsRef.current = []
+    }
     el.addEventListener('mousedown', onDown)
     window.addEventListener('mousemove', onMove)
     window.addEventListener('mouseup', onUp)
