@@ -2370,7 +2370,7 @@ terrainColors, terrainTextureScales, terrainTextureBlendModes, terrainTextureOpa
               roadCenterPullRef.current,
             )
           : isRoadPaintingRef.current
-            ? roadNetworkRef.current.getBaseData(roadWiggleAmpRef.current, roadWiggleFreqRef.current, roadSegmentPropsRef.current, roadHopPropsRef.current, 0)
+            ? roadNetworkRef.current.getBaseData(roadWiggleAmpRef.current, roadWiggleFreqRef.current, roadSegmentPropsRef.current, roadHopPropsRef.current, 2)
             : smoothedRoadDataRef.current
 
     const liveRailGeomOverride = railGeomOverrideRef.current ?? undefined
