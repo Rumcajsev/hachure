@@ -13,9 +13,14 @@ import { findEdgeChains as findEdgeChainsSync } from '../lib/edgeBlobs'
 import { riverChainCache, buildRiverChainsV2 } from '../lib/riverChains'
 
 import { drawRivers as _drawRivers } from '../lib/drawRivers'
-import { buildRoadChains, applyRoadWiggle } from '../lib/roadChains'
+import { buildRoadChains } from '../lib/roadChains'
 import { RoadNetwork } from '../lib/roadNetwork'
 import { buildRailChains, applyRailWiggle } from '../lib/railChains'
+import type { RailBaseData } from '../lib/railChains'
+
+// Stable identity returned when there are no rail edges, so that useMemos depending on
+// railBaseData / smoothedRailData don't create new references on every road-paint mouseup.
+const EMPTY_RAIL_DATA: RailBaseData = { chains: [], controlPoints: [], interHexDist: 0 }
 import { drawHighlights as _drawHighlights } from '../lib/drawHighlights'
 import { drawIcons as _drawIcons } from '../lib/drawIcons'
 import { drawLabels as _drawLabels, getLabelBoxBounds } from '../lib/drawLabels'
@@ -115,7 +120,6 @@ export const TerrainViewCanvas = forwardRef<TerrainViewCanvasHandle, { surroundC
   const joinedHighlightsLayer = useRef(new LayerCache())
 
   const riversLayer = useRef(new LayerCache())
-  const riversDirtyRef = useRef(true)  // gates chain-data rebuild; also drives riversLayer.markDirty()
 
   const buildingsLayer = useRef(new LayerCache())
 
@@ -131,6 +135,9 @@ export const TerrainViewCanvas = forwardRef<TerrainViewCanvasHandle, { surroundC
   } | null>(null)
 
   const settlementsLayer = useRef(new LayerCache())
+  // Set true on road-paint mouseup so draw() skips the expensive settlement/building
+  // rebuilds on that frame. A RAF in onUp clears the flag and schedules a follow-up draw.
+  const skipExpensiveLayersRef = useRef(false)
   const [frameDims, setFrameDims] = useState({ w: 0, h: 0 })
   const frameDimsRef = useRef({ w: 0, h: 0 })
   const basePaperRef = useRef<{pw: number, ph: number} | null>(null)
@@ -145,7 +152,7 @@ export const TerrainViewCanvas = forwardRef<TerrainViewCanvasHandle, { surroundC
   const panStartRef = useRef({ x: 0, y: 0 })
   const panOriginRef = useRef({ x: 0, y: 0 })
 
-  const [isRoadPainting, setIsRoadPainting] = useState(false)
+  const [roadDataVersion, setRoadDataVersion] = useState(0)
   const [isTerrainPainting, setIsTerrainPainting] = useState(false)
   const [wcTooltip, setWcTooltip] = useState<{ x: number; y: number; label: string } | null>(null)
 
@@ -349,7 +356,6 @@ terrainColors, terrainTextureScales, terrainTextureBlendModes, terrainTextureOpa
   const megaHexOriginRRef = useRef(megaHexOriginR)
   const setMegaHexOriginRef = useRef(setMegaHexOrigin)
   const detectedBridgesRef = useRef<BridgePoint[]>([])
-  const bridgesDirtyRef = useRef(true)
   const roadPaintModeRef = useRef(roadPaintMode)
   const roadPaintBrushRef = useRef(roadPaintBrush)
   const roadPaintEraserRef = useRef(roadPaintEraser)
@@ -359,7 +365,6 @@ terrainColors, terrainTextureScales, terrainTextureBlendModes, terrainTextureOpa
   const removeRoadHexEdgesRef = useRef(removeRoadHexEdges)
   const removeRoadEdgeAllTiersRef = useRef(removeRoadEdgeAllTiers)
   const roadNetworkRef = useRef(new RoadNetwork())
-  const isRoadPaintingRef = useRef(false)
   const paintBufferedAdditionsRef = useRef<{ q1: number; r1: number; q2: number; r2: number; tier: 0 | 1 | 2 }[]>([])
   const paintBufferedRemovalsRef = useRef<{ q1: number; r1: number; q2: number; r2: number }[]>([])
   const addRailEdgeRef = useRef(addRailEdge)
@@ -414,8 +419,8 @@ terrainColors, terrainTextureScales, terrainTextureBlendModes, terrainTextureOpa
   const setRiverChainOverrideRef = useRef(setRiverChainOverride)
   const riverChainsV2Ref = useRef<import('../lib/riverChains').RiverChainV2[]>([])
   type ChainEntry = import('../lib/drawRivers').ChainEntry
-  const cachedRiverTierChainDataRef = useRef<[ChainEntry[], ChainEntry[], ChainEntry[]] | null>(null)
-  const cachedRiverChainDataRef = useRef<ChainEntry[] | null>(null)
+  const cachedRiverTierChainDataRef = useRef<[ChainEntry[], ChainEntry[], ChainEntry[]]>([[], [], []])
+  const cachedRiverChainDataRef = useRef<ChainEntry[]>([])
   // Dense-point hover/drag refs (shared by road node edit and river node edit)
   // handles = sparse edit points (every 5th of the dense catmullRom output)
   const hoveredChainRef = useRef<{ id: string; handles: [number, number][]; kind: 'road' | 'river' | 'rail' } | null>(null)
@@ -946,41 +951,26 @@ terrainColors, terrainTextureScales, terrainTextureBlendModes, terrainTextureOpa
     if (roadNetworkRef.current.isEdgesEqual(roadEdges)) return
     roadNetworkRef.current.rebuildAll(roadEdges)
     roadsLayer.current.markDirty()
+    setRoadDataVersion(v => v + 1)
   }, [roadEdges]) // eslint-disable-line react-hooks/exhaustive-deps
-
-  const roadBaseData = useMemo(
-    () => buildRoadChains(roadEdges, hexCenterIdx, roadControlOverrides, 0, 0, roadSmoothing, roadPathSmoothing, roadChainOverrides, {}, {}, roadSnapBindings, 2, roadTierGeomMap, roadCenterPull),
-    [roadEdges, hexCenterIdx, roadControlOverrides, roadSmoothing, roadPathSmoothing, roadChainOverrides, roadSnapBindings, roadTierGeomMap, roadCenterPull],
-  )
-
-  const smoothedRoadData = useMemo(
-    () => {
-      const chaikinPasses = (roadWiggleDragging || isRoadPainting) ? 0 : 2
-      const data = applyRoadWiggle(roadBaseData, roadWiggleAmp, roadWiggleFreq, roadSegmentProps, roadHopProps, chaikinPasses, roadTierGeomMap)
-      if (roadDensityMinChain <= 1) return data
-      const chains = data.chains.filter(c => {
-        if (c.id.startsWith('stub|')) return true
-        const hops = c.hopKeys?.length ?? Math.max(1, (c.baseChain?.length ?? c.chain.length) - 1)
-        return hops >= roadDensityMinChain
-      })
-      return { ...data, chains }
-    },
-    [roadBaseData, roadWiggleAmp, roadWiggleFreq, roadSegmentProps, roadHopProps, roadDensityMinChain, roadWiggleDragging, isRoadPainting, roadTierGeomMap],
-  )
-  const smoothedRoadDataRef = useRef(smoothedRoadData)
-  smoothedRoadDataRef.current = smoothedRoadData
-  const roadBaseDataRef = useRef(roadBaseData)
-  roadBaseDataRef.current = roadBaseData
 
   const railBaseData = useMemo(
     () => {
+      // When no rail edges exist return a stable module-level reference so that
+      // smoothedRailData, roadsLayer.markDirty(), and settlementsLayer.markDirty()
+      // don't fire on every road-paint mouseup (the cascade that causes the 1-2s freeze).
+      if (railEdges.length === 0) return EMPTY_RAIL_DATA
+      const networkBase = roadNetworkRef.current.getBaseData(
+        roadWiggleAmpRef.current, roadWiggleFreqRef.current,
+        roadSegmentPropsRef.current, roadHopPropsRef.current, 2
+      )
       const roadEdgeMidpoints = new Map(
-        roadBaseData.controlPoints
+        networkBase.controlPoints
           .filter(cp => cp.key.startsWith('em|'))
           .map(cp => [cp.key, cp.pos] as [string, [number, number]])
       )
       const roadJunctionPositions = new Map(
-        roadBaseData.controlPoints
+        networkBase.controlPoints
           .filter(cp => cp.key.startsWith('ja|'))
           .map(cp => [cp.key.slice(3), cp.pos] as [string, [number, number]])
       )
@@ -988,7 +978,9 @@ terrainColors, terrainTextureScales, terrainTextureBlendModes, terrainTextureOpa
       const effPathSmoothing = railGeomOverride?.pathSmoothing ?? railPathSmoothing
       return buildRailChains(railEdges, roadEdges, hexCenterIdx, roadEdgeMidpoints, roadJunctionPositions, railControlOverrides, 0, 0, effSmoothing, {}, {}, 2, effPathSmoothing)
     },
-    [railEdges, roadEdges, hexCenterIdx, roadBaseData, railControlOverrides, railSmoothing, railPathSmoothing, railGeomOverride],
+    // roadDataVersion as dep ensures rebuild when network changes (after undo/store-sync)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [roadDataVersion, railEdges, roadEdges, hexCenterIdx, railControlOverrides, railSmoothing, railPathSmoothing, railGeomOverride],
   )
   const smoothedRailData = useMemo(
     () => applyRailWiggle(railBaseData, railWiggleAmp, railWiggleFreq, railSegmentProps, railHopProps, railWiggleDragging ? 0 : 2, railGeomOverride ?? undefined),
@@ -1692,8 +1684,8 @@ terrainColors, terrainTextureScales, terrainTextureBlendModes, terrainTextureOpa
   const draw = useCallback((exportTarget?: ExportTarget) => {
     const _t0 = performance.now()
     const _dirtySnap = {
-      rivers: riversDirtyRef.current,
-      bridges: bridgesDirtyRef.current,
+      rivers: riversLayer.current.lastRebuilt,
+      bridges: detectedBridgesRef.current.length > 0,
     }
     const canvas = exportTarget ? exportTarget.canvas : canvasRef.current
     const meta = metaRef.current
@@ -1709,7 +1701,7 @@ terrainColors, terrainTextureScales, terrainTextureBlendModes, terrainTextureOpa
     // When a label is live-dragged, force the appropriate layer to rebuild.
     const live = liveLabelOffsetRef.current
     if (!exportTarget && live) {
-      if (live.id.startsWith('river:')) riversDirtyRef.current = true
+      if (live.id.startsWith('river:')) riversLayer.current.markDirty()
       else if (live.id.startsWith('settlement:')) settlementsLayer.current.markDirty()
     }
 
@@ -2141,49 +2133,15 @@ terrainColors, terrainTextureScales, terrainTextureBlendModes, terrainTextureOpa
         py: verts.reduce((s, v) => s + v[1], 0) / 6,
       }))
 
-    // Rebuild chains only when dirty — Catmull-Rom is expensive and must not run every frame
-    if (riversDirtyRef.current || !cachedRiverChainDataRef.current) {
-      riversLayer.current.markDirty()
-      const tierEdges: [typeof riverEdgesRef.current, typeof riverEdgesRef.current, typeof riverEdgesRef.current] = [[], [], []]
-      for (const e of riverEdgesRef.current) tierEdges[e.tier ?? 1].push(e)
+    const riverTierChainData = cachedRiverTierChainDataRef.current
+    const riverChainData = cachedRiverChainDataRef.current
 
-      const ts = riverTierStylesRef.current
-      cachedRiverTierChainDataRef.current = ([0, 1, 2] as const).map(tier => {
-        const style = ts?.[tier]
-        const amp  = style?.wiggleAmp     ?? riverWiggleAmpRef.current
-        const freq = style?.wiggleFreq    ?? riverWiggleFreqRef.current
-        const sm   = style?.smoothing     ?? riverSmoothingRef.current
-        const ps   = style?.pathSmoothing ?? riverPathSmoothingRef.current
-        return buildRiverChainsV2(tierEdges[tier], hexesRef.current, riverChainOverridesRef.current, freq, amp, sm, riverHopPropsRef.current, riverSegmentPropsRef.current, ps)
-          .map(c => ({ vertices: c.chain, segKey: c.segKey, hopKeys: c.hopKeys, hopRanges: c.hopRanges }))
-      }) as typeof cachedRiverTierChainDataRef.current
-      const rv2 = buildRiverChainsV2(riverEdgesRef.current, hexesRef.current, riverChainOverridesRef.current, riverWiggleFreqRef.current, riverWiggleAmpRef.current, riverSmoothingRef.current, riverHopPropsRef.current, riverSegmentPropsRef.current, riverPathSmoothingRef.current)
-      riverChainsV2Ref.current = rv2
-      cachedRiverChainDataRef.current = rv2.map(c => ({ vertices: c.chain, segKey: c.segKey, hopKeys: c.hopKeys, hopRanges: c.hopRanges }))
-      computedRiverChainsRef.current = cachedRiverChainDataRef.current
-      riverChainCache.chains = cachedRiverChainDataRef.current
-      riversDirtyRef.current = false
-    }
-    const riverTierChainData = cachedRiverTierChainDataRef.current!
-    const riverChainData = cachedRiverChainDataRef.current!
-    // Bridge detection — runs once per data-change (dirty flag), not every frame
-    if (bridgesDirtyRef.current) {
-      bridgesDirtyRef.current = false
-      if (bridgesEnabledRef.current) {
-        const roadChains = smoothedRoadDataRef.current.chains
-        const riverHWFor = (segKey: string) => {
-          const p = riverSegmentPropsRef.current[segKey]
-          return p?.width !== undefined ? 1.4 * p.width : 1.4 * riverWidthScaleRef.current
-        }
-        detectedBridgesRef.current = detectBridges(
-          roadChains,
-          smoothedRailDataRef.current.chains,
-          riverChainData.map(c => ({ vertices: c.vertices, halfWidth: riverHWFor(c.segKey) })),
-        )
-      } else {
-        detectedBridgesRef.current = []
-      }
-    }
+    // Single source of road geometry for all non-visual consumers (bridges, buildings, settlements)
+    const stableRoadData = roadNetworkRef.current.getBaseData(
+      roadWiggleAmpRef.current, roadWiggleFreqRef.current,
+      roadSegmentPropsRef.current, roadHopPropsRef.current, 2,
+    )
+
 
     const riverParams = {
       riverTierChainData,
@@ -2270,7 +2228,7 @@ terrainColors, terrainTextureScales, terrainTextureBlendModes, terrainTextureOpa
     const _tRBuildings0 = _tRoads0
     // Urban area buildings + settlement buildings (rendered below roads)
     {
-      const { chains: roadChains } = smoothedRoadDataRef.current
+      const { chains: roadChains } = stableRoadData
       const roadStyles = roadTierStylesRef.current
 
       // Invalidate geometry cache when inputs that affect building layout change
@@ -2278,13 +2236,13 @@ terrainColors, terrainTextureScales, terrainTextureBlendModes, terrainTextureOpa
         const currentZoom = Math.round(zoomRef.current * 10)
         const epoch = lastBuildingCacheEpochRef.current
         if (!epoch ||
-            epoch.roadData !== roadBaseDataRef.current ||
+            epoch.roadData !== stableRoadData ||
             epoch.zoom !== currentZoom ||
             epoch.settlementStyles !== settlementTierStylesRef.current ||
             epoch.urbanStyle !== urbanStyleRef.current) {
           hexBuildingGeoCacheRef.current.clear()
           lastBuildingCacheEpochRef.current = {
-            roadData: roadBaseDataRef.current,
+            roadData: stableRoadData,
             zoom: currentZoom,
             settlementStyles: settlementTierStylesRef.current,
             urbanStyle: urbanStyleRef.current,
@@ -2298,18 +2256,20 @@ terrainColors, terrainTextureScales, terrainTextureBlendModes, terrainTextureOpa
         if (!hasBuildings) {
           buildingsLayer.current.dispose()
         } else {
-          const { ctx: oCtx, rebuilt } = buildingsLayer.current.prepare(pw, ph, dpr)
-          if (rebuilt) {
-            hexBuildingGeoCacheRef.current.clear()
-            oCtx.scale(dpr * offZoom, dpr * offZoom)
-            oCtx.save()
-            oCtx.beginPath()
-            oCtx.rect(0, 0, pw, ph)
-            oCtx.clip()
-            _drawAllBuildings(oCtx, { hexes: hexesRef.current, urbanHexes: urbanHexesRef.current, urbanStyle: urbanStyleRef.current, settlements: settlementsRef.current, settlementTierStyles: settlementTierStylesRef.current, roadChains, roadTierStyles: roadTierStylesRef.current, hexBuildingGeoCache: hexBuildingGeoCacheRef.current, project })
-            _drawAllBuildingsV2(oCtx, { hexes: hexesRef.current, urbanHexes: urbanHexesRef.current, urbanStyle: urbanStyleRef.current, settlements: settlementsRef.current, settlementTierStyles: settlementTierStylesRef.current, roadChains, roadTierStyles: roadTierStylesRef.current, project })
-            oCtx.restore()
-            buildingsLayer.current.commitRebuild()
+          if (!skipExpensiveLayersRef.current) {
+            const { ctx: oCtx, rebuilt } = buildingsLayer.current.prepare(pw, ph, dpr)
+            if (rebuilt) {
+              hexBuildingGeoCacheRef.current.clear()
+              oCtx.scale(dpr * offZoom, dpr * offZoom)
+              oCtx.save()
+              oCtx.beginPath()
+              oCtx.rect(0, 0, pw, ph)
+              oCtx.clip()
+              _drawAllBuildings(oCtx, { hexes: hexesRef.current, urbanHexes: urbanHexesRef.current, urbanStyle: urbanStyleRef.current, settlements: settlementsRef.current, settlementTierStyles: settlementTierStylesRef.current, roadChains, roadTierStyles: roadTierStylesRef.current, hexBuildingGeoCache: hexBuildingGeoCacheRef.current, project })
+              _drawAllBuildingsV2(oCtx, { hexes: hexesRef.current, urbanHexes: urbanHexesRef.current, urbanStyle: urbanStyleRef.current, settlements: settlementsRef.current, settlementTierStyles: settlementTierStylesRef.current, roadChains, roadTierStyles: roadTierStylesRef.current, project })
+              oCtx.restore()
+              buildingsLayer.current.commitRebuild()
+            }
           }
           const _b0 = performance.now(); buildingsLayer.current.blit(ctx, 0, 0, pw, ph); _blitBuildings = performance.now() - _b0
         }
@@ -2382,8 +2342,8 @@ terrainColors, terrainTextureScales, terrainTextureBlendModes, terrainTextureOpa
             railEdgesRef.current,
             roadEdgesRef.current,
             hexIdxRef.current as Map<string, { center: [number, number] }>,
-            new Map(roadBaseDataRef.current.controlPoints.filter(cp => cp.key.startsWith('em|')).map(cp => [cp.key, cp.pos] as [string, [number, number]])),
-            new Map(roadBaseDataRef.current.controlPoints.filter(cp => cp.key.startsWith('ja|')).map(cp => [cp.key.slice(3), cp.pos] as [string, [number, number]])),
+            new Map(stableRoadData.controlPoints.filter(cp => cp.key.startsWith('em|')).map(cp => [cp.key, cp.pos] as [string, [number, number]])),
+            new Map(stableRoadData.controlPoints.filter(cp => cp.key.startsWith('ja|')).map(cp => [cp.key.slice(3), cp.pos] as [string, [number, number]])),
             { ...railControlOverridesRef.current, ...dragLiveOverrideRef.current },
             0, 0,
             liveRailGeomOverride?.smoothing ?? railSmoothingRef.current,
@@ -2407,7 +2367,7 @@ terrainColors, terrainTextureScales, terrainTextureBlendModes, terrainTextureOpa
       const tierStyles = roadTierStylesRef.current
 
       if (!isExport) {
-        const hasRoads = roadEdgesRef.current.length > 0 || railEdgesRef.current.length > 0
+        const hasRoads = liveRoadData.chains.length > 0 || liveRailData.chains.length > 0
         if (hasRoads) {
           // project() is deterministic for a given viewport — cache projected chain coords.
           // Re-project only when the source chain data or paper dims change.
@@ -2720,25 +2680,25 @@ terrainColors, terrainTextureScales, terrainTextureBlendModes, terrainTextureOpa
     {
 
       if (!isExport) {
-        const { ctx: oCtxS, rebuilt } = settlementsLayer.current.prepare(pw, ph, dpr)
-        if (rebuilt) {
-          oCtxS.scale(dpr * offZoom, dpr * offZoom)
-          oCtxS.save()
-          oCtxS.beginPath()
-          oCtxS.rect(0, 0, pw, ph)
-          oCtxS.clip()
-          const activeRoadDataS = smoothedRoadDataRef.current
-          // Skip the pixel sampler during live-drag repaints — it's only useful for
-          // initial auto-placement, not when repainting because a label is being moved.
-          _drawSettlements(oCtxS, { settlements: settlementsRef.current, tierStyles: settlementTierStylesRef.current, labelSpecs: resolvedLabelSpecsRef.current, roadChains: activeRoadDataS.chains, roadJunctions: activeRoadDataS.junctions, railChains: smoothedRailDataRef.current.chains, project, hexCenterOf: (q, r) => { const h = hexesRef.current.find(h => h.q === q && h.r === r); return h ? project(h.center[0], h.center[1]) : null }, hexRadiusPx: hexRadiusRef.current, labelOffsets: labelOffsetsRef.current, liveLabelOffset: liveLabelOffsetRef.current ?? undefined, labelBBoxOut: labelBBoxCacheRef.current })
-          oCtxS.restore()
-          settlementsLayer.current.commitRebuild()
+        if (!skipExpensiveLayersRef.current) {
+          const { ctx: oCtxS, rebuilt } = settlementsLayer.current.prepare(pw, ph, dpr)
+          if (rebuilt) {
+            oCtxS.scale(dpr * offZoom, dpr * offZoom)
+            oCtxS.save()
+            oCtxS.beginPath()
+            oCtxS.rect(0, 0, pw, ph)
+            oCtxS.clip()
+            // Skip the pixel sampler during live-drag repaints — it's only useful for
+            // initial auto-placement, not when repainting because a label is being moved.
+            _drawSettlements(oCtxS, { settlements: settlementsRef.current, tierStyles: settlementTierStylesRef.current, labelSpecs: resolvedLabelSpecsRef.current, roadChains: stableRoadData.chains, roadJunctions: stableRoadData.junctions, railChains: smoothedRailDataRef.current.chains, project, hexCenterOf: (q, r) => { const h = hexesRef.current.find(h => h.q === q && h.r === r); return h ? project(h.center[0], h.center[1]) : null }, hexRadiusPx: hexRadiusRef.current, labelOffsets: labelOffsetsRef.current, liveLabelOffset: liveLabelOffsetRef.current ?? undefined, labelBBoxOut: labelBBoxCacheRef.current })
+            oCtxS.restore()
+            settlementsLayer.current.commitRebuild()
+          }
         }
         const _b0 = performance.now(); settlementsLayer.current.blit(ctx, 0, 0, pw, ph); _blitSettlements = performance.now() - _b0
       }
       if (isExport) {
-        const activeRoadDataS = smoothedRoadDataRef.current
-        _drawSettlements(ctx, { settlements: settlementsRef.current, tierStyles: settlementTierStylesRef.current, labelSpecs: resolvedLabelSpecsRef.current, roadChains: activeRoadDataS.chains, roadJunctions: activeRoadDataS.junctions, railChains: smoothedRailDataRef.current.chains, project, hexCenterOf: (q, r) => { const h = hexesRef.current.find(h => h.q === q && h.r === r); return h ? project(h.center[0], h.center[1]) : null }, hexRadiusPx: hexRadiusRef.current, labelOffsets: labelOffsetsRef.current, scale: lineScale })
+        _drawSettlements(ctx, { settlements: settlementsRef.current, tierStyles: settlementTierStylesRef.current, labelSpecs: resolvedLabelSpecsRef.current, roadChains: stableRoadData.chains, roadJunctions: stableRoadData.junctions, railChains: smoothedRailDataRef.current.chains, project, hexCenterOf: (q, r) => { const h = hexesRef.current.find(h => h.q === q && h.r === r); return h ? project(h.center[0], h.center[1]) : null }, hexRadiusPx: hexRadiusRef.current, labelOffsets: labelOffsetsRef.current, scale: lineScale })
       }
     }
 
@@ -2998,6 +2958,8 @@ terrainColors, terrainTextureScales, terrainTextureBlendModes, terrainTextureOpa
       }
     }
   }, [])
+  const drawRef = useRef(draw)
+  drawRef.current = draw
 
   const drawOsmHighlightRef = useRef<(() => void) | null>(null)
 
@@ -3277,21 +3239,57 @@ terrainColors, terrainTextureScales, terrainTextureBlendModes, terrainTextureOpa
 
   // Mark other layer caches dirty when their relevant data changes
   useEffect(() => { hexBorderLayer.current.markDirty() }, [hexBorderMode, hexEdgeMode, hexBorderOpacity, hexBorderColor, hexBorderDifference, generatedHexes, excludedHexKeys, disabledHexKeys, autoDisabledOceanHexKeys])
-  useEffect(() => { riversDirtyRef.current = true }, [riverEdges, riverTierStyles, riverWidthScale, riverWiggleFreq, riverWiggleAmp, riverSmoothing, riverPathSmoothing, showRiverLabels, riverLabelColor, riverSegmentProps, riverSelectMode, selectedSegmentKeys, riverStyle, riverHopProps, selectedHopKey, labelOffsets, generatedHexes, terrainColors])
-  useEffect(() => { buildingsLayer.current.markDirty() }, [urbanHexes, urbanStyle, settlements, settlementTierStyles, roadBaseData])
+  useEffect(() => {
+    const tierEdges: [typeof riverEdges, typeof riverEdges, typeof riverEdges] = [[], [], []]
+    for (const e of riverEdges) tierEdges[e.tier ?? 1].push(e)
+    cachedRiverTierChainDataRef.current = ([0, 1, 2] as const).map(tier => {
+      const style = riverTierStyles?.[tier]
+      const amp  = style?.wiggleAmp     ?? riverWiggleAmp
+      const freq = style?.wiggleFreq    ?? riverWiggleFreq
+      const sm   = style?.smoothing     ?? riverSmoothing
+      const ps   = style?.pathSmoothing ?? riverPathSmoothing
+      return buildRiverChainsV2(tierEdges[tier], generatedHexes, riverChainOverrides, freq, amp, sm, riverHopProps, riverSegmentProps, ps)
+        .map(c => ({ vertices: c.chain, segKey: c.segKey, hopKeys: c.hopKeys, hopRanges: c.hopRanges }))
+    }) as [ChainEntry[], ChainEntry[], ChainEntry[]]
+    const rv2 = buildRiverChainsV2(riverEdges, generatedHexes, riverChainOverrides, riverWiggleFreq, riverWiggleAmp, riverSmoothing, riverHopProps, riverSegmentProps, riverPathSmoothing)
+    riverChainsV2Ref.current = rv2
+    cachedRiverChainDataRef.current = rv2.map(c => ({ vertices: c.chain, segKey: c.segKey, hopKeys: c.hopKeys, hopRanges: c.hopRanges }))
+    computedRiverChainsRef.current = cachedRiverChainDataRef.current
+    riverChainCache.chains = cachedRiverChainDataRef.current
+    riversLayer.current.markDirty()
+  }, [riverEdges, riverChainOverrides, riverTierStyles, riverWidthScale, riverWiggleFreq, riverWiggleAmp, riverSmoothing, riverPathSmoothing, showRiverLabels, riverLabelColor, riverSegmentProps, riverSelectMode, selectedSegmentKeys, riverStyle, riverHopProps, selectedHopKey, labelOffsets, generatedHexes, terrainColors])
+  useEffect(() => { buildingsLayer.current.markDirty() }, [urbanHexes, urbanStyle, settlements, settlementTierStyles])
   useEffect(() => { roadsLayer.current.markDirty() }, [smoothedRailData, roadTierStyles, railStyle, roadSegmentProps, roadHopProps, selectedRoadSegmentKeys, selectedRoadHopKey, roadSelectMode, railSegmentProps, railHopProps, selectedRailSegmentKeys, selectedRailHopKey, railSelectMode])
-  useEffect(() => { bridgesDirtyRef.current = true }, [bridgesEnabled, smoothedRoadData, smoothedRailData, riverEdges, generatedHexes])
-  useEffect(() => { settlementsLayer.current.markDirty() }, [settlements, settlementTierStyles, labelPresetId, labelOverrides, smoothedRoadData, smoothedRailData, labelOffsets, defaultTerrainBlobs, terrainBlobOverrides, riverEdges, highlights, highlightedHexes, mapBgColor])
+  useEffect(() => {
+    if (bridgesEnabled) {
+      const stableRoadData = roadNetworkRef.current.getBaseData(
+        roadWiggleAmpRef.current, roadWiggleFreqRef.current,
+        roadSegmentPropsRef.current, roadHopPropsRef.current, 2,
+      )
+      const riverHWFor = (segKey: string) => {
+        const p = riverSegmentPropsRef.current[segKey]
+        return p?.width !== undefined ? 1.4 * p.width : 1.4 * riverWidthScaleRef.current
+      }
+      detectedBridgesRef.current = detectBridges(
+        stableRoadData.chains,
+        smoothedRailData.chains,
+        cachedRiverChainDataRef.current.map(c => ({ vertices: c.vertices, halfWidth: riverHWFor(c.segKey) })),
+      )
+    } else {
+      detectedBridgesRef.current = []
+    }
+  }, [bridgesEnabled, roadDataVersion, smoothedRailData, riverEdges, generatedHexes])
+  useEffect(() => { settlementsLayer.current.markDirty() }, [settlements, settlementTierStyles, labelPresetId, labelOverrides, smoothedRailData, labelOffsets, defaultTerrainBlobs, terrainBlobOverrides, riverEdges, highlights, highlightedHexes, mapBgColor])
   // When entering label-drag mode, rebuild label layers so the bbox cache is populated for hit-testing
   useEffect(() => {
     if (activeTool.type === 'label-drag') {
-      riversDirtyRef.current = true
+      riversLayer.current.markDirty()
       settlementsLayer.current.markDirty()
     }
   }, [activeTool.type])
 
   // Redraw when data changes
-  useEffect(() => { draw() }, [defaultElevationBlobs, generatedHexes, hexBorderMode, hexEdgeMode, hexBorderOpacity, hexBorderColor, hexBorderDifference, hexNumbersEnabled, hexNumberEdge, hexNumberColor, hexNumberFontScale, hexNumberStartCorner, hexNumberMap, smoothedRoadData, smoothedRailData, showRawOsmRoads, roadNodeEditMode, riverNodeEditMode, riverChainOverrides, riverEdges, riverEditMode, riverWidthScale, riverWiggleFreq, riverWiggleAmp, riverSmoothing, riverPathSmoothing, showRiverLabels, riverLabelColor, riverSegmentProps, riverSelectMode, selectedSegmentKeys, riverTierStyles, riverStyle, riverHopProps, selectedHopKey, defaultTerrainBlobs, defaultWaterBlobs, terrainColors, terrainTextureScales, terrainTextureBlendModes, terrainTextureOpacities, terrainTextureTintColors, terrainTextureTintOpacities, terrainTextureShadeRanges, terrainTextureFile, terrainTextureEnabled, terrainBlobOverrides, terrainTypeBlobStyles, waterOverrides, terrainRenderMode, settlements, settlementTierStyles, urbanHexes, urbanStyle, roadTierStyles, railStyle, highlights, highlightedHexes, highlightLines, highlightEdgePaths, iconOverlays, placedIcons, labelOverlays, placedLabels, realisticCoastline, coastlineDebugRaw, smoothedCoastlineBoundary, rawCoastlineBoundary, beachStrip, beachColor, beachWidth, coastlineDPEpsilon, coastlineChaikinPasses, edgeBlobPainted, edgeBlobOverrides, edgeBlobWidth, roadSegmentProps, roadHopProps, selectedRoadSegmentKeys, selectedRoadHopKey, roadSelectMode, railNodeEditMode, railControlOverrides, railSelectMode, railWiggleAmp, railWiggleFreq, railSmoothing, railSegmentProps, railHopProps, selectedRailSegmentKeys, selectedRailHopKey, mapBgColor, mapBorderEnabled, mapBorderColor, mapBorderWidth, clipToHexGrid, excludedHexKeys, disabledHexKeys, autoDisabledOceanHexKeys, megaHexEnabled, megaHexRadius, megaHexColor, megaHexOpacity, megaHexLineWidth, megaHexOriginQ, megaHexOriginR, bridgesEnabled, bridgeStyle, bridgeTiers, bridgeOverrides, showElevationDebug, showElevationClassOverlay, mapStyle, labelOffsets, labelPresetId, labelOverrides, activeTool, blobEditMode, activeBlobEditId, blobHandleOverrides, blobMaskEdits, defaultTerrainBlobsMasked, draw])
+  useEffect(() => { draw() }, [defaultElevationBlobs, generatedHexes, hexBorderMode, hexEdgeMode, hexBorderOpacity, hexBorderColor, hexBorderDifference, hexNumbersEnabled, hexNumberEdge, hexNumberColor, hexNumberFontScale, hexNumberStartCorner, hexNumberMap, roadDataVersion, smoothedRailData, showRawOsmRoads, roadNodeEditMode, riverNodeEditMode, riverChainOverrides, riverEdges, riverEditMode, riverWidthScale, riverWiggleFreq, riverWiggleAmp, riverSmoothing, riverPathSmoothing, showRiverLabels, riverLabelColor, riverSegmentProps, riverSelectMode, selectedSegmentKeys, riverTierStyles, riverStyle, riverHopProps, selectedHopKey, defaultTerrainBlobs, defaultWaterBlobs, terrainColors, terrainTextureScales, terrainTextureBlendModes, terrainTextureOpacities, terrainTextureTintColors, terrainTextureTintOpacities, terrainTextureShadeRanges, terrainTextureFile, terrainTextureEnabled, terrainBlobOverrides, terrainTypeBlobStyles, waterOverrides, terrainRenderMode, settlements, settlementTierStyles, urbanHexes, urbanStyle, roadTierStyles, railStyle, highlights, highlightedHexes, highlightLines, highlightEdgePaths, iconOverlays, placedIcons, labelOverlays, placedLabels, realisticCoastline, coastlineDebugRaw, smoothedCoastlineBoundary, rawCoastlineBoundary, beachStrip, beachColor, beachWidth, coastlineDPEpsilon, coastlineChaikinPasses, edgeBlobPainted, edgeBlobOverrides, edgeBlobWidth, roadSegmentProps, roadHopProps, selectedRoadSegmentKeys, selectedRoadHopKey, roadSelectMode, railNodeEditMode, railControlOverrides, railSelectMode, railWiggleAmp, railWiggleFreq, railSmoothing, railSegmentProps, railHopProps, selectedRailSegmentKeys, selectedRailHopKey, mapBgColor, mapBorderEnabled, mapBorderColor, mapBorderWidth, clipToHexGrid, excludedHexKeys, disabledHexKeys, autoDisabledOceanHexKeys, megaHexEnabled, megaHexRadius, megaHexColor, megaHexOpacity, megaHexLineWidth, megaHexOriginQ, megaHexOriginR, bridgesEnabled, bridgeStyle, bridgeTiers, bridgeOverrides, showElevationDebug, showElevationClassOverlay, mapStyle, labelOffsets, labelPresetId, labelOverrides, activeTool, blobEditMode, activeBlobEditId, blobHandleOverrides, blobMaskEdits, defaultTerrainBlobsMasked, draw])
 
   useEffect(() => { drawOsmHighlight() }, [osmHighlightTier, osmSpotlightMode, osmSpotlightTiers, osmRailHighlight, hoveredOsmRiverIdx, drawOsmHighlight])
 
@@ -3419,7 +3417,7 @@ terrainColors, terrainTextureScales, terrainTextureBlendModes, terrainTextureOpa
     terrainLayer.current.markDirty()
     hexBorderLayer.current.markDirty()
     joinedHighlightsLayer.current.markDirty()
-    riversDirtyRef.current = true
+    riversLayer.current.markDirty()
     buildingsLayer.current.markDirty()
     settlementsLayer.current.markDirty()
     draw()
@@ -3745,7 +3743,11 @@ terrainColors, terrainTextureScales, terrainTextureBlendModes, terrainTextureOpa
       const changed = hoverKey(target) !== hoverKey(paintHoverTargetRef.current)
       paintHoverTargetRef.current = target
       if (isPaintingRef.current) executePaint(target)
-      if (changed) draw()
+      if (changed) {
+        if (hoverRafRef.current === null) {
+          hoverRafRef.current = requestAnimationFrame(() => { hoverRafRef.current = null; draw() })
+        }
+      }
     }
 
     const onUp = () => {
@@ -4005,8 +4007,6 @@ terrainColors, terrainTextureScales, terrainTextureBlendModes, terrainTextureOpa
       if (!roadPaintModeRef.current && !railPaintModeRef.current) return
       isPaintingRef.current = true
       if (roadPaintModeRef.current) {
-        isRoadPaintingRef.current = true
-        setIsRoadPainting(true)
         paintBufferedAdditionsRef.current = []
         paintBufferedRemovalsRef.current = []
       }
@@ -4020,9 +4020,7 @@ terrainColors, terrainTextureScales, terrainTextureBlendModes, terrainTextureOpa
     }
     const onUp = () => {
       isPaintingRef.current = false
-      isRoadPaintingRef.current = false
-      setIsRoadPainting(false)
-      // Commit buffered road edits to store in one batch (triggers one chain rebuild)
+      // Commit buffered road edits to store in one batch
       for (const e of paintBufferedAdditionsRef.current) {
         addRoadEdgeRef.current(e.q1, e.r1, e.q2, e.r2, e.tier)
       }
@@ -4031,6 +4029,15 @@ terrainColors, terrainTextureScales, terrainTextureBlendModes, terrainTextureOpa
       }
       paintBufferedAdditionsRef.current = []
       paintBufferedRemovalsRef.current = []
+      // Skip expensive layer rebuilds (settlements, buildings) on the immediate
+      // post-mouseup frame so roads appear without a JS-thread freeze. The RAF
+      // below clears the flag and rebuilds them in the next frame.
+      skipExpensiveLayersRef.current = true
+      setRoadDataVersion(v => v + 1)
+      requestAnimationFrame(() => {
+        skipExpensiveLayersRef.current = false
+        drawRef.current()
+      })
     }
     el.addEventListener('mousedown', onDown)
     window.addEventListener('mousemove', onMove)
@@ -4062,7 +4069,7 @@ terrainColors, terrainTextureScales, terrainTextureBlendModes, terrainTextureOpa
       const logical = clientToLogical(e.clientX, e.clientY)
       if (!logical) return
       const { pw, ph, px, py } = getPaper(cssW, cssH)
-      const { controlPoints } = smoothedRoadDataRef.current
+      const { controlPoints } = roadNetworkRef.current.getBaseData(roadWiggleAmpRef.current, roadWiggleFreqRef.current, roadSegmentPropsRef.current, roadHopPropsRef.current, 2)
 
       const dissolvedHexesHit = new Set<string>()
       for (const key of Object.keys(roadControlOverridesRef.current)) {
@@ -4162,7 +4169,8 @@ terrainColors, terrainTextureScales, terrainTextureBlendModes, terrainTextureOpa
       const [dpx, dpy] = projectToCanvas(livePos[0], livePos[1], meta, pw, ph, px, py)
 
       // Sibling jt| snap (same junction, different arm)
-      const siblings = smoothedRoadDataRef.current.controlPoints.filter(
+      const snapCps = roadNetworkRef.current.getBaseData(roadWiggleAmpRef.current, roadWiggleFreqRef.current, roadSegmentPropsRef.current, roadHopPropsRef.current, 2).controlPoints
+      const siblings = snapCps.filter(
         cp => cp.key.startsWith('jt|') && cp.key.split('|')[1] === hexKey && cp.key !== dragKey
       )
       const sibThresh = SNAP_SIBLING_PX / zoom
@@ -4176,7 +4184,7 @@ terrainColors, terrainTextureScales, terrainTextureBlendModes, terrainTextureOpa
       // don't shift with wiggle/smoothing, so the connection is permanent.
       const roadThresh = SNAP_ROAD_PX / zoom
       let bestDist = roadThresh, bestEmKey: string | null = null, bestEmPos: [number, number] | null = null
-      for (const cp of smoothedRoadDataRef.current.controlPoints) {
+      for (const cp of snapCps) {
         if (!cp.key.startsWith('em|')) continue
         const [cx, cy] = projectToCanvas(cp.pos[0], cp.pos[1], meta, pw, ph, px, py)
         const dist = Math.hypot(dpx - cx, dpy - cy)
@@ -4236,7 +4244,7 @@ terrainColors, terrainTextureScales, terrainTextureBlendModes, terrainTextureOpa
       let bestChain: { id: string; baseChain: [number, number][]; kind: 'road' | 'river' | 'rail' } | null = null
 
       if (roadNodeEditModeRef.current) {
-        const { chains } = smoothedRoadDataRef.current
+        const { chains } = roadNetworkRef.current.getBaseData(roadWiggleAmpRef.current, roadWiggleFreqRef.current, roadSegmentPropsRef.current, roadHopPropsRef.current, 2)
         for (const c of chains) {
           if (c.id.startsWith('stub|')) continue
           for (let i = 0; i < c.chain.length - 1; i++) {
@@ -4304,7 +4312,6 @@ terrainColors, terrainTextureScales, terrainTextureBlendModes, terrainTextureOpa
         const newHandles = denseDrag.handles.map((p, i) => i === denseDrag.handleIdx ? denseFinalPos : p) as [number, number][]
         if (denseDrag.kind === 'river') {
           setRiverChainOverrideRef.current(denseDrag.id, newHandles)
-          riversDirtyRef.current = true
         } else {
           setRoadChainOverrideRef.current(denseDrag.id, newHandles)
         }
@@ -4735,7 +4742,7 @@ terrainColors, terrainTextureScales, terrainTextureBlendModes, terrainTextureOpa
               },
             })
           } else {
-            const jtCpsForHex = (smoothedRoadDataRef.current.controlPoints ?? [])
+            const jtCpsForHex = (roadNetworkRef.current.getBaseData(roadWiggleAmpRef.current, roadWiggleFreqRef.current, roadSegmentPropsRef.current, roadHopPropsRef.current, 2).controlPoints ?? [])
               .filter(cp => cp.key.startsWith('jt|') && cp.key.split('|')[1] === hexKey)
             if (meta2 && cssW2 > 0) {
               const groups: { keys: string[]; pos: [number, number] }[] = []
@@ -4773,7 +4780,7 @@ terrainColors, terrainTextureScales, terrainTextureBlendModes, terrainTextureOpa
 
       // ── ROAD segment / hop (panel-agnostic) ───────────────────────────────
       if (meta2 && cssW2 > 0 && !roadNodeEditModeRef.current) {
-        const roadChains = smoothedRoadDataRef.current.chains
+        const roadChains = roadNetworkRef.current.getBaseData(roadWiggleAmpRef.current, roadWiggleFreqRef.current, roadSegmentPropsRef.current, roadHopPropsRef.current, 2).chains
         let bestChain: typeof roadChains[0] | null = null
         let bestDist = Infinity
         for (const chain of roadChains) {
@@ -5303,7 +5310,6 @@ terrainColors, terrainTextureScales, terrainTextureBlendModes, terrainTextureOpa
       if (forceMode === 'remove' && !exists) return 'remove'
 
       toggleRiverEdgeRef.current(hexQ, hexR, neighbor.q, neighbor.r)
-      riversDirtyRef.current = true
       return exists ? 'remove' : 'add'
     } else {
       // Highlight edge paint
@@ -5693,7 +5699,7 @@ terrainColors, terrainTextureScales, terrainTextureBlendModes, terrainTextureOpa
       const shiftHeld = e.shiftKey
       const cmdHeld = e.metaKey || e.ctrlKey
       const R2 = hexRadiusRef.current
-      const roadChains = smoothedRoadDataRef.current.chains
+      const roadChains = roadNetworkRef.current.getBaseData(roadWiggleAmpRef.current, roadWiggleFreqRef.current, roadSegmentPropsRef.current, roadHopPropsRef.current, 2).chains
 
       if (cmdHeld && selectedRoadSegmentKeysRef.current.length > 0) {
         // Cmd+click: find nearest hop in selected road segments
