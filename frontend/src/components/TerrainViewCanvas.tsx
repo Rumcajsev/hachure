@@ -55,6 +55,8 @@ import { attachHighlightLineHandlers } from '../interaction/tools/highlightLineT
 import { attachBlobHandleHandlers } from '../interaction/tools/blobHandleTool'
 import { attachContextMenuHandlers } from '../interaction/tools/contextMenuTool'
 import type { CtxItem } from '../interaction/tools/contextMenuTool'
+import { handleMouseMove, handleClick, handleMouseDown } from '../interaction/tools/mouseHandlers'
+import type { MouseHandlerRefs } from '../interaction/tools/mouseHandlers'
 import { drawTerrain as _drawTerrain, getColorTextureCacheStats } from '../lib/drawTerrain'
 import { TEXTURE_OPTIONS, TEXTURE_PATHS, DEFAULT_TERRAIN_TEXTURES } from '../lib/terrainTextures'
 import { computeHillshade } from '../lib/drawHillshade'
@@ -3980,214 +3982,48 @@ terrainTextureFileRef.current = terrainTextureFile
     }
   }, [isEdgePaintActive])
 
+  const getPaperRef = useRef(getPaper)
+  getPaperRef.current = getPaper
+  const isEdgePaintActiveRef = useRef(isEdgePaintActive)
+  isEdgePaintActiveRef.current = isEdgePaintActive
+  const paintEdgeRef = useRef(paintEdge)
+  paintEdgeRef.current = paintEdge
+
+  const mouseHandlerRefsRef = useRef<MouseHandlerRefs | null>(null)
+  mouseHandlerRefsRef.current = {
+    canvasRef, frameDimsRef, paperDimsRef, zoomRef,
+    clientToLogicalRef, getPaperRef, drawRef, isEdgePaintActiveRef, paintEdgeRef,
+    activeToolRef, activePanelRef,
+    liveLabelOffsetRef, labelBBoxCacheRef, labelDragStateRef, hoveredLabelIdRef,
+    labelOffsetsRef, editingLabelRef, setLabelOffsetRef, setActiveToolRef,
+    labelOverlaysRef, placedLabelsRef, activeLabelOverlayIdRef,
+    placeLabelRef, removeLabelAtRef, moveLabelToRef, labelSnapRef, draggingLabelRef,
+    iconOverlaysRef, placedIconsRef, activeIconOverlayIdRef,
+    placeIconRef, removeIconAtRef, iconSnapRef, iconPlaceModeRef,
+    alignImageDragRef, mapImageTransformRef, setMapImageTransformRef,
+    showWorldcoverOverlayRef, worldcoverOffscreenRef,
+    osmSpotlightModeRef, spotlightCursorRef, spotlightRafRef, drawOsmHighlightRef,
+    metaRef, hexesRef, hexEdgeModeRef, hexRadiusRef, projectedHexesRef,
+    hoveredEdgeRef, hoverRafRef, edgeDragRef, draggedRef,
+    blobMaskStrokeRef, blobMaskDrawingRef, addBlobMaskEditRef,
+    activeHighlightIdRef, highlightsRef, highlightedHexesRef,
+    highlightPaintModeRef, setHexHighlightRef, clearHexHighlightRef,
+    riverSelectModeRef, riverEditModeRef, riverChainsV2Ref, computedRiverChainsRef,
+    selectedSegmentKeysRef, selectedHopKeyRef, setSelectedSegmentKeysRef,
+    setSelectedHopKeyRef, toggleSegmentSelectionRef,
+    roadSelectModeRef, roadNetworkRef, roadWiggleAmpRef, roadWiggleFreqRef,
+    roadSegmentPropsRef, roadHopPropsRef, selectedRoadSegmentKeysRef,
+    selectedRoadHopKeyRef, setSelectedRoadSegmentKeysRef, setSelectedRoadHopKeyRef,
+    toggleRoadSegmentSelectionRef,
+    settlementMoveIndexRef, settlementPlaceTierRef, settlementsRef,
+    updateSettlementRef, setSettlementMoveIndexRef, placeSettlementAtHexRef,
+    urbanPaintModeRef, toggleUrbanHexRef,
+    setWcTooltip, wcTooltip,
+  } satisfies MouseHandlerRefs
+
   const onMouseMove = useCallback((e: React.MouseEvent<HTMLCanvasElement>) => {
-    // Label-follow — label tracks cursor until confirmed with a click
-    if (activeToolRef.current.type === 'label-follow') {
-      const tool = activeToolRef.current as { type: 'label-follow'; id: string; iconCx: number; iconCy: number }
-      const logical = clientToLogicalRef.current(e.clientX, e.clientY)
-      if (logical) {
-        // Offset is relative to icon centre so it's stable across auto-placement reruns
-        liveLabelOffsetRef.current = { id: tool.id, dx: logical.lx - tool.iconCx, dy: logical.ly - tool.iconCy }
-        draw()
-      }
-      return
-    }
-    // Label drag — live preview and hover highlight
-    if (activeToolRef.current.type === 'label-drag') {
-      const logical = clientToLogicalRef.current(e.clientX, e.clientY)
-      if (logical) {
-        const { lx, ly } = logical
-        if (labelDragStateRef.current) {
-          const { id, startLx, startLy, startDx, startDy } = labelDragStateRef.current
-          liveLabelOffsetRef.current = { id, dx: startDx + (lx - startLx), dy: startDy + (ly - startLy) }
-          draw()
-        } else {
-          // Hover detection
-          const cache = labelBBoxCacheRef.current
-          let hit: string | null = null
-          for (const [id, bbox] of Object.entries(cache)) {
-            const cos = Math.cos(-bbox.angle), sin = Math.sin(-bbox.angle)
-            const rx = (lx - bbox.cx) * cos - (ly - bbox.cy) * sin
-            const ry = (lx - bbox.cx) * sin + (ly - bbox.cy) * cos
-            if (Math.abs(rx) <= bbox.hw + 4 && Math.abs(ry) <= bbox.hh + 4) { hit = id; break }
-          }
-          if (hit !== hoveredLabelIdRef.current) {
-            hoveredLabelIdRef.current = hit
-            draw()
-          }
-          const canvas = canvasRef.current
-          if (canvas) canvas.style.cursor = hit ? 'grab' : 'default'
-        }
-      }
-      return
-    }
-    // Align-image drag
-    if (alignImageDragRef.current) {
-      const drag = alignImageDragRef.current
-      const { w: cssW } = frameDimsRef.current
-      const { pw } = paperDimsRef.current ?? { pw: cssW }
-      const zoom = zoomRef.current
-      const dx = (e.clientX - drag.startX) / zoom / pw
-      const dy = (e.clientY - drag.startY) / zoom / pw
-      setMapImageTransformRef.current({ translateX: drag.startTX + dx, translateY: drag.startTY + dy })
-      return
-    }
-    // WorldCover pixel hover — unproject cursor to geo coords, map into image space, read pixel
-    if (showWorldcoverOverlayRef.current && worldcoverOffscreenRef.current) {
-      const logical = clientToLogical(e.clientX, e.clientY)
-      const meta = metaRef.current
-      if (logical && meta) {
-        const { lx, ly, cssW, cssH } = logical
-        const { pw, ph, px, py } = getPaper(cssW, cssH)
-        const [lon, lat] = unprojectFromCanvas(lx, ly, meta, pw, ph, px, py)
-        const bbox = computeWorldcoverBbox(meta)
-        if (bbox) {
-          const { minLon, maxLon, minLat, maxLat } = bbox
-          const fracX = (lon - minLon) / (maxLon - minLon)
-          const fracY = (maxLat - lat) / (maxLat - minLat)
-          if (fracX >= 0 && fracX <= 1 && fracY >= 0 && fracY <= 1) {
-            const off = worldcoverOffscreenRef.current
-            const ipx = Math.floor(fracX * off.width)
-            const ipy = Math.floor(fracY * off.height)
-            const octx = off.getContext('2d')!
-            const [r, g, b] = octx.getImageData(ipx, ipy, 1, 1).data
-            const hex = `#${r.toString(16).padStart(2, '0')}${g.toString(16).padStart(2, '0')}${b.toString(16).padStart(2, '0')}`
-            const cls = WORLDCOVER_CLASSES.find(c => c.color.toLowerCase() === hex.toLowerCase())
-            const label = cls ? `${cls.code} — ${cls.name}` : '0 — Ocean / no data'
-            setWcTooltip({ x: e.clientX, y: e.clientY, label })
-          } else {
-            setWcTooltip(null)
-          }
-        }
-      } else {
-        setWcTooltip(null)
-      }
-    } else if (wcTooltip) {
-      setWcTooltip(null)
-    }
-
-    if (osmSpotlightModeRef.current) {
-      const logical = clientToLogical(e.clientX, e.clientY)
-      if (logical) {
-        spotlightCursorRef.current = { lx: logical.lx, ly: logical.ly }
-        if (spotlightRafRef.current === null) {
-          spotlightRafRef.current = requestAnimationFrame(() => {
-            spotlightRafRef.current = null
-            drawOsmHighlightRef.current?.()
-          })
-        }
-      }
-    }
-    if (iconPlaceModeRef.current && activePanelRef.current === 'highlights') {
-      const logical = clientToLogical(e.clientX, e.clientY)
-      if (logical) {
-        const { lx, ly, cssW, cssH } = logical
-        const meta = metaRef.current
-        if (meta) {
-          const { pw, ph, px, py } = getPaper(cssW, cssH)
-          const scalePxPerM = pw / (meta.scale_m_per_mm * meta.paper_mm[0])
-          const R2 = meta.outer_radius_m * scalePxPerM
-          const snapRadius = R2 * 0.1
-          let best: [number, number] | null = null
-          let bestDist = snapRadius
-          for (const hex of hexesRef.current) {
-            if (hexEdgeModeRef.current === 'whole' && hex.partial) continue
-            const [cx, cy] = projectToCanvas(hex.center[0], hex.center[1], meta, pw, ph, px, py)
-            if (Math.max(Math.abs(lx - cx), Math.abs(ly - cy)) > R2 * 1.5) continue
-            const d0 = Math.hypot(lx - cx, ly - cy)
-            if (d0 < bestDist) { bestDist = d0; best = [hex.center[0], hex.center[1]] }
-            for (const [vlon, vlat] of hex.vertices) {
-              const [vx, vy] = projectToCanvas(vlon, vlat, meta, pw, ph, px, py)
-              const mx2 = (cx + vx) / 2, my2 = (cy + vy) / 2
-              const d = Math.hypot(lx - mx2, ly - my2)
-              if (d < bestDist) {
-                bestDist = d
-                best = unprojectFromCanvas(mx2, my2, meta, pw, ph, px, py) as [number, number]
-              }
-            }
-          }
-          iconSnapRef.current = best ?? unprojectFromCanvas(lx, ly, meta, pw, ph, px, py) as [number, number]
-          draw()
-        }
-      }
-      return
-    }
-    if (activeToolRef.current.type === 'label-place' && activePanelRef.current === 'highlights') {
-      const logical = clientToLogical(e.clientX, e.clientY)
-      if (logical) {
-        const { lx, ly, cssW, cssH } = logical
-        const meta = metaRef.current
-        if (meta) {
-          const { pw, ph, px, py } = getPaper(cssW, cssH)
-          const scalePxPerM = pw / (meta.scale_m_per_mm * meta.paper_mm[0])
-          const R2 = meta.outer_radius_m * scalePxPerM
-          const snapRadius = R2 * 0.1
-          let best: [number, number] | null = null
-          let bestDist = snapRadius
-          for (const hex of hexesRef.current) {
-            if (hexEdgeModeRef.current === 'whole' && hex.partial) continue
-            const [cx, cy] = projectToCanvas(hex.center[0], hex.center[1], meta, pw, ph, px, py)
-            if (Math.max(Math.abs(lx - cx), Math.abs(ly - cy)) > R2 * 1.5) continue
-            const d0 = Math.hypot(lx - cx, ly - cy)
-            if (d0 < bestDist) { bestDist = d0; best = [hex.center[0], hex.center[1]] }
-            for (const [vlon, vlat] of hex.vertices) {
-              const [vx, vy] = projectToCanvas(vlon, vlat, meta, pw, ph, px, py)
-              const mx2 = (cx + vx) / 2, my2 = (cy + vy) / 2
-              const d = Math.hypot(lx - mx2, ly - my2)
-              if (d < bestDist) {
-                bestDist = d
-                best = unprojectFromCanvas(mx2, my2, meta, pw, ph, px, py) as [number, number]
-              }
-            }
-          }
-          labelSnapRef.current = best ?? unprojectFromCanvas(lx, ly, meta, pw, ph, px, py) as [number, number]
-          draw()
-        }
-      }
-      return
-    }
-    if (!isEdgePaintActive()) {
-      if (hoveredEdgeRef.current !== null) {
-        hoveredEdgeRef.current = null
-        draw()
-      }
-      return
-    }
-    const logical = clientToLogical(e.clientX, e.clientY)
-    if (!logical) return
-    // projectedHexesRef verts are paper-local; convert canvas-space mouse to paper-local
-    const { lx: mx0, ly: my0, cssW: edgeCssW, cssH: edgeCssH } = logical
-    const { px: edgePx, py: edgePy } = getPaper(edgeCssW, edgeCssH)
-    const mx = mx0 - edgePx, my = my0 - edgePy
-
-    // Find nearest edge midpoint among all projected hexes (paper-local coords)
-    let best: { hexQ: number; hexR: number; edgeI: number } | null = null
-    let bestDist = hexRadiusRef.current * 0.8
-    for (const { hex, verts } of projectedHexesRef.current) {
-      for (let i = 0; i < 6; i++) {
-        const v0 = verts[i], v1 = verts[(i + 1) % 6]
-        const dist = Math.hypot(mx - (v0[0] + v1[0]) / 2, my - (v0[1] + v1[1]) / 2)
-        if (dist < bestDist) { bestDist = dist; best = { hexQ: hex.q, hexR: hex.r, edgeI: i } }
-      }
-    }
-
-    const prev = hoveredEdgeRef.current
-    if (best?.hexQ !== prev?.hexQ || best?.hexR !== prev?.hexR || best?.edgeI !== prev?.edgeI) {
-      hoveredEdgeRef.current = best
-      if (hoverRafRef.current === null) {
-        hoverRafRef.current = requestAnimationFrame(() => { hoverRafRef.current = null; draw() })
-      }
-
-      // Apply drag paint to each new edge entered during a drag stroke
-      if (best && edgeDragRef.current) {
-        const paintKey = `${best.hexQ},${best.hexR},${best.edgeI}`
-        if (!edgeDragRef.current.painted.has(paintKey)) {
-          edgeDragRef.current.painted.add(paintKey)
-          paintEdge(best.hexQ, best.hexR, best.edgeI, edgeDragRef.current.mode)
-        }
-      }
-    }
-  }, [isEdgePaintActive, paintEdge, draw, clientToLogical])
+    if (mouseHandlerRefsRef.current) handleMouseMove(e, mouseHandlerRefsRef.current)
+  }, [])
 
   const onMouseLeave = useCallback(() => {
     setWcTooltip(null)
@@ -4201,348 +4037,11 @@ terrainTextureFileRef.current = terrainTextureFile
     }
   }, [draw])
 
+
   const onClick = useCallback((e: React.MouseEvent<HTMLCanvasElement>) => {
-    if (editingLabelRef.current) return
-    if (draggedRef.current) return
-    const meta = metaRef.current
-    if (!meta) return
-    const logical = clientToLogical(e.clientX, e.clientY)
-    if (!logical) return
-    const { lx, ly, cssW, cssH } = logical
-    const { pw, ph, px, py } = getPaper(cssW, cssH)
-    const mmToPx = pw / meta.paper_mm[0]
-    const mgPx = meta.margin_mm * mmToPx
-    const marginL = px + mgPx, marginR = px + pw - mgPx
-    const marginT = py + mgPx, marginB = py + ph - mgPx
-    const inMargin = (verts: [number, number][]) =>
-      verts.every(([x, y]) => x >= marginL && x <= marginR && y >= marginT && y <= marginB)
-    // Generic segment select helper
-    const pickSegment = (
-      chains: { vertices: [number,number][]; segKey: string }[],
-      shiftHeld: boolean,
-      currentKeys: string[],
-      setKeys: (k: string[]) => void,
-      toggleKey: (k: string) => void,
-    ) => {
-      const R = hexRadiusRef.current
-      let bestKey: string | null = null, bestDist = Infinity
-      for (const { vertices, segKey } of chains) {
-        const pxPts = vertices.map(([lon, lat]) => projectToCanvas(lon, lat, meta, pw, ph, px, py)) as [number,number][]
-        for (let i = 0; i < pxPts.length - 1; i++) {
-          const [ax, ay] = pxPts[i], [bx, by] = pxPts[i+1]
-          const dx = bx - ax, dy = by - ay, len2 = dx*dx + dy*dy
-          const t = len2 > 0 ? Math.max(0, Math.min(1, ((lx-ax)*dx + (ly-ay)*dy) / len2)) : 0
-          const dist = Math.hypot(lx - (ax + t*dx), ly - (ay + t*dy))
-          if (dist < bestDist) { bestDist = dist; bestKey = segKey }
-        }
-      }
-      const threshold = R * 0.6
-      if (bestDist < threshold && bestKey) {
-        if (shiftHeld) {
-          toggleKey(bestKey)
-        } else if (currentKeys.length === 1 && currentKeys[0] === bestKey) {
-          setKeys([])  // clicking the already-selected segment deselects it
-        } else {
-          setKeys([bestKey])
-        }
-      } else if (!shiftHeld) {
-        setKeys([])
-      }
-    }
-    // River select mode
-    if (riverSelectModeRef.current && riverEditModeRef.current) {
-      const shiftHeld = e.shiftKey
-      const cmdHeld = e.metaKey || e.ctrlKey
-      if (cmdHeld && RIVER_V2 && selectedSegmentKeysRef.current.length > 0) {
-        // Cmd+click: find nearest hop within selected segment(s)
-        const R = hexRadiusRef.current
-        let bestHopKey: string | null = null, bestDist = Infinity
-        for (const chain of riverChainsV2Ref.current) {
-          if (!selectedSegmentKeysRef.current.includes(chain.segKey)) continue
-          const pxPts = chain.chain.map(([lon, lat]) => projectToCanvas(lon, lat, meta, pw, ph, px, py)) as [number,number][]
-          for (let h = 0; h < chain.hopKeys.length; h++) {
-            const [s, e2] = chain.hopRanges[h]
-            for (let i = s; i < e2; i++) {
-              const [ax, ay] = pxPts[i], [bx, by] = pxPts[i + 1]
-              const dx = bx - ax, dy = by - ay, len2 = dx * dx + dy * dy
-              const t = len2 > 0 ? Math.max(0, Math.min(1, ((lx - ax) * dx + (ly - ay) * dy) / len2)) : 0
-              const dist = Math.hypot(lx - (ax + t * dx), ly - (ay + t * dy))
-              if (dist < bestDist) { bestDist = dist; bestHopKey = chain.hopKeys[h] }
-            }
-          }
-        }
-        if (bestDist < R * 0.6 && bestHopKey) {
-          setSelectedHopKeyRef.current(selectedHopKeyRef.current === bestHopKey ? null : bestHopKey)
-        } else {
-          setSelectedHopKeyRef.current(null)
-        }
-        draw(); return
-      }
-      // Check if click is near any river chain; if not and nothing is selected, exit mode
-      const R2 = hexRadiusRef.current
-      let nearestDist = Infinity
-      for (const { vertices } of computedRiverChainsRef.current) {
-        const pxPts = vertices.map(([lon, lat]) => projectToCanvas(lon, lat, meta, pw, ph, px, py)) as [number,number][]
-        for (let i = 0; i < pxPts.length - 1; i++) {
-          const [ax, ay] = pxPts[i], [bx, by] = pxPts[i+1]
-          const dx = bx-ax, dy = by-ay, len2 = dx*dx+dy*dy
-          const t = len2 > 0 ? Math.max(0, Math.min(1, ((lx-ax)*dx+(ly-ay)*dy)/len2)) : 0
-          nearestDist = Math.min(nearestDist, Math.hypot(lx-(ax+t*dx), ly-(ay+t*dy)))
-        }
-      }
-      if (!shiftHeld && nearestDist >= R2 * 0.6) {
-        setSelectedSegmentKeysRef.current([])
-        setSelectedHopKeyRef.current(null)
-        setActiveToolRef.current({ type: 'none' })
-        draw(); return
-      }
-      pickSegment(computedRiverChainsRef.current, shiftHeld,
-        selectedSegmentKeysRef.current,
-        setSelectedSegmentKeysRef.current, toggleSegmentSelectionRef.current)
-      setSelectedHopKeyRef.current(null)
-      draw(); return
-    }
-    // Road select mode
-    if (roadSelectModeRef.current) {
-      const shiftHeld = e.shiftKey
-      const cmdHeld = e.metaKey || e.ctrlKey
-      const R2 = hexRadiusRef.current
-      const roadChains = roadNetworkRef.current.getBaseData(roadWiggleAmpRef.current, roadWiggleFreqRef.current, roadSegmentPropsRef.current, roadHopPropsRef.current, 2).chains
+    if (mouseHandlerRefsRef.current) handleClick(e, mouseHandlerRefsRef.current)
+  }, [])
 
-      if (cmdHeld && selectedRoadSegmentKeysRef.current.length > 0) {
-        // Cmd+click: find nearest hop in selected road segments
-        let bestHopKey: string | null = null, bestDist = Infinity
-        for (const chain of roadChains) {
-          if (!selectedRoadSegmentKeysRef.current.includes(chain.id)) continue
-          if (!chain.hopKeys || !chain.hopRanges) continue
-          const pxPts = chain.chain.map(([lon, lat]) => projectToCanvas(lon, lat, meta, pw, ph, px, py)) as [number, number][]
-          for (let h = 0; h < chain.hopKeys.length; h++) {
-            const [s, e2] = chain.hopRanges[h]
-            for (let i = s; i < e2; i++) {
-              const [ax, ay] = pxPts[i], [bx, by] = pxPts[i + 1]
-              const dx = bx - ax, dy = by - ay, len2 = dx * dx + dy * dy
-              const t = len2 > 0 ? Math.max(0, Math.min(1, ((lx - ax) * dx + (ly - ay) * dy) / len2)) : 0
-              const dist = Math.hypot(lx - (ax + t * dx), ly - (ay + t * dy))
-              if (dist < bestDist) { bestDist = dist; bestHopKey = chain.hopKeys[h] }
-            }
-          }
-        }
-        if (bestDist < R2 * 0.6 && bestHopKey) {
-          setSelectedRoadHopKeyRef.current(selectedRoadHopKeyRef.current === bestHopKey ? null : bestHopKey)
-        } else {
-          setSelectedRoadHopKeyRef.current(null)
-        }
-        draw(); return
-      }
-
-      // Normal segment pick (find nearest chain)
-      let bestId: string | null = null, bestDist = Infinity
-      for (const chain of roadChains) {
-        if (chain.id.startsWith('stub|')) continue
-        const pxPts = chain.chain.map(([lon, lat]) => projectToCanvas(lon, lat, meta, pw, ph, px, py)) as [number, number][]
-        for (let i = 0; i < pxPts.length - 1; i++) {
-          const [ax, ay] = pxPts[i], [bx, by] = pxPts[i + 1]
-          const dx = bx - ax, dy = by - ay, len2 = dx * dx + dy * dy
-          const t = len2 > 0 ? Math.max(0, Math.min(1, ((lx - ax) * dx + (ly - ay) * dy) / len2)) : 0
-          const dist = Math.hypot(lx - (ax + t * dx), ly - (ay + t * dy))
-          if (dist < bestDist) { bestDist = dist; bestId = chain.id }
-        }
-      }
-
-      // If clicking empty space, exit select mode
-      if (!shiftHeld && bestDist >= R2 * 0.6) {
-        setSelectedRoadSegmentKeysRef.current([])
-        setSelectedRoadHopKeyRef.current(null)
-        setActiveToolRef.current({ type: 'none' })
-        draw(); return
-      }
-
-      if (bestDist < R2 * 0.6 && bestId) {
-        if (shiftHeld) {
-          toggleRoadSegmentSelectionRef.current(bestId)
-        } else if (selectedRoadSegmentKeysRef.current.length === 1 && selectedRoadSegmentKeysRef.current[0] === bestId) {
-          setSelectedRoadSegmentKeysRef.current([])
-        } else {
-          setSelectedRoadSegmentKeysRef.current([bestId])
-        }
-        setSelectedRoadHopKeyRef.current(null)
-      } else if (!shiftHeld) {
-        setSelectedRoadSegmentKeysRef.current([])
-        setSelectedRoadHopKeyRef.current(null)
-      }
-      draw(); return
-    }
-
-    // Edge-paint click: use the snapped hovered edge, not the hex under cursor
-    if (isEdgePaintActive() && hoveredEdgeRef.current) {
-      const { hexQ, hexR, edgeI } = hoveredEdgeRef.current
-      paintEdge(hexQ, hexR, edgeI)
-      return
-    }
-
-    // Icon placement / erase
-    if (activePanelRef.current === 'highlights') {
-      const tool = activeToolRef.current
-      if (tool.type === 'icon-place') {
-        const overlayId = activeIconOverlayIdRef.current
-        if (overlayId) {
-          const pos = iconSnapRef.current
-          if (pos) {
-            const icons = placedIconsRef.current[overlayId] ?? []
-            const removeRadius = hexRadiusRef.current * 0.5
-            for (let i = 0; i < icons.length; i++) {
-              const [ilon, ilat] = icons[i]
-              const [ix, iy] = projectToCanvas(ilon, ilat, meta, pw, ph, px, py)
-              if (Math.hypot(lx - ix, ly - iy) < removeRadius) {
-                removeIconAtRef.current(overlayId, i)
-                return
-              }
-            }
-            placeIconRef.current(overlayId, pos[0], pos[1])
-            return
-          }
-        }
-      }
-      if (tool.type === 'icon-erase') {
-        const overlayId = activeIconOverlayIdRef.current
-        if (overlayId) {
-          const icons = placedIconsRef.current[overlayId] ?? []
-          const removeRadius = hexRadiusRef.current * 0.5
-          for (let i = 0; i < icons.length; i++) {
-            const [ilon, ilat] = icons[i]
-            const [ix, iy] = projectToCanvas(ilon, ilat, meta, pw, ph, px, py)
-            if (Math.hypot(lx - ix, ly - iy) < removeRadius) {
-              removeIconAtRef.current(overlayId, i)
-              return
-            }
-          }
-        }
-        return
-      }
-      if (tool.type === 'icon-erase-any') {
-        for (const overlay of iconOverlaysRef.current) {
-          const icons = placedIconsRef.current[overlay.id] ?? []
-          const removeRadius = hexRadiusRef.current * 0.5
-          for (let i = 0; i < icons.length; i++) {
-            const [ilon, ilat] = icons[i]
-            const [ix, iy] = projectToCanvas(ilon, ilat, meta, pw, ph, px, py)
-            if (Math.hypot(lx - ix, ly - iy) < removeRadius) {
-              removeIconAtRef.current(overlay.id, i)
-              return
-            }
-          }
-        }
-        return
-      }
-      if (tool.type === 'label-place') {
-        const overlayId = activeLabelOverlayIdRef.current
-        if (overlayId) {
-          const pos = labelSnapRef.current
-          if (pos) {
-            const labels = placedLabelsRef.current[overlayId] ?? []
-            const removeRadius = hexRadiusRef.current * 0.5
-            for (let i = 0; i < labels.length; i++) {
-              const { lon, lat } = labels[i]
-              const [ix, iy] = projectToCanvas(lon, lat, meta, pw, ph, px, py)
-              if (Math.hypot(lx - ix, ly - iy) < removeRadius) {
-                removeLabelAtRef.current(overlayId, i)
-                return
-              }
-            }
-            const overlay = labelOverlaysRef.current.find(o => o.id === overlayId)
-            placeLabelRef.current(overlayId, pos[0], pos[1], overlay?.name ?? 'Label')
-            return
-          }
-        }
-      }
-      if (tool.type === 'label-erase') {
-        const overlayId = activeLabelOverlayIdRef.current
-        if (overlayId) {
-          const labels = placedLabelsRef.current[overlayId] ?? []
-          const removeRadius = hexRadiusRef.current * 0.5
-          for (let i = 0; i < labels.length; i++) {
-            const { lon, lat } = labels[i]
-            const [ix, iy] = projectToCanvas(lon, lat, meta, pw, ph, px, py)
-            if (Math.hypot(lx - ix, ly - iy) < removeRadius) {
-              removeLabelAtRef.current(overlayId, i)
-              return
-            }
-          }
-        }
-        return
-      }
-    }
-
-    for (const hex of hexesRef.current) {
-      if (hexEdgeModeRef.current === 'whole' && hex.partial) continue
-      const verts = hex.vertices.map(([lon, lat]) =>
-        projectToCanvas(lon, lat, meta, pw, ph, px, py)
-      )
-      if (!hex.partial && !inMargin(verts)) continue
-      if (pointInPolygon(lx, ly, verts)) {
-        if (activePanelRef.current === 'highlights') {
-          const tool = activeToolRef.current
-          if (tool.type === 'highlight-paint') {
-            const hlId = activeHighlightIdRef.current
-            if (hlId) {
-              const hl = highlightsRef.current.find(h => h.id === hlId)
-              if (hl?.mode === 'area') {
-                const key = `${hex.q},${hex.r}`
-                if (highlightedHexesRef.current[key] === hlId) {
-                  clearHexHighlightRef.current(hex.q, hex.r)
-                } else {
-                  setHexHighlightRef.current(hex.q, hex.r, hlId)
-                }
-              }
-            }
-            return
-          }
-          if (tool.type === 'highlight-erase') {
-            const hlId = activeHighlightIdRef.current
-            if (hlId) {
-              const hl = highlightsRef.current.find(h => h.id === hlId)
-              if (hl?.mode === 'area') {
-                const key = `${hex.q},${hex.r}`
-                if (highlightedHexesRef.current[key] === hlId) {
-                  clearHexHighlightRef.current(hex.q, hex.r)
-                }
-              }
-            }
-            return
-          }
-          if (tool.type === 'highlight-erase-any') {
-            const key = `${hex.q},${hex.r}`
-            if (highlightedHexesRef.current[key]) {
-              clearHexHighlightRef.current(hex.q, hex.r)
-            }
-            return
-          }
-        }
-        if (activePanelRef.current === 'features' && urbanPaintModeRef.current !== null) {
-          toggleUrbanHexRef.current(hex.q, hex.r)
-          return
-        }
-        if (activePanelRef.current === 'features') {
-          const moveIdx = settlementMoveIndexRef.current
-          if (moveIdx !== null) {
-            updateSettlementRef.current(moveIdx, { hex_q: hex.q, hex_r: hex.r })
-            setSettlementMoveIndexRef.current(null)
-          } else {
-            const tier = settlementPlaceTierRef.current
-            if (!tier) return
-            const existing = settlementsRef.current
-            const existingIdx = existing.findIndex(s => s.hex_q === hex.q && s.hex_r === hex.r)
-            if (existingIdx !== -1) {
-              updateSettlementRef.current(existingIdx, { tier })
-            } else {
-              placeSettlementAtHexRef.current(hex.q, hex.r, hex.vertices as [number, number][], hex.center as [number, number], tier)
-            }
-          }
-          return
-        }
-      }
-    }
-  }, [clientToLogical])
 
   const onDoubleClick = useCallback((e: React.MouseEvent<HTMLCanvasElement>) => {
     const logical = clientToLogical(e.clientX, e.clientY)
@@ -4585,182 +4084,11 @@ terrainTextureFileRef.current = terrainTextureFile
 
   const alignImageDragRef = useRef<{ startX: number; startY: number; startTX: number; startTY: number } | null>(null)
 
+
   const onMouseDown = useCallback((e: React.MouseEvent<HTMLCanvasElement>) => {
-    if (e.button !== 0) return
-    if (editingLabelRef.current) return
-    draggedRef.current = false
+    if (mouseHandlerRefsRef.current) handleMouseDown(e, mouseHandlerRefsRef.current)
+  }, [])
 
-    // Label-follow — left-click commits the current cursor position
-    if (activeToolRef.current.type === 'label-follow') {
-      if (liveLabelOffsetRef.current) {
-        const { id, dx, dy } = liveLabelOffsetRef.current
-        setLabelOffsetRef.current(id, dx, dy)
-      }
-      liveLabelOffsetRef.current = null
-      setActiveToolRef.current({ type: 'none' })
-      draw()
-      return
-    }
-
-    // Label-drag tool — start dragging the label under the cursor
-    if (activeToolRef.current.type === 'label-drag') {
-      const logical = clientToLogicalRef.current(e.clientX, e.clientY)
-      if (logical) {
-        const { lx, ly } = logical
-        const cache = labelBBoxCacheRef.current
-        for (const [id, bbox] of Object.entries(cache)) {
-          const cos = Math.cos(-bbox.angle), sin = Math.sin(-bbox.angle)
-          const rx = (lx - bbox.cx) * cos - (ly - bbox.cy) * sin
-          const ry = (lx - bbox.cx) * sin + (ly - bbox.cy) * cos
-          if (Math.abs(rx) <= bbox.hw + 4 && Math.abs(ry) <= bbox.hh + 4) {
-            const existing = labelOffsetsRef.current[id] ?? { dx: 0, dy: 0 }
-            labelDragStateRef.current = { id, startLx: lx, startLy: ly, startDx: existing.dx, startDy: existing.dy }
-            const canvas = canvasRef.current
-            if (canvas) canvas.style.cursor = 'grabbing'
-            const onUp = () => {
-              if (liveLabelOffsetRef.current) {
-                const { id: lid, dx, dy } = liveLabelOffsetRef.current
-                setLabelOffsetRef.current(lid, dx, dy)
-              }
-              labelDragStateRef.current = null
-              liveLabelOffsetRef.current = null
-              if (canvasRef.current) canvasRef.current.style.cursor = 'grab'
-              draw()
-              window.removeEventListener('mouseup', onUp)
-            }
-            window.addEventListener('mouseup', onUp)
-            break
-          }
-        }
-      }
-      return
-    }
-
-    // Align-image drag — move historical map overlay
-    if (activeToolRef.current.type === 'align-image') {
-      const t = mapImageTransformRef.current
-      alignImageDragRef.current = { startX: e.clientX, startY: e.clientY, startTX: t.translateX, startTY: t.translateY }
-      const onUp = () => { alignImageDragRef.current = null; window.removeEventListener('mouseup', onUp) }
-      window.addEventListener('mouseup', onUp)
-      return
-    }
-
-    // Label drag — detect if mousedown is over a placed label in label-place mode
-    if (activeToolRef.current.type === 'label-place' && activePanelRef.current === 'highlights') {
-      const logical = clientToLogicalRef.current(e.clientX, e.clientY)
-      if (logical) {
-        const { lx, ly, cssW, cssH } = logical
-        const meta = metaRef.current
-        const canvas = canvasRef.current
-        if (meta && canvas) {
-          const { pw, ph, px, py } = getPaper(cssW, cssH)
-          const ctx = canvas.getContext('2d')
-          if (ctx) {
-            for (const overlay of labelOverlaysRef.current) {
-              const labels = placedLabelsRef.current[overlay.id] ?? []
-              for (let i = 0; i < labels.length; i++) {
-                const { lon, lat, text } = labels[i]
-                const [cx, cy] = projectToCanvas(lon, lat, meta, pw, ph, px, py)
-                const { bx, by, bw, bh } = getLabelBoxBounds(ctx, cx, cy, text || overlay.name, overlay)
-                if (lx >= bx && lx <= bx + bw && ly >= by && ly <= by + bh) {
-                  draggingLabelRef.current = { overlayId: overlay.id, index: i }
-                  draggedRef.current = true  // suppress click placement
-                  const onUp = () => {
-                    const snap = labelSnapRef.current
-                    const dl = draggingLabelRef.current
-                    if (dl && snap) {
-                      moveLabelToRef.current(dl.overlayId, dl.index, snap[0], snap[1])
-                    }
-                    draggingLabelRef.current = null
-                    draw()
-                    window.removeEventListener('mouseup', onUp)
-                  }
-                  window.addEventListener('mouseup', onUp)
-                  return
-                }
-              }
-            }
-          }
-        }
-      }
-    }
-
-    // Blob mask freehand drawing
-    if (activeToolRef.current.type === 'blob-mask') {
-      const logical = clientToLogicalRef.current(e.clientX, e.clientY)
-      if (!logical) return
-      blobMaskStrokeRef.current = [[logical.lx, logical.ly]]
-      blobMaskDrawingRef.current = true
-      draggedRef.current = true
-      const onMove = (ev: MouseEvent) => {
-        const log = clientToLogicalRef.current(ev.clientX, ev.clientY)
-        if (!log) return
-        const last = blobMaskStrokeRef.current.at(-1)!
-        if (Math.hypot(log.lx - last[0], log.ly - last[1]) > 3) {
-          blobMaskStrokeRef.current = [...blobMaskStrokeRef.current, [log.lx, log.ly]]
-          draw()
-        }
-      }
-      const onUp = () => {
-        blobMaskDrawingRef.current = false
-        const pts = blobMaskStrokeRef.current
-        blobMaskStrokeRef.current = []
-        window.removeEventListener('mousemove', onMove)
-        window.removeEventListener('mouseup', onUp)
-        if (pts.length < 2) { draw(); return }
-        const tool = activeToolRef.current
-        if (tool.type !== 'blob-mask') { draw(); return }
-        const meta = metaRef.current
-        const canvas = canvasRef.current
-        if (!meta || !canvas) { draw(); return }
-        const { pw, ph, px, py } = getPaper(canvas.width / window.devicePixelRatio, canvas.height / window.devicePixelRatio)
-        const unproj = (p: [number, number]): [number, number] =>
-          unprojectFromCanvas(p[0], p[1], meta, pw, ph, px, py)
-        const polygon = pts.map(unproj)
-        if (polygon.length > 2) polygon.push(polygon[0])
-        addBlobMaskEditRef.current({
-          id: `mask-${Date.now()}`,
-          terrain: tool.terrain,
-          type: tool.mode,
-          polygon,
-        })
-        draw()
-      }
-      window.addEventListener('mousemove', onMove)
-      window.addEventListener('mouseup', onUp)
-      return
-    }
-
-    // Start an edge drag stroke if we're in edge-paint mode with a hovered edge
-    if (isEdgePaintActive() && hoveredEdgeRef.current) {
-      const { hexQ, hexR, edgeI } = hoveredEdgeRef.current
-      const paintKey = `${hexQ},${hexR},${edgeI}`
-      const firstAction = paintEdge(hexQ, hexR, edgeI)
-      if (firstAction) {
-        edgeDragRef.current = { mode: firstAction, painted: new Set([paintKey]) }
-        draggedRef.current = true  // suppress the subsequent onClick
-      }
-      const onUp = () => {
-        edgeDragRef.current = null
-        window.removeEventListener('mouseup', onUp)
-      }
-      window.addEventListener('mouseup', onUp)
-      return
-    }
-
-    const startX = e.clientX, startY = e.clientY
-    const onMove = (ev: MouseEvent) => {
-      if (Math.abs(ev.clientX - startX) > 4 || Math.abs(ev.clientY - startY) > 4) {
-        draggedRef.current = true
-      }
-    }
-    const onUp = () => {
-      window.removeEventListener('mousemove', onMove)
-      window.removeEventListener('mouseup', onUp)
-    }
-    window.addEventListener('mousemove', onMove)
-    window.addEventListener('mouseup', onUp)
-  }, [isEdgePaintActive, paintEdge])
 
   useImperativeHandle(ref, () => ({
     exportBlob: () => new Promise<{ blob: Blob; paperMm: [number, number] } | null>(resolve => {
