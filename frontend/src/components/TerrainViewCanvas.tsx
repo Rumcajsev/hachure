@@ -7,21 +7,20 @@ import { useTheme } from '../context/ThemeContext'
 import { hexAdjacent, hexLineBetween, catmullRom, offsetPolyline, pointInPolygon, distToSeg, douglasPeucker, douglasPeuckerClosed, chaikin } from '../lib/geometry'
 import { mulberry32, makePermutation } from '../lib/noise'
 import { projectToCanvas, unprojectFromCanvas, computePaper, computeWorldcoverBbox } from '../lib/projection'
-import { coastalBlobTerrains, bleedPolygon, buildTerrainBlobsV2, buildTerrainBlobTopology, shapeTerrainBlobs, shapeInputPolygon, computeConnectedComponents, applyBlobMaskEdits, cutRawPolysWithCorridors, generateBlobSplats } from '../lib/terrainBlobs'
+import { coastalBlobTerrains, bleedPolygon, buildTerrainBlobsV2, buildTerrainBlobTopology, shapeTerrainBlobs, shapeInputPolygon, computeConnectedComponents, applyBlobMaskEdits, cutRawPolysWithCorridors, generateBlobSplats, buildExportTerrainBlobs } from '../lib/terrainBlobs'
 import type { BlobTopologyEntry } from '../lib/terrainBlobs'
 import { findEdgeChains as findEdgeChainsSync } from '../lib/edgeBlobs'
-import { riverChainCache, buildRiverChainsV2 } from '../lib/riverChains'
+import { riverChainCache } from '../lib/riverChains'
+import { computeDragLiveData, computeRoadProjections, computeLiveRiverChainData } from '../lib/roadLiveGeometry'
 
 import { drawRivers as _drawRivers } from '../lib/drawRivers'
-import { buildRoadChains } from '../lib/roadChains'
 import { RoadNetwork } from '../lib/roadNetwork'
-import { buildRailChains, applyRailWiggle } from '../lib/railChains'
 import type { RailBaseData } from '../lib/railChains'
 
 // Stable identity returned when there are no rail edges, so that useMemos depending on
 // railBaseData / smoothedRailData don't create new references on every road-paint mouseup.
 const EMPTY_RAIL_DATA: RailBaseData = { chains: [], controlPoints: [], interHexDist: 0 }
-import { drawHighlights as _drawHighlights } from '../lib/drawHighlights'
+import { drawHighlights as _drawHighlights, _drawHoveredEdgePreview } from '../lib/drawHighlights'
 import { drawIcons as _drawIcons } from '../lib/drawIcons'
 import { drawLabels as _drawLabels, getLabelBoxBounds, _drawLabelDragHandles } from '../lib/drawLabels'
 import { _drawWorldcoverOverlay, _drawRawOsmRoadsOverlay } from '../lib/drawDebugOverlays'
@@ -61,7 +60,7 @@ import type { CtxItem } from '../interaction/tools/contextMenuTool'
 import { handleMouseMove, handleClick, handleMouseDown } from '../interaction/tools/mouseHandlers'
 import type { MouseHandlerRefs } from '../interaction/tools/mouseHandlers'
 import { drawTerrain as _drawTerrain, getColorTextureCacheStats } from '../lib/drawTerrain'
-import { TEXTURE_OPTIONS, TEXTURE_PATHS, DEFAULT_TERRAIN_TEXTURES } from '../lib/terrainTextures'
+import { TEXTURE_OPTIONS, TEXTURE_PATHS, DEFAULT_TERRAIN_TEXTURES, buildTerrainTextures } from '../lib/terrainTextures'
 import { computeHillshade } from '../lib/drawHillshade'
 import { computeContours } from '../lib/drawContours'
 import { drawHexNumbers as _drawHexNumbers, buildHexNumberMap } from '../lib/drawHexNumbers'
@@ -1829,31 +1828,12 @@ terrainTextureFileRef.current = terrainTextureFile
     const scalePxPerM = pw / (meta.scale_m_per_mm * meta.paper_mm[0])
     const R = meta.outer_radius_m * scalePxPerM
 
-    const buildTerrainTextures = (): Map<string, HTMLImageElement | null> => {
-      const map = new Map<string, HTMLImageElement | null>()
-      const cache = textureCacheRef.current
-      const fileOverrides = terrainTextureFileRef.current
-      const enabled = terrainTextureEnabledRef.current
-      // Built-in terrains — user override takes precedence; disabled if enabled flag is explicitly false
-      for (const [terrain, defaultId] of Object.entries(DEFAULT_TERRAIN_TEXTURES)) {
-        if (enabled[terrain] === false) continue
-        const override = fileOverrides[terrain]
-        const id = override !== undefined ? override : defaultId
-        if (id) map.set(terrain, cache.get(id) ?? null)
-      }
-      // User-assigned textures for terrains without a default — only if explicitly enabled
-      for (const [terrain, id] of Object.entries(fileOverrides)) {
-        if (!map.has(terrain) && id && enabled[terrain] === true) map.set(terrain, cache.get(id) ?? null)
-      }
-      // Custom terrains — only if explicitly enabled
-      for (const ct of customTerrainsRef.current) {
-        if (enabled[ct.id] === false) continue
-        const override = fileOverrides[ct.id]
-        const id = override !== undefined ? override : (ct.textureId ?? '')
-        if (id && (enabled[ct.id] === true || ct.textureId)) map.set(ct.id, cache.get(id) ?? null)
-      }
-      return map
-    }
+    const _buildTerrainTextures = () => buildTerrainTextures({
+      textureCache: textureCacheRef.current,
+      terrainTextureFile: terrainTextureFileRef.current,
+      terrainTextureEnabled: terrainTextureEnabledRef.current,
+      customTerrains: customTerrainsRef.current,
+    })
 
     // For screen rendering, use memoized projected coords (stable across zoom/pan).
     // For export, recompute with the export-specific paper dimensions.
@@ -1874,7 +1854,7 @@ terrainTextureFileRef.current = terrainTextureFile
       terrainTextureOpacities: terrainTextureOpacitiesRef.current,
       terrainTextureTintColors: terrainTextureTintColorsRef.current,
       terrainTextureTintOpacities: terrainTextureTintOpacitiesRef.current,
-      terrainTextures: buildTerrainTextures(),
+      terrainTextures: _buildTerrainTextures(),
       px: 0, py: 0, pw, ph,
       backgroundTerrainBlobs: defaultBackgroundBlobsRef.current,
       defaultTerrainBlobs: defaultTerrainBlobsMaskedRef.current,
@@ -1945,61 +1925,26 @@ terrainTextureFileRef.current = terrainTextureFile
 
     // Pre-compute export terrain blobs and params (heavy, export-only)
     {
-      let exportTerrainBlobs = terrainParams.defaultTerrainBlobs
-      let exportWaterBlobs = terrainParams.defaultWaterBlobs
-      if (isExport) {
-        const overriddenKeys = new Set(Object.keys(terrainBlobOverridesRef.current))
-        const components = blobComponentsRef.current
-        const exportRealistic = realisticCoastlineRef.current
-        const isPureSea = (h: GeneratedHex) =>
-          h.terrain === 'water' && (!h.coastline_clip || h.coastline_clip.length === 0)
-        const terrainTypeSet = new Set<string>()
-        for (const p of projected) {
-          const h = p.hex as GeneratedHex
-          if (exportRealistic && isPureSea(h)) continue
-          for (const t of coastalBlobTerrains(h, exportRealistic)) {
-            if (t !== 'clear' && t !== 'water') terrainTypeSet.add(t)
-          }
-        }
-        exportTerrainBlobs = [...terrainTypeSet].flatMap(terrain => {
-          const componentMap = blobComponentsByTerrainRef.current.get(terrain) ?? new Map<string, string>()
-          const terrainProjected = projected.filter(p => {
-            const h = p.hex as GeneratedHex
-            if (exportRealistic && isPureSea(h)) return false
-            if (!coastalBlobTerrains(h, exportRealistic).includes(terrain)) return false
-            if (overriddenKeys.size > 0) {
-              const ck = componentMap.get(`${p.hex.q},${p.hex.r}`)
-              if (ck && overriddenKeys.has(ck)) return false
-            }
-            return true
-          }).map(p => ({ ...p, hex: { ...p.hex, terrain } }))
-          if (terrainProjected.length === 0) return []
-          const tsRef = terrainTypeBlobStylesRef.current[terrain]?.enabled ? terrainTypeBlobStylesRef.current[terrain] : null
-          return buildTerrainBlobsV2(
-            terrainProjected,
-            tsRef?.smooth          ?? terrainBlobSmoothRef.current,
-            tsRef?.offset          ?? terrainBlobOffsetRef.current,
-            tsRef?.bump            ?? terrainBlobBumpRef.current,
-            tsRef?.sweepFreq       ?? terrainBlobSweepFreqRef.current,
-            tsRef?.lobeFreq        ?? terrainBlobLobeFreqRef.current,
-            tsRef?.lobeAmp         ?? terrainBlobLobeAmpRef.current,
-            tsRef?.lobeThreshold   ?? terrainBlobLobeThresholdRef.current,
-            tsRef?.lobeDirection   ?? terrainBlobLobeDirectionRef.current,
+      const { exportTerrainBlobs, exportWaterBlobs } = isExport
+        ? buildExportTerrainBlobs({
+            projected,
+            terrainBlobOverrides: terrainBlobOverridesRef.current,
+            blobComponents: blobComponentsRef.current,
+            blobComponentsByTerrain: blobComponentsByTerrainRef.current,
+            realisticCoastline: realisticCoastlineRef.current,
+            waterOverrides: waterOverridesRef.current,
+            terrainTypeBlobStyles: terrainTypeBlobStylesRef.current,
+            smooth: terrainBlobSmoothRef.current,
+            offset: terrainBlobOffsetRef.current,
+            bump: terrainBlobBumpRef.current,
+            sweepFreq: terrainBlobSweepFreqRef.current,
+            lobeFreq: terrainBlobLobeFreqRef.current,
+            lobeAmp: terrainBlobLobeAmpRef.current,
+            lobeThreshold: terrainBlobLobeThresholdRef.current,
+            lobeDirection: terrainBlobLobeDirectionRef.current,
             R,
-          )
-        })
-        const waterOverriddenKeys = new Set(Object.keys(waterOverridesRef.current))
-        const defaultWaterProjected = projected
-          .filter(p => {
-            if (p.hex.terrain !== 'water') return false
-            const ck = components.get(`${p.hex.q},${p.hex.r}`)
-            return !ck || !waterOverriddenKeys.has(ck)
           })
-          .map(p => ({ hex: { ...p.hex, terrain: 'water' }, verts: p.verts }))
-        exportWaterBlobs = defaultWaterProjected.length > 0
-          ? buildTerrainBlobsV2(defaultWaterProjected, terrainBlobSmoothRef.current, terrainBlobOffsetRef.current, terrainBlobBumpRef.current, terrainBlobSweepFreqRef.current, terrainBlobLobeFreqRef.current, terrainBlobLobeAmpRef.current, terrainBlobLobeThresholdRef.current, terrainBlobLobeDirectionRef.current, R)
-          : []
-      }
+        : { exportTerrainBlobs: terrainParams.defaultTerrainBlobs, exportWaterBlobs: terrainParams.defaultWaterBlobs }
       const exportTerrainParams = { ...terrainParams, backgroundTerrainBlobs: defaultBackgroundBlobsRef.current, defaultTerrainBlobs: exportTerrainBlobs, defaultWaterBlobs: exportWaterBlobs }
       const _b0 = performance.now()
       terrainController.draw(ctx, {
@@ -2105,27 +2050,8 @@ terrainTextureFileRef.current = terrainTextureFile
       } satisfies HighlightsInput)
       _blitHighlights = performance.now() - _b0
 
-      // Hover preview for edge-paint mode — drawn directly on ctx, not cached
       if (!isExport) {
-        const hov = hoveredEdgeRef.current
-        if (hov) {
-          const proj = projected.find(p => p.hex.q === hov.hexQ && p.hex.r === hov.hexR)
-          if (proj) {
-            const v0 = proj.verts[hov.edgeI]
-            const v1 = proj.verts[(hov.edgeI + 1) % 6]
-            ctx.save()
-            ctx.strokeStyle = 'rgba(255,255,255,0.85)'
-            ctx.lineWidth = 3
-            ctx.lineCap = 'round'
-            ctx.setLineDash([4, 4])
-            ctx.beginPath()
-            ctx.moveTo(v0[0], v0[1])
-            ctx.lineTo(v1[0], v1[1])
-            ctx.stroke()
-            ctx.setLineDash([])
-            ctx.restore()
-          }
-        }
+        _drawHoveredEdgePreview({ ctx, hoveredEdge: hoveredEdgeRef.current, projected })
       }
     }
 
@@ -2141,11 +2067,47 @@ terrainTextureFileRef.current = terrainTextureFile
     const riverTierChainData = cachedRiverTierChainDataRef.current
     const riverChainData = cachedRiverChainDataRef.current
 
-    // Single source of road geometry for all non-visual consumers (bridges, buildings, settlements)
-    const stableRoadData = roadNetworkRef.current.getBaseData(
-      roadWiggleAmpRef.current, roadWiggleFreqRef.current,
-      roadSegmentPropsRef.current, roadHopPropsRef.current, 2,
-    )
+    const _dragLive = computeDragLiveData({
+      dragLiveOverride: dragLiveOverrideRef.current,
+      draggingDensePt: draggingDensePtRef.current,
+      dragLiveDensePos: dragLiveDensePosRef.current,
+      draggingCpKind: draggingCpKindRef.current,
+      roadNetwork: roadNetworkRef.current,
+      roadEdges: roadEdgesRef.current,
+      hexIdx: hexIdxRef.current as Map<string, { center: [number, number] }>,
+      roadControlOverrides: roadControlOverridesRef.current,
+      roadChainOverrides: roadChainOverridesRef.current,
+      roadWiggleAmp: roadWiggleAmpRef.current,
+      roadWiggleFreq: roadWiggleFreqRef.current,
+      roadSmoothing: roadSmoothingRef.current,
+      roadPathSmoothing: roadPathSmoothingRef.current,
+      roadSegmentProps: roadSegmentPropsRef.current,
+      roadHopProps: roadHopPropsRef.current,
+      roadTierGeometry: roadTierGeometryRef.current,
+      roadCenterPull: roadCenterPullRef.current,
+      railEdges: railEdgesRef.current,
+      railControlOverrides: railControlOverridesRef.current,
+      railBaseData: railBaseDataRef.current,
+      smoothedRailData: smoothedRailDataRef.current,
+      railSmoothing: railSmoothingRef.current,
+      railPathSmoothing: railPathSmoothingRef.current,
+      railWiggleAmp: railWiggleAmpRef.current,
+      railWiggleFreq: railWiggleFreqRef.current,
+      railSegmentProps: railSegmentPropsRef.current,
+      railHopProps: railHopPropsRef.current,
+      railGeomOverride: railGeomOverrideRef.current,
+      riverEdges: riverEdgesRef.current,
+      hexes: hexesRef.current,
+      riverChainOverrides: riverChainOverridesRef.current,
+      riverWiggleFreq: riverWiggleFreqRef.current,
+      riverWiggleAmp: riverWiggleAmpRef.current,
+      riverSmoothing: riverSmoothingRef.current,
+      riverHopProps: riverHopPropsRef.current,
+      riverSegmentProps: riverSegmentPropsRef.current,
+      riverPathSmoothing: riverPathSmoothingRef.current,
+    })
+    const { isDraggingCP, isDraggingRailCP, isDraggingDense, isDraggingRiverDense,
+      stableRoadData, liveRoadData, liveRailData } = _dragLive
 
 
     const riverParams = {
@@ -2176,31 +2138,15 @@ terrainTextureFileRef.current = terrainTextureFile
       labelBBoxOut: labelBBoxCacheRef.current,
     }
 
-    // Compute drag state upfront — needed for both river and road live previews below
-    const isDraggingCP = Object.keys(dragLiveOverrideRef.current).length > 0
-    if (isDraggingCP && process.env.NODE_ENV === 'development') console.warn('[draw] isDraggingCP=true keys=', Object.keys(dragLiveOverrideRef.current).slice(0,3).join(','))
-    const _isDraggingDenseForDiag = !!(draggingDensePtRef.current && dragLiveDensePosRef.current)
-    if (_isDraggingDenseForDiag && process.env.NODE_ENV === 'development') console.warn('[draw] isDraggingDense=true kind=', draggingDensePtRef.current?.kind)
-    const isDraggingRailCP = isDraggingCP && draggingCpKindRef.current === 'rail'
-    const liveDenseDrag = draggingDensePtRef.current
-    const liveDensePos = dragLiveDensePosRef.current
-    const isDraggingRoadDense = !!(liveDenseDrag?.kind === 'road' && liveDensePos)
-    const isDraggingRiverDense = !!(liveDenseDrag?.kind === 'river' && liveDensePos)
-    const liveChainOverrides = isDraggingRoadDense
-      ? { ...roadChainOverridesRef.current, [liveDenseDrag!.id]: liveDenseDrag!.handles.map((p, i) => i === liveDenseDrag!.handleIdx ? liveDensePos! : p) as [number, number][] }
-      : roadChainOverridesRef.current
-    const isDraggingDense = isDraggingRoadDense
+    const liveRiverParams = _dragLive.liveRiverChainOverrides
+      ? { ...riverParams, riverChainData: computeLiveRiverChainData(
+          _dragLive.liveRiverChainOverrides,
+          riverEdgesRef.current, hexesRef.current,
+          riverWiggleFreqRef.current, riverWiggleAmpRef.current, riverSmoothingRef.current,
+          riverHopPropsRef.current, riverSegmentPropsRef.current, riverPathSmoothingRef.current,
+        )}
+      : riverParams
 
-    // During a river node drag, compute live river geometry and bypass the offscreen cache
-    let liveRiverParams = riverParams
-    if (isDraggingRiverDense && liveDenseDrag && liveDensePos) {
-      const liveRiverOverrides = {
-        ...riverChainOverridesRef.current,
-        [liveDenseDrag.id]: liveDenseDrag.handles.map((p, i) => i === liveDenseDrag.handleIdx ? liveDensePos : p) as [number, number][],
-      }
-      const liveRv2 = buildRiverChainsV2(riverEdgesRef.current, hexesRef.current, liveRiverOverrides, riverWiggleFreqRef.current, riverWiggleAmpRef.current, riverSmoothingRef.current, riverHopPropsRef.current, riverSegmentPropsRef.current, riverPathSmoothingRef.current)
-      liveRiverParams = { ...riverParams, riverChainData: liveRv2.map(c => ({ vertices: c.chain, segKey: c.segKey })) }
-    }
 
     {
       const _b0 = performance.now()
@@ -2259,74 +2205,6 @@ terrainTextureFileRef.current = terrainTextureFile
 
     const _tRRoads0 = performance.now()
     const _tRRoads1_afterLiveData = { t: 0 }, _tRRoads2_beforeBlit = { t: 0 }, _tRRoads3_afterBlit = { t: 0 }
-    // During a CP drag, compute road geometry with the live position directly — no store update,
-    // no React re-render cycle, no useMemo. On drop, the store is updated once for the full rebuild.
-    const liveTierGeomMap = (() => {
-      const map: Record<number, { wiggleAmp?: number; wiggleFreq?: number; pathSmoothing?: number; smoothing?: number; centerPull?: number }> = {}
-      roadTierGeometryRef.current.forEach((g, i) => { if (g) map[i] = g })
-      return Object.keys(map).length > 0 ? map : undefined
-    })()
-
-    const liveRoadData = isDraggingCP
-      ? buildRoadChains(
-            roadEdgesRef.current,
-            hexIdxRef.current as Map<string, { center: [number, number] }>,
-            { ...roadControlOverridesRef.current, ...dragLiveOverrideRef.current },
-            roadWiggleAmpRef.current,
-            roadWiggleFreqRef.current,
-            roadSmoothingRef.current,
-            roadPathSmoothingRef.current,
-            roadChainOverridesRef.current,
-            roadSegmentPropsRef.current,
-            roadHopPropsRef.current,
-            undefined,
-            0,
-            liveTierGeomMap,
-            roadCenterPullRef.current,
-          )
-        : isDraggingDense
-          ? buildRoadChains(
-              roadEdgesRef.current,
-              hexIdxRef.current as Map<string, { center: [number, number] }>,
-              roadControlOverridesRef.current,
-              roadWiggleAmpRef.current,
-              roadWiggleFreqRef.current,
-              roadSmoothingRef.current,
-              roadPathSmoothingRef.current,
-              liveChainOverrides,
-              roadSegmentPropsRef.current,
-              roadHopPropsRef.current,
-              undefined,
-              0,
-              liveTierGeomMap,
-              roadCenterPullRef.current,
-            )
-          : roadNetworkRef.current.getBaseData(roadWiggleAmpRef.current, roadWiggleFreqRef.current, roadSegmentPropsRef.current, roadHopPropsRef.current, 2)
-
-    const liveRailGeomOverride = railGeomOverrideRef.current ?? undefined
-    const liveRailData = isDraggingRailCP
-      ? applyRailWiggle(
-          buildRailChains(
-            railEdgesRef.current,
-            roadEdgesRef.current,
-            hexIdxRef.current as Map<string, { center: [number, number] }>,
-            new Map(stableRoadData.controlPoints.filter(cp => cp.key.startsWith('em|')).map(cp => [cp.key, cp.pos] as [string, [number, number]])),
-            new Map(stableRoadData.controlPoints.filter(cp => cp.key.startsWith('ja|')).map(cp => [cp.key.slice(3), cp.pos] as [string, [number, number]])),
-            { ...railControlOverridesRef.current, ...dragLiveOverrideRef.current },
-            0, 0,
-            liveRailGeomOverride?.smoothing ?? railSmoothingRef.current,
-            {}, {}, 2,
-            liveRailGeomOverride?.pathSmoothing ?? railPathSmoothingRef.current,
-          ),
-          railWiggleAmpRef.current,
-          railWiggleFreqRef.current,
-          railSegmentPropsRef.current,
-          railHopPropsRef.current,
-          0,
-          liveRailGeomOverride,
-        )
-      : smoothedRailDataRef.current
-
     _tRRoads1_afterLiveData.t = performance.now()
 
     // Road chains + Rail chains — offscreen cached together
@@ -2337,43 +2215,36 @@ terrainTextureFileRef.current = terrainTextureFile
       if (!isExport) {
         const hasRoads = liveRoadData.chains.length > 0 || liveRailData.chains.length > 0
         if (hasRoads) {
-          // project() is deterministic for a given viewport — cache projected chain coords.
-          // Re-project only when the source chain data or paper dims change.
-          const rpc = roadProjectionCacheRef.current
-          let roadChainsPx: { tier: 0|1|2; chain: [number,number][]; bbox: { minX: number; maxX: number; minY: number; maxY: number } }[]
-          let junctionsPx:  { pos: [number,number]; tier: 0|1|2 }[]
-          let railChainsPx: { chain: [number,number][]; baseChain?: [number,number][]; id?: string; isShared: boolean; isLoop: boolean; hopKeys?: string[]; hopRanges?: [number,number][]; bbox: { minX: number; maxX: number; minY: number; maxY: number } }[]
-          let projCacheMiss = false
+          const _proj = computeRoadProjections({
+            liveRoadData, liveRailData,
+            cache: roadProjectionCacheRef.current,
+            pw, ph, project,
+            isDraggingCP, isDraggingDense, isDraggingRailCP,
+          })
+          roadProjectionCacheRef.current = _proj.updatedCache
 
-          if (rpc && rpc.roadData === liveRoadData && rpc.railData === liveRailData &&
-              rpc.pw === pw && rpc.ph === ph && rpc.px === 0 && rpc.py === 0) {
-            roadChainsPx = rpc.roadChainsPx
-            junctionsPx  = rpc.junctionsPx
-            railChainsPx = rpc.railChainsPx
-          } else {
-            projCacheMiss = true
-            if (process.env.NODE_ENV === 'development') {
-              const reason = !rpc ? 'no-cache'
-                : rpc.roadData !== liveRoadData ? `road-identity(isDragCP=${isDraggingCP},isDragDense=${isDraggingDense})`
-                : rpc.railData !== liveRailData ? `rail-identity(isDragRailCP=${isDraggingRailCP})`
-                : `paper(pw ${rpc.pw.toFixed(1)}→${pw.toFixed(1)})`
-              console.warn('[roads-proj] miss reason=', reason, 'chains=', roadChains.length, 'pts=', roadChains.reduce((s,c)=>s+c.chain.length,0))
-            }
-            const chainBBox = (pts: [number,number][]) => {
-              let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity
-              for (const [x, y] of pts) { if (x < minX) minX = x; if (x > maxX) maxX = x; if (y < minY) minY = y; if (y > maxY) maxY = y }
-              return { minX, maxX, minY, maxY }
-            }
-            roadChainsPx = roadChains.map(c => { const chain = c.chain.map(([lon, lat]) => project(lon, lat)) as [number,number][]; return { tier: c.tier, chain, bbox: chainBBox(chain) } })
-            junctionsPx  = junctions.map(j => ({ tier: j.tier, pos: project(j.pos[0], j.pos[1]) as [number,number] }))
-            railChainsPx = liveRailData.chains.map(c => {
-              const chain = c.chain.map(([lon, lat]) => project(lon, lat)) as [number,number][]
-              const baseChain = c.baseChain?.map(([lon, lat]) => project(lon, lat)) as [number,number][] | undefined
-              return { ...c, chain, baseChain, bbox: chainBBox(chain) }
-            })
-            roadProjectionCacheRef.current = { roadData: liveRoadData, railData: liveRailData, pw, ph, px: 0, py: 0, roadChainsPx, junctionsPx, railChainsPx }
-          }
+          const isLiveDrag = isDraggingCP || isDraggingDense || isDraggingRailCP
+          const vpad = 50
+          const liveViewport = isLiveDrag ? {
+            minX: cssW / 2 - (cssW / 2 + pan.x) / zoom - vpad - px,
+            maxX: cssW / 2 + (cssW / 2 - pan.x) / zoom + vpad - px,
+            minY: cssH / 2 - (cssH / 2 + pan.y) / zoom - vpad - py,
+            maxY: cssH / 2 + (cssH / 2 - pan.y) / zoom + vpad - py,
+          } : null
 
+          _tRRoads2_beforeBlit.t = performance.now()
+          const _b0 = performance.now()
+          roadsController.draw(ctx, {
+            pw, ph, dpr, offZoom, isExport: false,
+            liveViewport, forceMarkDirty: _proj.projCacheMiss,
+            roadChains: _proj.roadChainsPx, junctions: _proj.junctionsPx, railChains: _proj.railChainsPx,
+            tierStyles, railStyle: railStyleRef.current,
+            onRebuilt: () => { roadsRebuildCountRef.current++ },
+          } satisfies RoadsInput)
+          _blitRoads = performance.now() - _b0
+          _tRRoads3_afterBlit.t = performance.now()
+        }
+      }
           const isLiveDrag = isDraggingCP || isDraggingDense || isDraggingRailCP
           const vpad = 50
 

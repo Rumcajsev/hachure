@@ -615,3 +615,29 @@ export function drawHighlights(
   }
   hCtx.restore()
 }
+
+export interface HoveredEdgePreviewParams {
+  ctx: CanvasRenderingContext2D
+  hoveredEdge: { hexQ: number; hexR: number; edgeI: number } | null
+  projected: { hex: { q: number; r: number }; verts: [number, number][] }[]
+}
+
+export function _drawHoveredEdgePreview(p: HoveredEdgePreviewParams): void {
+  const { ctx, hoveredEdge, projected } = p
+  if (!hoveredEdge) return
+  const proj = projected.find(({ hex }) => hex.q === hoveredEdge.hexQ && hex.r === hoveredEdge.hexR)
+  if (!proj) return
+  const v0 = proj.verts[hoveredEdge.edgeI]
+  const v1 = proj.verts[(hoveredEdge.edgeI + 1) % 6]
+  ctx.save()
+  ctx.strokeStyle = 'rgba(255,255,255,0.85)'
+  ctx.lineWidth = 3
+  ctx.lineCap = 'round'
+  ctx.setLineDash([4, 4])
+  ctx.beginPath()
+  ctx.moveTo(v0[0], v0[1])
+  ctx.lineTo(v1[0], v1[1])
+  ctx.stroke()
+  ctx.setLineDash([])
+  ctx.restore()
+}

@@ -45,3 +45,33 @@ export const DEFAULT_TERRAIN_TEXTURES: Record<string, string> = {
   marsh:       'marsh',
   clear:       '2clear',
 }
+
+export interface TerrainTextureInput {
+  textureCache: Map<string, HTMLImageElement>
+  terrainTextureFile: Record<string, string | undefined>
+  terrainTextureEnabled: Record<string, boolean | undefined>
+  customTerrains: { id: string; textureId?: string }[]
+}
+
+export function buildTerrainTextures(p: TerrainTextureInput): Map<string, HTMLImageElement | null> {
+  const { textureCache, terrainTextureFile, terrainTextureEnabled, customTerrains } = p
+  const map = new Map<string, HTMLImageElement | null>()
+  for (const [terrain, defaultId] of Object.entries(DEFAULT_TERRAIN_TEXTURES)) {
+    if (terrainTextureEnabled[terrain] === false) continue
+    const override = terrainTextureFile[terrain]
+    const id = override !== undefined ? override : defaultId
+    if (id) map.set(terrain, textureCache.get(id) ?? null)
+  }
+  for (const [terrain, id] of Object.entries(terrainTextureFile)) {
+    if (!map.has(terrain) && id && terrainTextureEnabled[terrain] === true)
+      map.set(terrain, textureCache.get(id) ?? null)
+  }
+  for (const ct of customTerrains) {
+    if (terrainTextureEnabled[ct.id] === false) continue
+    const override = terrainTextureFile[ct.id]
+    const id = override !== undefined ? override : (ct.textureId ?? '')
+    if (id && (terrainTextureEnabled[ct.id] === true || ct.textureId))
+      map.set(ct.id, textureCache.get(id) ?? null)
+  }
+  return map
+}
