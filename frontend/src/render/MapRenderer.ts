@@ -11,7 +11,6 @@ import { _drawTerrainPaintOverlay, _drawElevationPaintOverlay } from '../lib/dra
 import { _drawBlobHandleOverlay, _drawBlobMaskPreview } from '../lib/drawBlobHandleOverlay'
 import { drawLabels as _drawLabels, _drawLabelDragHandles } from '../lib/drawLabels'
 import { drawIcons as _drawIcons } from '../lib/drawIcons'
-import { drawHexNumbers as _drawHexNumbers } from '../lib/drawHexNumbers'
 import { drawBridges as _drawBridges } from '../lib/drawBridges'
 import { drawMegaHexGrid as _drawMegaHexGrid } from '../lib/drawMegaHexGrid'
 import { drawElevationDebug as _drawElevationDebug, drawElevationClassOverlay as _drawElevationClassOverlay } from '../lib/drawElevationDebug'
@@ -28,7 +27,9 @@ import { riversController } from './layers/riversLayer'
 import { buildingsController } from './layers/buildingsLayer'
 import { roadsController } from './layers/roadsLayer'
 import { settlementsController } from './layers/settlementsLayer'
+import { hexNumbersController } from './layers/hexNumbersLayer'
 import { drawSettlements } from '../lib/drawSettlements'
+import { drawRivers } from '../lib/drawRivers'
 import { activeEditOverlay } from './activeEditOverlay'
 
 export type ExportTarget = { canvas: HTMLCanvasElement; pw: number; ph: number }
@@ -306,19 +307,23 @@ export function drawMap(refs: MapRefs, exportTarget?: ExportTarget): void {
   if (!exportTarget) labelBBoxCacheRef.current = {}
 
   // When a label is live-dragged, force the appropriate layer to rebuild.
-  // Settlement labels use an overlay so only one label redraws per frame instead of the whole layer.
+  // Settlement and river labels use an overlay so only one label redraws per frame instead of the whole layer.
   const live = liveLabelOffsetRef.current
   const liveIsSettlement = !exportTarget && !!live?.id.startsWith('settlement:')
+  const liveIsRiver = !exportTarget && !!live?.id.startsWith('river:')
   if (!exportTarget && live) {
-    if (live.id.startsWith('river:')) riversController.markDirty()
-    else if (liveIsSettlement) {
+    if (liveIsRiver) {
+      // First frame of drag: rebuild base layer once with the label excluded, then stay cached.
+      if (!activeEditOverlay.isActive) riversController.markDirty()
+    } else if (liveIsSettlement) {
       // First frame of drag: rebuild base layer once with the label excluded, then stay cached.
       if (!activeEditOverlay.isActive) settlementsController.markDirty()
     }
   }
   // Drag ended — fold overlay back into normal rendering
-  if (!exportTarget && activeEditOverlay.isActive && !liveIsSettlement) {
+  if (!exportTarget && activeEditOverlay.isActive && !liveIsSettlement && !liveIsRiver) {
     settlementsController.markDirty()
+    riversController.markDirty()
     activeEditOverlay.end()
   }
 
@@ -577,10 +582,10 @@ export function drawMap(refs: MapRefs, exportTarget?: ExportTarget): void {
     })
   }
 
-  // Hex numbers
+  // Hex numbers — offscreen cached
   if (hexNumbersEnabledRef.current && hexNumberMapRef.current.size > 0) {
-    _drawHexNumbers({
-      ctx,
+    hexNumbersController.draw(ctx, {
+      pw, ph, dpr, offZoom, isExport,
       projected,
       numberMap: hexNumberMapRef.current,
       edgeIndex: hexNumberEdgeRef.current,
@@ -700,8 +705,9 @@ export function drawMap(refs: MapRefs, exportTarget?: ExportTarget): void {
       : undefined,
     waterLabelSpec: resolvedLabelSpecsRef.current.water,
     labelOffsets: labelOffsetsRef.current,
-    liveLabelOffset: liveLabelOffsetRef.current ?? undefined,
+    liveLabelOffset: liveIsRiver ? undefined : (liveLabelOffsetRef.current ?? undefined),
     labelBBoxOut: labelBBoxCacheRef.current,
+    excludeLabelId: liveIsRiver ? live!.id : undefined,
   }
 
   const liveRiverParams = _dragLive.liveRiverChainOverrides
@@ -721,6 +727,26 @@ export function drawMap(refs: MapRefs, exportTarget?: ExportTarget): void {
       isDraggingLive: isDraggingRiverDense,
       params: liveRiverParams,
     })
+
+    // River label drag overlay — one label redrawn per frame, base layer stays cached
+    if (liveIsRiver && live) {
+      const riverName = live.id.slice('river:'.length)
+      const oCtx = activeEditOverlay.begin(pw, ph, dpr)
+      oCtx.save()
+      oCtx.beginPath()
+      oCtx.rect(0, 0, pw, ph)
+      oCtx.clip()
+      drawRivers(oCtx, {
+        ...liveRiverParams,
+        showRiverLabels: true,
+        riverLabelData: liveRiverParams.riverLabelData?.filter(w => w.name === riverName),
+        liveLabelOffset: live,
+        excludeLabelId: undefined,
+      })
+      oCtx.restore()
+      activeEditOverlay.blit(ctx, 0, 0, pw, ph)
+    }
+
     _blitRivers = performance.now() - _b0
   }
 

@@ -1083,7 +1083,6 @@ export function TerrainSidebarV3() {
     elevationStatus,
     hillshadeEnabled,
     contoursEnabled,
-    blobEditMode, setBlobEditMode,
   } = useMapStore()
 
   const [flyout, setFlyout] = useState<FlyoutId>(null)
@@ -1185,7 +1184,6 @@ export function TerrainSidebarV3() {
         />
         <TGap />
         <TriggerRow label="Default shape" active={flyout === 't-shape'} onClick={() => toggleFlyout('t-shape')} />
-        <TriggerRow label="Edit blob handles" active={blobEditMode} onClick={() => setBlobEditMode(!blobEditMode)} />
         <TriggerRow label="WorldCover rules" active={flyout === 't-import'} onClick={() => toggleFlyout('t-import')} icon={IMPORT_ICON} />
         <TriggerRow label="Painting options" active={flyout === 't-opts'} onClick={() => toggleFlyout('t-opts')} />
 

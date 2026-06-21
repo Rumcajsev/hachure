@@ -139,11 +139,14 @@ export function LeftRail() {
   const { activeTool: storeActiveTool, setActiveTool: storeSetActiveTool } = useMapStore()
   const [activePanel, setActivePanel] = useState<RailPanel | null>(null)
 
-  const isHandActive = storeActiveTool.type === 'none'
-  const activeRailTool: RailTool | null = isHandActive ? 'hand' : null
+  const activeRailTool: RailTool | null =
+    storeActiveTool.type === 'none' ? 'hand'
+    : storeActiveTool.type === 'select' ? 'select'
+    : null
 
   const handleToolClick = (id: RailTool) => {
     if (id === 'hand') storeSetActiveTool({ type: 'none' })
+    else if (id === 'select') storeSetActiveTool({ type: 'select' })
   }
 
   const handlePanelClick = (id: RailPanel) => {

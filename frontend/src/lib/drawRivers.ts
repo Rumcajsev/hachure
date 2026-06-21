@@ -41,6 +41,7 @@ export type DrawRiversParams = {
   labelOffsets?: Record<string, { dx: number; dy: number }>
   liveLabelOffset?: { id: string; dx: number; dy: number }
   labelBBoxOut?: Record<string, LabelBBox>
+  excludeLabelId?: string
 }
 
 function makeSegHalfWidths(segProps: SegProps, baseHW: number) {
@@ -211,6 +212,7 @@ function drawRiverLabels(
   labelOffsets?: Record<string, { dx: number; dy: number }>,
   liveLabelOffset?: { id: string; dx: number; dy: number },
   labelBBoxOut?: Record<string, LabelBBox>,
+  excludeLabelId?: string,
 ) {
   const basePx = 9
   rCtx.save()
@@ -222,6 +224,7 @@ function drawRiverLabels(
 
   for (const { name, coords } of labelData) {
     if (!name || seen.has(name)) continue
+    if (excludeLabelId && `river:${name}` === excludeLabelId) continue
 
     const pts = coords.map(([lon, lat]) => project(lon, lat))
     if (pts.length < 2) continue
@@ -314,7 +317,7 @@ export function drawRivers(rCtx: Ctx, params: DrawRiversParams) {
     riverHopProps, selectedHopKey,
     project,
     showRiverLabels, riverLabelData, waterLabelSpec,
-    labelOffsets, liveLabelOffset, labelBBoxOut,
+    labelOffsets, liveLabelOffset, labelBBoxOut, excludeLabelId,
   } = params
 
   // Draw river tiers back-to-front: stream (2) → river (1) → major (0)
@@ -328,6 +331,6 @@ export function drawRivers(rCtx: Ctx, params: DrawRiversParams) {
   }
 
   if (showRiverLabels && riverLabelData && riverLabelData.length > 0 && waterLabelSpec) {
-    drawRiverLabels(rCtx, riverLabelData, waterLabelSpec, project, labelOffsets, liveLabelOffset, labelBBoxOut)
+    drawRiverLabels(rCtx, riverLabelData, waterLabelSpec, project, labelOffsets, liveLabelOffset, labelBBoxOut, excludeLabelId)
   }
 }

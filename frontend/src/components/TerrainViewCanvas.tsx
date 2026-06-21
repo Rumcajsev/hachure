@@ -40,6 +40,7 @@ import { buildingsController } from '../render/layers/buildingsLayer'
 import type { BuildingsInput } from '../render/layers/buildingsLayer'
 import { settlementsController } from '../render/layers/settlementsLayer'
 import type { SettlementsInput } from '../render/layers/settlementsLayer'
+import { hexNumbersController } from '../render/layers/hexNumbersLayer'
 import { roadsController } from '../render/layers/roadsLayer'
 import type { RoadsInput } from '../render/layers/roadsLayer'
 import { terrainController } from '../render/layers/terrainLayer'
@@ -1904,7 +1905,7 @@ terrainTextureFileRef.current = terrainTextureFile
     computedRiverChainsRef.current = cachedRiverChainDataRef.current
     riverChainCache.chains = cachedRiverChainDataRef.current
     riversController.markDirty()
-  }, [riverEdges, riverChainOverrides, riverTierStyles, riverWidthScale, riverWiggleFreq, riverWiggleAmp, riverSmoothing, riverPathSmoothing, showRiverLabels, riverLabelColor, riverSegmentProps, riverSelectMode, selectedSegmentKeys, riverStyle, riverHopProps, selectedHopKey, labelOffsets, generatedHexes, terrainColors])
+  }, [riverEdges, riverChainOverrides, riverTierStyles, riverWidthScale, riverWiggleFreq, riverWiggleAmp, riverSmoothing, riverPathSmoothing, showRiverLabels, riverLabelColor, riverSegmentProps, riverSelectMode, selectedSegmentKeys, riverStyle, riverHopProps, selectedHopKey, labelOffsets, generatedHexes])
   useEffect(() => { buildingsController.markDirty() }, [urbanHexes, urbanStyle])
   useEffect(() => { roadsController.markDirty() }, [smoothedRailData, roadTierStyles, railStyle, roadSegmentProps, roadHopProps, selectedRoadSegmentKeys, selectedRoadHopKey, roadSelectMode, railSegmentProps, railHopProps, selectedRailSegmentKeys, selectedRailHopKey, railSelectMode])
   useEffect(() => {
@@ -1927,6 +1928,7 @@ terrainTextureFileRef.current = terrainTextureFile
     }
   }, [bridgesEnabled, roadDataVersion, smoothedRailData, riverEdges, generatedHexes])
   useEffect(() => { settlementsController.markDirty() }, [settlements, settlementTierStyles, labelPresetId, labelOverrides, labelOffsets, mapBgColor])
+  useEffect(() => { hexNumbersController.markDirty() }, [hexNumbersEnabled, hexNumberEdge, hexNumberColor, hexNumberFontScale, hexNumberMap, labelPresetId, labelOverrides, generatedHexes])
   // When entering label-drag mode, rebuild label layers so the bbox cache is populated for hit-testing
   useEffect(() => {
     if (activeTool.type === 'label-drag') {
@@ -2049,6 +2051,7 @@ terrainTextureFileRef.current = terrainTextureFile
       buildingsController.dispose()
       settlementsController.dispose()
       roadsController.dispose()
+      hexNumbersController.dispose()
     }
   }, [])
 

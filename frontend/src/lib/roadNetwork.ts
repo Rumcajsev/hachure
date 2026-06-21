@@ -211,6 +211,7 @@ export class RoadNetwork {
     // Handle cycle case
     this.walkAndCreate(k1, visited)
     this.walkAndCreate(k2, visited)
+    this._baseDataStale = true
   }
 
   /** Incremental edge removal. Only recomputes affected segments. */
@@ -265,6 +266,7 @@ export class RoadNetwork {
     for (const node of toRewalk) {
       if (this.boundaryNodes.has(node)) this.walkAndCreate(node, visited)
     }
+    this._baseDataStale = true
   }
 
   /**

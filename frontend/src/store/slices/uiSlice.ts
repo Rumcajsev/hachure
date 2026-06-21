@@ -253,6 +253,9 @@ export const createUiSlice = (set: Set, get: () => MapStore): UiSlice => ({
 
     updates.urbanPaintMode = tool.type === 'urban' ? tool.mode : null
 
+    updates.blobEditMode = tool.type === 'select'
+    if (tool.type !== 'select') updates.activeBlobEditId = null
+
     set(updates as Partial<MapStore>)
   },
 
@@ -444,12 +447,9 @@ export const createUiSlice = (set: Set, get: () => MapStore): UiSlice => ({
         terrainBlobBump: s.terrainBlobBump, terrainBlobSweepFreq: s.terrainBlobSweepFreq,
         terrainBlobLobeFreq: s.terrainBlobLobeFreq, terrainBlobLobeAmp: s.terrainBlobLobeAmp,
         terrainBlobLobeThreshold: s.terrainBlobLobeThreshold, terrainBlobLobeDirection: s.terrainBlobLobeDirection,
-        terrainBlobSimplify: s.terrainBlobSimplify,
         terrainBlobTopoStyle: s.terrainBlobTopoStyle,
         terrainBlobSplatDensity: s.terrainBlobSplatDensity,
         terrainBlobSplatSize: s.terrainBlobSplatSize,
-        terrainBlobHoleDensity: s.terrainBlobHoleDensity,
-        terrainBlobHoleSize: s.terrainBlobHoleSize,
         terrainBlobOutlineEnabled: s.terrainBlobOutlineEnabled,
         terrainBlobOutlineColor: s.terrainBlobOutlineColor,
         terrainBlobOutlineWidth: s.terrainBlobOutlineWidth,
@@ -1017,8 +1017,6 @@ if (fromVersion < 64) {
   if (fromVersion < 82) {
     if (s.terrainBlobSplatDensity === undefined) s.terrainBlobSplatDensity = 0
     if (s.terrainBlobSplatSize === undefined) s.terrainBlobSplatSize = 0.3
-    if (s.terrainBlobHoleDensity === undefined) s.terrainBlobHoleDensity = 0
-    if (s.terrainBlobHoleSize === undefined) s.terrainBlobHoleSize = 0.35
   }
   if (fromVersion < 84) {
     const tiers = s.riverTierStyles as Array<Record<string, unknown>> | undefined

@@ -276,9 +276,14 @@ interface BrushRowProps {
 export function BrushRow({ label, color, active, shortcut, showCog, cogOpen, customShape, onSelect, onCog, cogDataAttr }: BrushRowProps) {
   const t = useTheme()
   const [hovered, setHovered] = useState(false)
+  const [pressed, setPressed] = useState(false)
   return (
     <div
       onClick={onSelect}
+      onPointerDown={() => setPressed(true)}
+      onPointerUp={() => setPressed(false)}
+      onPointerLeave={() => setPressed(false)}
+      onPointerCancel={() => setPressed(false)}
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => setHovered(false)}
       style={{
@@ -287,8 +292,8 @@ export function BrushRow({ label, color, active, shortcut, showCog, cogOpen, cus
         alignItems: 'center',
         gap: 10,
         padding: '7px 12px 7px 10px',
-        borderLeft: `2px solid ${active ? color : 'transparent'}`,
-        background: active ? tintBg(color, 0.18) : 'transparent',
+        borderLeft: `2px solid ${active ? color : pressed ? color : 'transparent'}`,
+        background: active ? tintBg(color, 0.18) : pressed ? tintBg(color, 0.10) : 'transparent',
         cursor: 'pointer',
       }}
     >
