@@ -10,11 +10,12 @@ import { projectToCanvas, unprojectFromCanvas, computePaper, computeWorldcoverBb
 import { coastalBlobTerrains, bleedPolygon, buildTerrainBlobsV2, buildTerrainBlobTopology, shapeTerrainBlobs, shapeInputPolygon, computeConnectedComponents, applyBlobMaskEdits, cutRawPolysWithCorridors, generateBlobSplats, buildExportTerrainBlobs } from '../lib/terrainBlobs'
 import type { BlobTopologyEntry } from '../lib/terrainBlobs'
 import { findEdgeChains as findEdgeChainsSync } from '../lib/edgeBlobs'
-import { riverChainCache } from '../lib/riverChains'
+import { riverChainCache, buildRiverChainsV2 } from '../lib/riverChains'
 import { computeDragLiveData, computeRoadProjections, computeLiveRiverChainData } from '../lib/roadLiveGeometry'
 
 import { drawRivers as _drawRivers } from '../lib/drawRivers'
 import { RoadNetwork } from '../lib/roadNetwork'
+import { buildRailChains, applyRailWiggle } from '../lib/railChains'
 import type { RailBaseData } from '../lib/railChains'
 
 // Stable identity returned when there are no rail edges, so that useMemos depending on
@@ -1042,6 +1043,11 @@ terrainTextureFileRef.current = terrainTextureFile
   const paperDimsRef = useRef(paperDims)
   paperDimsRef.current = paperDims
 
+  const getPaperRef = useRef(getPaper)
+  getPaperRef.current = getPaper
+  const surroundColorRef = useRef(surroundColor)
+  surroundColorRef.current = surroundColor
+
   // Stable pw/ph reference: identity only changes when pw/ph actually change (not on px/py shifts
   // from window resize). projectedHexes depends on this so that resize never triggers blob
   // recomputation — only a new map generation (new metadata → new pw/ph) does.
@@ -1742,13 +1748,6 @@ terrainTextureFileRef.current = terrainTextureFile
   const drawOsmHighlightRef = useRef<(() => void) | null>(null)
 
   const osmOverlayRefsRef = useRef<OsmOverlayRefs | null>(null)
-  osmOverlayRefsRef.current = {
-    osmOverlayCanvasRef, metaRef, frameDimsRef,
-    osmHighlightTierRef, osmSpotlightModeRef, spotlightCursorRef,
-    osmRailHighlightRef, hoveredOsmRiverIdxRef, zoomRef, panRef,
-    rawRoadWaysRef, osmRiverWaysRef, rawRailWaysRef,
-    osmSpotlightRadiusRef, osmSpotlightTiersRef, getPaperRef,
-  } satisfies OsmOverlayRefs
 
   const drawOsmHighlight = useCallback(() => {
     if (osmOverlayRefsRef.current) _drawOsmHighlightFn(osmOverlayRefsRef.current)
@@ -2600,78 +2599,14 @@ terrainTextureFileRef.current = terrainTextureFile
     }
   }, [isEdgePaintActive])
 
-  const getPaperRef = useRef(getPaper)
-  getPaperRef.current = getPaper
-  const surroundColorRef = useRef(surroundColor)
-  surroundColorRef.current = surroundColor
   const isEdgePaintActiveRef = useRef(isEdgePaintActive)
   isEdgePaintActiveRef.current = isEdgePaintActive
   const paintEdgeRef = useRef(paintEdge)
   paintEdgeRef.current = paintEdge
 
   const mouseHandlerRefsRef = useRef<MouseHandlerRefs | null>(null)
-  mouseHandlerRefsRef.current = {
-    canvasRef, frameDimsRef, paperDimsRef, zoomRef,
-    clientToLogicalRef, getPaperRef, drawRef, isEdgePaintActiveRef, paintEdgeRef,
-    activeToolRef, activePanelRef,
-    liveLabelOffsetRef, labelBBoxCacheRef, labelDragStateRef, hoveredLabelIdRef,
-    labelOffsetsRef, editingLabelRef, setLabelOffsetRef, setActiveToolRef,
-    labelOverlaysRef, placedLabelsRef, activeLabelOverlayIdRef,
-    placeLabelRef, removeLabelAtRef, moveLabelToRef, labelSnapRef, draggingLabelRef,
-    iconOverlaysRef, placedIconsRef, activeIconOverlayIdRef,
-    placeIconRef, removeIconAtRef, iconSnapRef, iconPlaceModeRef,
-    alignImageDragRef, mapImageTransformRef, setMapImageTransformRef,
-    showWorldcoverOverlayRef, worldcoverOffscreenRef,
-    osmSpotlightModeRef, spotlightCursorRef, spotlightRafRef, drawOsmHighlightRef,
-    metaRef, hexesRef, hexEdgeModeRef, hexRadiusRef, projectedHexesRef,
-    hoveredEdgeRef, hoverRafRef, edgeDragRef, draggedRef,
-    blobMaskStrokeRef, blobMaskDrawingRef, addBlobMaskEditRef,
-    activeHighlightIdRef, highlightsRef, highlightedHexesRef,
-    highlightPaintModeRef, setHexHighlightRef, clearHexHighlightRef,
-    riverSelectModeRef, riverEditModeRef, riverChainsV2Ref, computedRiverChainsRef,
-    selectedSegmentKeysRef, selectedHopKeyRef, setSelectedSegmentKeysRef,
-    setSelectedHopKeyRef, toggleSegmentSelectionRef,
-    roadSelectModeRef, roadNetworkRef, roadWiggleAmpRef, roadWiggleFreqRef,
-    roadSegmentPropsRef, roadHopPropsRef, selectedRoadSegmentKeysRef,
-    selectedRoadHopKeyRef, setSelectedRoadSegmentKeysRef, setSelectedRoadHopKeyRef,
-    toggleRoadSegmentSelectionRef,
-    settlementMoveIndexRef, settlementPlaceTierRef, settlementsRef,
-    updateSettlementRef, setSettlementMoveIndexRef, placeSettlementAtHexRef,
-    urbanPaintModeRef, toggleUrbanHexRef,
-    setWcTooltip, wcTooltip,
-  } satisfies MouseHandlerRefs
 
   const mapRefsRef = useRef<MapRefs | null>(null)
-  mapRefsRef.current = {
-    activeBlobEditIdRef, activeIconOverlayIdRef, activeToolRef, appliedOsmRiverIndicesRef, autoDisabledOceanHexKeysRef, beachColorRef, beachStripRef, beachWidthRef,
-    bgPaintHoldRef, blobComponentsByTerrainRef, blobComponentsRef, blobDragLiveRef, blobEditModeRef, blobHandleDataRef, blobHandleOverridesRef, blobMaskDrawingRef,
-    blobMaskStrokeRef, bridgeOverridesRef, bridgeStyleRef, bridgeTiersRef, bridgesEnabledRef, cachedRiverChainDataRef, cachedRiverTierChainDataRef, canvasRef,
-    clipToHexGridRef, coastlineDebugRawRef, contourCanvasRef, contourDisabledElevClassesSetRef, contourDisabledTerrainsSetRef, customTerrainsRef, dataSourceRef, defaultBackgroundBlobsRef,
-    defaultElevationBlobsRef, defaultTerrainBlobsMaskedRef, defaultWaterBlobsRef, detectedBridgesRef, disabledHexKeysRef, dragLiveDensePosRef, dragLiveOverrideRef, draggingCpKeyRef,
-    draggingCpKindRef, draggingDensePtRef, draggingLabelRef, drawOsmHighlightRef, drawPerfRef, edgeBlobOverridesRef, edgeBlobPaintedRef, edgeBlobWidthRef,
-    editingLabelRef, elevationPaintBrushRef, elevationPaintModeRef, elevationTypeBlobStylesRef, excludedHexKeysRef, frameDimsRef, hexBorderColorRef, hexBorderDifferenceRef,
-    hexBorderModeRef, hexBorderOpacityRef, hexBuildingGeoCacheRef, hexEdgeModeRef, hexIdxRef, hexNumberColorRef, hexNumberEdgeRef, hexNumberFontScaleRef,
-    hexNumberMapRef, hexNumbersEnabledRef, hexRadiusRef, hexVertMapRef, hexesRef, highlightEdgePathsRef, highlightLinesRef, highlightedHexesRef,
-    highlightsRef, hillsColorRef, hillshadeCanvasRef, hillshadeDisabledElevClassesSetRef, hillshadeDisabledTerrainsSetRef, hillshadeEnabledRef, historicalIconParamsRef, historicalIconSetsRef,
-    hoveredBlobCkRef, hoveredChainRef, hoveredEdgeHandleRef, hoveredEdgeRef, hoveredHandleIdxRef, hoveredLabelIdRef, hoveredVertexHandleRef, iconOverlaysRef,
-    iconPlaceModeRef, iconSnapRef, isPaintingRef, labelBBoxCacheRef, labelDragStateRef, labelOffsetsRef, labelOverlaysRef, labelSnapRef,
-    lastBuildingCacheEpochRef, liveLabelOffsetRef, mapBgColorRef, mapBorderColorRef, mapBorderEnabledRef, mapBorderWidthRef, mapImageElementRef, mapImageOpacityRef,
-    mapImageTransformRef, mapOverlayRef, mapStyleRef, megaHexColorRef, megaHexEnabledRef, megaHexLineWidthRef, megaHexOpacityRef, megaHexOriginQRef,
-    megaHexOriginRRef, megaHexRadiusRef, metaRef, mountainsColorRef, oceanWaterKeysRef, osmRiverWaysRef, pageGridRef, paintHoverTargetRef,
-    panRef, patternCacheRef, placedIconsRef, placedLabelsRef, projectedHexesRef, railBaseDataRef, railControlOverridesRef, railEdgesRef,
-    railGeomOverrideRef, railHopPropsRef, railNodeEditModeRef, railPathSmoothingRef, railSegmentPropsRef, railSmoothingRef, railStyleRef, railWiggleAmpRef,
-    railWiggleFreqRef, rawCoastlineBoundaryRef, rawRoadWaysRef, realisticCoastlineRef, reliefShadingOpacityRef, resolvedLabelSpecsRef, riverChainOverridesRef, riverChainsV2Ref,
-    riverEdgesRef, riverHopPropsRef, riverNodeEditModeRef, riverPathSmoothingRef, riverSegmentPropsRef, riverSmoothingRef, riverStyleRef, riverTierStylesRef,
-    riverWiggleAmpRef, riverWiggleFreqRef, roadCenterPullRef, roadChainOverridesRef, roadControlOverridesRef, roadEdgesRef, roadHopPropsRef, roadNetworkRef,
-    roadNodeEditModeRef, roadPathSmoothingRef, roadProjectionCacheRef, roadSegmentPropsRef, roadSmoothingRef, roadTierGeometryRef, roadTierStylesRef, roadWiggleAmpRef,
-    roadWiggleFreqRef, roadsRebuildCountRef, screenPwRef, selectedHopKeyRef, selectedSegmentKeysRef, settlementTierStylesRef, settlementsRef, showElevationClassOverlayRef,
-    showElevationDebugRef, showRawOsmRoadsRef, showRiverLabelsRef, showWorldcoverOverlayRef, skipExpensiveLayersRef, smoothedCoastlineBoundaryRef, smoothedRailDataRef, snapPreviewRef,
-    strokeTrailRef, terrainBackgroundPaintEnabledRef, terrainBlobBumpRef, terrainBlobEffectRef, terrainBlobLobeAmpRef, terrainBlobLobeDirectionRef, terrainBlobLobeFreqRef, terrainBlobLobeThresholdRef,
-    terrainBlobOffsetRef, terrainBlobOutlineColorRef, terrainBlobOutlineEnabledRef, terrainBlobOutlineWidthRef, terrainBlobOverridesRef, terrainBlobSmoothRef, terrainBlobSweepFreqRef, terrainBlobTopoStyleRef,
-    terrainColorsRef, terrainPaintBrushRef, terrainPaintModeRef, terrainTextureBlendModesRef, terrainTextureEnabledRef, terrainTextureFileRef, terrainTextureOpacitiesRef, terrainTextureScalesRef,
-    terrainTextureTintColorsRef, terrainTextureTintOpacitiesRef, terrainTypeBlobStylesRef, textureCacheRef, urbanHexesRef, urbanStyleRef, waterOverridesRef, worldcoverImageElementRef,
-    zoomRef, getPaperRef, surroundColorRef,
-  } satisfies MapRefs
 
   const onMouseMove = useCallback((e: React.MouseEvent<HTMLCanvasElement>) => {
     if (mouseHandlerRefsRef.current) handleMouseMove(e, mouseHandlerRefsRef.current)
@@ -2932,6 +2867,76 @@ terrainTextureFileRef.current = terrainTextureFile
     padding: '5px 14px', cursor: 'pointer', whiteSpace: 'nowrap',
     fontFamily: t.mono, fontSize: 11,
   }
+
+  mapRefsRef.current = {
+    activeBlobEditIdRef, activeIconOverlayIdRef, activeToolRef, appliedOsmRiverIndicesRef, autoDisabledOceanHexKeysRef, beachColorRef, beachStripRef, beachWidthRef,
+    bgPaintHoldRef, blobComponentsByTerrainRef, blobComponentsRef, blobDragLiveRef, blobEditModeRef, blobHandleDataRef, blobHandleOverridesRef, blobMaskDrawingRef,
+    blobMaskStrokeRef, bridgeOverridesRef, bridgeStyleRef, bridgeTiersRef, bridgesEnabledRef, cachedRiverChainDataRef, cachedRiverTierChainDataRef, canvasRef,
+    clipToHexGridRef, coastlineDebugRawRef, contourCanvasRef, contourDisabledElevClassesSetRef, contourDisabledTerrainsSetRef, customTerrainsRef, dataSourceRef, defaultBackgroundBlobsRef,
+    defaultElevationBlobsRef, defaultTerrainBlobsMaskedRef, defaultWaterBlobsRef, detectedBridgesRef, disabledHexKeysRef, dragLiveDensePosRef, dragLiveOverrideRef, draggingCpKeyRef,
+    draggingCpKindRef, draggingDensePtRef, draggingLabelRef, drawOsmHighlightRef, drawPerfRef, edgeBlobOverridesRef, edgeBlobPaintedRef, edgeBlobWidthRef,
+    editingLabelRef, elevationPaintBrushRef, elevationPaintModeRef, elevationTypeBlobStylesRef, excludedHexKeysRef, frameDimsRef, hexBorderColorRef, hexBorderDifferenceRef,
+    hexBorderModeRef, hexBorderOpacityRef, hexBuildingGeoCacheRef, hexEdgeModeRef, hexIdxRef, hexNumberColorRef, hexNumberEdgeRef, hexNumberFontScaleRef,
+    hexNumberMapRef, hexNumbersEnabledRef, hexRadiusRef, hexVertMapRef, hexesRef, highlightEdgePathsRef, highlightLinesRef, highlightedHexesRef,
+    highlightsRef, hillsColorRef, hillshadeCanvasRef, hillshadeDisabledElevClassesSetRef, hillshadeDisabledTerrainsSetRef, hillshadeEnabledRef, historicalIconParamsRef, historicalIconSetsRef,
+    hoveredBlobCkRef, hoveredChainRef, hoveredEdgeHandleRef, hoveredEdgeRef, hoveredHandleIdxRef, hoveredLabelIdRef, hoveredVertexHandleRef, iconOverlaysRef,
+    iconPlaceModeRef, iconSnapRef, isPaintingRef, labelBBoxCacheRef, labelDragStateRef, labelOffsetsRef, labelOverlaysRef, labelSnapRef,
+    lastBuildingCacheEpochRef, liveLabelOffsetRef, mapBgColorRef, mapBorderColorRef, mapBorderEnabledRef, mapBorderWidthRef, mapImageElementRef, mapImageOpacityRef,
+    mapImageTransformRef, mapOverlayRef, mapStyleRef, megaHexColorRef, megaHexEnabledRef, megaHexLineWidthRef, megaHexOpacityRef, megaHexOriginQRef,
+    megaHexOriginRRef, megaHexRadiusRef, metaRef, mountainsColorRef, oceanWaterKeysRef, osmRiverWaysRef, pageGridRef, paintHoverTargetRef,
+    panRef, patternCacheRef, placedIconsRef, placedLabelsRef, projectedHexesRef, railBaseDataRef, railControlOverridesRef, railEdgesRef,
+    railGeomOverrideRef, railHopPropsRef, railNodeEditModeRef, railPathSmoothingRef, railSegmentPropsRef, railSmoothingRef, railStyleRef, railWiggleAmpRef,
+    railWiggleFreqRef, rawCoastlineBoundaryRef, rawRoadWaysRef, realisticCoastlineRef, reliefShadingOpacityRef, resolvedLabelSpecsRef, riverChainOverridesRef, riverChainsV2Ref,
+    riverEdgesRef, riverHopPropsRef, riverNodeEditModeRef, riverPathSmoothingRef, riverSegmentPropsRef, riverSmoothingRef, riverStyleRef, riverTierStylesRef,
+    riverWiggleAmpRef, riverWiggleFreqRef, roadCenterPullRef, roadChainOverridesRef, roadControlOverridesRef, roadEdgesRef, roadHopPropsRef, roadNetworkRef,
+    roadNodeEditModeRef, roadPathSmoothingRef, roadProjectionCacheRef, roadSegmentPropsRef, roadSmoothingRef, roadTierGeometryRef, roadTierStylesRef, roadWiggleAmpRef,
+    roadWiggleFreqRef, roadsRebuildCountRef, screenPwRef, selectedHopKeyRef, selectedSegmentKeysRef, settlementTierStylesRef, settlementsRef, showElevationClassOverlayRef,
+    showElevationDebugRef, showRawOsmRoadsRef, showRiverLabelsRef, showWorldcoverOverlayRef, skipExpensiveLayersRef, smoothedCoastlineBoundaryRef, smoothedRailDataRef, snapPreviewRef,
+    strokeTrailRef, terrainBackgroundPaintEnabledRef, terrainBlobBumpRef, terrainBlobEffectRef, terrainBlobLobeAmpRef, terrainBlobLobeDirectionRef, terrainBlobLobeFreqRef, terrainBlobLobeThresholdRef,
+    terrainBlobOffsetRef, terrainBlobOutlineColorRef, terrainBlobOutlineEnabledRef, terrainBlobOutlineWidthRef, terrainBlobOverridesRef, terrainBlobSmoothRef, terrainBlobSweepFreqRef, terrainBlobTopoStyleRef,
+    terrainColorsRef, terrainPaintBrushRef, terrainPaintModeRef, terrainTextureBlendModesRef, terrainTextureEnabledRef, terrainTextureFileRef, terrainTextureOpacitiesRef, terrainTextureScalesRef,
+    terrainTextureTintColorsRef, terrainTextureTintOpacitiesRef, terrainTypeBlobStylesRef, textureCacheRef, urbanHexesRef, urbanStyleRef, waterOverridesRef, worldcoverImageElementRef,
+    zoomRef, getPaperRef, surroundColorRef,
+  } satisfies MapRefs
+
+  osmOverlayRefsRef.current = {
+    osmOverlayCanvasRef, metaRef, frameDimsRef,
+    osmHighlightTierRef, osmSpotlightModeRef, spotlightCursorRef,
+    osmRailHighlightRef, hoveredOsmRiverIdxRef, zoomRef, panRef,
+    rawRoadWaysRef, osmRiverWaysRef, rawRailWaysRef,
+    osmSpotlightRadiusRef, osmSpotlightTiersRef, getPaperRef,
+  } satisfies OsmOverlayRefs
+
+  mouseHandlerRefsRef.current = {
+    canvasRef, frameDimsRef, paperDimsRef, zoomRef,
+    clientToLogicalRef, getPaperRef, drawRef, isEdgePaintActiveRef, paintEdgeRef,
+    activeToolRef, activePanelRef,
+    liveLabelOffsetRef, labelBBoxCacheRef, labelDragStateRef, hoveredLabelIdRef,
+    labelOffsetsRef, editingLabelRef, setLabelOffsetRef, setActiveToolRef,
+    labelOverlaysRef, placedLabelsRef, activeLabelOverlayIdRef,
+    placeLabelRef, removeLabelAtRef, moveLabelToRef, labelSnapRef, draggingLabelRef,
+    iconOverlaysRef, placedIconsRef, activeIconOverlayIdRef,
+    placeIconRef, removeIconAtRef, iconSnapRef, iconPlaceModeRef,
+    alignImageDragRef, mapImageTransformRef, setMapImageTransformRef,
+    showWorldcoverOverlayRef, worldcoverOffscreenRef,
+    osmSpotlightModeRef, spotlightCursorRef, spotlightRafRef, drawOsmHighlightRef,
+    metaRef, hexesRef, hexEdgeModeRef, hexRadiusRef, projectedHexesRef,
+    hoveredEdgeRef, hoverRafRef, edgeDragRef, draggedRef,
+    blobMaskStrokeRef, blobMaskDrawingRef, addBlobMaskEditRef,
+    activeHighlightIdRef, highlightsRef, highlightedHexesRef,
+    highlightPaintModeRef, setHexHighlightRef, clearHexHighlightRef,
+    riverSelectModeRef, riverEditModeRef, riverChainsV2Ref, computedRiverChainsRef,
+    selectedSegmentKeysRef, selectedHopKeyRef, setSelectedSegmentKeysRef,
+    setSelectedHopKeyRef, toggleSegmentSelectionRef,
+    roadSelectModeRef, roadNetworkRef, roadWiggleAmpRef, roadWiggleFreqRef,
+    roadSegmentPropsRef, roadHopPropsRef, selectedRoadSegmentKeysRef,
+    selectedRoadHopKeyRef, setSelectedRoadSegmentKeysRef, setSelectedRoadHopKeyRef,
+    toggleRoadSegmentSelectionRef,
+    settlementMoveIndexRef, settlementPlaceTierRef, settlementsRef,
+    updateSettlementRef, setSettlementMoveIndexRef, placeSettlementAtHexRef,
+    urbanPaintModeRef, toggleUrbanHexRef,
+    setWcTooltip, wcTooltip,
+  } satisfies MouseHandlerRefs
 
   return (
     <div

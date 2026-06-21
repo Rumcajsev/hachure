@@ -1,6 +1,6 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { hexTerrainLayers } from '../store/mapStore'
-import { computeWorldcoverBbox } from '../lib/projection'
+import { computeWorldcoverBbox, projectToCanvas } from '../lib/projection'
 import { buildExportTerrainBlobs } from '../lib/terrainBlobs'
 import { buildTerrainTextures } from '../lib/terrainTextures'
 import { computeDragLiveData, computeRoadProjections, computeLiveRiverChainData } from '../lib/roadLiveGeometry'
@@ -9,7 +9,17 @@ import { _drawHoveredEdgePreview } from '../lib/drawHighlights'
 import { _drawWorldcoverOverlay, _drawRawOsmRoadsOverlay } from '../lib/drawDebugOverlays'
 import { _drawTerrainPaintOverlay, _drawElevationPaintOverlay } from '../lib/drawPaintOverlays'
 import { _drawBlobHandleOverlay, _drawBlobMaskPreview } from '../lib/drawBlobHandleOverlay'
-import { _drawLabelDragHandles } from '../lib/drawLabels'
+import { drawLabels as _drawLabels, _drawLabelDragHandles } from '../lib/drawLabels'
+import { drawIcons as _drawIcons } from '../lib/drawIcons'
+import { drawHexNumbers as _drawHexNumbers } from '../lib/drawHexNumbers'
+import { drawBridges as _drawBridges } from '../lib/drawBridges'
+import { drawMegaHexGrid as _drawMegaHexGrid } from '../lib/drawMegaHexGrid'
+import { drawElevationDebug as _drawElevationDebug, drawElevationClassOverlay as _drawElevationClassOverlay } from '../lib/drawElevationDebug'
+import { drawMapBoundary as _drawMapBoundary, drawHexGridMask as _drawHexGridMask, drawExcludedHexOverlay as _drawExcludedHexOverlay } from '../lib/drawHexBorders'
+import { drawPaperBackground as _drawPaperBackground, drawPaperMargin as _drawPaperMargin } from '../lib/drawPaperChrome'
+import { drawRoadHandles as _drawRoadHandles, drawRailHandles as _drawRailHandles, drawRiverHandles as _drawRiverHandles } from '../lib/drawEditHandles'
+import { buildRailChains } from '../lib/railChains'
+import { drawMapImageOverlay } from '../lib/drawMapImageOverlay'
 import { finalizeDrawFrame } from '../lib/perfMonitor'
 import { terrainController } from './layers/terrainLayer'
 import { hexBorderController } from './layers/hexBorderLayer'
@@ -782,30 +792,6 @@ export function drawMap(refs: MapRefs, exportTarget?: ExportTarget): void {
           pw, ph, dpr, offZoom, isExport: false,
           liveViewport, forceMarkDirty: _proj.projCacheMiss,
           roadChains: _proj.roadChainsPx, junctions: _proj.junctionsPx, railChains: _proj.railChainsPx,
-          tierStyles, railStyle: railStyleRef.current,
-          onRebuilt: () => { roadsRebuildCountRef.current++ },
-        } satisfies RoadsInput)
-        _blitRoads = performance.now() - _b0
-        _tRRoads3_afterBlit.t = performance.now()
-      }
-    }
-        const isLiveDrag = isDraggingCP || isDraggingDense || isDraggingRailCP
-        const vpad = 50
-
-        // Live drag viewport: screen-to-paper-local culling bounds
-        const liveViewport = isLiveDrag ? {
-          minX: cssW / 2 - (cssW / 2 + pan.x) / zoom - vpad - px,
-          maxX: cssW / 2 + (cssW / 2 - pan.x) / zoom + vpad - px,
-          minY: cssH / 2 - (cssH / 2 + pan.y) / zoom - vpad - py,
-          maxY: cssH / 2 + (cssH / 2 - pan.y) / zoom + vpad - py,
-        } : null
-
-        _tRRoads2_beforeBlit.t = performance.now()
-        const _b0 = performance.now()
-        roadsController.draw(ctx, {
-          pw, ph, dpr, offZoom, isExport: false,
-          liveViewport, forceMarkDirty: projCacheMiss,
-          roadChains: roadChainsPx, junctions: junctionsPx, railChains: railChainsPx,
           tierStyles, railStyle: railStyleRef.current,
           onRebuilt: () => { roadsRebuildCountRef.current++ },
         } satisfies RoadsInput)

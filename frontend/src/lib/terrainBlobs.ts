@@ -714,8 +714,6 @@ export function generateBlobSplats(
 // Export terrain blob rebuild
 // ---------------------------------------------------------------------------
 
-import type { GeneratedHex } from '../store/mapStore'
-
 export interface ExportBlobParams {
   projected: { hex: GeneratedHex; verts: [number, number][] }[]
   terrainBlobOverrides: Record<string, unknown>
