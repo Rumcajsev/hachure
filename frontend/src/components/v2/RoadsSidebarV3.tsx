@@ -104,7 +104,7 @@ export function RoadShapeFlyout({ onClose }: { onClose: () => void }) {
     <FlyoutShell title="Road shape" subtitle={isModified ? 'Modified from default' : 'Default for all tiers'} onClose={onClose}>
       <FSectionDivider />
       <MiniSlider label="Wiggle amp"   display={`${wiggleAmpSlider.value}%`}              value={wiggleAmpSlider.value}  min={0} max={100} step={1}  accentColor={t.rust} onChange={wiggleAmpSlider.onChange}  onDragEnd={wiggleAmpSlider.onDragEnd} />
-      <MiniSlider label="Wiggle freq"  display={(wiggleFreqSlider.value / 10).toFixed(1)} value={wiggleFreqSlider.value} min={5} max={100} step={1}  accentColor={t.rust} onChange={wiggleFreqSlider.onChange} onDragEnd={wiggleFreqSlider.onDragEnd} />
+      <MiniSlider label="Wiggle freq"  display={(wiggleFreqSlider.value / 10).toFixed(1)} value={wiggleFreqSlider.value} min={1} max={50} step={1}  accentColor={t.rust} onChange={wiggleFreqSlider.onChange} onDragEnd={wiggleFreqSlider.onDragEnd} />
       <MiniSlider label="Path smooth"  display={pathSlider.value}   value={pathSlider.value}   min={0} max={50}  step={1}  accentColor={t.rust} onChange={pathSlider.onChange}   onDragEnd={pathSlider.onDragEnd} />
       <MiniSlider label="Line smooth"  display={smoothSlider.value} value={smoothSlider.value} min={0} max={30}  step={1}  accentColor={t.rust} onChange={smoothSlider.onChange} onDragEnd={smoothSlider.onDragEnd} />
       <MiniSlider label="Center pull"  display={`${pullSlider.value}%`} value={pullSlider.value} min={0} max={100} step={1}  accentColor={t.rust} onChange={pullSlider.onChange}   onDragEnd={pullSlider.onDragEnd} />
@@ -154,7 +154,7 @@ export function RailShapeFlyout({ onClose }: { onClose: () => void }) {
   return (
     <FlyoutShell title="Rail shape" subtitle={isModified ? 'Modified from default' : 'Default'} onClose={onClose}>
       <MiniSlider label="Wiggle amp"  display={`${wiggleAmpSlider.value}%`}              value={wiggleAmpSlider.value}  min={0} max={100} step={1} accentColor={RAIL_COLOR} onChange={wiggleAmpSlider.onChange}  onDragEnd={wiggleAmpSlider.onDragEnd} />
-      <MiniSlider label="Wiggle freq" display={(wiggleFreqSlider.value / 10).toFixed(1)} value={wiggleFreqSlider.value} min={5} max={100} step={1} accentColor={RAIL_COLOR} onChange={wiggleFreqSlider.onChange} onDragEnd={wiggleFreqSlider.onDragEnd} />
+      <MiniSlider label="Wiggle freq" display={(wiggleFreqSlider.value / 10).toFixed(1)} value={wiggleFreqSlider.value} min={1} max={50} step={1} accentColor={RAIL_COLOR} onChange={wiggleFreqSlider.onChange} onDragEnd={wiggleFreqSlider.onDragEnd} />
       <MiniSlider label="Path smooth" display={pathSlider.value}   value={pathSlider.value}   min={0} max={50}  step={1} accentColor={RAIL_COLOR} onChange={pathSlider.onChange}   onDragEnd={pathSlider.onDragEnd} />
       <MiniSlider label="Line smooth" display={smoothSlider.value} value={smoothSlider.value} min={0} max={30}  step={1} accentColor={RAIL_COLOR} onChange={smoothSlider.onChange} onDragEnd={smoothSlider.onDragEnd} />
       {isModified && (
@@ -260,20 +260,6 @@ export function RoadStyleFlyout({ tier, onClose }: { tier: 0 | 1 | 2; onClose: (
         </>
       )}
 
-      {/* ── Outer glow ── */}
-      <SectionToggle label="Outer glow" enabled={fx.glowEnabled} onChange={v => setFx({ glowEnabled: v })} accentColor={tierColor} />
-      {fx.glowEnabled && (
-        <>
-          <BigColorSwatch
-            value={fx.glowColor}
-            onChange={c => setFx({ glowColor: c })}
-            groups={[{ label: 'Shadow', colors: ['rgba(0,0,0,0.15)', 'rgba(0,0,0,0.25)', 'rgba(0,0,0,0.4)', 'rgba(60,40,10,0.3)', 'rgba(20,40,80,0.25)'] }]}
-          />
-          <MiniSlider label="Blur"   display={`${fx.glowBlur}px`}   value={fx.glowBlur}   min={1} max={30} step={1} accentColor={tierColor} onChange={v => setFx({ glowBlur: v })} />
-          <MiniSlider label="Spread" display={`${fx.glowSpread}px`} value={fx.glowSpread} min={0} max={20} step={1} accentColor={tierColor} onChange={v => setFx({ glowSpread: v })} />
-        </>
-      )}
-
       {/* ── Geometry override ── */}
       <SectionToggle
         label="Geometry override"
@@ -284,7 +270,7 @@ export function RoadStyleFlyout({ tier, onClose }: { tier: 0 | 1 | 2; onClose: (
       {overrideEnabled && (
         <>
           <MiniSlider label="Wiggle amp"  display={`${tierWiggleAmpSlider.value}%`}           value={tierWiggleAmpSlider.value}  min={0} max={100} step={1} accentColor={tierColor} onChange={tierWiggleAmpSlider.onChange}  onDragEnd={tierWiggleAmpSlider.onDragEnd} />
-          <MiniSlider label="Wiggle freq" display={(tierWiggleFreqSlider.value / 10).toFixed(1)} value={tierWiggleFreqSlider.value}  min={5} max={100} step={1} accentColor={tierColor} onChange={tierWiggleFreqSlider.onChange} onDragEnd={tierWiggleFreqSlider.onDragEnd} />
+          <MiniSlider label="Wiggle freq" display={(tierWiggleFreqSlider.value / 10).toFixed(1)} value={tierWiggleFreqSlider.value}  min={1} max={50} step={1} accentColor={tierColor} onChange={tierWiggleFreqSlider.onChange} onDragEnd={tierWiggleFreqSlider.onDragEnd} />
           <MiniSlider label="Path smooth" display={tierPathSlider.value}                       value={tierPathSlider.value}       min={0} max={50}  step={1} accentColor={tierColor} onChange={tierPathSlider.onChange}       onDragEnd={tierPathSlider.onDragEnd} />
           <MiniSlider label="Line smooth" display={tierSmoothSlider.value}                     value={tierSmoothSlider.value}     min={0} max={30}  step={1} accentColor={tierColor} onChange={tierSmoothSlider.onChange}     onDragEnd={tierSmoothSlider.onDragEnd} />
           <MiniSlider label="Center pull" display={`${tierPullSlider.value}%`}                 value={tierPullSlider.value}       min={0} max={100} step={1} accentColor={tierColor} onChange={tierPullSlider.onChange}       onDragEnd={tierPullSlider.onDragEnd} />
@@ -369,7 +355,7 @@ export function RailStyleFlyout({ onClose }: { onClose: () => void }) {
       </div>
       <div style={{ opacity: overrideEnabled ? 1 : 0.35, pointerEvents: overrideEnabled ? 'auto' : 'none' }}>
         <MiniSlider label="Wiggle amp"  display={`${Math.round(effectiveGeom.wiggleAmp * 100)}%`} value={Math.round(effectiveGeom.wiggleAmp * 100)} min={0} max={100} step={1} accentColor={RAIL_COLOR} onChange={v => setRailGeomOverride({ wiggleAmp: v / 100 })} />
-        <MiniSlider label="Wiggle freq" display={effectiveGeom.wiggleFreq.toFixed(1)}              value={Math.round(effectiveGeom.wiggleFreq * 10)} min={5} max={100} step={1} accentColor={RAIL_COLOR} onChange={v => setRailGeomOverride({ wiggleFreq: v / 10 })} />
+        <MiniSlider label="Wiggle freq" display={effectiveGeom.wiggleFreq.toFixed(1)}              value={Math.round(effectiveGeom.wiggleFreq * 10)} min={1} max={50} step={1} accentColor={RAIL_COLOR} onChange={v => setRailGeomOverride({ wiggleFreq: v / 10 })} />
         <MiniSlider label="Path smooth" display={effectiveGeom.pathSmoothing}                      value={effectiveGeom.pathSmoothing}               min={0} max={50}  step={1} accentColor={RAIL_COLOR} onChange={v => setRailGeomOverride({ pathSmoothing: v })} />
         <MiniSlider label="Line smooth" display={effectiveGeom.smoothing}                          value={effectiveGeom.smoothing}                   min={0} max={30}  step={1} accentColor={RAIL_COLOR} onChange={v => setRailGeomOverride({ smoothing: v })} />
       </div>
@@ -655,7 +641,7 @@ export function RoadSegmentFlyout({ mode, onClose }: { mode: 'road' | 'rail'; on
         label="Frequency"
         display={segFreq.toFixed(1)}
         value={Math.round(segFreq * 10)}
-        min={5} max={100} step={1}
+        min={1} max={50} step={1}
         accentColor={accentColor}
         onChange={v => selectedKeys.forEach(k => setProp(k, { wiggleFreq: v / 10 }))}
       />
@@ -689,7 +675,7 @@ export function RoadSegmentFlyout({ mode, onClose }: { mode: 'road' | 'rail'; on
             label="Frequency"
             display={hopFreq.toFixed(1)}
             value={Math.round(hopFreq * 10)}
-            min={5} max={100} step={1}
+            min={1} max={50} step={1}
             accentColor={accentColor}
             onChange={v => setHopProp(selectedHopKey, { wiggleFreq: v / 10 })}
           />

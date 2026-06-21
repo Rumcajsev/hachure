@@ -3,14 +3,13 @@
 import type { RiverStyleConfig, RiverTierStyle, LabelBBox } from '../store/mapStore'
 import { DEFAULT_STROKE_EFFECT } from '../store/mapStore'
 import { riverSmooth, applyWobble, drawVariableWidthStroke } from './riverChains'
-import { dashArray, drawLineGlow } from './strokeEffect'
+import { dashArray } from './strokeEffect'
 import type { LabelSpec } from './labelPresets'
 import { specToFont } from './labelPresets'
 
 type Ctx = CanvasRenderingContext2D | OffscreenCanvasRenderingContext2D
 type SegProps = Record<string, { width?: number; taper?: number; taperRange?: [number, number] }>
 type HopProps = { wiggleAmp?: number; wiggleFreq?: number; width?: number; taper?: number }
-type BlobEntry = { terrain: string; polys: [number, number][][] }
 
 export type ChainEntry = {
   vertices: [number, number][]
@@ -42,8 +41,7 @@ export type DrawRiversParams = {
   labelOffsets?: Record<string, { dx: number; dy: number }>
   liveLabelOffset?: { id: string; dx: number; dy: number }
   labelBBoxOut?: Record<string, LabelBBox>
-  clearColor?: string
-  bankBlobs?: BlobEntry[]
+  excludeLabelId?: string
 }
 
 function makeSegHalfWidths(segProps: SegProps, baseHW: number) {
@@ -84,23 +82,11 @@ function buildWidthMultipliers(
   return mults
 }
 
-function drawRiverBank(
-  ctx: Ctx,
-  pts: [number, number][],
-  hwStart: number,
-  hwEnd: number,
-  bankWidth: number,
-  clearColor: string,
-  widthMults?: number[],
-) {
-  drawVariableWidthStroke(ctx, pts, hwStart + bankWidth, hwEnd + bankWidth, clearColor, widthMults)
-}
-
 function drawRiverLayer(
   rCtx: Ctx,
   chainData: ChainEntry[],
   segProps: SegProps,
-  style: { color: string; effect?: RiverTierStyle['effect'] } & Partial<Pick<RiverTierStyle, 'bankEnabled' | 'bankWidth'>>,
+  style: { color: string; effect?: RiverTierStyle['effect'] },
   selectedKeys: Set<string>,
   selectedHopKey: string | null | undefined,
   baseHW: number,
@@ -112,8 +98,6 @@ function drawRiverLayer(
   wobbleDetail: number,
   hopProps: Record<string, HopProps> | undefined,
   project: (lon: number, lat: number) => [number, number],
-  bankPolys: [number, number][][] | null,
-  clearColor: string | undefined,
 ) {
   const segHalfWidths = makeSegHalfWidths(segProps, baseHW)
 
@@ -128,43 +112,6 @@ function drawRiverLayer(
     })
 
   const effect = style.effect ?? DEFAULT_STROKE_EFFECT
-
-  // Compute canvas bounds for the whole layer (needed for glow offscreen sizing)
-  const allPts = projected.flatMap(p => p.pts)
-  const xs = allPts.map(p => p[0]), ys = allPts.map(p => p[1])
-  const bx = Math.min(...xs), by = Math.min(...ys)
-  const bw = Math.max(...xs) - bx, bh = Math.max(...ys) - by
-  const layerBounds = { x: bx, y: by, w: bw, h: bh }
-
-  // Pass -1: bank clearance (drawn under everything else)
-  if (style.bankEnabled && style.bankWidth && style.bankWidth > 0 && clearColor) {
-    rCtx.save()
-    if (bankPolys && bankPolys.length > 0) {
-      rCtx.beginPath()
-      for (const poly of bankPolys) {
-        if (poly.length < 3) continue
-        rCtx.moveTo(poly[0][0], poly[0][1])
-        for (let i = 1; i < poly.length; i++) rCtx.lineTo(poly[i][0], poly[i][1])
-        rCtx.closePath()
-      }
-      rCtx.clip()
-    }
-    for (const { pts, segKey, hw, widthMults } of projected) {
-      if (selectedKeys.has(segKey)) continue
-      drawRiverBank(rCtx, pts, hw[0], hw[1], style.bankWidth, clearColor, widthMults)
-    }
-    rCtx.restore()
-  }
-
-  // Pass 0: outer glow (blurred halo behind everything)
-  if (effect.glowEnabled) {
-    for (const { pts, segKey, hw, widthMults } of projected) {
-      if (selectedKeys.has(segKey)) continue
-      const maxHW = Math.max(hw[0], hw[1])
-      drawLineGlow(rCtx, effect, maxHW, layerBounds,
-        (ctx, halfW, color) => drawVariableWidthStroke(ctx, pts, halfW, halfW, color, widthMults))
-    }
-  }
 
   // Pass 1: outline
   if (effect.outlineEnabled) {
@@ -265,6 +212,7 @@ function drawRiverLabels(
   labelOffsets?: Record<string, { dx: number; dy: number }>,
   liveLabelOffset?: { id: string; dx: number; dy: number },
   labelBBoxOut?: Record<string, LabelBBox>,
+  excludeLabelId?: string,
 ) {
   const basePx = 9
   rCtx.save()
@@ -276,6 +224,7 @@ function drawRiverLabels(
 
   for (const { name, coords } of labelData) {
     if (!name || seen.has(name)) continue
+    if (excludeLabelId && `river:${name}` === excludeLabelId) continue
 
     const pts = coords.map(([lon, lat]) => project(lon, lat))
     if (pts.length < 2) continue
@@ -368,8 +317,7 @@ export function drawRivers(rCtx: Ctx, params: DrawRiversParams) {
     riverHopProps, selectedHopKey,
     project,
     showRiverLabels, riverLabelData, waterLabelSpec,
-    labelOffsets, liveLabelOffset, labelBBoxOut,
-    clearColor, bankBlobs,
+    labelOffsets, liveLabelOffset, labelBBoxOut, excludeLabelId,
   } = params
 
   // Draw river tiers back-to-front: stream (2) → river (1) → major (0)
@@ -378,23 +326,11 @@ export function drawRivers(rCtx: Ctx, params: DrawRiversParams) {
     if ((tierStyle as RiverTierStyle).visible === false) continue
     const tierBaseHW = riverBaseHW * ((tierStyle as RiverTierStyle).widthScale ?? 1)
 
-    // Pre-filter bank blobs for this tier
-    // tierBankPolys = null means "draw everywhere, no clip"
-    let tierBankPolys: [number, number][][] | null = null
-    const ts = tierStyle as RiverTierStyle
-    if (ts.bankEnabled && ts.bankWidth > 0 && clearColor && bankBlobs && ts.bankTerrains?.length > 0) {
-      tierBankPolys = bankBlobs
-        .filter(b => ts.bankTerrains.includes(b.terrain))
-        .flatMap(b => b.polys)
-        .filter(p => p.length >= 3)
-    }
-
     drawRiverLayer(rCtx, riverTierChainData[tier], riverSegProps, tierStyle, selectedRiverKeys,
-      selectedHopKey, tierBaseHW, tier === 0, lakeProjCenters, R, smoothPasses, wobbleBroad, wobbleDetail, riverHopProps, project,
-      tierBankPolys, clearColor)
+      selectedHopKey, tierBaseHW, tier === 0, lakeProjCenters, R, smoothPasses, wobbleBroad, wobbleDetail, riverHopProps, project)
   }
 
   if (showRiverLabels && riverLabelData && riverLabelData.length > 0 && waterLabelSpec) {
-    drawRiverLabels(rCtx, riverLabelData, waterLabelSpec, project, labelOffsets, liveLabelOffset, labelBBoxOut)
+    drawRiverLabels(rCtx, riverLabelData, waterLabelSpec, project, labelOffsets, liveLabelOffset, labelBBoxOut, excludeLabelId)
   }
 }

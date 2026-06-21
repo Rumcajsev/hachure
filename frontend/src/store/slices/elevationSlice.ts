@@ -51,6 +51,7 @@ export type ElevationSlice = {
   setElevationPaintMode: (v: boolean) => void
   setElevationPaintBrush: (v: 'flat' | 'hills' | 'mountains') => void
   overrideHexElevation: (q: number, r: number, cls: 'flat' | 'hills' | 'mountains') => void
+  batchOverrideHexElevation: (ops: { q: number; r: number; cls: 'flat' | 'hills' | 'mountains' }[]) => void
   clearElevationOverrides: () => void
   setHillshadeEnabled: (v: boolean) => void
   setHillshadeAzimuth: (v: number) => void
@@ -206,6 +207,18 @@ export const createElevationSlice = (set: Set, get: () => MapStore): ElevationSl
         ? { ...h, elevation_class: cls, elevation_background: cls === 'mountains' ? 'hills' : null, elevation_manual_override: true }
         : h
     )
+    set({ generatedHexes: updated })
+  },
+
+  batchOverrideHexElevation: (ops) => {
+    if (!ops.length) return
+    const { generatedHexes } = get()
+    const overrideMap = new Map(ops.map(op => [`${op.q},${op.r}`, op.cls]))
+    const updated = generatedHexes.map(h => {
+      const cls = overrideMap.get(`${h.q},${h.r}`)
+      if (cls === undefined) return h
+      return { ...h, elevation_class: cls, elevation_background: cls === 'mountains' ? 'hills' : null, elevation_manual_override: true }
+    })
     set({ generatedHexes: updated })
   },
 

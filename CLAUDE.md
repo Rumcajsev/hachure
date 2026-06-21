@@ -30,9 +30,11 @@ State is persisted to localStorage via Zustand's `persist` middleware. Current s
 2. Add a migration step in `uiSlice.ts → migratePersisted()`
 3. `rehydrateState()` (also in `uiSlice.ts`) handles post-load fixups (e.g. `disabledTerrains` is serialized as array, restored as `Set`)
 
-### Canvas rendering — lib files
+### Canvas rendering — three-tier model
 
-All rendering logic lives in `src/lib/`, not in components. Each file is pure canvas — no React, no store imports except types:
+Rendering is split across three directories:
+
+**`src/lib/` — pure draw functions** (no React, no store imports except types)
 
 | File | What it renders |
 |---|---|
@@ -41,7 +43,7 @@ All rendering logic lives in `src/lib/`, not in components. Each file is pure ca
 | `drawBuildings.ts` | Building placement algorithm and cache replay |
 | `drawRivers.ts` | Rivers and canals with variable-width strokes |
 | `drawRoadsRails.ts` | Road tiers, junctions, rail cross/line styles |
-| `drawSettlements.ts` | Settlement icons and 8-candidate label placement |
+| `drawSettlements.ts` | Settlement icons and 8-candidate label placement (`excludeLabelId` param skips one label for overlay use) |
 | `drawHexBorders.ts` | Hex grid border stroke/dot modes |
 
 Supporting geometry and data libs:
@@ -55,37 +57,93 @@ Supporting geometry and data libs:
 | `riverChains.ts` | Chain topology (buildRiverChains), smoothing, wobble, taper ordering |
 | `roadChains.ts` | Catmull-Rom road/rail chain splines, junction detection |
 
-**`TerrainViewCanvas.tsx`** (~2400 lines) is now only refs, hooks, effects, the draw compositor, and JSX. Don't add rendering logic there — put it in the appropriate lib file or create a new one.
+**`src/render/` — layer controllers + compositor**
 
-**Rule: new canvas rendering logic always goes in `src/lib/`, never inline in a component.** Each lib function takes an explicit params struct so it's testable and reusable without React.
+Each layer is a module-level singleton controller in `render/layers/`. Controllers wrap a `LayerCache`, expose `markDirty()`, and have a `draw(ctx, input)` method that handles both the offscreen-cached screen path and the direct export path.
+
+| File | Role |
+|---|---|
+| `layers/terrainLayer.ts` | Terrain + hillshade + contour offscreen layer |
+| `layers/highlightsLayer.ts` | Joined highlights layer |
+| `layers/riversLayer.ts` | Rivers/canals layer |
+| `layers/buildingsLayer.ts` | Urban buildings layer |
+| `layers/settlementsLayer.ts` | Settlement icons + label placement; accepts `excludeLabelId` |
+| `layers/roadsLayer.ts` | Roads + rail layer |
+| `layers/hexBorderLayer.ts` | Hex grid borders |
+| `MapRenderer.ts` | Compositor: calls all 7 controllers in order, handles OSM overlay, active-edit overlay, export path |
+| `activeEditOverlay.ts` | Thin OffscreenCanvas overlay for O(1) per-frame label drag; singleton `activeEditOverlay` |
+| `osmOverlay.ts` | OSM highlight/spotlight overlay (screen-only) |
+| `types.ts` | `LayerController` and `RenderInput` contracts |
+
+**`src/interaction/` — event handlers and tools**
+
+| File | Role |
+|---|---|
+| `types.ts` | `Tool`, `ToolContext`, `HitTarget` contracts (not yet fully wired) |
+| `tools/mouseHandlers.ts` | Main pointer-event dispatcher; each tool section is a separate function |
+| `tools/terrainPaintTool.ts` | Terrain + elevation paint logic |
+| `tools/roadRailPaintTool.ts` | Road/rail paint stroke |
+| `tools/controlPointDragTool.ts` | Road/river CP drag |
+| `tools/hexDisableTool.ts` | Hex disable/enable painter |
+| `tools/hexMaskTool.ts` | Hex mask painter |
+| `tools/blobHandleTool.ts` | Terrain blob handle drag |
+| `tools/highlightLineTool.ts` | Highlight line drawing |
+| `tools/megaHexTool.ts` | Mega-hex origin placement |
+| `tools/contextMenuTool.ts` | Right-click context menu logic |
+
+Tools currently use an `attachXxxHandlers(el, refs)` pattern — not the `Tool` interface from `types.ts`. Migrating them to the interface + `ToolContext` injection is pending.
+
+**`TerrainViewCanvas.tsx`** (~3285 lines) owns refs, hooks, useEffects that mark layers dirty, RAF loop, and wires TVC JSX. It no longer contains any draw logic — that all lives in `render/MapRenderer.ts`. Don't add draw code here; add it in the appropriate `src/lib/` draw function, then use it via the relevant layer controller.
 
 ### Offscreen layer caching — `LayerCache`
 
-Every visual layer that uses an offscreen `OffscreenCanvas` (terrain, hexBorders, rivers, buildings, settlements, highlights, roads) is managed by a `LayerCache` instance from `src/lib/LayerCache.ts`. It owns the canvas ref, dirty flag, and alloc/reuse/rebuild logic — replacing the old pattern of 4 separate refs per layer.
+`src/lib/LayerCache.ts` owns the `OffscreenCanvas` ref, `ImageBitmap` cache, and dirty flag for one layer. Layer controllers (in `render/layers/`) hold a module-level `LayerCache` instance — not a React ref.
 
-**Pattern for any new offscreen layer:**
+**Key behaviour:**
+- `markDirty()` schedules a rebuild on the next `prepare()` call
+- `prepare(pw, ph, dpr)` returns `{ ctx, rebuilt }` — `rebuilt=false` is a cache hit (pan/zoom don't trigger rebuilds)
+- `commitRebuild()` transfers the canvas to an `ImageBitmap` (GPU rasterise); canvas is freed
+- `blit()` draws `bitmap ?? prevBitmap ?? canvas` — `prevBitmap` is the stale bitmap kept visible during a rebuild so there's no blank flash
+- `dispose()` closes both bitmaps and frees the canvas
+
+**Pattern for a new layer controller:**
 
 ```ts
-// 1. In component body — one ref, no size refs, no dirty ref
-const myLayer = useRef(new LayerCache())
+// render/layers/myLayer.ts
+const cache = new LayerCache()
 
-// 2. When layer data changes (in a useEffect):
-myLayer.current.markDirty()
+export const myLayerController = {
+  markDirty(): void { cache.markDirty() },
+  dispose(): void { cache.dispose() },
 
-// 3. Inside draw() — always in the !isExport branch:
-const { ctx, rebuilt } = myLayer.current.prepare(pw, ph, dpr)
-if (rebuilt) {
-  ctx.scale(dpr * offZoom, dpr * offZoom)
-  ctx.translate(-px, -py)
-  // ... draw layer content into ctx
+  draw(ctx: CanvasRenderingContext2D, input: MyLayerInput): void {
+    const { pw, ph, dpr, isExport, ...drawParams } = input
+    if (!isExport) {
+      const { ctx: oCtx, rebuilt } = cache.prepare(pw, ph, dpr)
+      if (rebuilt) {
+        oCtx.scale(dpr * dpr, dpr * dpr)  // offZoom = dpr
+        drawMyLayer(oCtx, drawParams)
+        cache.commitRebuild()
+      }
+      cache.blit(ctx, 0, 0, pw, ph)
+      return
+    }
+    drawMyLayer(ctx, drawParams)
+  },
 }
-myLayer.current.blit(mainCtx, px, py, pw, ph)
-
-// 4. On unmount (add to the component's cleanup effect):
-myLayer.current.dispose()
 ```
 
-`prepare()` rebuilds only when the layer is dirty or the paper size changed — pan and zoom never trigger a rebuild. The dpr cap (`Math.min(dpr, 1.5)`) lives inside `prepare()` and must not be applied again by the caller.
+The `dpr` supersampling factor (`offZoom = dpr`) lives in the caller's `scale()` call. `prepare()` already bakes the canvas size — don't cap or re-apply dpr elsewhere.
+
+### Active-edit overlay — `render/activeEditOverlay.ts`
+
+During a label drag (or any single-item edit that would otherwise rebuild an entire layer per frame), use the `activeEditOverlay` singleton instead:
+
+1. On first drag frame (`!activeEditOverlay.isActive`): call `layerController.markDirty()` once, passing `excludeLabelId` so the layer rebuilds *without* the dragged item.
+2. Every drag frame: `const oCtx = activeEditOverlay.begin(pw, ph, dpr)` → draw the one item at its live position → `activeEditOverlay.blit(mainCtx, 0, 0, pw, ph)`.
+3. On drag end: `layerController.markDirty()` (without excludeLabelId) + `activeEditOverlay.end()`.
+
+This makes drag cost O(1) regardless of scene size. Currently wired for settlement label drag only.
 
 ### Shared UI primitives — `src/components/ui.tsx`
 
@@ -122,6 +180,6 @@ Terrain generation and elevation use SSE streaming (`/terrain-stream`, `/elevati
 - No comments unless the *why* is non-obvious (hidden constraint, workaround, subtle invariant)
 - Slices own their domain's state and actions fully — cross-slice mutations go through `set()` on the full store, which is fine
 - Keep `mapStore.ts` to shared types/constants/exports only — no logic there
-- **Canvas rendering belongs in `src/lib/`, not in components.** If you're writing a `for` loop that touches a `CanvasRenderingContext2D`, it goes in a lib file with an explicit params struct, not inline in a `useCallback`
-- **New lib files are cheap — use them.** One rendering domain = one file. Don't append unrelated logic to an existing lib file just because it's convenient
-- **`draw()` is a pure render pass — no heavy computation inline.** Any derived data that feeds into `draw()` must be computed outside it, behind its own dirty flag and cache ref. The pattern: a `useEffect` watches the relevant inputs and marks a dirty flag; `draw()` checks the flag, rebuilds the cache if needed, then reads from the cache. Never move computation into `draw()` unconditionally — it runs on every frame (pan, zoom, any interaction) and will cause lag.
+- **Three-tier rendering model:** pixel math goes in `src/lib/draw*.ts` (pure functions); offscreen caching + export branching goes in `src/render/layers/*.ts` (module singletons); the compositor order goes in `src/render/MapRenderer.ts`. Don't collapse tiers — no draw logic in components, no store access in lib files.
+- **New lib files are cheap — use them.** One rendering domain = one file. Don't append unrelated logic to an existing lib file just because it's convenient.
+- **`MapRenderer.drawMap()` is a pure render pass — no heavy computation inline.** Any derived data must be computed outside it, behind its own dirty flag and cache ref. A `useEffect` in TVC watches inputs and marks layers dirty; `drawMap()` checks dirty flags, rebuilds caches if needed, then blits. Never add unconditional computation inside `drawMap()` — it runs every RAF frame.

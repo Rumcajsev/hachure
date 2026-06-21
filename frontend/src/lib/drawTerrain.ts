@@ -3,7 +3,7 @@
 
 import type { GeneratedHex, BlobOverride, StrokeEffect } from '../store/mapStore'
 import { DEFAULT_STROKE_EFFECT } from '../store/mapStore'
-import { drawPolyGlow, resolveBlobEffect } from './strokeEffect'
+import { resolveBlobEffect } from './strokeEffect'
 import { buildTerrainBlobsV2, bleedPolygon } from './terrainBlobs'
 import { clipPolygonToConvex, pointInPolygon } from './geometry'
 import { makePermutation, perlinNoise2D } from './noise'
@@ -15,7 +15,7 @@ type Ctx = CanvasRenderingContext2D | OffscreenCanvasRenderingContext2D
 export type BlobParams = {
   smooth: number; offset: number; bump: number
   sweepFreq: number; lobeFreq: number; lobeAmp: number
-  lobeThreshold: number; lobeDirection: number; simplify: number; topoStyle: number
+  lobeThreshold: number; lobeDirection: number; topoStyle: number
 }
 
 export type DrawTerrainParams = {
@@ -28,7 +28,6 @@ export type DrawTerrainParams = {
   terrainTextureOpacities: Record<string, number>
   terrainTextureTintColors: Record<string, string>
   terrainTextureTintOpacities: Record<string, number>
-  terrainTextureShadeRanges: Record<string, number>
   /** terrain name → loaded texture image */
   terrainTextures: Map<string, HTMLImageElement | null>
   px: number; py: number; pw: number; ph: number
@@ -136,19 +135,6 @@ function getTintedTexture(tex: HTMLImageElement, hexColor: string, invert: boole
   return oc
 }
 
-function darkenColor(hex: string, amount: number): string {
-  const r = parseInt(hex.slice(1, 3), 16), g = parseInt(hex.slice(3, 5), 16), b = parseInt(hex.slice(5, 7), 16)
-  if (isNaN(r) || isNaN(g) || isNaN(b)) return hex
-  const f = (v: number) => Math.round(v * (1 - amount)).toString(16).padStart(2, '0')
-  return `#${f(r)}${f(g)}${f(b)}`
-}
-
-function lightenColor(hex: string, amount: number): string {
-  const r = parseInt(hex.slice(1, 3), 16), g = parseInt(hex.slice(3, 5), 16), b = parseInt(hex.slice(5, 7), 16)
-  if (isNaN(r) || isNaN(g) || isNaN(b)) return hex
-  const f = (v: number) => Math.round(v + (255 - v) * amount).toString(16).padStart(2, '0')
-  return `#${f(r)}${f(g)}${f(b)}`
-}
 
 function applyTextureOverlay(
   tCtx: Ctx,
@@ -162,8 +148,6 @@ function applyTextureOverlay(
   tintColor = '',
   tintOpacity = 0.5,
   colorMode = false,
-  shadeRange = 0,
-  shadeBaseColor = '',
 ): void {
   if (!tex.complete || polys.length === 0) return
   const texSize = R * scaleR
@@ -199,24 +183,8 @@ function applyTextureOverlay(
 
   if (colorMode && tintColor) {
     const invertAlpha = blendMode === ('color-bg' as GlobalCompositeOperation)
-    if (shadeRange > 0) {
-      // 1. Solid base fill — provides the middle tone so variation is bidirectional
-      tCtx.save()
-      tCtx.globalCompositeOperation = 'source-over'
-      tCtx.globalAlpha = opacity
-      tCtx.fillStyle = tintColor
-      buildPath()
-      tCtx.fill('evenodd')
-      tCtx.restore()
-      // 2. Dark marks: dense texture areas → darkened color on top of fill
-      drawTintedPass(darkenColor(tintColor, shadeRange * 0.6), invertAlpha, opacity * shadeRange)
-      // 3. Light background: sparse texture areas → lightened color on top of fill
-      drawTintedPass(lightenColor(tintColor, shadeRange * 0.5), !invertAlpha, opacity * shadeRange * 0.4)
-    } else {
-      drawTintedPass(tintColor, invertAlpha, opacity)
-    }
+    drawTintedPass(tintColor, invertAlpha, opacity)
   } else {
-    // Non-color blend mode: existing pass
     const pattern = tCtx.createPattern(tex, 'repeat')
     if (!pattern) return
     pattern.setTransform(transform)
@@ -237,12 +205,6 @@ function applyTextureOverlay(
       tCtx.fill('evenodd')
       tCtx.restore()
     }
-
-    // Shade variation for non-color modes: source-over colored passes on top of the blend result
-    if (shadeRange > 0 && shadeBaseColor) {
-      drawTintedPass(darkenColor(shadeBaseColor, shadeRange * 0.6), false, opacity * shadeRange * 0.5)
-      drawTintedPass(lightenColor(shadeBaseColor, shadeRange * 0.5), true, opacity * shadeRange * 0.3)
-    }
   }
 }
 
@@ -251,8 +213,6 @@ function drawElevationBlobsWithShading(
   polys: [number, number][][],
   color: string,
   reliefOpacity: number,
-  cls: 'hills' | 'mountains',
-  params: Pick<DrawTerrainParams, 'terrainTextures' | 'elevationTextureScales' | 'elevationTextureBlendModes' | 'elevationTextureOpacities' | 'R'>,
 ): void {
   if (polys.length === 0) return
   tCtx.fillStyle = color
@@ -264,17 +224,6 @@ function drawElevationBlobsWithShading(
     tCtx.closePath()
   }
   tCtx.fill('evenodd')
-
-  // Texture overlay for elevation class
-  const tex = params.terrainTextures.get(cls)
-  if (tex) {
-    const texScale = params.elevationTextureScales[cls] ?? 3
-    const blendRaw = params.elevationTextureBlendModes[cls] ?? 'multiply'
-    const texOpacity = params.elevationTextureOpacities[cls] ?? 0.5
-    const isColorMode = blendRaw === 'color' || blendRaw === 'color-bg'
-    const blendMode = isColorMode ? 'multiply' : blendRaw as GlobalCompositeOperation
-    applyTextureOverlay(tCtx, tex, polys, params.R, texScale, 0, blendMode, texOpacity, undefined, 0, isColorMode)
-  }
 
   if (reliefOpacity <= 0) return
 
@@ -323,8 +272,10 @@ function polyArea(pts: [number, number][]): number {
 export function drawTerrain(tCtx: Ctx, params: DrawTerrainParams): void {
   const {
     projected, edgeMode, inMargin,
-    terrainColors, terrainTextureScales, terrainTextureBlendModes, terrainTextureOpacities,
-    terrainTextureTintColors, terrainTextureTintOpacities, terrainTextureShadeRanges, terrainTextures,
+    terrainColors, terrainTextureBlendModes,
+    terrainTextureScales, terrainTextureOpacities, terrainTextureTintColors, terrainTextureTintOpacities,
+    terrainTextures,
+    elevationTextureScales, elevationTextureBlendModes, elevationTextureOpacities,
     px, py, pw, ph,
     backgroundTerrainBlobs, defaultTerrainBlobs, defaultWaterBlobs,
     terrainBlobOverrides, waterOverrides,
@@ -352,31 +303,27 @@ export function drawTerrain(tCtx: Ctx, params: DrawTerrainParams): void {
     tCtx.fill()
   }
 
-  // ── 2. Clear texture overlay ────────────────────────────────────────────────
+  // ── 2. Clear texture overlay ─────────────────────────────────────────────────
   {
+    const clearPolys: [number, number][][] = []
+    for (const { hex, verts } of projected) {
+      if (hex.terrain !== 'clear') continue
+      if (edgeMode === 'whole' && hex.partial) continue
+      if (!hex.partial && !inMargin(verts)) continue
+      clearPolys.push(verts)
+    }
     const clearTex = terrainTextures.get('clear') ?? null
-    if (clearTex) {
-      const clearPolys: [number, number][][] = []
-      for (const { hex, verts } of projected) {
-        if (hex.terrain !== 'clear') continue
-        if (edgeMode === 'whole' && hex.partial) continue
-        if (!hex.partial && !inMargin(verts)) continue
-        clearPolys.push(verts)
-      }
-      {
-        const clearRawMode = terrainTextureBlendModes['clear'] ?? 'multiply'
-        const clearIsColor = clearRawMode === 'color' || clearRawMode === 'color-bg'
-        applyTextureOverlay(
-          tCtx, clearTex, clearPolys, R, terrainTextureScales['clear'] ?? 3, 0,
-          clearIsColor ? 'source-over' : clearRawMode as GlobalCompositeOperation,
-          terrainTextureOpacities['clear'] ?? 0.3,
-          clearIsColor ? (terrainColors['clear'] ?? '') : (terrainTextureTintColors['clear'] ?? ''),
-          clearIsColor ? 1.0 : (terrainTextureTintOpacities['clear'] ?? 0.5),
-          clearIsColor,
-          terrainTextureShadeRanges['clear'] ?? 0,
-          clearIsColor ? '' : (terrainColors['clear'] ?? ''),
-        )
-      }
+    if (clearTex && clearPolys.length > 0) {
+      const clearRawMode = terrainTextureBlendModes['clear'] ?? 'multiply'
+      const clearIsColor = clearRawMode === 'color' || clearRawMode === 'color-bg'
+      applyTextureOverlay(
+        tCtx, clearTex, clearPolys, R, terrainTextureScales['clear'] ?? 3, 0,
+        clearIsColor ? 'source-over' : clearRawMode as GlobalCompositeOperation,
+        terrainTextureOpacities['clear'] ?? 0.3,
+        clearIsColor ? (terrainColors['clear'] ?? '') : (terrainTextureTintColors['clear'] ?? ''),
+        clearIsColor ? 1.0 : (terrainTextureTintOpacities['clear'] ?? 0.5),
+        clearIsColor,
+      )
     }
   }
 
@@ -425,19 +372,26 @@ export function drawTerrain(tCtx: Ctx, params: DrawTerrainParams): void {
   // ── 3c. Elevation blobs (hills / mountains) ──────────────────────────────────
   {
     const { elevationBlobs, hillsColor, mountainsColor, reliefShadingOpacity, elevationTypeBlobStyles } = params
-    const elevTexParams = { terrainTextures: params.terrainTextures, elevationTextureScales: params.elevationTextureScales, elevationTextureBlendModes: params.elevationTextureBlendModes, elevationTextureOpacities: params.elevationTextureOpacities, R }
-    drawElevationBlobsWithShading(tCtx, elevationBlobs.hills, hillsColor, reliefShadingOpacity, 'hills', elevTexParams)
-    drawElevationBlobsWithShading(tCtx, elevationBlobs.mountains, mountainsColor, reliefShadingOpacity, 'mountains', elevTexParams)
+    drawElevationBlobsWithShading(tCtx, elevationBlobs.hills, hillsColor, reliefShadingOpacity)
+    drawElevationBlobsWithShading(tCtx, elevationBlobs.mountains, mountainsColor, reliefShadingOpacity)
+
+    for (const [cls, polys] of [['hills', elevationBlobs.hills], ['mountains', elevationBlobs.mountains]] as const) {
+      if (polys.length > 0) {
+        const tex = terrainTextures.get(cls) ?? null
+        if (tex) {
+          const blendRaw = elevationTextureBlendModes[cls] ?? 'multiply'
+          const isColorMode = blendRaw === 'color' || blendRaw === 'color-bg'
+          applyTextureOverlay(tCtx, tex, polys, R, elevationTextureScales[cls] ?? 3, 0,
+            isColorMode ? 'multiply' : blendRaw as GlobalCompositeOperation,
+            elevationTextureOpacities[cls] ?? 0.5, undefined, 0, isColorMode)
+        }
+      }
+    }
 
     for (const [cls, polys] of [['hills', elevationBlobs.hills], ['mountains', elevationBlobs.mountains]] as const) {
       const clsStyle = elevationTypeBlobStyles[cls]
       const fx = resolveBlobEffect(clsStyle, params.terrainBlobEffect ?? DEFAULT_STROKE_EFFECT, terrainBlobOutlineEnabled, terrainBlobOutlineColor, terrainBlobOutlineWidth)
       if (polys.length === 0) continue
-      if (fx.glowEnabled) {
-        const xs = polys.flat().map(p => p[0]), ys = polys.flat().map(p => p[1])
-        const bounds = { x: Math.min(...xs), y: Math.min(...ys), w: Math.max(...xs) - Math.min(...xs), h: Math.max(...ys) - Math.min(...ys) }
-        drawPolyGlow(tCtx, polys as [number,number][][], fx.glowColor, fx.glowBlur, fx.glowSpread, bounds)
-      }
       if (!fx.outlineEnabled) continue
       tCtx.save()
       tCtx.strokeStyle = fx.outlineColor
@@ -465,11 +419,6 @@ export function drawTerrain(tCtx: Ctx, params: DrawTerrainParams): void {
       if (polys.length === 0) continue
       const rawMode = terrainTextureBlendModes[terrain] ?? 'multiply'
       const isColorMode = rawMode === 'color' || rawMode === 'color-bg'
-      const tex = terrainTextures.get(terrain) ?? null
-      const texBlend = rawMode as GlobalCompositeOperation
-      const texOpacity = terrainTextureOpacities[terrain] ?? 0.6
-      const texTint = isColorMode ? (terrainColors[terrain] ?? '') : (terrainTextureTintColors[terrain] ?? '')
-      const texTintOpacity = isColorMode ? 1.0 : (terrainTextureTintOpacities[terrain] ?? 0.5)
 
       // Clip to hexes whose backgroundTerrain matches — primary terrain hexes
       // are included in the blob shape for a seamless boundary but must not
@@ -495,8 +444,15 @@ export function drawTerrain(tCtx: Ctx, params: DrawTerrainParams): void {
         }
         tCtx.fill('evenodd')
       }
-      const texScale = terrainTextureScales[terrain] ?? 3
-      if (tex) applyTextureOverlay(tCtx, tex, polys, R, texScale, R * 0.12, texBlend, texOpacity, texTint, texTintOpacity, isColorMode, terrainTextureShadeRanges[terrain] ?? 0, isColorMode ? '' : (terrainColors[terrain] ?? ''))
+      const bgTex = terrainTextures.get(terrain) ?? null
+      if (bgTex && polys.length > 0) {
+        applyTextureOverlay(tCtx, bgTex, polys, R, terrainTextureScales[terrain] ?? 3, R * 0.12,
+          rawMode as GlobalCompositeOperation,
+          terrainTextureOpacities[terrain] ?? 0.6,
+          isColorMode ? (terrainColors[terrain] ?? '') : (terrainTextureTintColors[terrain] ?? ''),
+          isColorMode ? 1.0 : (terrainTextureTintOpacities[terrain] ?? 0.5),
+          isColorMode)
+      }
 
       tCtx.restore()
     }
@@ -531,11 +487,6 @@ export function drawTerrain(tCtx: Ctx, params: DrawTerrainParams): void {
 
       const rawMode = terrainTextureBlendModes[terrain] ?? 'multiply'
       const isColorMode = rawMode === 'color' || rawMode === 'color-bg'
-      const tex = terrainTextures.get(terrain) ?? null
-      const texBlend = rawMode as GlobalCompositeOperation
-      const texOpacity = terrainTextureOpacities[terrain] ?? 0.6
-      const texTint = isColorMode ? (terrainColors[terrain] ?? '') : (terrainTextureTintColors[terrain] ?? '')
-      const texTintOpacity = isColorMode ? 1.0 : (terrainTextureTintOpacities[terrain] ?? 0.5)
 
       const terrainColor = terrainColors[terrain] ?? '#cccccc'
 
@@ -552,9 +503,17 @@ export function drawTerrain(tCtx: Ctx, params: DrawTerrainParams): void {
         tCtx.fill('evenodd')
       }
 
-      // a2. Texture for default polys — always drawn directly (no fade)
-      if (tex && defaultPolys.length > 0) {
-        applyTextureOverlay(tCtx, tex, defaultPolys, R, terrainTextureScales[terrain] ?? 3, 0, texBlend, texOpacity, texTint, texTintOpacity, isColorMode, terrainTextureShadeRanges[terrain] ?? 0, isColorMode ? '' : terrainColor)
+      // a2. Default texture overlay
+      if (defaultPolys.length > 0) {
+        const defTex = terrainTextures.get(terrain) ?? null
+        if (defTex) {
+          applyTextureOverlay(tCtx, defTex, defaultPolys, R, terrainTextureScales[terrain] ?? 3, 0,
+            rawMode as GlobalCompositeOperation,
+            terrainTextureOpacities[terrain] ?? 0.6,
+            isColorMode ? (terrainColors[terrain] ?? '') : (terrainTextureTintColors[terrain] ?? ''),
+            isColorMode ? 1.0 : (terrainTextureTintOpacities[terrain] ?? 0.5),
+            isColorMode)
+        }
       }
 
       // b. Override passes for this terrain
@@ -578,16 +537,15 @@ export function drawTerrain(tCtx: Ctx, params: DrawTerrainParams): void {
         const ovLobeAmp         = override.lobeAmp         ?? terrainBlobParams.lobeAmp
         const ovLobeThreshold   = override.lobeThreshold   ?? terrainBlobParams.lobeThreshold
         const ovLobeDirection   = override.lobeDirection   ?? terrainBlobParams.lobeDirection
-        const ovSimplify        = override.simplify        ?? terrainBlobParams.simplify
         const ovBlobs = buildTerrainBlobsV2(
           ovProjected, ovSmooth, ovOffset, ovNoise,
-          ovSweepFreq, ovLobeFreq, ovLobeAmp, ovLobeThreshold, ovLobeDirection, R, ovSimplify, terrainBlobParams.topoStyle,
+          ovSweepFreq, ovLobeFreq, ovLobeAmp, ovLobeThreshold, ovLobeDirection, R, terrainBlobParams.topoStyle,
         )
         const ovPolys = ovBlobs.find(b => b.terrain === terrain)?.polys ?? []
 
         const ovColor = override.color ?? terrainColor
 
-        const ovTexScale = override.textureScale ?? (terrainTextureScales[terrain] ?? 3)
+        const ovTexScale = override.textureScale ?? (params.terrainTextureScales[terrain] ?? 3)
         if (!isColorMode) {
           tCtx.fillStyle = ovColor
           tCtx.beginPath()
@@ -599,18 +557,23 @@ export function drawTerrain(tCtx: Ctx, params: DrawTerrainParams): void {
           }
           tCtx.fill('evenodd')
         }
-        if (tex) applyTextureOverlay(tCtx, tex, ovPolys, R, ovTexScale, R * 0.12, texBlend, texOpacity, texTint, texTintOpacity, isColorMode, terrainTextureShadeRanges[terrain] ?? 0, isColorMode ? '' : terrainColor)
+        if (ovPolys.length > 0) {
+          const ovTex = terrainTextures.get(terrain) ?? null
+          if (ovTex) {
+            applyTextureOverlay(tCtx, ovTex, ovPolys, R, ovTexScale, R * 0.12,
+              rawMode as GlobalCompositeOperation,
+              terrainTextureOpacities[terrain] ?? 0.6,
+              isColorMode ? (terrainColors[terrain] ?? '') : (terrainTextureTintColors[terrain] ?? ''),
+              isColorMode ? 1.0 : (terrainTextureTintOpacities[terrain] ?? 0.5),
+              isColorMode)
+          }
+        }
       }
 
       // c. Blob outline + glow pass
       if (defaultPolys.length > 0) {
         const typeStyle = params.terrainTypeBlobStyles[terrain]
         const fx = resolveBlobEffect(typeStyle, params.terrainBlobEffect ?? DEFAULT_STROKE_EFFECT, terrainBlobOutlineEnabled, terrainBlobOutlineColor, terrainBlobOutlineWidth)
-        if (fx.glowEnabled) {
-          const xs = defaultPolys.flat().map(p => p[0]), ys = defaultPolys.flat().map(p => p[1])
-          const bounds = { x: Math.min(...xs), y: Math.min(...ys), w: Math.max(...xs) - Math.min(...xs), h: Math.max(...ys) - Math.min(...ys) }
-          drawPolyGlow(tCtx, defaultPolys, fx.glowColor, fx.glowBlur, fx.glowSpread, bounds)
-        }
         if (fx.outlineEnabled) {
           tCtx.save()
           tCtx.strokeStyle = fx.outlineColor
@@ -670,10 +633,9 @@ export function drawTerrain(tCtx: Ctx, params: DrawTerrainParams): void {
       const hexTerrainSet = chain.terrain === 'clear' ? undefined : terrainToHexes.get(chain.terrain)
       const polys = buildEdgeBlobPolys(chain, hexVertMap, chainParams, R, hexTerrainSet)
       if (polys.length === 0) continue
-      const texScale = override?.textureScale ?? (terrainTextureScales[chain.terrain] ?? 3)
+      const texScale = override?.textureScale ?? (params.terrainTextureScales[chain.terrain] ?? 3)
       const edgeRawMode = terrainTextureBlendModes[chain.terrain] ?? 'multiply'
       const edgeIsColor = edgeRawMode === 'color' || edgeRawMode === 'color-bg'
-      const edgeTexBlend: GlobalCompositeOperation = edgeRawMode as GlobalCompositeOperation
       if (!edgeIsColor) {
         const color = override?.color ?? terrainColors[chain.terrain] ?? '#cccccc'
         tCtx.fillStyle = color
@@ -686,11 +648,15 @@ export function drawTerrain(tCtx: Ctx, params: DrawTerrainParams): void {
           tCtx.fill()
         }
       }
-      const edgeTexOpacity = terrainTextureOpacities[chain.terrain] ?? 0.6
-      const edgeTexTint = edgeIsColor ? (terrainColors[chain.terrain] ?? '') : (terrainTextureTintColors[chain.terrain] ?? '')
-      const edgeTexTintOpacity = edgeIsColor ? 1.0 : (terrainTextureTintOpacities[chain.terrain] ?? 0.5)
       const edgeTex = terrainTextures.get(chain.terrain) ?? null
-      if (edgeTex) applyTextureOverlay(tCtx, edgeTex, polys, R, texScale, R * 0.12, edgeTexBlend, edgeTexOpacity, edgeTexTint, edgeTexTintOpacity, edgeIsColor, terrainTextureShadeRanges[chain.terrain] ?? 0, edgeIsColor ? '' : (terrainColors[chain.terrain] ?? ''))
+      if (edgeTex) {
+        applyTextureOverlay(tCtx, edgeTex, polys, R, texScale, R * 0.12,
+          edgeRawMode as GlobalCompositeOperation,
+          terrainTextureOpacities[chain.terrain] ?? 0.6,
+          edgeIsColor ? (terrainColors[chain.terrain] ?? '') : (terrainTextureTintColors[chain.terrain] ?? ''),
+          edgeIsColor ? 1.0 : (terrainTextureTintOpacities[chain.terrain] ?? 0.5),
+          edgeIsColor)
+      }
     }
   }
 
@@ -736,11 +702,9 @@ export function drawTerrain(tCtx: Ctx, params: DrawTerrainParams): void {
       const ovLobeAmp       = override.lobeAmp       ?? terrainBlobParams.lobeAmp
       const ovLobeThreshold = override.lobeThreshold ?? terrainBlobParams.lobeThreshold
       const ovLobeDirection = override.lobeDirection ?? terrainBlobParams.lobeDirection
-      const ovSimplify      = override.simplify      ?? terrainBlobParams.simplify
-
       const ovBlobs = buildTerrainBlobsV2(
         ovWaterProjected, ovSmooth, ovOffset, ovNoise,
-        ovSweepFreq, ovLobeFreq, ovLobeAmp, ovLobeThreshold, ovLobeDirection, R, ovSimplify,
+        ovSweepFreq, ovLobeFreq, ovLobeAmp, ovLobeThreshold, ovLobeDirection, R,
       )
       const ovPolys = ovBlobs.find(b => b.terrain === 'water')?.polys ?? []
       drawWaterPolys(ovPolys, override.color ?? waterColor)
@@ -933,4 +897,6 @@ export function drawTerrain(tCtx: Ctx, params: DrawTerrainParams): void {
     tCtx.drawImage(params.contourCanvas, params.px, params.py, params.pw, params.ph)
     tCtx.restore()
   }
+
 }
+

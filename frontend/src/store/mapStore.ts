@@ -48,7 +48,6 @@ export interface BlobOverride {
   lobeAmp?: number
   lobeThreshold?: number
   lobeDirection?: number
-  simplify?: number
   textureScale?: number
   enabled?: boolean
   width?: number
@@ -88,6 +87,7 @@ export type HexEdgeMode = 'whole' | 'half'
 
 export type ActiveTool =
   | { type: 'none' }
+  | { type: 'select' }
   | { type: 'terrain'; brush: string }
   | { type: 'elevation'; brush: 'flat' | 'hills' | 'mountains' }
   | { type: 'water' }
@@ -216,12 +216,6 @@ export const WATER_COLOR = '#3a6898'
 export type StrokeDash = 'solid' | 'dashed' | 'dotted' | 'longdash' | 'dashdot'
 
 export interface StrokeEffect {
-  // Outer glow — blurred halo rendered behind the feature
-  glowEnabled: boolean
-  glowColor:   string   // use rgba for subtlety, e.g. 'rgba(0,0,0,0.3)'
-  glowBlur:    number   // blur radius in canvas px
-  glowSpread:  number   // extra half-width beyond feature edge (px)
-
   // Hard outline — sharp border drawn behind the feature fill
   outlineEnabled: boolean
   outlineColor:   string
@@ -233,10 +227,6 @@ export interface StrokeEffect {
 }
 
 export const DEFAULT_STROKE_EFFECT: StrokeEffect = {
-  glowEnabled:    false,
-  glowColor:      'rgba(0,0,0,0.25)',
-  glowBlur:       6,
-  glowSpread:     3,
   outlineEnabled: false,
   outlineColor:   '#2a4a6a',
   outlineWidth:   2,
@@ -259,18 +249,12 @@ export interface RiverTierStyle {
   wiggleFreq?:    number
   smoothing?:     number
   pathSmoothing?: number
-  // Bank clearance
-  bankEnabled:    boolean
-  bankWidth:      number    // extra half-width on each side (canvas px)
-  bankTerrains:   string[]  // terrain types that trigger bank; empty = show everywhere
 }
 
-const DEFAULT_BANK = { bankEnabled: false, bankWidth: 4, bankTerrains: [] as string[] }
-
 export const DEFAULT_RIVER_TIER_STYLES: [RiverTierStyle, RiverTierStyle, RiverTierStyle] = [
-  { label: 'Major River', color: WATER_COLOR, widthScale: 1.5,  visible: true, effect: { ...DEFAULT_STROKE_EFFECT }, ...DEFAULT_BANK },
-  { label: 'River',       color: WATER_COLOR, widthScale: 1.0,  visible: true, effect: { ...DEFAULT_STROKE_EFFECT }, ...DEFAULT_BANK },
-  { label: 'Stream',      color: '#5878a0',   widthScale: 0.55, visible: true, effect: { ...DEFAULT_STROKE_EFFECT }, ...DEFAULT_BANK },
+  { label: 'Major River', color: WATER_COLOR, widthScale: 1.5,  visible: true, effect: { ...DEFAULT_STROKE_EFFECT } },
+  { label: 'River',       color: WATER_COLOR, widthScale: 1.0,  visible: true, effect: { ...DEFAULT_STROKE_EFFECT } },
+  { label: 'Stream',      color: '#5878a0',   widthScale: 0.55, visible: true, effect: { ...DEFAULT_STROKE_EFFECT } },
 ]
 
 /** Maps OSM waterway type string to river tier (0=Major River, 1=River, 2=Stream) */
@@ -443,7 +427,6 @@ export const DEFAULT_TERRAIN_BLOB = {
   lobeAmp: 0.49,
   lobeThreshold: 0.08,
   lobeDirection: -1 as const,
-  simplify: 0,
   topoStyle: 0,
 }
 
@@ -810,10 +793,6 @@ export const useMapStore = create<MapStore>()(persist((set, get) => ({
     riverHopProps: s.riverHopProps,
     riverStyle: s.riverStyle,
     riverChainOverrides: s.riverChainOverrides,
-    // riverFlowStyle / riverWiggliness — detached
-    riverCurveSteps: s.riverCurveSteps,
-    riverWobble: s.riverWobble,
-    riverDetail: s.riverDetail,
     showRiverLabels: s.showRiverLabels,
     riverLabelColor: s.riverLabelColor,
     heightmapUrl: s.heightmapUrl,
@@ -910,12 +889,9 @@ export const useMapStore = create<MapStore>()(persist((set, get) => ({
     terrainBlobLobeAmp: s.terrainBlobLobeAmp,
     terrainBlobLobeThreshold: s.terrainBlobLobeThreshold,
     terrainBlobLobeDirection: s.terrainBlobLobeDirection,
-    terrainBlobSimplify: s.terrainBlobSimplify,
     terrainBlobTopoStyle: s.terrainBlobTopoStyle,
     terrainBlobSplatDensity: s.terrainBlobSplatDensity,
     terrainBlobSplatSize: s.terrainBlobSplatSize,
-    terrainBlobHoleDensity: s.terrainBlobHoleDensity,
-    terrainBlobHoleSize: s.terrainBlobHoleSize,
     terrainBlobOutlineEnabled: s.terrainBlobOutlineEnabled,
     terrainBlobOutlineColor: s.terrainBlobOutlineColor,
     terrainBlobOutlineWidth: s.terrainBlobOutlineWidth,
@@ -994,7 +970,7 @@ export const useMapStore = create<MapStore>()(persist((set, get) => ({
     labelPresetId: s.labelPresetId,
     labelOverrides: s.labelOverrides,
   }),
-  version: 83,
+  version: 84,
   migrate: migratePersisted,
   merge: (persisted, current) => rehydrateState({ ...current, ...(persisted as Partial<MapStore>) }),
 }))

@@ -29,12 +29,9 @@ export type TerrainSlice = {
   terrainBlobLobeAmp: number
   terrainBlobLobeThreshold: number
   terrainBlobLobeDirection: number
-  terrainBlobSimplify: number
   terrainBlobTopoStyle: number
   terrainBlobSplatDensity: number
   terrainBlobSplatSize: number
-  terrainBlobHoleDensity: number
-  terrainBlobHoleSize: number
   terrainBlobOutlineEnabled: boolean
   terrainBlobOutlineColor: string
   terrainBlobOutlineWidth: number
@@ -55,7 +52,6 @@ export type TerrainSlice = {
   terrainTextureOpacities: Record<string, number>
   terrainTextureTintColors: Record<string, string>
   terrainTextureTintOpacities: Record<string, number>
-  terrainTextureShadeRanges: Record<string, number>
   terrainTextureFile: Record<string, string>
   terrainTextureEnabled: Record<string, boolean>
   terrainBlobOverrides: Record<string, BlobOverride>
@@ -92,6 +88,8 @@ export type TerrainSlice = {
   reclassify: () => void
   toggleTerrainDisabled: (terrain: string) => void
   overrideHexTerrain: (q: number, r: number, terrain: string) => void
+  batchOverrideHexTerrain: (ops: { q: number; r: number; terrain: string }[]) => void
+  batchOverrideHexBackground: (ops: { q: number; r: number; terrain: string | undefined }[]) => void
   addHexTerrainLayer: (q: number, r: number, terrain: string) => void
   removeHexTerrainLayer: (q: number, r: number, terrain: string) => void
   resetHexOverride: (q: number, r: number) => void
@@ -104,12 +102,9 @@ export type TerrainSlice = {
   setTerrainBlobLobeAmp: (v: number) => void
   setTerrainBlobLobeThreshold: (v: number) => void
   setTerrainBlobLobeDirection: (v: number) => void
-  setTerrainBlobSimplify: (v: number) => void
   setTerrainBlobTopoStyle: (v: number) => void
   setTerrainBlobSplatDensity: (v: number) => void
   setTerrainBlobSplatSize: (v: number) => void
-  setTerrainBlobHoleDensity: (v: number) => void
-  setTerrainBlobHoleSize: (v: number) => void
   setTerrainBlobOutlineEnabled: (v: boolean) => void
   setTerrainBlobOutlineColor: (v: string) => void
   setTerrainBlobOutlineWidth: (v: number) => void
@@ -131,7 +126,6 @@ export type TerrainSlice = {
   setTerrainTextureOpacity: (terrain: string, opacity: number) => void
   setTerrainTextureTintColor: (terrain: string, color: string) => void
   setTerrainTextureTintOpacity: (terrain: string, opacity: number) => void
-  setTerrainTextureShadeRange: (terrain: string, range: number) => void
   setTerrainTextureFile: (terrain: string, fileId: string) => void
   setTerrainTextureEnabled: (terrain: string, v: boolean) => void
   setTerrainBlobOverride: (key: string, override: BlobOverride | null) => void
@@ -206,12 +200,9 @@ export const createTerrainSlice = (set: Set, get: () => MapStore): TerrainSlice 
   terrainBlobLobeAmp: DEFAULT_TERRAIN_BLOB.lobeAmp,
   terrainBlobLobeThreshold: DEFAULT_TERRAIN_BLOB.lobeThreshold,
   terrainBlobLobeDirection: DEFAULT_TERRAIN_BLOB.lobeDirection,
-  terrainBlobSimplify: DEFAULT_TERRAIN_BLOB.simplify,
   terrainBlobTopoStyle: DEFAULT_TERRAIN_BLOB.topoStyle,
   terrainBlobSplatDensity: 0,
   terrainBlobSplatSize: 0.3,
-  terrainBlobHoleDensity: 0,
-  terrainBlobHoleSize: 0.35,
   terrainBlobOutlineEnabled: false,
   terrainBlobOutlineColor: '#000000',
   terrainBlobOutlineWidth: 1,
@@ -232,7 +223,6 @@ export const createTerrainSlice = (set: Set, get: () => MapStore): TerrainSlice 
   terrainTextureOpacities: {},
   terrainTextureTintColors: {},
   terrainTextureTintOpacities: {},
-  terrainTextureShadeRanges: {},
   terrainTextureFile: {},
   terrainTextureEnabled: {},
   terrainBlobOverrides: {},
@@ -861,6 +851,30 @@ export const createTerrainSlice = (set: Set, get: () => MapStore): TerrainSlice 
     set({ generatedHexes: updated })
   },
 
+  batchOverrideHexTerrain: (ops) => {
+    if (!ops.length) return
+    const { generatedHexes } = get()
+    const overrideMap = new Map(ops.map(op => [`${op.q},${op.r}`, op.terrain]))
+    const updated = generatedHexes.map((h) => {
+      const terrain = overrideMap.get(`${h.q},${h.r}`)
+      if (terrain === undefined) return h
+      const terrains = terrain === 'clear' ? [] : [terrain]
+      return { ...h, terrain, terrains, backgroundTerrain: undefined, manual_override: true }
+    })
+    set({ generatedHexes: updated })
+  },
+
+  batchOverrideHexBackground: (ops) => {
+    if (!ops.length) return
+    const { generatedHexes } = get()
+    const overrideMap = new Map(ops.map(op => [`${op.q},${op.r}`, op.terrain]))
+    const updated = generatedHexes.map((h) => {
+      if (!overrideMap.has(`${h.q},${h.r}`)) return h
+      return { ...h, backgroundTerrain: overrideMap.get(`${h.q},${h.r}`), manual_override: true }
+    })
+    set({ generatedHexes: updated })
+  },
+
   addHexTerrainLayer: (q, r, terrain) => {
     if (terrain === 'clear') return
     const { generatedHexes } = get()
@@ -909,12 +923,9 @@ export const createTerrainSlice = (set: Set, get: () => MapStore): TerrainSlice 
   setTerrainBlobLobeAmp: (v) => set({ terrainBlobLobeAmp: v }),
   setTerrainBlobLobeThreshold: (v) => set({ terrainBlobLobeThreshold: v }),
   setTerrainBlobLobeDirection: (v) => set({ terrainBlobLobeDirection: v }),
-  setTerrainBlobSimplify: (v) => set({ terrainBlobSimplify: v }),
   setTerrainBlobTopoStyle: (v) => set({ terrainBlobTopoStyle: v }),
   setTerrainBlobSplatDensity: (v) => set({ terrainBlobSplatDensity: v }),
   setTerrainBlobSplatSize: (v) => set({ terrainBlobSplatSize: v }),
-  setTerrainBlobHoleDensity: (v) => set({ terrainBlobHoleDensity: v }),
-  setTerrainBlobHoleSize: (v) => set({ terrainBlobHoleSize: v }),
   setTerrainBlobOutlineEnabled: (v) => set({ terrainBlobOutlineEnabled: v }),
   setTerrainBlobOutlineColor: (v) => set({ terrainBlobOutlineColor: v }),
   setTerrainBlobOutlineWidth: (v) => set({ terrainBlobOutlineWidth: v }),
@@ -948,7 +959,6 @@ export const createTerrainSlice = (set: Set, get: () => MapStore): TerrainSlice 
   setTerrainTextureOpacity: (terrain, opacity) => set((s) => ({ terrainTextureOpacities: { ...s.terrainTextureOpacities, [terrain]: opacity } })),
   setTerrainTextureTintColor: (terrain, color) => set((s) => ({ terrainTextureTintColors: { ...s.terrainTextureTintColors, [terrain]: color } })),
   setTerrainTextureTintOpacity: (terrain, opacity) => set((s) => ({ terrainTextureTintOpacities: { ...s.terrainTextureTintOpacities, [terrain]: opacity } })),
-  setTerrainTextureShadeRange: (terrain, range) => set((s) => ({ terrainTextureShadeRanges: { ...s.terrainTextureShadeRanges, [terrain]: range } })),
   setTerrainTextureFile: (terrain, fileId) => set((s) => ({ terrainTextureFile: { ...s.terrainTextureFile, [terrain]: fileId } })),
   setTerrainTextureEnabled: (terrain, v) => set((s) => ({ terrainTextureEnabled: { ...s.terrainTextureEnabled, [terrain]: v } })),
 

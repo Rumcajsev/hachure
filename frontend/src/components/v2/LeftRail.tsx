@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { useTheme } from '../../context/ThemeContext'
+import { useMapStore } from '../../store/mapStore'
 import { TerrainSidebarV3 } from './TerrainSidebarV3'
 import { RoadsSidebarV3 } from './RoadsSidebarV3'
 import { RiversSidebarV3 } from './RiversSidebarV3'
@@ -135,11 +136,17 @@ function RailBtn({ label, icon, active, onClick }: {
 
 export function LeftRail() {
   const t = useTheme()
-  const [activeTool, setActiveTool] = useState<RailTool>('hand')
+  const { activeTool: storeActiveTool, setActiveTool: storeSetActiveTool } = useMapStore()
   const [activePanel, setActivePanel] = useState<RailPanel | null>(null)
 
+  const activeRailTool: RailTool | null =
+    storeActiveTool.type === 'none' ? 'hand'
+    : storeActiveTool.type === 'select' ? 'select'
+    : null
+
   const handleToolClick = (id: RailTool) => {
-    setActiveTool(id)
+    if (id === 'hand') storeSetActiveTool({ type: 'none' })
+    else if (id === 'select') storeSetActiveTool({ type: 'select' })
   }
 
   const handlePanelClick = (id: RailPanel) => {
@@ -177,7 +184,7 @@ export function LeftRail() {
               key={id}
               label={label}
               icon={icon}
-              active={activeTool === id}
+              active={activeRailTool === id}
               onClick={() => handleToolClick(id)}
             />
           ))}
