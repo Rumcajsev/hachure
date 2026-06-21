@@ -2131,7 +2131,7 @@ terrainTextureFileRef.current = terrainTextureFile
       if (e.button !== 1 && e.button !== 0) return
       if (e.button === 0 && (e.target as HTMLElement).tagName !== 'CANVAS') return
       if (e.button === 0 && (terrainPaintModeRef.current || elevationPaintModeRef.current || roadPaintModeRef.current || railPaintModeRef.current || riverEditModeRef.current || activeToolRef.current.type === 'hex-mask' || activeToolRef.current.type === 'mega-hex-origin' || activeToolRef.current.type === 'align-image' || activeToolRef.current.type === 'blob-mask')) return
-      if (e.button === 0 && activePanelRef.current === 'highlights' && (highlightPaintModeRef.current || highlightLineEraserRef.current)) return
+      if (e.button === 0 && (highlightPaintModeRef.current || highlightLineEraserRef.current)) return
       if (e.button === 0 && draggingCpKeyRef.current) return
       e.preventDefault()
       isPanningRef.current = true
@@ -2487,7 +2487,6 @@ terrainTextureFileRef.current = terrainTextureFile
   const edgeDragRef = useRef<{ mode: 'add' | 'remove'; painted: Set<string> } | null>(null)
   const isEdgePaintActive = useCallback((): 'highlight' | 'river' | false => {
     if (riverEditModeRef.current && !riverSelectModeRef.current) return 'river'
-    if (activePanelRef.current !== 'highlights') return false
     if (!highlightPaintModeRef.current) return false
     const hlId = activeHighlightIdRef.current
     if (!hlId) return false

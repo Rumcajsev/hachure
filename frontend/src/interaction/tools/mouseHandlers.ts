@@ -259,7 +259,7 @@ export function handleMouseMove(e: ME, refs: MouseHandlerRefs): void {
   }
 
   // Icon-place snap
-  if (iconPlaceModeRef.current && activePanelRef.current === 'highlights') {
+  if (iconPlaceModeRef.current) {
     const logical = clientToLogicalRef.current(e.clientX, e.clientY)
     if (logical) {
       const { lx, ly, cssW, cssH } = logical
@@ -292,7 +292,7 @@ export function handleMouseMove(e: ME, refs: MouseHandlerRefs): void {
   }
 
   // Label-place snap
-  if (activeToolRef.current.type === 'label-place' && activePanelRef.current === 'highlights') {
+  if (activeToolRef.current.type === 'label-place') {
     const logical = clientToLogicalRef.current(e.clientX, e.clientY)
     if (logical) {
       const { lx, ly, cssW, cssH } = logical
@@ -535,7 +535,7 @@ export function handleClick(e: MEShift, refs: MouseHandlerRefs): void {
   }
 
   // Highlights panel — icon/label place/erase
-  if (activePanelRef.current === 'highlights') {
+  if (activeToolRef.current.type === 'highlight-paint' || activeToolRef.current.type === 'highlight-erase' || activeToolRef.current.type === 'highlight-erase-any' || activeToolRef.current.type === 'icon-place' || activeToolRef.current.type === 'label-place' || activeToolRef.current.type === 'label-erase') {
     const tool = activeToolRef.current
     if (tool.type === 'icon-place') {
       const overlayId = activeIconOverlayIdRef.current
@@ -619,7 +619,7 @@ export function handleClick(e: MEShift, refs: MouseHandlerRefs): void {
     if (!hex.partial && !inMargin(verts)) continue
     if (!pointInPolygon(lx, ly, verts)) continue
 
-    if (activePanelRef.current === 'highlights') {
+    if (activeToolRef.current.type === 'highlight-paint' || activeToolRef.current.type === 'highlight-erase' || activeToolRef.current.type === 'highlight-erase-any' || activeToolRef.current.type === 'icon-place' || activeToolRef.current.type === 'label-place' || activeToolRef.current.type === 'label-erase') {
       const tool = activeToolRef.current
       if (tool.type === 'highlight-paint') {
         const hlId = activeHighlightIdRef.current
@@ -740,7 +740,7 @@ export function handleMouseDown(e: MEDown, refs: MouseHandlerRefs): void {
   }
 
   // Label drag — detect mousedown over placed label in label-place mode
-  if (activeToolRef.current.type === 'label-place' && activePanelRef.current === 'highlights') {
+  if (activeToolRef.current.type === 'label-place') {
     const logical = clientToLogicalRef.current(e.clientX, e.clientY)
     if (logical) {
       const { lx, ly, cssW, cssH } = logical

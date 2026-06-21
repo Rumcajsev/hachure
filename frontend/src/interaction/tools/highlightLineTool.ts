@@ -86,7 +86,6 @@ export function attachHighlightLineHandlers(el: HTMLElement, refs: HighlightLine
     if (!hlId) return
     const hl = highlightsRef.current.find(h => h.id === hlId)
     if (hl?.mode !== 'line') return
-    if (activePanelRef.current !== 'highlights') return
     const isEraser = highlightLineEraserRef.current
     if (!isEraser && !highlightPaintModeRef.current) return
     if ((e.target as HTMLElement).tagName !== 'CANVAS') return
