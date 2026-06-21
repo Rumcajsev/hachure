@@ -110,6 +110,67 @@ export function getRecent(n = RING_SIZE): DrawFrameRecord[] {
   return out
 }
 
+export interface DrawPerfState {
+  frames: number
+  fps: number
+  lastSec: number
+}
+
+export interface FrameTimings {
+  t0: number
+  tEnd: number
+  perfState: DrawPerfState
+  rebuiltLayers: string[]
+  dirtySnap: { rivers: boolean; bridges: boolean }
+  sectionMs: { setup: number; terrain: number; rivers: number; roads: number; settlements: number }
+  blitMs: DrawFrameRecord['blitMs']
+  roadBreakdown: {
+    buildings: number; roads: number; bridges: number; handles: number
+    liveDataMs: string; rebuildMs: string; blitMs: string
+  }
+  pw: number; dpr: number; offZoom: number; zoom: number
+}
+
+export function finalizeDrawFrame(t: FrameTimings): void {
+  const total = t.tEnd - t.t0
+
+  // FPS counter (mutates perfState in place — caller holds the ref)
+  t.perfState.frames++
+  if (t.tEnd - t.perfState.lastSec >= 1000) {
+    t.perfState.fps = t.perfState.frames
+    t.perfState.frames = 0
+    t.perfState.lastSec = t.tEnd
+  }
+
+  performance.measure('ig2:draw', { start: t.t0, end: t.tEnd, detail: { total } })
+
+  recordDrawFrame({
+    t: t.t0, ms: total,
+    rebuiltLayers: t.rebuiltLayers,
+    riverChainRebuilt: t.dirtySnap.rivers,
+    bridgeChainRebuilt: t.dirtySnap.bridges,
+    sectionMs: t.sectionMs,
+    blitMs: t.blitMs,
+  })
+
+  if (total > 8) {
+    const { terrain, rivers, roads, settlements } = t.sectionMs
+    const dirty = Object.entries(t.dirtySnap).filter(([, v]) => v).map(([k]) => k).join('+') || 'none'
+    const offW = Math.ceil(t.pw * t.dpr * t.offZoom), offH = Math.ceil(t.pw * t.dpr * t.offZoom)
+    const { buildings, roads: rRoads, bridges, handles, liveDataMs, rebuildMs, blitMs: rBlit } = t.roadBreakdown
+    console.warn(
+      `[draw] ${total.toFixed(1)}ms (${t.perfState.fps}fps)` +
+      `  rebuilt=[${t.rebuiltLayers.join(',') || 'none'}]` +
+      `  terrain=${terrain.toFixed(1)} rivers=${rivers.toFixed(1)}` +
+      `  roads=${roads.toFixed(1)}[bldg=${buildings.toFixed(1)} rdlayer=${rRoads.toFixed(1)} bridges=${bridges.toFixed(1)} handles=${handles.toFixed(1)}]` +
+      `  settle=${settlements.toFixed(1)}` +
+      `  dirty=${dirty}  targetCanvas=${offW}×${offH}` +
+      `  zoom=${t.zoom.toFixed(2)} offZoom=${t.offZoom.toFixed(2)}` +
+      `  roads_breakdown: liveData=${liveDataMs} rebuild=${rebuildMs} blit=${rBlit}`
+    )
+  }
+}
+
 if (typeof window !== 'undefined') {
   ;(window as any).__ig2perf = {
     /** Last N draw frame records (default: all 120). */

@@ -126,3 +126,38 @@ export function getLabelBoxBounds(
   const { bw, bh } = measureBox(ctx, text, overlay.textSize)
   return { bx: x - bw / 2, by: y - bh / 2, bw, bh }
 }
+
+type LabelBBox = { cx: number; cy: number; angle: number; hw: number; hh: number }
+
+export interface LabelDragHandlesParams {
+  ctx: CanvasRenderingContext2D
+  active: boolean
+  bboxCache: Record<string, LabelBBox>
+  hoveredLabelId: string | null
+  draggingLabelId: string | null
+  zoom: number
+}
+
+export function _drawLabelDragHandles(p: LabelDragHandlesParams): void {
+  if (!p.active) return
+  const { ctx, bboxCache, hoveredLabelId, draggingLabelId, zoom } = p
+  ctx.save()
+  for (const [id, bbox] of Object.entries(bboxCache)) {
+    const isHovered = id === hoveredLabelId
+    const isDragging = id === draggingLabelId
+    ctx.save()
+    ctx.translate(bbox.cx, bbox.cy)
+    ctx.rotate(bbox.angle)
+    ctx.strokeStyle = isDragging ? '#e06030' : isHovered ? '#4a90d9' : 'rgba(80,120,200,0.6)'
+    ctx.lineWidth = (isDragging || isHovered ? 1.5 : 1) / zoom
+    ctx.setLineDash(isDragging ? [] : [3 / zoom, 2 / zoom])
+    ctx.strokeRect(-bbox.hw, -bbox.hh, bbox.hw * 2, bbox.hh * 2)
+    ctx.setLineDash([])
+    ctx.fillStyle = isDragging ? '#e06030' : isHovered ? '#4a90d9' : 'rgba(80,120,200,0.7)'
+    ctx.beginPath()
+    ctx.arc(0, 0, 2.5 / zoom, 0, Math.PI * 2)
+    ctx.fill()
+    ctx.restore()
+  }
+  ctx.restore()
+}

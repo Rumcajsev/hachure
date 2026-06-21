@@ -23,7 +23,8 @@ import type { RailBaseData } from '../lib/railChains'
 const EMPTY_RAIL_DATA: RailBaseData = { chains: [], controlPoints: [], interHexDist: 0 }
 import { drawHighlights as _drawHighlights } from '../lib/drawHighlights'
 import { drawIcons as _drawIcons } from '../lib/drawIcons'
-import { drawLabels as _drawLabels, getLabelBoxBounds } from '../lib/drawLabels'
+import { drawLabels as _drawLabels, getLabelBoxBounds, _drawLabelDragHandles } from '../lib/drawLabels'
+import { _drawWorldcoverOverlay, _drawRawOsmRoadsOverlay } from '../lib/drawDebugOverlays'
 import { drawRoadsAndRails as _drawRoadsAndRails } from '../lib/drawRoadsRails'
 
 import { drawSettlements as _drawSettlements } from '../lib/drawSettlements'
@@ -69,6 +70,8 @@ import { detectBridges } from '../lib/detectBridges'
 import { drawBridges as _drawBridges } from '../lib/drawBridges'
 import { drawMegaHexGrid as _drawMegaHexGrid } from '../lib/drawMegaHexGrid'
 import { drawElevationDebug as _drawElevationDebug, drawElevationClassOverlay as _drawElevationClassOverlay } from '../lib/drawElevationDebug'
+import { _drawTerrainPaintOverlay, _drawElevationPaintOverlay } from '../lib/drawPaintOverlays'
+import { _drawBlobHandleOverlay, _drawBlobMaskPreview } from '../lib/drawBlobHandleOverlay'
 import { liveClassParamsRef, requestDraw } from '../lib/liveClassParamsRef'
 import { drawMapImageOverlay } from '../lib/drawMapImageOverlay'
 import type { BridgePoint } from '../lib/detectBridges'
@@ -76,7 +79,7 @@ import { drawRoadHandles as _drawRoadHandles, drawRailHandles as _drawRailHandle
 import { drawPaperBackground as _drawPaperBackground, drawPaperMargin as _drawPaperMargin } from '../lib/drawPaperChrome'
 import { shouldSuppressShortcut } from '../lib/keyboard'
 import { resolveLabels } from '../lib/labelPresets'
-import { recordDrawFrame } from '../lib/perfMonitor'
+import { finalizeDrawFrame } from '../lib/perfMonitor'
 
 const OSM_OVERLAY_STYLE: maplibregl.StyleSpecification = {
   version: 8,
@@ -2007,31 +2010,17 @@ terrainTextureFileRef.current = terrainTextureFile
       _blitTerrain = performance.now() - _b0
     }
 
-    // WorldCover raw overlay — screen only, semi-transparent, never exported.
-    // The raster covers a buffered (10%) axis-aligned lat/lon bbox; we project
-    // its four geographic corners to canvas space and use setTransform so the
-    // image aligns correctly even when the map has a non-zero bearing.
-    if (!isExport && showWorldcoverOverlayRef.current && worldcoverImageElementRef.current && meta) {
-      const img = worldcoverImageElementRef.current
-      const wcBbox = computeWorldcoverBbox(meta)
-      if (wcBbox) {
-        const { minLon, minLat, maxLon, maxLat } = wcBbox
-        // image (0,0) = top-left = (minLon, maxLat); image (W,0) = (maxLon, maxLat); image (0,H) = (minLon, minLat)
-        const tl = projectToCanvas(minLon, maxLat, meta, pw, ph, 0, 0)
-        const tr = projectToCanvas(maxLon, maxLat, meta, pw, ph, 0, 0)
-        const bl = projectToCanvas(minLon, minLat, meta, pw, ph, 0, 0)
-        const iw = img.naturalWidth, ih = img.naturalHeight
-        ctx.save()
-        ctx.globalAlpha = 0.55
-        ctx.setTransform(
-          (tr[0] - tl[0]) / iw, (tr[1] - tl[1]) / iw,
-          (bl[0] - tl[0]) / ih, (bl[1] - tl[1]) / ih,
-          tl[0], tl[1],
-        )
-        ctx.drawImage(img, 0, 0, iw, ih)
-        ctx.restore()
-      }
+    if (!isExport && meta) {
+      _drawWorldcoverOverlay({
+        ctx,
+        show: showWorldcoverOverlayRef.current,
+        image: worldcoverImageElementRef.current,
+        meta,
+        pw, ph,
+        computeWcBbox: computeWorldcoverBbox,
+      })
     }
+
 
     // Historical map image overlay — screen only, drawn after terrain so hex borders render on top
     if (!isExport && mapImageElementRef.current) {
@@ -2427,36 +2416,14 @@ terrainTextureFileRef.current = terrainTextureFile
         } satisfies RoadsInput)
       }
 
-      // Debug: raw OSM way overlay (screen-only, never exported)
-      if (!isExport && showRawOsmRoadsRef.current) {
-        ctx.save()
-        ctx.beginPath()
-        ctx.rect(0, 0, pw, ph)
-        ctx.clip()
-        if (showRawOsmRoadsRef.current) {
-          const tierColor = ['rgba(220,50,50,0.9)', 'rgba(220,140,30,0.9)', 'rgba(180,180,30,0.85)']
-          const tierWidth = [2.5, 1.5, 1]
-          const hwTier: Record<string, number> = {
-            motorway: 0, motorway_link: 0, trunk: 0, trunk_link: 0,
-            primary: 1, primary_link: 1,
-            secondary: 2, secondary_link: 2, tertiary: 2, tertiary_link: 2,
-          }
-          for (const way of rawRoadWaysRef.current) {
-            if (way.coords.length < 2) continue
-            const tier = hwTier[way.highway] ?? 2
-            ctx.beginPath()
-            ctx.strokeStyle = tierColor[tier]
-            ctx.lineWidth = tierWidth[tier]
-            const [x0, y0] = project(way.coords[0][0], way.coords[0][1])
-            ctx.moveTo(x0, y0)
-            for (let i = 1; i < way.coords.length; i++) {
-              const [x, y] = project(way.coords[i][0], way.coords[i][1])
-              ctx.lineTo(x, y)
-            }
-            ctx.stroke()
-          }
-        }
-        ctx.restore()
+      if (!isExport && meta) {
+        _drawRawOsmRoadsOverlay({
+          ctx,
+          show: showRawOsmRoadsRef.current,
+          ways: rawRoadWaysRef.current,
+          meta,
+          pw, ph,
+        })
       }
 
     }
@@ -2537,159 +2504,27 @@ terrainTextureFileRef.current = terrainTextureFile
       })
     }
 
-    // Blob handle editing overlay
-    if (!isExport && blobEditModeRef.current) {
-      const activeId = activeBlobEditIdRef.current
-      const hoveredId = hoveredBlobCkRef.current
-      const handleData = blobHandleDataRef.current
-      const live = blobDragLiveRef.current
-      const zoom = zoomRef.current ?? 1
-      const handleR = Math.max(2, 3 / zoom)
-      const lw = 1 / zoom
-      ctx.save()
-
-      // Resolve live canvas position for a handle — overrides committed position during drag
-      const liveCx = (ck: string, edgeKey: string, cx: number) => {
-        if (!live || live.ck !== ck) return cx
-        return live.handles.find(h => h.edgeKey === edgeKey)?.cx ?? cx
-      }
-      const liveCy = (ck: string, edgeKey: string, cy: number) => {
-        if (!live || live.ck !== ck) return cy
-        return live.handles.find(h => h.edgeKey === edgeKey)?.cy ?? cy
-      }
-
-      // Helper: stroke a blob's simplified polygon outline using handle positions
-      const strokeBlobOutline = (ck: string, handles: { edgeKey: string; cx: number; cy: number }[], sPolys: [number, number][][]) => {
-        let hIdx = 0
-        for (const poly of sPolys) {
-          const polyHandles = handles.slice(hIdx, hIdx + poly.length)
-          hIdx += poly.length
-          if (polyHandles.length < 3) continue
-          ctx.beginPath()
-          ctx.moveTo(liveCx(ck, polyHandles[0].edgeKey, polyHandles[0].cx), liveCy(ck, polyHandles[0].edgeKey, polyHandles[0].cy))
-          for (let i = 1; i < polyHandles.length; i++) ctx.lineTo(liveCx(ck, polyHandles[i].edgeKey, polyHandles[i].cx), liveCy(ck, polyHandles[i].edgeKey, polyHandles[i].cy))
-          ctx.closePath()
-          ctx.stroke()
-        }
-      }
-
-      // Hover highlight — light glow on the blob under the cursor (when not yet selected)
-      if (hoveredId && hoveredId !== activeId) {
-        const { handles, simplifiedPolys: sPolys } = handleData.get(hoveredId) ?? {}
-        if (handles && sPolys && sPolys.length > 0) {
-          ctx.save()
-          ctx.lineJoin = 'round'
-          ctx.strokeStyle = 'rgba(255,255,255,0.55)'
-          ctx.lineWidth = lw + 2
-          ctx.setLineDash([])
-          strokeBlobOutline(hoveredId, handles, sPolys)
-          ctx.strokeStyle = 'rgba(100,180,255,0.35)'
-          ctx.lineWidth = lw + 6
-          strokeBlobOutline(hoveredId, handles, sPolys)
-          ctx.restore()
-        }
-      }
-
-      // Draw dashed simplified polygon for active blob — using live handle positions
-      // so it updates as handles are dragged
-      if (activeId) {
-        const { handles, simplifiedPolys: sPolys } = handleData.get(activeId) ?? {}
-        if (handles && sPolys && sPolys.length > 0) {
-          ctx.save()
-          ctx.lineJoin = 'round'
-          ctx.strokeStyle = 'rgba(0,0,0,0.5)'
-          ctx.lineWidth = (lw + 1.5)
-          ctx.setLineDash([4 / zoom, 4 / zoom])
-          strokeBlobOutline(activeId, handles, sPolys)
-          ctx.strokeStyle = 'rgba(255,255,255,0.9)'
-          ctx.lineWidth = lw + 0.5
-          strokeBlobOutline(activeId, handles, sPolys)
-          ctx.restore()
-        }
-      }
-
-      // Draw handles — for the active blob, or the hovered blob when nothing is selected
-      const handleTargetId = activeId ?? hoveredId
-      if (handleTargetId) {
-        const { handles: targetHandles, simplifiedPolys: targetSPolys } = handleData.get(handleTargetId) ?? {}
-        if (targetHandles && targetSPolys) {
-          const hovEdge = hoveredEdgeHandleRef.current
-
-          // Hovered edge segment highlight — subtle bright stroke over just that edge
-          if (hovEdge?.ck === handleTargetId) {
-            const h0 = targetHandles.find(h => h.edgeKey === hovEdge.v0Key)
-            const h1 = targetHandles.find(h => h.edgeKey === hovEdge.v1Key)
-            if (h0 && h1) {
-              const x0 = liveCx(handleTargetId, h0.edgeKey, h0.cx), y0 = liveCy(handleTargetId, h0.edgeKey, h0.cy)
-              const x1 = liveCx(handleTargetId, h1.edgeKey, h1.cx), y1 = liveCy(handleTargetId, h1.edgeKey, h1.cy)
-              ctx.save()
-              ctx.lineCap = 'round'
-              ctx.lineWidth = lw + 4
-              ctx.strokeStyle = 'rgba(100,200,255,0.45)'
-              ctx.beginPath(); ctx.moveTo(x0, y0); ctx.lineTo(x1, y1); ctx.stroke()
-              ctx.lineWidth = lw + 1.5
-              ctx.strokeStyle = 'rgba(180,230,255,0.9)'
-              ctx.beginPath(); ctx.moveTo(x0, y0); ctx.lineTo(x1, y1); ctx.stroke()
-              ctx.restore()
-            }
-          }
-
-          // Vertex handles
-          const hovVertex = hoveredVertexHandleRef.current
-          for (const { edgeKey, cx, cy } of targetHandles) {
-            const hx = liveCx(handleTargetId, edgeKey, cx)
-            const hy = liveCy(handleTargetId, edgeKey, cy)
-            const hasOverride = !!(blobHandleOverridesRef.current[handleTargetId]?.[edgeKey])
-              || !!(live?.ck === handleTargetId && live.handles.some(h => h.edgeKey === edgeKey))
-            const isHovVertex = hovVertex?.ck === handleTargetId && hovVertex.edgeKey === edgeKey
-            if (isHovVertex) {
-              ctx.beginPath()
-              ctx.arc(hx, hy, handleR + 3 / zoom, 0, Math.PI * 2)
-              ctx.lineWidth = (lw + 1.5) / zoom
-              ctx.strokeStyle = 'rgba(100,200,255,0.5)'
-              ctx.stroke()
-              ctx.beginPath()
-              ctx.arc(hx, hy, handleR + 1.5 / zoom, 0, Math.PI * 2)
-              ctx.lineWidth = lw
-              ctx.strokeStyle = 'rgba(180,230,255,0.95)'
-              ctx.stroke()
-            }
-            ctx.beginPath()
-            ctx.arc(hx, hy, handleR, 0, Math.PI * 2)
-            ctx.fillStyle = hasOverride ? 'rgba(255,180,80,0.9)' : 'rgba(255,255,255,0.75)'
-            ctx.fill()
-            ctx.lineWidth = lw
-            ctx.strokeStyle = isHovVertex ? 'rgba(100,180,255,0.9)' : 'rgba(80,80,80,0.6)'
-            ctx.stroke()
-          }
-        }
-      }
-      ctx.restore()
-    }
-
-    // Blob mask freehand stroke preview
-    // pts are in logical canvas space; ctx is in paper-local space (after translate(px,py) and scale(zoom))
-    if (!isExport && blobMaskDrawingRef.current) {
-      const pts = blobMaskStrokeRef.current
-      const tool = activeToolRef.current
-      if (pts.length >= 2 && tool.type === 'blob-mask') {
-        const isSubtract = tool.mode === 'subtract'
-        const iz = 1 / zoom
-        ctx.save()
-        ctx.strokeStyle = isSubtract ? 'rgba(255,80,80,0.85)' : 'rgba(80,220,120,0.85)'
-        ctx.fillStyle = isSubtract ? 'rgba(255,80,80,0.1)' : 'rgba(80,220,120,0.1)'
-        ctx.lineWidth = 2 * iz
-        ctx.lineCap = 'round'
-        ctx.lineJoin = 'round'
-        ctx.setLineDash([6 * iz, 4 * iz])
-        ctx.beginPath()
-        ctx.moveTo(pts[0][0] - px, pts[0][1] - py)
-        for (let i = 1; i < pts.length; i++) ctx.lineTo(pts[i][0] - px, pts[i][1] - py)
-        ctx.closePath()
-        ctx.fill()
-        ctx.stroke()
-        ctx.restore()
-      }
+    if (!isExport) {
+      _drawBlobHandleOverlay({
+        ctx,
+        blobEditMode: blobEditModeRef.current,
+        activeBlobEditId: activeBlobEditIdRef.current,
+        hoveredBlobCk: hoveredBlobCkRef.current,
+        blobHandleData: blobHandleDataRef.current,
+        blobDragLive: blobDragLiveRef.current,
+        blobHandleOverrides: blobHandleOverridesRef.current,
+        hoveredEdgeHandle: hoveredEdgeHandleRef.current,
+        hoveredVertexHandle: hoveredVertexHandleRef.current,
+        zoom,
+      })
+      const _blobMaskTool = activeToolRef.current
+      _drawBlobMaskPreview({
+        ctx,
+        blobMaskDrawing: blobMaskDrawingRef.current,
+        blobMaskStroke: blobMaskStrokeRef.current,
+        toolMode: _blobMaskTool.type === 'blob-mask' ? (_blobMaskTool as { mode: string }).mode : null,
+        px, py, zoom,
+      })
     }
 
     const _tRHandles0 = performance.now()
@@ -2754,115 +2589,25 @@ terrainTextureFileRef.current = terrainTextureFile
       _drawExcludedHexOverlay(ctx, projected, excludedSet, mapBgColorRef.current)
     }
 
-    // Elevation paint hover highlight + stroke trail
-    if (!isExport && elevationPaintModeRef.current) {
-      const brushColor: Record<string, string> = { flat: '#3a7a3a', hills: '#7a7a30', mountains: '#7a4a20' }
-      const color = brushColor[elevationPaintBrushRef.current] ?? '#888888'
-
-      if (strokeTrailRef.current.size > 0) {
-        ctx.save()
-        ctx.fillStyle = color
-        ctx.globalAlpha = 0.35
-        for (const target of strokeTrailRef.current.values()) {
-          if (target.type !== 'hex') continue
-          const { verts } = target
-          ctx.beginPath()
-          ctx.moveTo(verts[0][0], verts[0][1])
-          for (let i = 1; i < verts.length; i++) ctx.lineTo(verts[i][0], verts[i][1])
-          ctx.closePath()
-          ctx.fill()
-        }
-        ctx.restore()
-      }
-
-      const hoverTarget = paintHoverTargetRef.current
-      if (hoverTarget?.type === 'hex') {
-        ctx.save()
-        ctx.globalAlpha = 0.45
-        ctx.fillStyle = color
-        ctx.beginPath()
-        const { verts } = hoverTarget
-        ctx.moveTo(verts[0][0], verts[0][1])
-        for (let i = 1; i < verts.length; i++) ctx.lineTo(verts[i][0], verts[i][1])
-        ctx.closePath()
-        ctx.fill()
-        ctx.restore()
-      }
-    }
-
-    // Paint stroke trail — all hexes/edges touched during the current drag stroke
-    if (!isExport && terrainPaintModeRef.current && strokeTrailRef.current.size > 0) {
-      const brush = terrainPaintBrushRef.current
-      const rawColor = terrainColorsRef.current[brush] ?? TERRAIN_COLORS[brush] ?? '#888888'
-      ctx.save()
-      for (const target of strokeTrailRef.current.values()) {
-        if (target.type === 'hex') {
-          ctx.globalAlpha = 0.35
-          ctx.fillStyle = rawColor
-          ctx.beginPath()
-          const { verts } = target
-          ctx.moveTo(verts[0][0], verts[0][1])
-          for (let i = 1; i < verts.length; i++) ctx.lineTo(verts[i][0], verts[i][1])
-          ctx.closePath()
-          ctx.fill()
-        } else {
-          ctx.globalAlpha = 0.55
-          ctx.strokeStyle = rawColor
-          ctx.lineWidth = R * 0.40
-          ctx.lineCap = 'round'
-          ctx.beginPath()
-          ctx.moveTo(target.p1[0], target.p1[1])
-          ctx.lineTo(target.p2[0], target.p2[1])
-          ctx.stroke()
-        }
-      }
-      ctx.restore()
-    }
-
-    // Paint hover highlight (screen only — shows what clicking would paint)
-    if (!isExport && terrainPaintModeRef.current) {
-      const hoverTarget = paintHoverTargetRef.current
-      if (hoverTarget) {
-        const brush = terrainPaintBrushRef.current
-        const rawColor = terrainColorsRef.current[brush] ?? TERRAIN_COLORS[brush] ?? '#888888'
-        ctx.save()
-        if (hoverTarget.type === 'hex') {
-          const { verts } = hoverTarget
-          const isBgMode = terrainBackgroundPaintEnabledRef.current || bgPaintHoldRef.current
-          if (isBgMode) {
-            const cx = verts.reduce((s, v) => s + v[0], 0) / verts.length
-            const cy = verts.reduce((s, v) => s + v[1], 0) / verts.length
-            const inset = 0.82
-            const iv = verts.map(v => [cx + (v[0] - cx) * inset, cy + (v[1] - cy) * inset] as [number, number])
-            ctx.globalAlpha = 0.70
-            ctx.strokeStyle = rawColor
-            ctx.lineWidth = R * 0.10
-            ctx.beginPath()
-            ctx.moveTo(iv[0][0], iv[0][1])
-            for (let i = 1; i < iv.length; i++) ctx.lineTo(iv[i][0], iv[i][1])
-            ctx.closePath()
-            ctx.stroke()
-          } else {
-            ctx.globalAlpha = 0.40
-            ctx.fillStyle = rawColor
-            ctx.beginPath()
-            ctx.moveTo(verts[0][0], verts[0][1])
-            for (let i = 1; i < verts.length; i++) ctx.lineTo(verts[i][0], verts[i][1])
-            ctx.closePath()
-            ctx.fill()
-          }
-        } else {
-          ctx.globalAlpha = 0.70
-          ctx.strokeStyle = rawColor
-          ctx.lineWidth = R * 0.40
-          ctx.lineCap = 'round'
-          ctx.beginPath()
-          ctx.moveTo(hoverTarget.p1[0], hoverTarget.p1[1])
-          ctx.lineTo(hoverTarget.p2[0], hoverTarget.p2[1])
-          ctx.stroke()
-        }
-        ctx.restore()
-      }
+    if (!isExport) {
+      _drawElevationPaintOverlay({
+        ctx,
+        elevationPaintMode: elevationPaintModeRef.current,
+        elevationPaintBrush: elevationPaintBrushRef.current,
+        strokeTrail: strokeTrailRef.current,
+        paintHoverTarget: paintHoverTargetRef.current,
+      })
+      _drawTerrainPaintOverlay({
+        ctx,
+        terrainPaintMode: terrainPaintModeRef.current,
+        terrainPaintBrush: terrainPaintBrushRef.current,
+        strokeTrail: strokeTrailRef.current,
+        paintHoverTarget: paintHoverTargetRef.current,
+        terrainColors: terrainColorsRef.current,
+        terrainBackgroundPaintEnabled: terrainBackgroundPaintEnabledRef.current,
+        bgPaintHold: bgPaintHoldRef.current,
+        R,
+      })
     }
 
 
@@ -2890,66 +2635,33 @@ terrainTextureFileRef.current = terrainTextureFile
         pageGrid: pageGridRef.current,
       })
 
-      // Label-drag handles — drawn on top of everything while the tool is active
-      if (activeToolRef.current.type === 'label-drag') {
-        ctx.save()
-        const cache = labelBBoxCacheRef.current
-        for (const [id, bbox] of Object.entries(cache)) {
-          const isHovered = id === hoveredLabelIdRef.current
-          const isDragging = id === labelDragStateRef.current?.id
-          ctx.save()
-          ctx.translate(bbox.cx, bbox.cy)
-          ctx.rotate(bbox.angle)
-          ctx.strokeStyle = isDragging ? '#e06030' : isHovered ? '#4a90d9' : 'rgba(80,120,200,0.6)'
-          ctx.lineWidth = (isDragging || isHovered ? 1.5 : 1) / zoom
-          ctx.setLineDash(isDragging ? [] : [3 / zoom, 2 / zoom])
-          ctx.strokeRect(-bbox.hw, -bbox.hh, bbox.hw * 2, bbox.hh * 2)
-          ctx.setLineDash([])
-          // Center crosshair dot
-          ctx.fillStyle = isDragging ? '#e06030' : isHovered ? '#4a90d9' : 'rgba(80,120,200,0.7)'
-          ctx.beginPath()
-          ctx.arc(0, 0, 2.5 / zoom, 0, Math.PI * 2)
-          ctx.fill()
-          ctx.restore()
-        }
-        ctx.restore()
-      }
+      _drawLabelDragHandles({
+        ctx,
+        active: activeToolRef.current.type === 'label-drag',
+        bboxCache: labelBBoxCacheRef.current,
+        hoveredLabelId: hoveredLabelIdRef.current,
+        draggingLabelId: labelDragStateRef.current?.id ?? null,
+        zoom,
+      })
     }
 
     ctx.restore() // pan/zoom
     drawOsmHighlightRef.current?.()
     if (!isExport) {
       const _tEnd = performance.now()
-      const total = _tEnd - _t0
-
-      // FPS counter
-      const perf = drawPerfRef.current
-      perf.frames++
-      if (_tEnd - perf.lastSec >= 1000) {
-        perf.fps = perf.frames
-        perf.frames = 0
-        perf.lastSec = _tEnd
-      }
-
-      // Named span for Chrome DevTools Performance recordings
-      performance.measure('ig2:draw', { start: _t0, end: _tEnd, detail: { total } })
-
-      // Collect which LayerCaches actually rebuilt this frame
-      const _rebuiltLayers: string[] = []
-      if (terrainController.lastRebuilt)        _rebuiltLayers.push('terrain')
-      if (hexBorderController.lastRebuilt)          _rebuiltLayers.push('hexBorder')
-      if (riversController.lastRebuilt)         _rebuiltLayers.push('rivers')
-      if (buildingsController.lastRebuilt)      _rebuiltLayers.push('buildings')
-      if (roadsController.lastRebuilt)          _rebuiltLayers.push('roads')
-      if (settlementsController.lastRebuilt)    _rebuiltLayers.push('settlements')
-      if (highlightsController.lastRebuilt)          _rebuiltLayers.push('highlights')
-
-      recordDrawFrame({
-        t: _t0,
-        ms: total,
-        rebuiltLayers: _rebuiltLayers,
-        riverChainRebuilt: _dirtySnap.rivers,
-        bridgeChainRebuilt: _dirtySnap.bridges,
+      finalizeDrawFrame({
+        t0: _t0, tEnd: _tEnd,
+        perfState: drawPerfRef.current,
+        rebuiltLayers: [
+          terrainController.lastRebuilt     && 'terrain',
+          hexBorderController.lastRebuilt   && 'hexBorder',
+          riversController.lastRebuilt      && 'rivers',
+          buildingsController.lastRebuilt   && 'buildings',
+          roadsController.lastRebuilt       && 'roads',
+          settlementsController.lastRebuilt && 'settlements',
+          highlightsController.lastRebuilt  && 'highlights',
+        ].filter(Boolean) as string[],
+        dirtySnap: _dirtySnap,
         sectionMs: {
           setup:       _tTerrain0 - _t0,
           terrain:     _tRivers0 - _tTerrain0,
@@ -2958,36 +2670,20 @@ terrainTextureFileRef.current = terrainTextureFile
           settlements: _tEnd - _tSettlements0,
         },
         blitMs: {
-          terrain:     _blitTerrain,
-          hexBorder:   _blitHexBorder,
-          highlights:  _blitHighlights,
-          rivers:      _blitRivers,
-          buildings:   _blitBuildings,
-          roads:       _blitRoads,
-          settlements: _blitSettlements,
+          terrain: _blitTerrain, hexBorder: _blitHexBorder, highlights: _blitHighlights,
+          rivers: _blitRivers, buildings: _blitBuildings, roads: _blitRoads, settlements: _blitSettlements,
         },
+        roadBreakdown: {
+          buildings: _tRRoads0 - _tRBuildings0,
+          roads:     _tRBridges0 - _tRRoads0,
+          bridges:   _tRHandles0 - _tRBridges0,
+          handles:   _tSettlements0 - _tRHandles0,
+          liveDataMs: _tRRoads1_afterLiveData.t > 0 ? (_tRRoads1_afterLiveData.t - _tRRoads0).toFixed(1) : '?',
+          rebuildMs:  _tRRoads2_beforeBlit.t > 0 ? (_tRRoads2_beforeBlit.t - _tRRoads1_afterLiveData.t).toFixed(1) : '?',
+          blitMs:     _tRRoads2_beforeBlit.t > 0 ? (_tRRoads3_afterBlit.t - _tRRoads2_beforeBlit.t).toFixed(1) : '?',
+        },
+        pw, dpr, offZoom, zoom,
       })
-
-      if (total > 8) {
-        const terrain = _tRivers0 - _tTerrain0
-        const rivers = _tRoads0 - _tRivers0
-        const roads = _tSettlements0 - _tRoads0
-        const settle = _tEnd - _tSettlements0
-        const dirty = Object.entries(_dirtySnap).filter(([, v]) => v).map(([k]) => k).join('+') || 'none'
-        const offW = Math.ceil(pw * dpr * offZoom), offH = Math.ceil(ph * dpr * offZoom)
-        const rBuildings = _tRRoads0 - _tRBuildings0
-        const rRoads = _tRBridges0 - _tRRoads0
-        const rBridges = _tRHandles0 - _tRBridges0
-        const rHandles = _tSettlements0 - _tRHandles0
-        const rLiveData = _tRRoads1_afterLiveData.t > 0 ? (_tRRoads1_afterLiveData.t - _tRRoads0).toFixed(1) : '?'
-        const rBlit = _tRRoads2_beforeBlit.t > 0 ? (_tRRoads3_afterBlit.t - _tRRoads2_beforeBlit.t).toFixed(1) : '?'
-        const rRebuild = _tRRoads2_beforeBlit.t > 0 ? (_tRRoads2_beforeBlit.t - _tRRoads1_afterLiveData.t).toFixed(1) : '?'
-        console.warn(
-          `[draw] ${total.toFixed(1)}ms (${perf.fps}fps)  rebuilt=[${_rebuiltLayers.join(',')||'none'}]  terrain=${terrain.toFixed(1)} rivers=${rivers.toFixed(1)} roads=${roads.toFixed(1)}[bldg=${rBuildings.toFixed(1)} rdlayer=${rRoads.toFixed(1)} bridges=${rBridges.toFixed(1)} handles=${rHandles.toFixed(1)}] settle=${settle.toFixed(1)}` +
-          `  dirty=${dirty}  targetCanvas=${offW}×${offH}  zoom=${zoom.toFixed(2)} offZoom=${offZoom.toFixed(2)}` +
-          `  roads_breakdown: liveData=${rLiveData} rebuild=${rRebuild} blit=${rBlit}`
-        )
-      }
     }
   }, [])
   const drawRef = useRef(draw)
