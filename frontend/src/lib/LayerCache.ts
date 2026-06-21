@@ -1,6 +1,7 @@
 export class LayerCache {
   private canvas: OffscreenCanvas | null = null
   private bitmap: ImageBitmap | null = null
+  private prevBitmap: ImageBitmap | null = null
   private dirty = true
   /** True if the most recent prepare() call triggered a rebuild (false = cache hit). */
   lastRebuilt = false
@@ -23,6 +24,11 @@ export class LayerCache {
       this.lastRebuilt = false
       return { ctx: null!, rebuilt: false }
     }
+
+    // Stash current bitmap as stale fallback — blit() will show it until commitRebuild() swaps in the new one
+    this.prevBitmap?.close()
+    this.prevBitmap = this.bitmap
+    this.bitmap = null
 
     // Need to rebuild: allocate or reuse canvas
     const sizeMatch = this.canvas !== null && this.canvas.width === offW && this.canvas.height === offH
@@ -48,33 +54,37 @@ export class LayerCache {
   // Must be called exactly once per rebuild, after all drawing is complete.
   commitRebuild(): void {
     if (!this.canvas) return
-    this.bitmap?.close()
+    this.prevBitmap?.close()
+    this.prevBitmap = null
     this.bitmap = this.canvas.transferToImageBitmap()
-    this.canvas = null  // free the now-blank canvas GPU backing; bitmap holds all the data
+    this.canvas = null
   }
 
   blit(mainCtx: CanvasRenderingContext2D, dx: number, dy: number, dw: number, dh: number): void {
-    const source = this.bitmap ?? this.canvas
+    const source = this.bitmap ?? this.prevBitmap ?? this.canvas
     if (source) mainCtx.drawImage(source, dx, dy, dw, dh)
   }
 
-  /** The current rasterized content — bitmap if committed, canvas if still drawing, null if never built. */
-  get source(): ImageBitmap | OffscreenCanvas | null { return this.bitmap ?? this.canvas }
+  /** The current rasterized content — newest committed bitmap, stale bitmap during rebuild, or canvas. */
+  get source(): ImageBitmap | OffscreenCanvas | null { return this.bitmap ?? this.prevBitmap ?? this.canvas }
 
   /** Whether the last blit used a pre-rasterized ImageBitmap (true) or raw OffscreenCanvas (false). */
   get hasBitmap(): boolean { return this.bitmap !== null }
 
-  /** RGBA bytes allocated for this layer's live GPU resources (bitmap + canvas if both exist). */
+  /** RGBA bytes allocated for this layer's live GPU resources. */
   get estimatedBytes(): number {
     const bitmapBytes = this.bitmap ? this.bitmap.width * this.bitmap.height * 4 : 0
+    const prevBytes = this.prevBitmap ? this.prevBitmap.width * this.prevBitmap.height * 4 : 0
     const canvasBytes = this.canvas ? this.canvas.width * this.canvas.height * 4 : 0
-    return bitmapBytes + canvasBytes
+    return bitmapBytes + prevBytes + canvasBytes
   }
 
   // Releases all GPU resources and marks dirty so the next prepare() allocates fresh.
   dispose(): void {
     this.bitmap?.close()
+    this.prevBitmap?.close()
     this.bitmap = null
+    this.prevBitmap = null
     this.canvas = null
     this.dirty = true
   }

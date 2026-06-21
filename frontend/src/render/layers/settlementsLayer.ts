@@ -10,6 +10,8 @@ export interface SettlementsInput extends DrawSettlementsParams {
   isExport: boolean
   /** When true, skip rebuild and blit stale bitmap — used after road-paint mouseup. */
   skipExpensiveLayers: boolean
+  /** When set, rebuild the cache excluding this label — overlay draws it separately. */
+  excludeLabelId?: string
 }
 
 const cache = new LayerCache()
@@ -22,7 +24,7 @@ export const settlementsController = {
   get hasBitmap(): boolean { return cache.hasBitmap },
 
   draw(ctx: CanvasRenderingContext2D, input: SettlementsInput): void {
-    const { pw, ph, dpr, offZoom, isExport, skipExpensiveLayers, scale, ...drawParams } = input
+    const { pw, ph, dpr, offZoom, isExport, skipExpensiveLayers, scale, excludeLabelId, ...drawParams } = input
 
     if (!isExport) {
       if (!skipExpensiveLayers) {
@@ -33,7 +35,7 @@ export const settlementsController = {
           oCtx.beginPath()
           oCtx.rect(0, 0, pw, ph)
           oCtx.clip()
-          drawSettlements(oCtx, drawParams)
+          drawSettlements(oCtx, { ...drawParams, excludeLabelId })
           oCtx.restore()
           cache.commitRebuild()
         }

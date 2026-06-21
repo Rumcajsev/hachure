@@ -28,6 +28,8 @@ import { riversController } from './layers/riversLayer'
 import { buildingsController } from './layers/buildingsLayer'
 import { roadsController } from './layers/roadsLayer'
 import { settlementsController } from './layers/settlementsLayer'
+import { drawSettlements } from '../lib/drawSettlements'
+import { activeEditOverlay } from './activeEditOverlay'
 
 export type ExportTarget = { canvas: HTMLCanvasElement; pw: number; ph: number }
 
@@ -304,10 +306,20 @@ export function drawMap(refs: MapRefs, exportTarget?: ExportTarget): void {
   if (!exportTarget) labelBBoxCacheRef.current = {}
 
   // When a label is live-dragged, force the appropriate layer to rebuild.
+  // Settlement labels use an overlay so only one label redraws per frame instead of the whole layer.
   const live = liveLabelOffsetRef.current
+  const liveIsSettlement = !exportTarget && !!live?.id.startsWith('settlement:')
   if (!exportTarget && live) {
     if (live.id.startsWith('river:')) riversController.markDirty()
-    else if (live.id.startsWith('settlement:')) settlementsController.markDirty()
+    else if (liveIsSettlement) {
+      // First frame of drag: rebuild base layer once with the label excluded, then stay cached.
+      if (!activeEditOverlay.isActive) settlementsController.markDirty()
+    }
+  }
+  // Drag ended — fold overlay back into normal rendering
+  if (!exportTarget && activeEditOverlay.isActive && !liveIsSettlement) {
+    settlementsController.markDirty()
+    activeEditOverlay.end()
   }
 
   const getPattern = (img: HTMLImageElement): CanvasPattern | null => {
@@ -933,7 +945,7 @@ export function drawMap(refs: MapRefs, exportTarget?: ExportTarget): void {
   // Settlements — offscreen cached
   {
     const _b0 = performance.now()
-    settlementsController.draw(ctx, {
+    const settlementsBase = {
       pw, ph, dpr, offZoom, isExport, scale: lineScale,
       skipExpensiveLayers: skipExpensiveLayersRef.current,
       settlements: settlementsRef.current,
@@ -946,9 +958,37 @@ export function drawMap(refs: MapRefs, exportTarget?: ExportTarget): void {
       hexCenterOf: (q, r) => { const h = hexesRef.current.find(h => h.q === q && h.r === r); return h ? project(h.center[0], h.center[1]) : null },
       hexRadiusPx: hexRadiusRef.current,
       labelOffsets: labelOffsetsRef.current,
-      liveLabelOffset: liveLabelOffsetRef.current ?? undefined,
+      liveLabelOffset: liveIsSettlement ? undefined : (liveLabelOffsetRef.current ?? undefined),
       labelBBoxOut: labelBBoxCacheRef.current,
-    } satisfies SettlementsInput)
+      excludeLabelId: liveIsSettlement ? live!.id : undefined,
+    } satisfies SettlementsInput
+    settlementsController.draw(ctx, settlementsBase)
+
+    // Settlement label drag overlay — one label redrawn per frame, base layer stays cached
+    if (liveIsSettlement && live) {
+      const oCtx = activeEditOverlay.begin(pw, ph, dpr)
+      oCtx.save()
+      oCtx.beginPath()
+      oCtx.rect(0, 0, pw, ph)
+      oCtx.clip()
+      drawSettlements(oCtx, {
+        // Only the one settlement whose label is being dragged
+        settlements: settlementsRef.current.filter(s => `settlement:${s.name}` === live.id),
+        tierStyles: settlementTierStylesRef.current,
+        labelSpecs: resolvedLabelSpecsRef.current,
+        roadChains: stableRoadData.chains,
+        roadJunctions: stableRoadData.junctions,
+        railChains: smoothedRailDataRef.current.chains,
+        project,
+        hexCenterOf: (q, r) => { const h = hexesRef.current.find(h => h.q === q && h.r === r); return h ? project(h.center[0], h.center[1]) : null },
+        hexRadiusPx: hexRadiusRef.current,
+        labelOffsets: labelOffsetsRef.current,
+        liveLabelOffset: live,
+      })
+      oCtx.restore()
+      activeEditOverlay.blit(ctx, 0, 0, pw, ph)
+    }
+
     _blitSettlements = performance.now() - _b0
   }
 

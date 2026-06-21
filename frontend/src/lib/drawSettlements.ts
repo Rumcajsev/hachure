@@ -27,6 +27,8 @@ export type DrawSettlementsParams = {
   labelBBoxOut?: Record<string, LabelBBox>
   /** Scale factor for all pixel-based sizes — use lineScale during PDF export. */
   scale?: number
+  /** When set, this settlement's label is skipped — used when an overlay draws it separately. */
+  excludeLabelId?: string
 }
 
 function closestPointOnSegment(
@@ -42,7 +44,7 @@ function closestPointOnSegment(
 
 export function drawSettlements(sCtx: Ctx, {
   settlements, tierStyles, labelSpecs, roadChains, railChains, roadJunctions, project, hexCenterOf, hexRadiusPx,
-  labelOffsets, liveLabelOffset, labelBBoxOut, scale = 1,
+  labelOffsets, liveLabelOffset, labelBBoxOut, scale = 1, excludeLabelId,
 }: DrawSettlementsParams) {
   const placed = settlements.filter(s => s.included && s.hex_q !== null)
 
@@ -122,6 +124,7 @@ export function drawSettlements(sCtx: Ctx, {
 
     // Manual offset takes precedence — stored as delta from the icon centre (cx, cy).
     const oid = `settlement:${s.name}`
+    if (excludeLabelId === oid) continue
     const off = liveLabelOffset?.id === oid ? liveLabelOffset : labelOffsets?.[oid]
 
     let tx: number, ty: number, tAlign: CanvasTextAlign, tBase: CanvasTextBaseline
