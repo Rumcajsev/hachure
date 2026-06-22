@@ -374,70 +374,89 @@ export function RailStyleFlyout({ onClose }: { onClose: () => void }) {
   )
 }
 
+// ── Road type rows ──────────────────────────────────────────────────────────────
+
+const ROAD_TYPE_ROWS: { highway: string; label: string; tier: 0 | 1 | 2 }[] = [
+  { highway: 'motorway',  label: 'Motorway',  tier: 0 },
+  { highway: 'trunk',     label: 'Trunk',     tier: 0 },
+  { highway: 'primary',   label: 'Primary',   tier: 1 },
+  { highway: 'secondary', label: 'Secondary', tier: 1 },
+  { highway: 'tertiary',  label: 'Tertiary',  tier: 2 },
+]
+
+const TIER_LABELS = ['T0', 'T1', 'T2'] as const
+
 // ── OsmRoadsFlyout ─────────────────────────────────────────────────────────────
 
 export function OsmRoadsFlyout({ onClose }: { onClose: () => void }) {
   const t = useTheme()
   const {
-    roadsStatus, fetchRoads, clearRoads,
-    osmHexPaths, osmHighlightTier, setOsmHighlightTier, applyOsmTier,
+    roadTypeFetchStatus, fetchRoadType, applyRoadType,
+    osmHexPaths, clearRoads,
     showRawOsmRoads, setShowRawOsmRoads,
   } = useMapStore()
 
-  const loading = roadsStatus === 'loading'
-  const done = roadsStatus === 'done'
+  const anyFetched = osmHexPaths.length > 0
 
   return (
     <FlyoutShell title="Fetch from OSM" onClose={onClose}>
-      <div style={{ padding: '4px 12px 8px', display: 'flex', gap: 6 }}>
-        <button
-          onClick={fetchRoads}
-          disabled={loading}
-          style={{
-            flex: 1, padding: '5px 0', background: 'none',
-            border: `1px solid ${loading ? t.line : t.rust}`,
-            color: loading ? t.inkFaint : t.rust,
-            cursor: loading ? 'not-allowed' : 'pointer',
-            fontFamily: t.mono, fontSize: 10, letterSpacing: 0.3,
-          }}
-        >
-          {loading ? 'fetching…' : done ? '✓ Roads fetched' : 'Fetch roads'}
-        </button>
-        {done && (
-          <button
-            onClick={clearRoads}
-            style={{ background: 'none', border: 'none', cursor: 'pointer', padding: '0 4px', fontFamily: t.mono, fontSize: 9, color: t.inkFaint }}
-          >
-            clear
-          </button>
-        )}
-      </div>
+      <FSectionDivider />
+      {ROAD_TYPE_ROWS.map(({ highway, label, tier }) => {
+        const status = roadTypeFetchStatus[highway] ?? 'idle'
+        const loading = status === 'loading'
+        const fetched = status === 'done'
+        const hasPaths = osmHexPaths.some(p => p.highway === highway)
+        return (
+          <div key={highway} style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '3px 12px' }}>
+            <span style={{ fontFamily: t.mono, fontSize: 9, color: t.inkMute, width: 66 }}>{label}</span>
+            <span style={{
+              fontFamily: t.mono, fontSize: 7.5, letterSpacing: 0.3,
+              color: t.inkFaint, border: `1px solid ${t.line2}`, padding: '1px 4px', borderRadius: 2,
+            }}>
+              {TIER_LABELS[tier]}
+            </span>
+            <div style={{ flex: 1 }} />
+            <button
+              onClick={() => fetchRoadType(highway)}
+              disabled={loading}
+              style={{
+                padding: '3px 8px', background: 'none',
+                border: `1px solid ${loading ? t.line : fetched ? t.line : t.rust}`,
+                color: loading ? t.inkFaint : fetched ? t.inkFaint : t.rust,
+                cursor: loading ? 'not-allowed' : 'pointer',
+                fontFamily: t.mono, fontSize: 8.5, letterSpacing: 0.2,
+              }}
+            >
+              {loading ? '…' : fetched ? '✓' : 'fetch'}
+            </button>
+            <button
+              onClick={() => applyRoadType(highway)}
+              disabled={!hasPaths}
+              style={{
+                padding: '3px 8px', background: 'none',
+                border: `1px solid ${hasPaths ? t.rust : t.line2}`,
+                color: hasPaths ? t.rust : t.inkFaint,
+                cursor: hasPaths ? 'pointer' : 'default',
+                fontFamily: t.mono, fontSize: 8.5, letterSpacing: 0.2,
+              }}
+            >
+              apply
+            </button>
+          </div>
+        )
+      })}
 
-      {done && osmHexPaths.length > 0 && (
+      {anyFetched && (
         <>
           <FSectionDivider />
-          <FSectionLabel label="Apply as tier" />
-          <div style={{ display: 'flex', gap: 4, padding: '4px 12px 6px' }}>
-            {(['Highways', 'Primary', 'Secondary'] as const).map((label, i) => (
-              <button
-                key={label}
-                onClick={() => applyOsmTier(i as 0 | 1 | 2)}
-                onMouseEnter={() => setOsmHighlightTier(i as 0 | 1 | 2)}
-                onMouseLeave={() => setOsmHighlightTier(null)}
-                style={{
-                  flex: 1, padding: '4px 0',
-                  background: osmHighlightTier === i ? tintBg(t.rust, 0.1) : 'transparent',
-                  border: `1px solid ${osmHighlightTier === i ? t.rust : t.line}`,
-                  color: osmHighlightTier === i ? t.rust : t.inkMute,
-                  cursor: 'pointer', fontFamily: t.mono, fontSize: 8.5, letterSpacing: 0.3,
-                }}
-              >
-                {label}
-              </button>
-            ))}
-          </div>
-          <div style={{ padding: '0 12px' }}>
-            <ToggleRow label="Show all OSM roads" checked={showRawOsmRoads} onChange={setShowRawOsmRoads} />
+          <ToggleRow label="Show raw OSM roads" checked={showRawOsmRoads} onChange={setShowRawOsmRoads} />
+          <div style={{ padding: '2px 12px 8px', textAlign: 'right' }}>
+            <button
+              onClick={clearRoads}
+              style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 0, fontFamily: t.mono, fontSize: 9, color: t.inkFaint }}
+            >
+              clear all fetched
+            </button>
           </div>
         </>
       )}
