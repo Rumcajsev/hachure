@@ -67,18 +67,18 @@ def classify_hex(coverage: dict[int, float], rules: dict[str, list[dict]] | None
     rules: {terrain: [{classCode, threshold}, ...]} — first terrain in PRIORITY whose
            any rule fires wins. Defaults to DEFAULT_TERRAIN_RULES.
 
-    Coastal hexes: if ocean nodata (class 0) is the majority but the hex has ≥3%
-    actual land pixels, reclassify using only the land pixels normalised to 100%.
-    The sea mask overlay handles the ocean portion visually, so the hex should carry
-    its land terrain rather than being discarded as water.
+    Realistic coastline mode: classes 0 (ocean nodata) and 80 (permanent water) are
+    excluded entirely. Remaining land pixels are normalised to 100% and classified
+    against those. The sea mask overlay handles all water visually, so every hex
+    carries its land terrain regardless of how much water coverage it has.
+    Pure ocean hexes (no land pixels at all) fall through to "clear".
     """
     effective_rules = rules if rules is not None else DEFAULT_TERRAIN_RULES
 
-    ocean_frac = coverage.get(0, 0.0) + coverage.get(80, 0.0)
-    if realistic_coastline and ocean_frac >= 0.5:
+    if realistic_coastline:
         land_only = {k: v for k, v in coverage.items() if k not in (0, 80)}
         total_land = sum(land_only.values())
-        if total_land >= 0.03:
+        if total_land > 0:
             normalised = {k: v / total_land for k, v in land_only.items()}
             for terrain in PRIORITY[:-1]:
                 if terrain == 'water':
@@ -88,7 +88,7 @@ def classify_hex(coverage: dict[int, float], rules: dict[str, list[dict]] | None
                         continue
                     if normalised.get(rule["classCode"], 0) >= rule["threshold"]:
                         return terrain
-            return "clear"
+        return "clear"
 
     for terrain in PRIORITY[:-1]:
         for rule in effective_rules.get(terrain, []):
