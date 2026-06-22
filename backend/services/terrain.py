@@ -196,7 +196,7 @@ async def terrain_stream_generator(config: GridConfig) -> AsyncGenerator[str, No
                 for i in hex_indices:
                     hd = hexes[i]
                     hd["coverage"] = {0: 1.0}
-                    hd["terrain"] = "water"
+                    hd["terrain"] = classify_hex({0: 1.0}, rules, config.realistic_coastline)
                     batch.append(hd)
             else:
                 data_tile, transform_tile = tile_result
