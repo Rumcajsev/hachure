@@ -207,7 +207,7 @@ terrainColors, terrainTextureScales, terrainTextureBlendModes, terrainTextureOpa
     elevationTypeBlobStyles,
     terrainLayersEnabled,
     roadEdges, railEdges, rawRoadWays, rawRailWays, roadTierStyles, railStyle,
-    showRawOsmRoads, osmHighlightTier, osmSpotlightMode, osmSpotlightRadius, osmSpotlightTiers,
+    showRawOsmRoads, osmHighlightTier, osmHighlightType, osmSpotlightMode, osmSpotlightRadius, osmSpotlightTiers,
     osmRailHexPaths, osmRailHighlight,
     osmRiverWays, hoveredOsmRiverIdx, appliedOsmRiverIndices,
     roadPaintMode, roadPaintBrush, roadPaintEraser,
@@ -349,6 +349,7 @@ terrainColors, terrainTextureScales, terrainTextureBlendModes, terrainTextureOpa
   const rawRailWaysRef = useRef(rawRailWays)
   const showRawOsmRoadsRef = useRef(showRawOsmRoads)
   const osmHighlightTierRef = useRef(osmHighlightTier)
+  const osmHighlightTypeRef = useRef(osmHighlightType)
   const osmSpotlightModeRef = useRef(osmSpotlightMode)
   const osmSpotlightRadiusRef = useRef(osmSpotlightRadius)
   const osmSpotlightTiersRef = useRef(osmSpotlightTiers)
@@ -636,6 +637,7 @@ const terrainTextureFileRef = useRef(terrainTextureFile)
   rawRailWaysRef.current = rawRailWays
   showRawOsmRoadsRef.current = showRawOsmRoads
   osmHighlightTierRef.current = osmHighlightTier
+  osmHighlightTypeRef.current = osmHighlightType
   osmSpotlightModeRef.current = osmSpotlightMode
   osmSpotlightRadiusRef.current = osmSpotlightRadius
   osmSpotlightTiersRef.current = osmSpotlightTiers
@@ -1930,7 +1932,7 @@ terrainTextureFileRef.current = terrainTextureFile
   // Redraw when data changes
   useEffect(() => { draw() }, [defaultElevationBlobs, generatedHexes, hexBorderMode, hexEdgeMode, hexBorderOpacity, hexBorderColor, hexBorderDifference, hexNumbersEnabled, hexNumberEdge, hexNumberColor, hexNumberFontScale, hexNumberStartCorner, hexNumberMap, roadDataVersion, smoothedRailData, showRawOsmRoads, roadNodeEditMode, riverNodeEditMode, riverChainOverrides, riverEdges, riverEditMode, riverWidthScale, riverWiggleFreq, riverWiggleAmp, riverSmoothing, riverPathSmoothing, showRiverLabels, riverLabelColor, riverSegmentProps, riverSelectMode, selectedSegmentKeys, riverTierStyles, riverStyle, riverHopProps, selectedHopKey, defaultTerrainBlobs, defaultWaterBlobsMasked, terrainColors, terrainTextureScales, terrainTextureBlendModes, terrainTextureOpacities, terrainTextureTintColors, terrainTextureTintOpacities, terrainTextureFile, terrainTextureEnabled, terrainBlobOverrides, terrainTypeBlobStyles, waterOverrides, terrainRenderMode, settlements, settlementTierStyles, urbanHexes, urbanStyle, roadTierStyles, railStyle, highlights, highlightedHexes, highlightLines, highlightEdgePaths, iconOverlays, placedIcons, labelOverlays, placedLabels, realisticCoastline, coastlineDebugRaw, smoothedCoastlineBoundary, rawCoastlineBoundary, beachStrip, beachColor, beachWidth, coastlineDPEpsilon, coastlineChaikinPasses, edgeBlobPainted, edgeBlobOverrides, edgeBlobWidth, roadSegmentProps, roadHopProps, selectedRoadSegmentKeys, selectedRoadHopKey, roadSelectMode, railNodeEditMode, railControlOverrides, railSelectMode, railWiggleAmp, railWiggleFreq, railSmoothing, railSegmentProps, railHopProps, selectedRailSegmentKeys, selectedRailHopKey, mapBgColor, mapBorderEnabled, mapBorderColor, mapBorderWidth, clipToHexGrid, excludedHexKeys, disabledHexKeys, autoDisabledOceanHexKeys, megaHexEnabled, megaHexRadius, megaHexColor, megaHexOpacity, megaHexLineWidth, megaHexOriginQ, megaHexOriginR, bridgesEnabled, bridgeStyle, bridgeTiers, bridgeOverrides, showElevationDebug, showElevationClassOverlay, mapStyle, labelOffsets, labelPresetId, labelOverrides, activeTool, blobEditMode, activeBlobEditId, blobHandleOverrides, blobMaskEdits, defaultTerrainBlobsMasked, draw])
 
-  useEffect(() => { drawOsmHighlight() }, [osmHighlightTier, osmSpotlightMode, osmSpotlightTiers, osmRailHighlight, hoveredOsmRiverIdx, drawOsmHighlight])
+  useEffect(() => { drawOsmHighlight() }, [osmHighlightTier, osmHighlightType, osmSpotlightMode, osmSpotlightTiers, osmRailHighlight, hoveredOsmRiverIdx, drawOsmHighlight])
 
   useEffect(() => {
     if (!mapImageDataUrl) { mapImageElementRef.current = null; draw(); return }
@@ -2733,7 +2735,7 @@ terrainTextureFileRef.current = terrainTextureFile
 
   osmOverlayRefsRef.current = {
     osmOverlayCanvasRef, metaRef, frameDimsRef,
-    osmHighlightTierRef, osmSpotlightModeRef, spotlightCursorRef,
+    osmHighlightTierRef, osmHighlightTypeRef, osmSpotlightModeRef, spotlightCursorRef,
     osmRailHighlightRef, hoveredOsmRiverIdxRef, zoomRef, panRef,
     rawRoadWaysRef, osmRiverWaysRef, rawRailWaysRef,
     osmSpotlightRadiusRef, osmSpotlightTiersRef, getPaperRef,

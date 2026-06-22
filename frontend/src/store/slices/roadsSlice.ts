@@ -6,6 +6,7 @@ export type RoadsSlice = {
   osmHexPaths: HexRoadPath[]
   roadTypeFetchStatus: Record<string, 'idle' | 'loading' | 'error' | 'done'>
   osmHighlightTier: 0 | 1 | 2 | null
+  osmHighlightType: string | null
   osmSpotlightMode: boolean
   osmSpotlightRadius: number
   osmSpotlightTiers: [boolean, boolean, boolean, boolean]
@@ -32,6 +33,7 @@ export type RoadsSlice = {
   fetchRoads: () => Promise<void>
   fetchSettlementRoads: () => Promise<void>
   setOsmHighlightTier: (tier: 0 | 1 | 2 | null) => void
+  setOsmHighlightType: (type: string | null) => void
   applyOsmTier: (tier: 0 | 1 | 2) => void
   fetchRoadType: (highway: string) => Promise<void>
   applyRoadType: (highway: string) => void
@@ -103,6 +105,7 @@ export const createRoadsSlice = (set: Set, get: () => MapStore): RoadsSlice => (
   osmHexPaths: [],
   roadTypeFetchStatus: {},
   osmHighlightTier: null,
+  osmHighlightType: null,
   osmSpotlightMode: false,
   osmSpotlightRadius: 3,
   osmSpotlightTiers: [true, true, true, true] as [boolean, boolean, boolean, boolean],
@@ -147,6 +150,7 @@ export const createRoadsSlice = (set: Set, get: () => MapStore): RoadsSlice => (
   })),
   clearManualRoads: () => { get().pushUndoSnapshot(); set((s) => ({ roadEdges: s.roadEdges.filter((e) => !e.manual) })) },
   setOsmHighlightTier: (tier) => set({ osmHighlightTier: tier }),
+  setOsmHighlightType: (type) => set({ osmHighlightType: type }),
   setOsmSpotlightMode: (v) => set({ osmSpotlightMode: v }),
   setOsmSpotlightRadius: (v) => set({ osmSpotlightRadius: v }),
   setOsmSpotlightTiers: (tiers) => set({ osmSpotlightTiers: tiers }),

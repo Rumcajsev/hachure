@@ -393,6 +393,7 @@ export function OsmRoadsFlyout({ onClose }: { onClose: () => void }) {
   const {
     roadTypeFetchStatus, fetchRoadType, applyRoadType,
     osmHexPaths, clearRoads,
+    osmHighlightType, setOsmHighlightType,
     showRawOsmRoads, setShowRawOsmRoads,
   } = useMapStore()
 
@@ -431,10 +432,12 @@ export function OsmRoadsFlyout({ onClose }: { onClose: () => void }) {
             </button>
             <button
               onClick={() => applyRoadType(highway)}
+              onMouseEnter={() => hasPaths && setOsmHighlightType(highway)}
+              onMouseLeave={() => setOsmHighlightType(null)}
               disabled={!hasPaths}
               style={{
-                padding: '3px 8px', background: 'none',
-                border: `1px solid ${hasPaths ? t.rust : t.line2}`,
+                padding: '3px 8px', background: osmHighlightType === highway ? tintBg(t.rust, 0.1) : 'none',
+                border: `1px solid ${hasPaths ? (osmHighlightType === highway ? t.rust : t.rust) : t.line2}`,
                 color: hasPaths ? t.rust : t.inkFaint,
                 cursor: hasPaths ? 'pointer' : 'default',
                 fontFamily: t.mono, fontSize: 8.5, letterSpacing: 0.2,

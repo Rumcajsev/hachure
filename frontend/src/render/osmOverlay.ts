@@ -17,6 +17,7 @@ export interface OsmOverlayRefs {
   metaRef: MutableRefObject<GridMetadata | null>
   frameDimsRef: MutableRefObject<{ w: number; h: number }>
   osmHighlightTierRef: MutableRefObject<number | null>
+  osmHighlightTypeRef: MutableRefObject<string | null>
   osmSpotlightModeRef: MutableRefObject<boolean>
   spotlightCursorRef: MutableRefObject<{ lx: number; ly: number } | null>
   osmRailHighlightRef: MutableRefObject<boolean>
@@ -32,7 +33,7 @@ export interface OsmOverlayRefs {
 }
 
 export function drawOsmHighlight(refs: OsmOverlayRefs): void {
-  const { osmOverlayCanvasRef, metaRef, frameDimsRef, osmHighlightTierRef,
+  const { osmOverlayCanvasRef, metaRef, frameDimsRef, osmHighlightTierRef, osmHighlightTypeRef,
     osmSpotlightModeRef, spotlightCursorRef, osmRailHighlightRef,
     hoveredOsmRiverIdxRef, zoomRef, panRef, rawRoadWaysRef,
     osmRiverWaysRef, rawRailWaysRef, osmSpotlightRadiusRef,
@@ -50,12 +51,13 @@ export function drawOsmHighlight(refs: OsmOverlayRefs): void {
   ctx.clearRect(0, 0, overlayCanvas.width, overlayCanvas.height)
 
   const ht = osmHighlightTierRef.current
+  const highType = osmHighlightTypeRef.current
   const spotlight = osmSpotlightModeRef.current
   const cursor = spotlightCursorRef.current
   const railHighlight = osmRailHighlightRef.current
   const hoveredRiverIdx = hoveredOsmRiverIdxRef.current
 
-  if (!spotlight && ht === null && !railHighlight && hoveredRiverIdx === null) return
+  if (!spotlight && ht === null && highType === null && !railHighlight && hoveredRiverIdx === null) return
   if (spotlight && !cursor) return
 
   const zoom = zoomRef.current
@@ -162,12 +164,31 @@ export function drawOsmHighlight(refs: OsmOverlayRefs): void {
     drawWays(activeTiers)
     if (showRails) drawRailRawWays()
     ctx.restore()
-  } else if (ht !== null || railHighlight || hoveredRiverIdx !== null) {
+  } else if (ht !== null || highType !== null || railHighlight || hoveredRiverIdx !== null) {
+    const drawWaysByType = (highway: string) => {
+      const tier = hwTier[highway] ?? 2
+      const ways = rawRoadWaysRef.current.filter(w => w.coords.length >= 2 && w.highway === highway)
+      for (let pass = 0; pass < 2; pass++) {
+        ctx.strokeStyle = tierColors[tier][pass]
+        ctx.lineWidth = pass === 0 ? 6 : 1.5
+        for (const way of ways) {
+          ctx.beginPath()
+          const [x0, y0] = project(way.coords[0][0], way.coords[0][1])
+          ctx.moveTo(x0, y0)
+          for (let i = 1; i < way.coords.length; i++) {
+            const [xi, yi] = project(way.coords[i][0], way.coords[i][1])
+            ctx.lineTo(xi, yi)
+          }
+          ctx.stroke()
+        }
+      }
+    }
     ctx.save()
     ctx.beginPath()
     ctx.rect(px, py, pw, ph)
     ctx.clip()
     if (ht !== null) drawWays([ht])
+    if (highType !== null) drawWaysByType(highType)
     if (railHighlight) drawRailRawWays()
     if (hoveredRiverIdx !== null) drawHoveredRiverWay(hoveredRiverIdx)
     ctx.restore()
