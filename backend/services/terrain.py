@@ -60,7 +60,7 @@ def _compute_coverage(
     return {k: min(v, 1.0) for k, v in coverage.items()}
 
 
-def classify_hex(coverage: dict[int, float], rules: dict[str, list[dict]] | None = None) -> str:
+def classify_hex(coverage: dict[int, float], rules: dict[str, list[dict]] | None = None, realistic_coastline: bool = False) -> str:
     """Classify terrain using per-terrain rules against raw WorldCover class coverage.
 
     coverage: {worldcover_class_code: fraction} e.g. {10: 0.35, 20: 0.18}
@@ -75,7 +75,7 @@ def classify_hex(coverage: dict[int, float], rules: dict[str, list[dict]] | None
     effective_rules = rules if rules is not None else DEFAULT_TERRAIN_RULES
 
     ocean_frac = coverage.get(0, 0.0)
-    if ocean_frac >= 0.5:
+    if realistic_coastline and ocean_frac >= 0.5:
         land_only = {k: v for k, v in coverage.items() if k not in (0, 80)}
         total_land = sum(land_only.values())
         if total_land >= 0.03:
@@ -216,7 +216,7 @@ async def terrain_stream_generator(config: GridConfig) -> AsyncGenerator[str, No
                         continue
                     coverage = compute_hex_coverage(hex_poly, data_tile, transform_tile)
                     hd["coverage"] = coverage
-                    hd["terrain"] = classify_hex(coverage, rules)
+                    hd["terrain"] = classify_hex(coverage, rules, config.realistic_coastline)
                     hex_polys[i] = hex_poly
                     batch.append(hd)
 

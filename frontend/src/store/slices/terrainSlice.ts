@@ -457,6 +457,7 @@ export const createTerrainSlice = (set: Set, get: () => MapStore): TerrainSlice 
       paper_width_mm: cwMm,
       paper_height_mm: chMm,
       terrain_rules: currentRules,
+      realistic_coastline: realisticCoastline,
     }
 
     try {
@@ -594,7 +595,7 @@ export const createTerrainSlice = (set: Set, get: () => MapStore): TerrainSlice 
   setGenerateProgress: (p) => set({ generateProgress: p }),
 
   expandMap: async (edge, newMm) => {
-    const { generatedHexes, generatedMetadata, pageGrid, paperSize, orientation, hexSizeMm, hexOrientation, marginMm, terrainRules, disabledTerrains } = get()
+    const { generatedHexes, generatedMetadata, pageGrid, paperSize, orientation, hexSizeMm, hexOrientation, marginMm, terrainRules, disabledTerrains, realisticCoastline } = get()
     if (!generatedMetadata) return
 
     const scale = generatedMetadata.scale_m_per_mm
@@ -670,6 +671,7 @@ export const createTerrainSlice = (set: Set, get: () => MapStore): TerrainSlice 
       paper_width_mm: reqWMm,
       paper_height_mm: reqHMm,
       terrain_rules: terrainRules,
+      realistic_coastline: realisticCoastline,
     }
 
     try {

@@ -23,6 +23,7 @@ class GridConfig(BaseModel):
     margin_mm: float = 0.0     # print margin in mm
     slider: float = 0.4        # unused legacy field kept for API compatibility
     terrain_rules: Optional[dict[str, list[dict]]] = None  # {terrain: [{classCode, threshold}]}
+    realistic_coastline: bool = False
     paper_width_mm: Optional[float] = None   # combined paper width (overrides paper_size lookup)
     paper_height_mm: Optional[float] = None  # combined paper height (overrides paper_size lookup)
 
