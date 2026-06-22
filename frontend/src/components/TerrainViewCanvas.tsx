@@ -1241,8 +1241,9 @@ terrainTextureFileRef.current = terrainTextureFile
   smoothedCoastlineBoundaryRef.current = smoothedCoastlineBoundary
 
 
-  // Shared tier chain data — computed once, reused by riverAutoCorridors and the chain useEffect.
-  // Skips empty tiers to avoid redundant buildRiverChainsV2 calls.
+  // Fast no-wiggle tier chains — used only for corridor computation (riverAutoCorridors).
+  // wiggleAmpFactor=0 skips Perlin noise entirely; smoothing=0 → steps=2 (minimal catmullRom).
+  // The full wiggly chains for rendering are built in the useEffect below (after the frame paints).
   type _RiverChainV2 = import('../lib/riverChains').RiverChainV2
   const prevRiverTierChainsRawRef = useRef<[_RiverChainV2[], _RiverChainV2[], _RiverChainV2[]]>([[], [], []])
   const riverTierChainsRaw = useMemo((): [_RiverChainV2[], _RiverChainV2[], _RiverChainV2[]] => {
@@ -1251,16 +1252,11 @@ terrainTextureFileRef.current = terrainTextureFile
     for (const e of riverEdges) tierEdges[e.tier ?? 1].push(e)
     const result = ([0, 1, 2] as const).map(tier => {
       if (tierEdges[tier].length === 0) return [] as _RiverChainV2[]
-      const style = riverTierStyles?.[tier]
-      const amp  = style?.wiggleAmp     ?? riverWiggleAmp
-      const freq = style?.wiggleFreq    ?? riverWiggleFreq
-      const sm   = style?.smoothing     ?? riverSmoothing
-      const ps   = style?.pathSmoothing ?? riverPathSmoothing
-      return buildRiverChainsV2(tierEdges[tier], generatedHexes, riverChainOverrides, freq, amp, sm, riverHopProps, riverSegmentProps, ps)
+      return buildRiverChainsV2(tierEdges[tier], generatedHexes, riverChainOverrides, 1, 0, 0, {}, {}, 0)
     }) as [_RiverChainV2[], _RiverChainV2[], _RiverChainV2[]]
     prevRiverTierChainsRawRef.current = result
     return result
-  }, [isRiverEdgePainting, riverEdges, riverTierStyles, riverWiggleFreq, riverWiggleAmp, riverSmoothing, riverPathSmoothing, riverChainOverrides, riverHopProps, riverSegmentProps, generatedHexes])
+  }, [isRiverEdgePainting, riverEdges, riverChainOverrides, generatedHexes])
 
   // River corridor polygons in canvas coords — computed here (before defaultTerrainBlobs) so the
   // pre-shaping cut can use them. The cut happens on raw hex-outline polygons so the cut edge
@@ -1920,17 +1916,29 @@ terrainTextureFileRef.current = terrainTextureFile
   // (hexBorder, buildings, settlements, highlights, hexNumbers handled by startLayerDirtySync)
   useEffect(() => {
     if (isRiverEdgePainting) return
-    // riverTierChainsRaw is already built by the useMemo above — just map to ChainEntry format
-    cachedRiverTierChainDataRef.current = riverTierChainsRaw.map(chains =>
+    // Full wiggly chain build — runs after the frame paints so it doesn't block the React render.
+    const tierEdges: [typeof riverEdges, typeof riverEdges, typeof riverEdges] = [[], [], []]
+    for (const e of riverEdges) tierEdges[e.tier ?? 1].push(e)
+    const tierRaw = ([0, 1, 2] as const).map(tier => {
+      if (tierEdges[tier].length === 0) return [] as import('../lib/riverChains').RiverChainV2[]
+      const style = riverTierStyles?.[tier]
+      const amp  = style?.wiggleAmp     ?? riverWiggleAmp
+      const freq = style?.wiggleFreq    ?? riverWiggleFreq
+      const sm   = style?.smoothing     ?? riverSmoothing
+      const ps   = style?.pathSmoothing ?? riverPathSmoothing
+      return buildRiverChainsV2(tierEdges[tier], generatedHexes, riverChainOverrides, freq, amp, sm, riverHopProps, riverSegmentProps, ps)
+    })
+    cachedRiverTierChainDataRef.current = tierRaw.map(chains =>
       chains.map(c => ({ vertices: c.chain, segKey: c.segKey, hopKeys: c.hopKeys, hopRanges: c.hopRanges }))
     ) as [ChainEntry[], ChainEntry[], ChainEntry[]]
-    const rv2 = [...riverTierChainsRaw[0], ...riverTierChainsRaw[1], ...riverTierChainsRaw[2]]
+    const rv2 = [...tierRaw[0], ...tierRaw[1], ...tierRaw[2]]
     riverChainsV2Ref.current = rv2
     cachedRiverChainDataRef.current = rv2.map(c => ({ vertices: c.chain, segKey: c.segKey, hopKeys: c.hopKeys, hopRanges: c.hopRanges }))
     computedRiverChainsRef.current = cachedRiverChainDataRef.current
     riverChainCache.chains = cachedRiverChainDataRef.current
     riversController.markDirty()
-  }, [isRiverEdgePainting, riverTierChainsRaw, riverWidthScale, showRiverLabels, riverLabelColor, riverSelectMode, selectedSegmentKeys, riverStyle, selectedHopKey, labelOffsets])
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isRiverEdgePainting, riverEdges, generatedHexes, riverChainOverrides, riverTierStyles, riverWiggleAmp, riverWiggleFreq, riverSmoothing, riverPathSmoothing, riverHopProps, riverSegmentProps, riverWidthScale, showRiverLabels, riverLabelColor, riverSelectMode, selectedSegmentKeys, riverStyle, selectedHopKey, labelOffsets])
   useEffect(() => { roadsController.markDirty() }, [smoothedRailData, roadTierStyles, railStyle, roadSegmentProps, roadHopProps, selectedRoadSegmentKeys, selectedRoadHopKey, roadSelectMode, railSegmentProps, railHopProps, selectedRailSegmentKeys, selectedRailHopKey, railSelectMode])
   useEffect(() => {
     if (bridgesEnabled) {
