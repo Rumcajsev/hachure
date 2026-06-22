@@ -66,8 +66,30 @@ def classify_hex(coverage: dict[int, float], rules: dict[str, list[dict]] | None
     coverage: {worldcover_class_code: fraction} e.g. {10: 0.35, 20: 0.18}
     rules: {terrain: [{classCode, threshold}, ...]} — first terrain in PRIORITY whose
            any rule fires wins. Defaults to DEFAULT_TERRAIN_RULES.
+
+    Coastal hexes: if ocean nodata (class 0) is the majority but the hex has ≥3%
+    actual land pixels, reclassify using only the land pixels normalised to 100%.
+    The sea mask overlay handles the ocean portion visually, so the hex should carry
+    its land terrain rather than being discarded as water.
     """
     effective_rules = rules if rules is not None else DEFAULT_TERRAIN_RULES
+
+    ocean_frac = coverage.get(0, 0.0)
+    if ocean_frac >= 0.5:
+        land_only = {k: v for k, v in coverage.items() if k not in (0, 80)}
+        total_land = sum(land_only.values())
+        if total_land >= 0.03:
+            normalised = {k: v / total_land for k, v in land_only.items()}
+            for terrain in PRIORITY[:-1]:
+                if terrain == 'water':
+                    continue
+                for rule in effective_rules.get(terrain, []):
+                    if rule["classCode"] in (0, 80):
+                        continue
+                    if normalised.get(rule["classCode"], 0) >= rule["threshold"]:
+                        return terrain
+            return "clear"
+
     for terrain in PRIORITY[:-1]:
         for rule in effective_rules.get(terrain, []):
             if coverage.get(rule["classCode"], 0) >= rule["threshold"]:
