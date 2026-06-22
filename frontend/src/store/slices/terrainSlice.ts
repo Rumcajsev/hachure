@@ -945,7 +945,17 @@ export const createTerrainSlice = (set: Set, get: () => MapStore): TerrainSlice 
       terrainBlobLobeDirection: values.lobeDirection,
     })
   },
-  setRealisticCoastline: (v) => set({ realisticCoastline: v }),
+  setRealisticCoastline: (v) => {
+    const { generatedHexes, terrainRules, disabledTerrains } = get()
+    if (generatedHexes.length === 0) { set({ realisticCoastline: v }); return }
+    const updated = generatedHexes.map((h) => {
+      if (h.manual_override) return h
+      const t = classifyHex(h.coverage ?? {}, terrainRules, disabledTerrains, v)
+      const { terrains, backgroundTerrain } = classifyWithBackground(t, classifyHexLayers(h.coverage ?? {}, terrainRules, disabledTerrains, v))
+      return { ...h, terrain: t, terrains, backgroundTerrain }
+    })
+    set({ realisticCoastline: v, generatedHexes: updated })
+  },
   setCoastlineDebugRaw: (v) => set({ coastlineDebugRaw: v }),
   setBeachStrip: (v) => set({ beachStrip: v }),
   setBeachColor: (v) => set({ beachColor: v }),
