@@ -74,7 +74,7 @@ def classify_hex(coverage: dict[int, float], rules: dict[str, list[dict]] | None
     """
     effective_rules = rules if rules is not None else DEFAULT_TERRAIN_RULES
 
-    ocean_frac = coverage.get(0, 0.0)
+    ocean_frac = coverage.get(0, 0.0) + coverage.get(80, 0.0)
     if realistic_coastline and ocean_frac >= 0.5:
         land_only = {k: v for k, v in coverage.items() if k not in (0, 80)}
         total_land = sum(land_only.values())
