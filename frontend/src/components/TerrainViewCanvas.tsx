@@ -31,6 +31,7 @@ import { drawSettlements as _drawSettlements } from '../lib/drawSettlements'
 import { drawAllBuildings as _drawAllBuildings, type BuildingCmd } from '../lib/drawBuildings'
 import { drawAllBuildingsV2 as _drawAllBuildingsV2 } from '../lib/drawBuildingsV2'
 import { drawMapBoundary as _drawMapBoundary, drawHexGridMask as _drawHexGridMask, drawExcludedHexOverlay as _drawExcludedHexOverlay } from '../lib/drawHexBorders'
+import { startLayerDirtySync } from '../render/layerDirtySync'
 import { hexBorderController } from '../render/layers/hexBorderLayer'
 import type { HexBorderInput } from '../render/layers/hexBorderLayer'
 import { highlightsController } from '../render/layers/highlightsLayer'
@@ -59,7 +60,7 @@ import { attachHighlightLineHandlers } from '../interaction/tools/highlightLineT
 import { attachBlobHandleHandlers } from '../interaction/tools/blobHandleTool'
 import { attachContextMenuHandlers } from '../interaction/tools/contextMenuTool'
 import type { CtxItem } from '../interaction/tools/contextMenuTool'
-import { handleMouseMove, handleClick, handleMouseDown } from '../interaction/tools/mouseHandlers'
+import { handleMouseMove, handleClick, handleMouseDown, handleMouseLeave, handleDoubleClick } from '../interaction/tools/mouseHandlers'
 import type { MouseHandlerRefs } from '../interaction/tools/mouseHandlers'
 import { drawTerrain as _drawTerrain, getColorTextureCacheStats } from '../lib/drawTerrain'
 import { TEXTURE_OPTIONS, TEXTURE_PATHS, DEFAULT_TERRAIN_TEXTURES, buildTerrainTextures } from '../lib/terrainTextures'
@@ -179,6 +180,9 @@ export const TerrainViewCanvas = forwardRef<TerrainViewCanvasHandle, { surroundC
 
   const [roadDataVersion, setRoadDataVersion] = useState(0)
   const [isTerrainPainting, setIsTerrainPainting] = useState(false)
+  const [isRiverEdgePainting, setIsRiverEdgePainting] = useState(false)
+  const isRiverEdgePaintingRef = useRef(false)
+  useEffect(() => { isRiverEdgePaintingRef.current = isRiverEdgePainting }, [isRiverEdgePainting])
   const [wcTooltip, setWcTooltip] = useState<{ x: number; y: number; label: string } | null>(null)
 
   const [mapOverlay, setMapOverlay] = useState(false)
@@ -311,6 +315,8 @@ terrainColors, terrainTextureScales, terrainTextureBlendModes, terrainTextureOpa
   } = useMapStore()
   // dev-only: expose store for dry-run console injection
   useEffect(() => { (window as any).__mapStore = useMapStore }, [])
+  // Layer dirty rules — each layer owns its dep list in its own file
+  useEffect(() => startLayerDirtySync(), [])
 
   const pageGridRef = useRef(pageGrid)
   const paperSizeRef = useRef(paperSize)
@@ -1886,8 +1892,9 @@ terrainTextureFileRef.current = terrainTextureFile
   }, [contoursEnabled, contourInterval, contourBaseElevation, contourSmoothPasses, contourLineWidth, contourIndexEvery, contourIndexWidthMult, contourColor, contourOpacity])
 
   // Mark other layer caches dirty when their relevant data changes
-  useEffect(() => { hexBorderController.markDirty() }, [hexBorderMode, hexEdgeMode, hexBorderOpacity, hexBorderColor, hexBorderDifference, generatedHexes, excludedHexKeys, disabledHexKeys, autoDisabledOceanHexKeys])
+  // (hexBorder, buildings, settlements, highlights, hexNumbers handled by startLayerDirtySync)
   useEffect(() => {
+    if (isRiverEdgePainting) return
     const tierEdges: [typeof riverEdges, typeof riverEdges, typeof riverEdges] = [[], [], []]
     for (const e of riverEdges) tierEdges[e.tier ?? 1].push(e)
     cachedRiverTierChainDataRef.current = ([0, 1, 2] as const).map(tier => {
@@ -1905,8 +1912,7 @@ terrainTextureFileRef.current = terrainTextureFile
     computedRiverChainsRef.current = cachedRiverChainDataRef.current
     riverChainCache.chains = cachedRiverChainDataRef.current
     riversController.markDirty()
-  }, [riverEdges, riverChainOverrides, riverTierStyles, riverWidthScale, riverWiggleFreq, riverWiggleAmp, riverSmoothing, riverPathSmoothing, showRiverLabels, riverLabelColor, riverSegmentProps, riverSelectMode, selectedSegmentKeys, riverStyle, riverHopProps, selectedHopKey, labelOffsets, generatedHexes])
-  useEffect(() => { buildingsController.markDirty() }, [urbanHexes, urbanStyle])
+  }, [isRiverEdgePainting, riverEdges, riverChainOverrides, riverTierStyles, riverWidthScale, riverWiggleFreq, riverWiggleAmp, riverSmoothing, riverPathSmoothing, showRiverLabels, riverLabelColor, riverSegmentProps, riverSelectMode, selectedSegmentKeys, riverStyle, riverHopProps, selectedHopKey, labelOffsets, generatedHexes])
   useEffect(() => { roadsController.markDirty() }, [smoothedRailData, roadTierStyles, railStyle, roadSegmentProps, roadHopProps, selectedRoadSegmentKeys, selectedRoadHopKey, roadSelectMode, railSegmentProps, railHopProps, selectedRailSegmentKeys, selectedRailHopKey, railSelectMode])
   useEffect(() => {
     if (bridgesEnabled) {
@@ -1927,8 +1933,6 @@ terrainTextureFileRef.current = terrainTextureFile
       detectedBridgesRef.current = []
     }
   }, [bridgesEnabled, roadDataVersion, smoothedRailData, riverEdges, generatedHexes])
-  useEffect(() => { settlementsController.markDirty() }, [settlements, settlementTierStyles, labelPresetId, labelOverrides, labelOffsets, mapBgColor])
-  useEffect(() => { hexNumbersController.markDirty() }, [hexNumbersEnabled, hexNumberEdge, hexNumberColor, hexNumberFontScale, hexNumberMap, labelPresetId, labelOverrides, generatedHexes])
   // When entering label-drag mode, rebuild label layers so the bbox cache is populated for hit-testing
   useEffect(() => {
     if (activeTool.type === 'label-drag') {
@@ -2018,8 +2022,6 @@ terrainTextureFileRef.current = terrainTextureFile
     }
   }, [draw])
 
-  // Invalidate highlights offscreen layer whenever highlight data changes
-  useEffect(() => { highlightsController.markDirty() }, [highlights, highlightedHexes, highlightLines, highlightEdgePaths])
 
   // ResizeObserver — canvas fills the full container.
   // setFrameDims is debounced (150ms) so rapid window resizing doesn't trigger
@@ -2485,127 +2487,6 @@ terrainTextureFileRef.current = terrainTextureFile
   // Click → select hex
   const draggedRef = useRef(false)
   const edgeDragRef = useRef<{ mode: 'add' | 'remove'; painted: Set<string> } | null>(null)
-  const isEdgePaintActive = useCallback((): 'highlight' | 'river' | false => {
-    if (riverEditModeRef.current && !riverSelectModeRef.current) return 'river'
-    if (!highlightPaintModeRef.current) return false
-    const hlId = activeHighlightIdRef.current
-    if (!hlId) return false
-    const hl = highlightsRef.current.find(h => h.id === hlId)
-    return hl?.mode === 'edge' ? 'highlight' : false
-  }, [])
-
-  // Shared edge paint logic used by both click and drag. forceMode keeps the
-  // whole drag stroke consistently adding or removing rather than toggling.
-  // Returns the effective action taken ('add'|'remove'), or null if no-op.
-  const paintEdge = useCallback((
-    hexQ: number, hexR: number, edgeI: number,
-    forceMode?: 'add' | 'remove',
-  ): 'add' | 'remove' | null => {
-    const edgePaintMode = isEdgePaintActive()
-    if (!edgePaintMode) return null
-    const hex = hexesRef.current.find(h => h.q === hexQ && h.r === hexR)
-    if (!hex) return null
-
-    const geoV0 = hex.vertices[edgeI] as [number, number]
-    const geoV1 = hex.vertices[(edgeI + 1) % 6] as [number, number]
-
-    const VKEY_EPS = 0.00015
-    const vk = (v: [number, number]) =>
-      `${Math.round(v[0] / (VKEY_EPS * 0.5))},${Math.round(v[1] / (VKEY_EPS * 0.5))}`
-    const vEq = (a: [number, number], b: [number, number]) => vk(a) === vk(b)
-
-    if (edgePaintMode === 'river') {
-      const EPS = 1e-5
-      const neighbor = hexesRef.current.find(h => {
-        if (h.q === hexQ && h.r === hexR) return false
-        const verts = h.vertices as [number, number][]
-        let hasV0 = false, hasV1 = false
-        for (const v of verts) {
-          if (Math.abs(v[0] - geoV0[0]) < EPS && Math.abs(v[1] - geoV0[1]) < EPS) hasV0 = true
-          if (Math.abs(v[0] - geoV1[0]) < EPS && Math.abs(v[1] - geoV1[1]) < EPS) hasV1 = true
-        }
-        return hasV0 && hasV1
-      })
-      if (!neighbor) return null
-
-      const ek = (q1: number, r1: number, q2: number, r2: number) => {
-        const s1 = `${q1},${r1}`, s2 = `${q2},${r2}`
-        return s1 < s2 ? `${s1}|${s2}` : `${s2}|${s1}`
-      }
-      const k = ek(hexQ, hexR, neighbor.q, neighbor.r)
-      const exists = riverEdgesRef.current.some(e => ek(e.q1, e.r1, e.q2, e.r2) === k)
-
-      if (forceMode === 'add' && exists) return 'add'
-      if (forceMode === 'remove' && !exists) return 'remove'
-
-      toggleRiverEdgeRef.current(hexQ, hexR, neighbor.q, neighbor.r)
-      return exists ? 'remove' : 'add'
-    } else {
-      // Highlight edge paint
-      const hlId = activeHighlightIdRef.current!
-      const segments = highlightEdgePathsRef.current[hlId] ?? []
-      const ck0 = vk(geoV0), ck1 = vk(geoV1)
-      const edgeIdx = (seg: [number, number][]) => {
-        for (let i = 0; i < seg.length - 1; i++) {
-          if ((vk(seg[i]) === ck0 && vk(seg[i + 1]) === ck1) ||
-              (vk(seg[i]) === ck1 && vk(seg[i + 1]) === ck0)) return i
-        }
-        return -1
-      }
-      const segIdx = segments.findIndex(s => edgeIdx(s) !== -1)
-      const exists = segIdx !== -1
-
-      if (forceMode === 'add' && exists) return 'add'
-      if (forceMode === 'remove' && !exists) return 'remove'
-
-      let nextSegments: [number, number][][]
-      if (exists) {
-        nextSegments = []
-        for (let si = 0; si < segments.length; si++) {
-          if (si !== segIdx) { nextSegments.push(segments[si]); continue }
-          const seg = segments[si]
-          const ei = edgeIdx(seg)
-          const before = seg.slice(0, ei + 1) as [number, number][]
-          const after = seg.slice(ei + 1) as [number, number][]
-          if (before.length >= 2) nextSegments.push(before)
-          if (after.length >= 2) nextSegments.push(after)
-        }
-      } else {
-        const lastSeg = segments.length > 0 ? segments[segments.length - 1] : []
-        let newLastSeg: [number, number][] | null = null
-        let appendNew = false
-        if (lastSeg.length === 0) {
-          newLastSeg = [geoV0, geoV1]
-        } else if (vEq(lastSeg[lastSeg.length - 1], geoV0)) {
-          newLastSeg = [...lastSeg, geoV1]
-        } else if (vEq(lastSeg[lastSeg.length - 1], geoV1)) {
-          newLastSeg = [...lastSeg, geoV0]
-        } else if (vEq(lastSeg[0], geoV0)) {
-          newLastSeg = [geoV1, ...lastSeg]
-        } else if (vEq(lastSeg[0], geoV1)) {
-          newLastSeg = [geoV0, ...lastSeg]
-        } else {
-          appendNew = true
-        }
-        if (appendNew) {
-          nextSegments = [...segments, [geoV0, geoV1]]
-        } else if (newLastSeg!.length <= 1) {
-          nextSegments = segments.slice(0, -1)
-        } else {
-          nextSegments = [...segments.slice(0, -1), newLastSeg!]
-        }
-      }
-      setHighlightEdgePathRef.current(hlId, nextSegments)
-      highlightsController.markDirty()
-      return exists ? 'remove' : 'add'
-    }
-  }, [isEdgePaintActive])
-
-  const isEdgePaintActiveRef = useRef(isEdgePaintActive)
-  isEdgePaintActiveRef.current = isEdgePaintActive
-  const paintEdgeRef = useRef(paintEdge)
-  paintEdgeRef.current = paintEdge
-
   const mouseHandlerRefsRef = useRef<MouseHandlerRefs | null>(null)
 
   const mapRefsRef = useRef<MapRefs | null>(null)
@@ -2615,16 +2496,8 @@ terrainTextureFileRef.current = terrainTextureFile
   }, [])
 
   const onMouseLeave = useCallback(() => {
-    setWcTooltip(null)
-    if (osmSpotlightModeRef.current) {
-      spotlightCursorRef.current = null
-      drawOsmHighlightRef.current?.()
-    }
-    if (hoveredEdgeRef.current !== null) {
-      hoveredEdgeRef.current = null
-      draw()
-    }
-  }, [draw])
+    if (mouseHandlerRefsRef.current) handleMouseLeave(mouseHandlerRefsRef.current)
+  }, [])
 
 
   const onClick = useCallback((e: React.MouseEvent<HTMLCanvasElement>) => {
@@ -2633,43 +2506,8 @@ terrainTextureFileRef.current = terrainTextureFile
 
 
   const onDoubleClick = useCallback((e: React.MouseEvent<HTMLCanvasElement>) => {
-    const logical = clientToLogical(e.clientX, e.clientY)
-    if (!logical) return
-    const { lx, ly, cssW, cssH } = logical
-    const meta = metaRef.current
-    const canvas = canvasRef.current
-    if (!meta || !canvas) return
-    const { pw, ph, px, py } = getPaper(cssW, cssH)
-    const rect = canvas.getBoundingClientRect()
-    const zoom = zoomRef.current, pan = panRef.current
-    const ctx = canvas.getContext('2d')
-    if (!ctx) return
-
-    for (const overlay of labelOverlaysRef.current) {
-      const labels = placedLabelsRef.current[overlay.id] ?? []
-      for (let i = 0; i < labels.length; i++) {
-        const { lon, lat, text } = labels[i]
-        const [canvX, canvY] = projectToCanvas(lon, lat, meta, pw, ph, px, py)
-        const { bx, by, bw, bh } = getLabelBoxBounds(ctx, canvX, canvY, text || overlay.name, overlay)
-        if (lx >= bx && lx <= bx + bw && ly >= by && ly <= by + bh) {
-          const screenX = rect.left + (canvX - cssW / 2) * zoom + cssW / 2 + pan.x
-          const screenY = rect.top + (canvY - cssH / 2) * zoom + cssH / 2 + pan.y
-          setEditingLabel({
-            overlayId: overlay.id,
-            index: i,
-            text: text,
-            screenX,
-            screenY,
-            width: Math.max(80, bw * zoom),
-            height: bh * zoom,
-            textSize: overlay.textSize,
-          })
-          draw()
-          return
-        }
-      }
-    }
-  }, [clientToLogical, draw])
+    if (mouseHandlerRefsRef.current) handleDoubleClick(e, mouseHandlerRefsRef.current)
+  }, [])
 
   const alignImageDragRef = useRef<{ startX: number; startY: number; startTX: number; startTY: number } | null>(null)
 
@@ -2899,6 +2737,7 @@ terrainTextureFileRef.current = terrainTextureFile
     terrainColorsRef, terrainPaintBrushRef, terrainPaintModeRef, terrainTextureBlendModesRef, terrainTextureEnabledRef, terrainTextureFileRef, terrainTextureOpacitiesRef, terrainTextureScalesRef,
     terrainTextureTintColorsRef, terrainTextureTintOpacitiesRef, terrainTypeBlobStylesRef, textureCacheRef, urbanHexesRef, urbanStyleRef, waterOverridesRef, worldcoverImageElementRef,
     zoomRef, getPaperRef, surroundColorRef,
+    edgeDragRef, isRiverEdgePaintingRef,
   } satisfies MapRefs
 
   osmOverlayRefsRef.current = {
@@ -2911,7 +2750,8 @@ terrainTextureFileRef.current = terrainTextureFile
 
   mouseHandlerRefsRef.current = {
     canvasRef, frameDimsRef, paperDimsRef, zoomRef,
-    clientToLogicalRef, getPaperRef, drawRef, isEdgePaintActiveRef, paintEdgeRef,
+    clientToLogicalRef, getPaperRef, drawRef,
+    riverEdgesRef, toggleRiverEdgeRef, highlightEdgePathsRef, setHighlightEdgePathRef,
     activeToolRef, activePanelRef,
     liveLabelOffsetRef, labelBBoxCacheRef, labelDragStateRef, hoveredLabelIdRef,
     labelOffsetsRef, editingLabelRef, setLabelOffsetRef, setActiveToolRef,
@@ -2937,7 +2777,10 @@ terrainTextureFileRef.current = terrainTextureFile
     settlementMoveIndexRef, settlementPlaceTierRef, settlementsRef,
     updateSettlementRef, setSettlementMoveIndexRef, placeSettlementAtHexRef,
     urbanPaintModeRef, toggleUrbanHexRef,
+    panRef,
     setWcTooltip, wcTooltip,
+    setEditingLabel,
+    setIsRiverEdgePainting, isRiverEdgePaintingRef,
   } satisfies MouseHandlerRefs
 
   return (

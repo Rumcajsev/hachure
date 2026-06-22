@@ -254,6 +254,8 @@ export interface MapRefs {
   zoomRef: { current: any }
   getPaperRef: { current: any }
   surroundColorRef: { current: any }
+  edgeDragRef: { current: { mode: 'add' | 'remove'; painted: Set<string> } | null }
+  isRiverEdgePaintingRef: { current: boolean }
 }
 
 export function drawMap(refs: MapRefs, exportTarget?: ExportTarget): void {
@@ -286,6 +288,7 @@ export function drawMap(refs: MapRefs, exportTarget?: ExportTarget): void {
     terrainColorsRef, terrainPaintBrushRef, terrainPaintModeRef, terrainTextureBlendModesRef, terrainTextureEnabledRef, terrainTextureFileRef, terrainTextureOpacitiesRef, terrainTextureScalesRef,
     terrainTextureTintColorsRef, terrainTextureTintOpacitiesRef, terrainTypeBlobStylesRef, textureCacheRef, urbanHexesRef, urbanStyleRef, waterOverridesRef, worldcoverImageElementRef,
     zoomRef, getPaperRef, surroundColorRef,
+    edgeDragRef, isRiverEdgePaintingRef,
   } = refs
   const getPaper = getPaperRef.current
   const surroundColor = surroundColorRef.current
@@ -745,6 +748,31 @@ export function drawMap(refs: MapRefs, exportTarget?: ExportTarget): void {
       })
       oCtx.restore()
       activeEditOverlay.blit(ctx, 0, 0, pw, ph)
+    }
+
+    // River edge paint overlay — cheap highlight of the current stroke while chain rebuild is deferred
+    if (!isExport && isRiverEdgePaintingRef.current && edgeDragRef.current) {
+      const painted = edgeDragRef.current.painted
+      const proj = projectedHexesRef.current
+      ctx.save()
+      ctx.strokeStyle = 'rgba(80,180,255,0.9)'
+      ctx.lineWidth = 3
+      ctx.lineCap = 'round'
+      ctx.setLineDash([5, 4])
+      for (const key of painted) {
+        const [qs, rs, es] = key.split(',')
+        const q = Number(qs), r = Number(rs), edgeI = Number(es)
+        const entry = proj.find(p => p.hex.q === q && p.hex.r === r)
+        if (!entry) continue
+        const v0 = entry.verts[edgeI]
+        const v1 = entry.verts[(edgeI + 1) % 6]
+        ctx.beginPath()
+        ctx.moveTo(v0[0], v0[1])
+        ctx.lineTo(v1[0], v1[1])
+        ctx.stroke()
+      }
+      ctx.setLineDash([])
+      ctx.restore()
     }
 
     _blitRivers = performance.now() - _b0

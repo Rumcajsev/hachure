@@ -4,7 +4,8 @@
  * TVC useCallbacks are thin wrappers that call these, all with [] deps.
  */
 import type { MutableRefObject } from 'react'
-import type { GeneratedHex, GridMetadata } from '../../store/mapStore'
+import type { GeneratedHex, GridMetadata, RiverEdge } from '../../store/mapStore'
+import { isEdgePaintActive, paintEdge } from './edgePaintTool'
 import { WORLDCOVER_CLASSES } from '../../store/mapStore'
 import { projectToCanvas, unprojectFromCanvas, computeWorldcoverBbox } from '../../lib/projection'
 import { pointInPolygon } from '../../lib/geometry'
@@ -26,6 +27,7 @@ type PlacedLabel   = { lon: number; lat: number; text?: string; [k: string]: unk
 type Settlement    = { name: string; hex_q: number; hex_r: number; included: boolean; tier?: number }
 type HighlightObj  = { id: string; mode: string }
 type SmoothedRail  = { chains: { id: string; chain: [number, number][]; hopKeys?: string[]; hopRanges?: [number, number][] }[] }
+type EditingLabelState = { overlayId: string; index: number; text: string; screenX: number; screenY: number; width: number; height: number; textSize: number }
 
 // Subset of event props used by each handler (avoids React.MouseEvent dependency)
 interface ME { clientX: number; clientY: number }
@@ -42,8 +44,11 @@ export interface MouseHandlerRefs {
   clientToLogicalRef: MutableRefObject<(clientX: number, clientY: number) => LogicalResult>
   getPaperRef: MutableRefObject<(cssW: number, cssH: number) => PaperResult>
   drawRef: MutableRefObject<() => void>
-  isEdgePaintActiveRef: MutableRefObject<() => 'highlight' | 'river' | false>
-  paintEdgeRef: MutableRefObject<(hexQ: number, hexR: number, edgeI: number, forceMode?: 'add' | 'remove') => 'add' | 'remove' | null>
+  // Edge paint data (used by edgePaintTool)
+  riverEdgesRef: MutableRefObject<RiverEdge[]>
+  toggleRiverEdgeRef: MutableRefObject<(q1: number, r1: number, q2: number, r2: number) => void>
+  highlightEdgePathsRef: MutableRefObject<Record<string, [number, number][][]>>
+  setHighlightEdgePathRef: MutableRefObject<(id: string, segments: [number, number][][]) => void>
   // Tool & panel
   activeToolRef: MutableRefObject<ActiveTool>
   activePanelRef: MutableRefObject<string>
@@ -140,9 +145,16 @@ export interface MouseHandlerRefs {
   // Urban paint
   urbanPaintModeRef: MutableRefObject<string | null>
   toggleUrbanHexRef: MutableRefObject<(q: number, r: number) => void>
+  // Pan (needed for screen-space coordinate conversion in double-click)
+  panRef: MutableRefObject<{ x: number; y: number }>
   // WC tooltip (state setter — unavoidable React dep)
   setWcTooltip: (v: { x: number; y: number; label: string } | null) => void
   wcTooltip: { x: number; y: number; label: string } | null
+  // Editing label (state setter — unavoidable React dep)
+  setEditingLabel: (v: EditingLabelState | null) => void
+  // River edge paint performance
+  setIsRiverEdgePainting: (b: boolean) => void
+  isRiverEdgePaintingRef: MutableRefObject<boolean>
 }
 
 // ────────────────────────────────────────────────────────────────────────────
@@ -151,7 +163,7 @@ export interface MouseHandlerRefs {
 export function handleMouseMove(e: ME, refs: MouseHandlerRefs): void {
   const { activeToolRef, clientToLogicalRef, getPaperRef, drawRef, metaRef, hexesRef,
     hexEdgeModeRef, hexRadiusRef, projectedHexesRef, hoveredEdgeRef, hoverRafRef,
-    edgeDragRef, isEdgePaintActiveRef, paintEdgeRef, liveLabelOffsetRef,
+    edgeDragRef, liveLabelOffsetRef,
     labelBBoxCacheRef, labelDragStateRef, hoveredLabelIdRef, canvasRef,
     alignImageDragRef, frameDimsRef, paperDimsRef, zoomRef, setMapImageTransformRef,
     showWorldcoverOverlayRef, worldcoverOffscreenRef, setWcTooltip, wcTooltip,
@@ -325,7 +337,7 @@ export function handleMouseMove(e: ME, refs: MouseHandlerRefs): void {
   }
 
   // Edge-paint hover
-  if (!isEdgePaintActiveRef.current()) {
+  if (!isEdgePaintActive(refs)) {
     if (hoveredEdgeRef.current !== null) { hoveredEdgeRef.current = null; drawRef.current() }
     return
   }
@@ -354,7 +366,7 @@ export function handleMouseMove(e: ME, refs: MouseHandlerRefs): void {
       const paintKey = `${best.hexQ},${best.hexR},${best.edgeI}`
       if (!edgeDragRef.current.painted.has(paintKey)) {
         edgeDragRef.current.painted.add(paintKey)
-        paintEdgeRef.current(best.hexQ, best.hexR, best.edgeI, edgeDragRef.current.mode)
+        paintEdge(best.hexQ, best.hexR, best.edgeI, refs, edgeDragRef.current.mode)
       }
     }
   }
@@ -370,8 +382,8 @@ export function handleClick(e: MEShift, refs: MouseHandlerRefs): void {
     toggleSegmentSelectionRef, setActiveToolRef, roadSelectModeRef, roadNetworkRef,
     roadWiggleAmpRef, roadWiggleFreqRef, roadSegmentPropsRef, roadHopPropsRef,
     selectedRoadSegmentKeysRef, selectedRoadHopKeyRef, setSelectedRoadSegmentKeysRef,
-    setSelectedRoadHopKeyRef, toggleRoadSegmentSelectionRef, isEdgePaintActiveRef,
-    hoveredEdgeRef, paintEdgeRef, activePanelRef, activeToolRef, hexesRef, hexEdgeModeRef,
+    setSelectedRoadHopKeyRef, toggleRoadSegmentSelectionRef,
+    hoveredEdgeRef, activePanelRef, activeToolRef, hexesRef, hexEdgeModeRef,
     activeHighlightIdRef, highlightsRef, highlightedHexesRef, setHexHighlightRef, clearHexHighlightRef,
     urbanPaintModeRef, toggleUrbanHexRef, settlementMoveIndexRef, settlementPlaceTierRef,
     settlementsRef, updateSettlementRef, setSettlementMoveIndexRef, placeSettlementAtHexRef,
@@ -528,9 +540,9 @@ export function handleClick(e: MEShift, refs: MouseHandlerRefs): void {
   }
 
   // Edge-paint click
-  if (isEdgePaintActiveRef.current() && hoveredEdgeRef.current) {
+  if (isEdgePaintActive(refs) && hoveredEdgeRef.current) {
     const { hexQ, hexR, edgeI } = hoveredEdgeRef.current
-    paintEdgeRef.current(hexQ, hexR, edgeI)
+    paintEdge(hexQ, hexR, edgeI, refs)
     return
   }
 
@@ -681,7 +693,7 @@ export function handleMouseDown(e: MEDown, refs: MouseHandlerRefs): void {
     canvasRef, clientToLogicalRef, mapImageTransformRef, alignImageDragRef,
     activePanelRef, labelOverlaysRef, placedLabelsRef, draggingLabelRef, labelSnapRef,
     moveLabelToRef, getPaperRef, metaRef, blobMaskStrokeRef, blobMaskDrawingRef,
-    addBlobMaskEditRef, isEdgePaintActiveRef, hoveredEdgeRef, paintEdgeRef, edgeDragRef } = refs
+    addBlobMaskEditRef, hoveredEdgeRef, edgeDragRef } = refs
 
   if (editingLabelRef.current) return
   draggedRef.current = false
@@ -821,15 +833,21 @@ export function handleMouseDown(e: MEDown, refs: MouseHandlerRefs): void {
   }
 
   // Edge-paint drag
-  if (isEdgePaintActiveRef.current() && hoveredEdgeRef.current) {
+  const _edgePaintMode = isEdgePaintActive(refs)
+  if (_edgePaintMode && hoveredEdgeRef.current) {
     const { hexQ, hexR, edgeI } = hoveredEdgeRef.current
     const paintKey = `${hexQ},${hexR},${edgeI}`
-    const firstAction = paintEdgeRef.current(hexQ, hexR, edgeI)
+    const firstAction = paintEdge(hexQ, hexR, edgeI, refs)
     if (firstAction) {
       edgeDragRef.current = { mode: firstAction, painted: new Set([paintKey]) }
       draggedRef.current = true
+      if (_edgePaintMode === 'river') refs.setIsRiverEdgePainting(true)
     }
-    const onUp = () => { edgeDragRef.current = null; window.removeEventListener('mouseup', onUp) }
+    const onUp = () => {
+      edgeDragRef.current = null
+      if (_edgePaintMode === 'river') refs.setIsRiverEdgePainting(false)
+      window.removeEventListener('mouseup', onUp)
+    }
     window.addEventListener('mouseup', onUp); return
   }
 
@@ -844,4 +862,66 @@ export function handleMouseDown(e: MEDown, refs: MouseHandlerRefs): void {
   }
   window.addEventListener('mousemove', onMove)
   window.addEventListener('mouseup', onUp)
+}
+
+// ────────────────────────────────────────────────────────────────────────────
+// onMouseLeave
+// ────────────────────────────────────────────────────────────────────────────
+export function handleMouseLeave(refs: MouseHandlerRefs): void {
+  const { setWcTooltip, osmSpotlightModeRef, spotlightCursorRef,
+    drawOsmHighlightRef, hoveredEdgeRef, drawRef } = refs
+  setWcTooltip(null)
+  if (osmSpotlightModeRef.current) {
+    spotlightCursorRef.current = null
+    drawOsmHighlightRef.current?.()
+  }
+  if (hoveredEdgeRef.current !== null) {
+    hoveredEdgeRef.current = null
+    drawRef.current()
+  }
+}
+
+// ────────────────────────────────────────────────────────────────────────────
+// onDoubleClick — open inline label editor when a placed label is hit
+// ────────────────────────────────────────────────────────────────────────────
+export function handleDoubleClick(e: ME, refs: MouseHandlerRefs): void {
+  const { clientToLogicalRef, getPaperRef, metaRef, canvasRef,
+    zoomRef, panRef, labelOverlaysRef, placedLabelsRef,
+    drawRef, setEditingLabel } = refs
+  const logical = clientToLogicalRef.current(e.clientX, e.clientY)
+  if (!logical) return
+  const { lx, ly, cssW, cssH } = logical
+  const meta = metaRef.current
+  const canvas = canvasRef.current
+  if (!meta || !canvas) return
+  const { pw, ph, px, py } = getPaperRef.current(cssW, cssH)
+  const rect = canvas.getBoundingClientRect()
+  const zoom = zoomRef.current, pan = panRef.current
+  const ctx = canvas.getContext('2d')
+  if (!ctx) return
+
+  for (const overlay of labelOverlaysRef.current) {
+    const labels = placedLabelsRef.current[overlay.id] ?? []
+    for (let i = 0; i < labels.length; i++) {
+      const { lon, lat, text } = labels[i]
+      const [canvX, canvY] = projectToCanvas(lon, lat, meta, pw, ph, px, py)
+      const { bx, by, bw, bh } = getLabelBoxBounds(ctx, canvX, canvY, text || overlay.name, overlay)
+      if (lx >= bx && lx <= bx + bw && ly >= by && ly <= by + bh) {
+        const screenX = rect.left + (canvX - cssW / 2) * zoom + cssW / 2 + pan.x
+        const screenY = rect.top + (canvY - cssH / 2) * zoom + cssH / 2 + pan.y
+        setEditingLabel({
+          overlayId: overlay.id,
+          index: i,
+          text: text ?? '',
+          screenX,
+          screenY,
+          width: Math.max(80, bw * zoom),
+          height: bh * zoom,
+          textSize: (overlay as { textSize: number }).textSize,
+        })
+        drawRef.current()
+        return
+      }
+    }
+  }
 }
