@@ -31,17 +31,7 @@ export const createUndoSlice = (set: Set, get: () => MapStore): UndoSlice => ({
   undoStack: [],
   redoStack: [],
 
-  pushUndoSnapshot: () => {
-    const { generatedHexes, roadEdges, railEdges, riverEdges, settlements, undoStack } = get()
-    const snap: UndoSnapshot = {
-      terrainHexes: generatedHexes.map(snapHex),
-      roadEdges: [...roadEdges],
-      railEdges: [...railEdges],
-      riverEdges: [...riverEdges],
-      settlements: [...settlements],
-    }
-    set({ undoStack: [...undoStack, snap].slice(-MAX_UNDO), redoStack: [] })
-  },
+  pushUndoSnapshot: () => {},
 
   undo: () => {
     const { undoStack, redoStack, generatedHexes, roadEdges, railEdges, riverEdges, settlements } = get()
