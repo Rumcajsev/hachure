@@ -1244,7 +1244,9 @@ terrainTextureFileRef.current = terrainTextureFile
   // River corridor polygons in canvas coords — computed here (before defaultTerrainBlobs) so the
   // pre-shaping cut can use them. The cut happens on raw hex-outline polygons so the cut edge
   // goes through the full organic shaping pipeline (inset, bump, lobe) just like any other blob edge.
+  const prevRiverAutoCorridorsRef = useRef<[number, number][][]>(EMPTY_CORRIDORS)
   const riverAutoCorridors = useMemo((): [number, number][][] => {
+    if (isRiverEdgePainting) return prevRiverAutoCorridorsRef.current
     if (!riverBlobCutEnabled || riverEdges.length === 0 || generatedHexes.length === 0 || !generatedMetadata || !paperDims) return EMPTY_CORRIDORS
     const { pw, ph } = paperDims
     const meta = generatedMetadata
@@ -1261,8 +1263,9 @@ terrainTextureFileRef.current = terrainTextureFile
       const lower = offsetPolyline(pts, -halfW).slice().reverse()
       if (upper.length + lower.length >= 3) corridors.push([...upper, ...lower])
     }
+    prevRiverAutoCorridorsRef.current = corridors
     return corridors
-  }, [riverBlobCutEnabled, riverBlobCutWidth, riverEdges, generatedHexes, riverWiggleFreq, riverWiggleAmp, riverSmoothing, riverPathSmoothing, riverChainOverrides, riverHopProps, riverSegmentProps, hexRadius, generatedMetadata, paperDims])
+  }, [isRiverEdgePainting, riverBlobCutEnabled, riverBlobCutWidth, riverEdges, generatedHexes, riverWiggleFreq, riverWiggleAmp, riverSmoothing, riverPathSmoothing, riverChainOverrides, riverHopProps, riverSegmentProps, hexRadius, generatedMetadata, paperDims])
 
   const prevTerrainBlobsRef = useRef<{ terrain: string; polys: [number, number][][]; blobKeys: string[] }[]>([])
   type TerrainBlobCacheEntry = { hexKey: string; rawPolys: [number, number][][]; hexCenters: [number, number][]; styleKey: string; blobs: { terrain: string; polys: [number, number][][]; blobKeys: string[] }[]; handleGroups?: Map<string, { edgeKey: string; cx: number; cy: number }[]>; simplifiedPolyGroups?: Map<string, [number, number][][]> }
