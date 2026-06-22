@@ -255,7 +255,6 @@ export interface MapRefs {
   getPaperRef: { current: any }
   surroundColorRef: { current: any }
   edgeDragRef: { current: { mode: 'add' | 'remove'; painted: Set<string>; pendingRiverToggles: Array<[number, number, number, number]> } | null }
-  isRiverEdgePaintingRef: { current: boolean }
 }
 
 export function drawMap(refs: MapRefs, exportTarget?: ExportTarget): void {
@@ -288,7 +287,7 @@ export function drawMap(refs: MapRefs, exportTarget?: ExportTarget): void {
     terrainColorsRef, terrainPaintBrushRef, terrainPaintModeRef, terrainTextureBlendModesRef, terrainTextureEnabledRef, terrainTextureFileRef, terrainTextureOpacitiesRef, terrainTextureScalesRef,
     terrainTextureTintColorsRef, terrainTextureTintOpacitiesRef, terrainTypeBlobStylesRef, textureCacheRef, urbanHexesRef, urbanStyleRef, waterOverridesRef, worldcoverImageElementRef,
     zoomRef, getPaperRef, surroundColorRef,
-    edgeDragRef, isRiverEdgePaintingRef,
+    edgeDragRef,
   } = refs
   const getPaper = getPaperRef.current
   const surroundColor = surroundColorRef.current
@@ -750,8 +749,8 @@ export function drawMap(refs: MapRefs, exportTarget?: ExportTarget): void {
       activeEditOverlay.blit(ctx, 0, 0, pw, ph)
     }
 
-    // River edge paint overlay — cheap highlight of the current stroke while chain rebuild is deferred
-    if (!isExport && isRiverEdgePaintingRef.current && edgeDragRef.current) {
+    // River edge paint overlay — highlights the current stroke edges over the live-updating chains
+    if (!isExport && edgeDragRef.current) {
       const painted = edgeDragRef.current.painted
       const proj = projectedHexesRef.current
       ctx.save()

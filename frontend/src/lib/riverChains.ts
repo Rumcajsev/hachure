@@ -268,23 +268,26 @@ type HopProps = { wiggleAmp?: number; wiggleFreq?: number; width?: number; taper
 
 type SegWiggleProps = Record<string, { wiggleAmp?: number; wiggleFreq?: number; pathSmoothing?: number }>
 
-export function buildRiverChainsV2(
-  edges: { q1: number; r1: number; q2: number; r2: number }[],
-  hexes: GeneratedHex[],
-  overrides: Record<string, [number, number][]> = {},
-  wiggleFreqFactor = 2.5,
-  wiggleAmpFactor = 0.25,
-  smoothing = 10,
-  hopProps: Record<string, HopProps> = {},
-  segProps: SegWiggleProps = {},
-  pathSmoothing = 0,
-): RiverChainV2[] {
-  const hexMap = new Map<string, GeneratedHex>()
-  for (const h of hexes) hexMap.set(`${h.q},${h.r}`, h)
+// ---------------------------------------------------------------------------
+// Per-chain build cache — keyed by segKey; invalidated when control points or
+// wiggle/smoothing params change for that chain.
+// ---------------------------------------------------------------------------
+export type RiverChainEntry = { ptsKey: string; paramKey: string; chain: RiverChainV2 }
+export type RiverChainCache = Map<string, RiverChainEntry>  // segKey → entry
 
+// Topology result from the graph-scan phase (no wiggle, fast).
+interface RiverTopology {
+  rawSparse: { pts: [number, number][]; segKey: string }[]
+  interDist: number
+  cosLat: number
+}
+
+function buildRiverTopology(
+  edges: { q1: number; r1: number; q2: number; r2: number }[],
+  hexMap: Map<string, GeneratedHex>,
+): RiverTopology {
   const adj = new Map<string, { key: string; coord: [number, number] }[]>()
   const coordOf = new Map<string, [number, number]>()
-  const edgeMid = new Map<string, [number, number]>()
 
   for (const edge of edges) {
     const h1 = hexMap.get(`${edge.q1},${edge.r1}`), h2 = hexMap.get(`${edge.q2},${edge.r2}`)
@@ -298,8 +301,6 @@ export function buildRiverChainsV2(
     if (!adj.has(k1)) adj.set(k1, [])
     adj.get(k0)!.push({ key: k1, coord: v1 })
     adj.get(k1)!.push({ key: k0, coord: v0 })
-    const id = k0 < k1 ? `${k0}|${k1}` : `${k1}|${k0}`
-    edgeMid.set(id, [(v0[0] + v1[0]) / 2, (v0[1] + v1[1]) / 2])
   }
 
   const degree = new Map<string, number>()
@@ -349,7 +350,6 @@ export function buildRiverChainsV2(
     }
   }
 
-  // Measure inter-vertex spacing in the same coordinate system as the vertices.
   let interDist = 0, distSamples = 0
   outer: for (const { pts } of rawSparse) {
     for (let i = 1; i < pts.length; i++) {
@@ -359,18 +359,51 @@ export function buildRiverChainsV2(
   }
   interDist = distSamples > 0 ? interDist / distSamples : 1e-4
 
-  // cos(lat) correction so wiggleChain perpendiculars are truly perpendicular on the projected canvas.
-  const avgLat = hexes.length > 0 ? hexes.reduce((s, h) => s + h.center[1], 0) / hexes.length : 0
+  const avgLat = hexMap.size > 0
+    ? [...hexMap.values()].reduce((s, h) => s + h.center[1], 0) / hexMap.size
+    : 0
   const cosLat = Math.cos(avgLat * Math.PI / 180)
 
+  return { rawSparse, interDist, cosLat }
+}
+
+// ---------------------------------------------------------------------------
+// Build phase — catmullRom + wiggle per chain, with optional cache.
+// Cache key: segKey → { ptsKey, paramKey, chain }.
+// A cache hit requires the same control points AND the same wiggle/smoothing params.
+// ---------------------------------------------------------------------------
+function buildChainsFromTopology(
+  topo: RiverTopology,
+  wiggleFreqFactor: number,
+  wiggleAmpFactor: number,
+  smoothing: number,
+  overrides: Record<string, [number, number][]>,
+  hopProps: Record<string, HopProps>,
+  segProps: SegWiggleProps,
+  pathSmoothing: number,
+  cache: RiverChainCache | null,
+): RiverChainV2[] {
+  const { rawSparse, interDist, cosLat } = topo
   const steps = Math.max(2, Math.round(smoothing))
   const globalAmp = wiggleAmpFactor * interDist
   const globalFreq = wiggleFreqFactor / interDist
+  const globalParamKey = `${wiggleFreqFactor}|${wiggleAmpFactor}|${smoothing}|${pathSmoothing}`
 
   return rawSparse.map(({ pts, segKey }) => {
     const ctrlPts = overrides[segKey] ?? pts
+    const sp = segProps[segKey]
+
+    // Build the cache keys for this chain
+    const ptsKey = ctrlPts.map(p => `${p[0]},${p[1]}`).join('|')
+    const chainParamKey = `${globalParamKey}|${sp?.wiggleAmp ?? ''}|${sp?.wiggleFreq ?? ''}|${sp?.pathSmoothing ?? ''}`
+
+    if (cache) {
+      const hit = cache.get(segKey)
+      if (hit && hit.ptsKey === ptsKey && hit.paramKey === chainParamKey) return hit.chain
+    }
+
     const relaxed = ctrlPts.slice() as [number, number][]
-    const laplacianIters = Math.round(segProps[segKey]?.pathSmoothing ?? pathSmoothing)
+    const laplacianIters = Math.round(sp?.pathSmoothing ?? pathSmoothing)
     for (let it = 0; it < laplacianIters; it++) {
       for (let i = 1; i < relaxed.length - 1; i++) {
         const avgX = (relaxed[i - 1][0] + relaxed[i + 1][0]) / 2
@@ -391,8 +424,6 @@ export function buildRiverChainsV2(
       hopRanges.push([h * steps, (h + 1) * steps])
     }
 
-    // Apply wiggle: hop overrides > segment overrides > globals
-    const sp = segProps[segKey]
     const hasSegWiggle = sp?.wiggleAmp !== undefined || sp?.wiggleFreq !== undefined
     const hasAnyOverride = hasSegWiggle || hopKeysList.some(k => hopProps[k]?.wiggleAmp !== undefined || hopProps[k]?.wiggleFreq !== undefined)
     let chain: [number, number][]
@@ -412,6 +443,26 @@ export function buildRiverChainsV2(
       chain = dense
     }
 
-    return { segKey, chain, baseChain, hopKeys: hopKeysList, hopRanges }
+    const result: RiverChainV2 = { segKey, chain, baseChain, hopKeys: hopKeysList, hopRanges }
+    if (cache) cache.set(segKey, { ptsKey, paramKey: chainParamKey, chain: result })
+    return result
   })
+}
+
+export function buildRiverChainsV2(
+  edges: { q1: number; r1: number; q2: number; r2: number }[],
+  hexes: GeneratedHex[],
+  overrides: Record<string, [number, number][]> = {},
+  wiggleFreqFactor = 2.5,
+  wiggleAmpFactor = 0.25,
+  smoothing = 10,
+  hopProps: Record<string, HopProps> = {},
+  segProps: SegWiggleProps = {},
+  pathSmoothing = 0,
+  cache: RiverChainCache | null = null,
+): RiverChainV2[] {
+  const hexMap = new Map<string, GeneratedHex>()
+  for (const h of hexes) hexMap.set(`${h.q},${h.r}`, h)
+  const topo = buildRiverTopology(edges, hexMap)
+  return buildChainsFromTopology(topo, wiggleFreqFactor, wiggleAmpFactor, smoothing, overrides, hopProps, segProps, pathSmoothing, cache)
 }

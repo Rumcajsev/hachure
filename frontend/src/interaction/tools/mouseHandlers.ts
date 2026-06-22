@@ -153,9 +153,6 @@ export interface MouseHandlerRefs {
   wcTooltip: { x: number; y: number; label: string } | null
   // Editing label (state setter — unavoidable React dep)
   setEditingLabel: (v: EditingLabelState | null) => void
-  // River edge paint performance
-  setIsRiverEdgePainting: (b: boolean) => void
-  isRiverEdgePaintingRef: MutableRefObject<boolean>
 }
 
 // ────────────────────────────────────────────────────────────────────────────
@@ -846,12 +843,10 @@ export function handleMouseDown(e: MEDown, refs: MouseHandlerRefs): void {
       if (firstResult.riverPair) pendingRiverToggles.push(firstResult.riverPair)
       edgeDragRef.current = { mode: firstResult.action, painted: new Set([paintKey]), pendingRiverToggles }
       draggedRef.current = true
-      if (_edgePaintMode === 'river') refs.setIsRiverEdgePainting(true)
     }
     const onUp = () => {
       if (_edgePaintMode === 'river' && edgeDragRef.current) {
         refs.batchToggleRiverEdgesRef.current(edgeDragRef.current.pendingRiverToggles, edgeDragRef.current.mode)
-        refs.setIsRiverEdgePainting(false)
       }
       edgeDragRef.current = null
       window.removeEventListener('mouseup', onUp)

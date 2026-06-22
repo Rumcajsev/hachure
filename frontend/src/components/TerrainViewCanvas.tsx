@@ -10,7 +10,7 @@ import { projectToCanvas, unprojectFromCanvas, computePaper, computeWorldcoverBb
 import { coastalBlobTerrains, bleedPolygon, buildTerrainBlobsV2, buildTerrainBlobTopology, shapeTerrainBlobs, shapeInputPolygon, computeConnectedComponents, applyBlobMaskEdits, cutRawPolysWithCorridors, generateBlobSplats, buildExportTerrainBlobs } from '../lib/terrainBlobs'
 import type { BlobTopologyEntry } from '../lib/terrainBlobs'
 import { findEdgeChains as findEdgeChainsSync } from '../lib/edgeBlobs'
-import { riverChainCache, buildRiverChainsV2 } from '../lib/riverChains'
+import { riverChainCache, buildRiverChainsV2, type RiverChainCache } from '../lib/riverChains'
 import { computeDragLiveData, computeRoadProjections, computeLiveRiverChainData } from '../lib/roadLiveGeometry'
 
 import { drawRivers as _drawRivers } from '../lib/drawRivers'
@@ -180,9 +180,6 @@ export const TerrainViewCanvas = forwardRef<TerrainViewCanvasHandle, { surroundC
 
   const [roadDataVersion, setRoadDataVersion] = useState(0)
   const [isTerrainPainting, setIsTerrainPainting] = useState(false)
-  const [isRiverEdgePainting, setIsRiverEdgePainting] = useState(false)
-  const isRiverEdgePaintingRef = useRef(false)
-  useEffect(() => { isRiverEdgePaintingRef.current = isRiverEdgePainting }, [isRiverEdgePainting])
   const [wcTooltip, setWcTooltip] = useState<{ x: number; y: number; label: string } | null>(null)
 
   const [mapOverlay, setMapOverlay] = useState(false)
@@ -459,6 +456,8 @@ terrainColors, terrainTextureScales, terrainTextureBlendModes, terrainTextureOpa
   type ChainEntry = import('../lib/drawRivers').ChainEntry
   const cachedRiverTierChainDataRef = useRef<[ChainEntry[], ChainEntry[], ChainEntry[]]>([[], [], []])
   const cachedRiverChainDataRef = useRef<ChainEntry[]>([])
+  // Per-tier chain build cache: skips catmullRom+wiggle for unchanged chains.
+  const riverTierChainCaches = useRef<[RiverChainCache, RiverChainCache, RiverChainCache]>([new Map(), new Map(), new Map()])
   // Dense-point hover/drag refs (shared by road node edit and river node edit)
   // handles = sparse edit points (every 5th of the dense catmullRom output)
   const hoveredChainRef = useRef<{ id: string; handles: [number, number][]; kind: 'road' | 'river' | 'rail' } | null>(null)
@@ -1254,34 +1253,27 @@ terrainTextureFileRef.current = terrainTextureFile
   smoothedCoastlineBoundaryRef.current = smoothedCoastlineBoundary
 
 
-  // Shared tier chain data — computed once, reused by riverAutoCorridors and the chain useEffect.
-  // Skips empty tiers to avoid redundant buildRiverChainsV2 calls.
+  // Shared tier chain data — uses per-chain cache so only structurally changed chains rebuild.
   type _RiverChainV2 = import('../lib/riverChains').RiverChainV2
-  const prevRiverTierChainsRawRef = useRef<[_RiverChainV2[], _RiverChainV2[], _RiverChainV2[]]>([[], [], []])
   const riverTierChainsRaw = useMemo((): [_RiverChainV2[], _RiverChainV2[], _RiverChainV2[]] => {
-    if (isRiverEdgePainting) return prevRiverTierChainsRawRef.current
     const tierEdges: [typeof riverEdges, typeof riverEdges, typeof riverEdges] = [[], [], []]
     for (const e of riverEdges) tierEdges[e.tier ?? 1].push(e)
-    const result = ([0, 1, 2] as const).map(tier => {
-      if (tierEdges[tier].length === 0) return [] as _RiverChainV2[]
+    return ([0, 1, 2] as const).map(tier => {
+      if (tierEdges[tier].length === 0) { riverTierChainCaches.current[tier].clear(); return [] as _RiverChainV2[] }
       const style = riverTierStyles?.[tier]
       const amp  = style?.wiggleAmp     ?? riverWiggleAmp
       const freq = style?.wiggleFreq    ?? riverWiggleFreq
       const sm   = style?.smoothing     ?? riverSmoothing
       const ps   = style?.pathSmoothing ?? riverPathSmoothing
-      return buildRiverChainsV2(tierEdges[tier], generatedHexes, riverChainOverrides, freq, amp, sm, riverHopProps, riverSegmentProps, ps)
+      return buildRiverChainsV2(tierEdges[tier], generatedHexes, riverChainOverrides, freq, amp, sm, riverHopProps, riverSegmentProps, ps, riverTierChainCaches.current[tier])
     }) as [_RiverChainV2[], _RiverChainV2[], _RiverChainV2[]]
-    prevRiverTierChainsRawRef.current = result
-    return result
-  }, [isRiverEdgePainting, riverEdges, riverTierStyles, riverWiggleFreq, riverWiggleAmp, riverSmoothing, riverPathSmoothing, riverChainOverrides, riverHopProps, riverSegmentProps, generatedHexes])
+  }, [riverEdges, riverTierStyles, riverWiggleFreq, riverWiggleAmp, riverSmoothing, riverPathSmoothing, riverChainOverrides, riverHopProps, riverSegmentProps, generatedHexes])
 
   // River corridor polygons in canvas coords — computed here (before defaultTerrainBlobs) so the
   // pre-shaping cut can use them. The cut happens on raw hex-outline polygons so the cut edge
   // goes through the full organic shaping pipeline (inset, bump, lobe) just like any other blob edge.
   // Uses riverTierChainsRaw — no extra buildRiverChainsV2 call.
-  const prevRiverAutoCorridorsRef = useRef<[number, number][][]>(EMPTY_CORRIDORS)
   const riverAutoCorridors = useMemo((): [number, number][][] => {
-    if (isRiverEdgePainting) return prevRiverAutoCorridorsRef.current
     if (!riverBlobCutEnabled || riverEdges.length === 0 || generatedHexes.length === 0 || !generatedMetadata || !paperDims) return EMPTY_CORRIDORS
     const { pw, ph } = paperDims
     const meta = generatedMetadata
@@ -1298,9 +1290,8 @@ terrainTextureFileRef.current = terrainTextureFile
         if (upper.length + lower.length >= 3) corridors.push([...upper, ...lower])
       }
     }
-    prevRiverAutoCorridorsRef.current = corridors
     return corridors
-  }, [isRiverEdgePainting, riverTierChainsRaw, riverBlobCutEnabled, riverBlobCutWidth, riverEdges, generatedHexes, hexRadius, generatedMetadata, paperDims])
+  }, [riverTierChainsRaw, riverBlobCutEnabled, riverBlobCutWidth, riverEdges, generatedHexes, hexRadius, generatedMetadata, paperDims])
 
   const prevTerrainBlobsRef = useRef<{ terrain: string; polys: [number, number][][]; blobKeys: string[] }[]>([])
   type TerrainBlobCacheEntry = { hexKey: string; rawPolys: [number, number][][]; hexCenters: [number, number][]; styleKey: string; blobs: { terrain: string; polys: [number, number][][]; blobKeys: string[] }[]; handleGroups?: Map<string, { edgeKey: string; cx: number; cy: number }[]>; simplifiedPolyGroups?: Map<string, [number, number][][]> }
@@ -1932,8 +1923,6 @@ terrainTextureFileRef.current = terrainTextureFile
   // Mark other layer caches dirty when their relevant data changes
   // (hexBorder, buildings, settlements, highlights, hexNumbers handled by startLayerDirtySync)
   useEffect(() => {
-    if (isRiverEdgePainting) return
-    // riverTierChainsRaw is already built by the useMemo above — just map to ChainEntry format
     cachedRiverTierChainDataRef.current = riverTierChainsRaw.map(chains =>
       chains.map(c => ({ vertices: c.chain, segKey: c.segKey, hopKeys: c.hopKeys, hopRanges: c.hopRanges }))
     ) as [ChainEntry[], ChainEntry[], ChainEntry[]]
@@ -1943,7 +1932,7 @@ terrainTextureFileRef.current = terrainTextureFile
     computedRiverChainsRef.current = cachedRiverChainDataRef.current
     riverChainCache.chains = cachedRiverChainDataRef.current
     riversController.markDirty()
-  }, [isRiverEdgePainting, riverTierChainsRaw, riverWidthScale, showRiverLabels, riverLabelColor, riverSelectMode, selectedSegmentKeys, riverStyle, selectedHopKey, labelOffsets])
+  }, [riverTierChainsRaw, riverWidthScale, showRiverLabels, riverLabelColor, riverSelectMode, selectedSegmentKeys, riverStyle, selectedHopKey, labelOffsets])
   useEffect(() => { roadsController.markDirty() }, [smoothedRailData, roadTierStyles, railStyle, roadSegmentProps, roadHopProps, selectedRoadSegmentKeys, selectedRoadHopKey, roadSelectMode, railSegmentProps, railHopProps, selectedRailSegmentKeys, selectedRailHopKey, railSelectMode])
   useEffect(() => {
     if (bridgesEnabled) {
@@ -2773,7 +2762,7 @@ terrainTextureFileRef.current = terrainTextureFile
     terrainColorsRef, terrainPaintBrushRef, terrainPaintModeRef, terrainTextureBlendModesRef, terrainTextureEnabledRef, terrainTextureFileRef, terrainTextureOpacitiesRef, terrainTextureScalesRef,
     terrainTextureTintColorsRef, terrainTextureTintOpacitiesRef, terrainTypeBlobStylesRef, textureCacheRef, urbanHexesRef, urbanStyleRef, waterOverridesRef, worldcoverImageElementRef,
     zoomRef, getPaperRef, surroundColorRef,
-    edgeDragRef, isRiverEdgePaintingRef,
+    edgeDragRef,
   } satisfies MapRefs
 
   osmOverlayRefsRef.current = {
@@ -2816,7 +2805,6 @@ terrainTextureFileRef.current = terrainTextureFile
     panRef,
     setWcTooltip, wcTooltip,
     setEditingLabel,
-    setIsRiverEdgePainting, isRiverEdgePaintingRef,
   } satisfies MouseHandlerRefs
 
   return (
