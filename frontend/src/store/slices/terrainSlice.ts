@@ -495,11 +495,11 @@ export const createTerrainSlice = (set: Set, get: () => MapStore): TerrainSlice 
           const progress = event.progress as number
 
           if (step === 'done') {
-            const { terrainRules, disabledTerrains } = get()
+            const { terrainRules, disabledTerrains, realisticCoastline } = get()
             const rawHexes = event.hexes as GeneratedHex[]
             const reclassified = rawHexes.map((h) => {
-              const terrain = classifyHex(h.coverage ?? {}, terrainRules, disabledTerrains)
-              const { terrains, backgroundTerrain } = classifyWithBackground(terrain, classifyHexLayers(h.coverage ?? {}, terrainRules, disabledTerrains))
+              const terrain = classifyHex(h.coverage ?? {}, terrainRules, disabledTerrains, realisticCoastline)
+              const { terrains, backgroundTerrain } = classifyWithBackground(terrain, classifyHexLayers(h.coverage ?? {}, terrainRules, disabledTerrains, realisticCoastline))
               return { ...h, terrain, terrains, backgroundTerrain }
             })
             set({
@@ -569,11 +569,11 @@ export const createTerrainSlice = (set: Set, get: () => MapStore): TerrainSlice 
               highlightPaintMode: false,
             })
           } else if (step === 'classify' && Array.isArray(event.hexes)) {
-            const { terrainRules, disabledTerrains, generatedHexes: prev } = get()
+            const { terrainRules, disabledTerrains, realisticCoastline, generatedHexes: prev } = get()
             const rawHexes = event.hexes as GeneratedHex[]
             const updates = new Map(rawHexes.map((h) => {
-              const terrain = classifyHex(h.coverage ?? {}, terrainRules, disabledTerrains)
-              const { terrains, backgroundTerrain } = classifyWithBackground(terrain, classifyHexLayers(h.coverage ?? {}, terrainRules, disabledTerrains))
+              const terrain = classifyHex(h.coverage ?? {}, terrainRules, disabledTerrains, realisticCoastline)
+              const { terrains, backgroundTerrain } = classifyWithBackground(terrain, classifyHexLayers(h.coverage ?? {}, terrainRules, disabledTerrains, realisticCoastline))
               return [`${h.q},${h.r}`, { ...h, terrain, terrains, backgroundTerrain }]
             }))
             set({
@@ -736,8 +736,8 @@ export const createTerrainSlice = (set: Set, get: () => MapStore): TerrainSlice 
                 merged.set(key, { ...existingByKey.get(key)!, partial: h.partial })
               } else if (isNewTerritory(h.q, h.r)) {
                 // New hex in correct zone: classify and add
-                const terrain = classifyHex(h.coverage ?? {}, terrainRules, disabledTerrains)
-                const { terrains, backgroundTerrain } = classifyWithBackground(terrain, classifyHexLayers(h.coverage ?? {}, terrainRules, disabledTerrains))
+                const terrain = classifyHex(h.coverage ?? {}, terrainRules, disabledTerrains, realisticCoastline)
+                const { terrains, backgroundTerrain } = classifyWithBackground(terrain, classifyHexLayers(h.coverage ?? {}, terrainRules, disabledTerrains, realisticCoastline))
                 merged.set(key, { ...h, terrain, terrains, backgroundTerrain })
               }
               // Hexes on the wrong side of the original paper are discarded
@@ -786,7 +786,7 @@ export const createTerrainSlice = (set: Set, get: () => MapStore): TerrainSlice 
   },
 
   setClassRule: (terrain, classCode, rule) => {
-    const { terrainRules, generatedHexes, disabledTerrains } = get()
+    const { terrainRules, generatedHexes, disabledTerrains, realisticCoastline } = get()
     const existing = terrainRules[terrain] ?? []
     const next: TerrainRules = {
       ...terrainRules,
@@ -798,45 +798,45 @@ export const createTerrainSlice = (set: Set, get: () => MapStore): TerrainSlice 
     }
     const updated = generatedHexes.map((h) => {
       if (h.manual_override) return h
-      const t = classifyHex(h.coverage ?? {}, next, disabledTerrains)
-      const { terrains, backgroundTerrain } = classifyWithBackground(t, classifyHexLayers(h.coverage ?? {}, next, disabledTerrains))
+      const t = classifyHex(h.coverage ?? {}, next, disabledTerrains, realisticCoastline)
+      const { terrains, backgroundTerrain } = classifyWithBackground(t, classifyHexLayers(h.coverage ?? {}, next, disabledTerrains, realisticCoastline))
       return { ...h, terrain: t, terrains, backgroundTerrain }
     })
     set({ terrainRules: next, generatedHexes: updated })
   },
 
   setTerrainRules: (rules) => {
-    const { generatedHexes, disabledTerrains } = get()
+    const { generatedHexes, disabledTerrains, realisticCoastline } = get()
     const updated = generatedHexes.map((h) => {
       if (h.manual_override) return h
-      const t = classifyHex(h.coverage ?? {}, rules, disabledTerrains)
-      const { terrains, backgroundTerrain } = classifyWithBackground(t, classifyHexLayers(h.coverage ?? {}, rules, disabledTerrains))
+      const t = classifyHex(h.coverage ?? {}, rules, disabledTerrains, realisticCoastline)
+      const { terrains, backgroundTerrain } = classifyWithBackground(t, classifyHexLayers(h.coverage ?? {}, rules, disabledTerrains, realisticCoastline))
       return { ...h, terrain: t, terrains, backgroundTerrain }
     })
     set({ terrainRules: rules, generatedHexes: updated })
   },
 
   reclassify: () => {
-    const { generatedHexes, terrainRules, disabledTerrains } = get()
+    const { generatedHexes, terrainRules, disabledTerrains, realisticCoastline } = get()
     if (generatedHexes.length === 0) return
     const updated = generatedHexes.map((h) => {
       if (h.manual_override) return h
-      const t = classifyHex(h.coverage ?? {}, terrainRules, disabledTerrains)
-      const { terrains, backgroundTerrain } = classifyWithBackground(t, classifyHexLayers(h.coverage ?? {}, terrainRules, disabledTerrains))
+      const t = classifyHex(h.coverage ?? {}, terrainRules, disabledTerrains, realisticCoastline)
+      const { terrains, backgroundTerrain } = classifyWithBackground(t, classifyHexLayers(h.coverage ?? {}, terrainRules, disabledTerrains, realisticCoastline))
       return { ...h, terrain: t, terrains, backgroundTerrain }
     })
     set({ generatedHexes: updated })
   },
 
   toggleTerrainDisabled: (terrain) => {
-    const { disabledTerrains, generatedHexes, terrainRules } = get()
+    const { disabledTerrains, generatedHexes, terrainRules, realisticCoastline } = get()
     const next = new Set(disabledTerrains)
     if (next.has(terrain)) next.delete(terrain)
     else next.add(terrain)
     const updated = generatedHexes.map((h) => {
       if (h.manual_override) return h
-      const t = classifyHex(h.coverage ?? {}, terrainRules, next)
-      const { terrains, backgroundTerrain } = classifyWithBackground(t, classifyHexLayers(h.coverage ?? {}, terrainRules, next))
+      const t = classifyHex(h.coverage ?? {}, terrainRules, next, realisticCoastline)
+      const { terrains, backgroundTerrain } = classifyWithBackground(t, classifyHexLayers(h.coverage ?? {}, terrainRules, next, realisticCoastline))
       return { ...h, terrain: t, terrains, backgroundTerrain }
     })
     set({ disabledTerrains: next, generatedHexes: updated })
@@ -904,11 +904,11 @@ export const createTerrainSlice = (set: Set, get: () => MapStore): TerrainSlice 
 
   resetHexOverride: (q, r) => {
     get().pushUndoSnapshot()
-    const { generatedHexes, terrainRules, disabledTerrains } = get()
+    const { generatedHexes, terrainRules, disabledTerrains, realisticCoastline } = get()
     const hex = generatedHexes.find((h) => h.q === q && h.r === r)
     if (!hex) return
-    const terrain = classifyHex(hex.coverage ?? {}, terrainRules, disabledTerrains)
-    const { terrains, backgroundTerrain } = classifyWithBackground(terrain, classifyHexLayers(hex.coverage ?? {}, terrainRules, disabledTerrains))
+    const terrain = classifyHex(hex.coverage ?? {}, terrainRules, disabledTerrains, realisticCoastline)
+    const { terrains, backgroundTerrain } = classifyWithBackground(terrain, classifyHexLayers(hex.coverage ?? {}, terrainRules, disabledTerrains, realisticCoastline))
     const updated = generatedHexes.map((h) =>
       h.q === q && h.r === r
         ? { ...h, terrain, terrains, backgroundTerrain, manual_override: false }
