@@ -396,9 +396,7 @@ export function buildRiverChainsV2(
     const hasSegWiggle = sp?.wiggleAmp !== undefined || sp?.wiggleFreq !== undefined
     const hasAnyOverride = hasSegWiggle || hopKeysList.some(k => hopProps[k]?.wiggleAmp !== undefined || hopProps[k]?.wiggleFreq !== undefined)
     let chain: [number, number][]
-    if (globalAmp === 0 && !hasAnyOverride) {
-      chain = baseChain
-    } else if (!hasAnyOverride) {
+    if (!hasAnyOverride) {
       chain = wiggleChain(baseChain, globalAmp, globalFreq, cosLat)
     } else {
       const dense = [...baseChain] as [number, number][]
