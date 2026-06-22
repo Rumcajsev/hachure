@@ -38,6 +38,8 @@ export type RailsSlice = {
   clearRails: () => void
   addRailEdge: (q1: number, r1: number, q2: number, r2: number) => void
   removeRailEdge: (q1: number, r1: number, q2: number, r2: number) => void
+  batchAddRailEdges: (edges: { q1: number; r1: number; q2: number; r2: number }[]) => void
+  batchRemoveRailEdges: (edges: { q1: number; r1: number; q2: number; r2: number }[]) => void
   removeRailHexEdges: (q: number, r: number) => void
   setRailPaintEraser: (v: boolean) => void
   setRailStyle: (update: Partial<RailStyle>) => void
@@ -207,6 +209,18 @@ export const createRailsSlice = (set: Set, get: () => MapStore): RailsSlice => (
     const key = railEdgeCanonicalKey(q1, r1, q2, r2)
     if (railEdges.some((e) => railEdgeCanonicalKey(e.q1, e.r1, e.q2, e.r2) === key)) return
     set({ railEdges: [...railEdges, { q1, r1, q2, r2, manual: true }] })
+  },
+  batchAddRailEdges: (edges) => {
+    if (edges.length === 0) return
+    const existingKeys = new Set(get().railEdges.map(e => railEdgeCanonicalKey(e.q1, e.r1, e.q2, e.r2)))
+    const toAdd = edges.filter(({ q1, r1, q2, r2 }) => !existingKeys.has(railEdgeCanonicalKey(q1, r1, q2, r2)))
+    if (toAdd.length === 0) return
+    set(s => ({ railEdges: [...s.railEdges, ...toAdd.map(({ q1, r1, q2, r2 }) => ({ q1, r1, q2, r2, manual: true as const }))] }))
+  },
+  batchRemoveRailEdges: (edges) => {
+    if (edges.length === 0) return
+    const removeKeys = new Set(edges.map(({ q1, r1, q2, r2 }) => railEdgeCanonicalKey(q1, r1, q2, r2)))
+    set(s => ({ railEdges: s.railEdges.filter(e => !removeKeys.has(railEdgeCanonicalKey(e.q1, e.r1, e.q2, e.r2))) }))
   },
 
   removeRailEdge: (q1, r1, q2, r2) => {

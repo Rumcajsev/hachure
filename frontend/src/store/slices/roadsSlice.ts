@@ -40,6 +40,8 @@ export type RoadsSlice = {
   clearRoads: () => void
   clearManualRoads: () => void
   addRoadEdge: (q1: number, r1: number, q2: number, r2: number, tier: 0 | 1 | 2) => void
+  batchAddRoadEdges: (edges: { q1: number; r1: number; q2: number; r2: number; tier: 0 | 1 | 2 }[]) => void
+  batchRemoveRoadEdges: (edges: { q1: number; r1: number; q2: number; r2: number }[]) => void
   removeRoadHexEdges: (q: number, r: number, tier: 0 | 1 | 2) => void
   removeAllRoadHexEdges: (q: number, r: number) => void
   removeRoadEdgeAllTiers: (q1: number, r1: number, q2: number, r2: number) => void
@@ -294,6 +296,30 @@ export const createRoadsSlice = (set: Set, get: () => MapStore): RoadsSlice => (
     const filtered = roadEdges.filter((e) => pairKey(e) !== thisPair)
     if (filtered.some((e) => roadEdgeCanonicalKey(e.q1, e.r1, e.q2, e.r2, e.tier) === newKey)) return
     set({ roadEdges: [...filtered, { q1, r1, q2, r2, tier, manual: true }] })
+  },
+  batchAddRoadEdges: (edges) => {
+    if (edges.length === 0) return
+    const pairKey = (q1: number, r1: number, q2: number, r2: number) => {
+      const a = `${q1},${r1}`, b = `${q2},${r2}`; return a < b ? `${a}|${b}` : `${b}|${a}`
+    }
+    let next = [...get().roadEdges]
+    for (const { q1, r1, q2, r2, tier } of edges) {
+      const pk = pairKey(q1, r1, q2, r2)
+      next = next.filter(e => pairKey(e.q1, e.r1, e.q2, e.r2) !== pk)
+      if (!next.some(e => roadEdgeCanonicalKey(e.q1, e.r1, e.q2, e.r2, e.tier) === roadEdgeCanonicalKey(q1, r1, q2, r2, tier)))
+        next.push({ q1, r1, q2, r2, tier, manual: true })
+    }
+    set({ roadEdges: next })
+  },
+  batchRemoveRoadEdges: (edges) => {
+    if (edges.length === 0) return
+    const removeKeys = new Set(edges.map(({ q1, r1, q2, r2 }) => {
+      const a = `${q1},${r1}`, b = `${q2},${r2}`; return a < b ? `${a}|${b}` : `${b}|${a}`
+    }))
+    const pairKey = (e: RoadEdge) => {
+      const a = `${e.q1},${e.r1}`, b = `${e.q2},${e.r2}`; return a < b ? `${a}|${b}` : `${b}|${a}`
+    }
+    set({ roadEdges: get().roadEdges.filter(e => !removeKeys.has(pairKey(e))) })
   },
 
   removeRoadHexEdges: (q, r, tier) => {

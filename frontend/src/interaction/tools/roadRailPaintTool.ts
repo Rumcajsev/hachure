@@ -21,10 +21,16 @@ export interface RoadRailPaintRefs {
   prevEdgeHexRef: MutableRefObject<{ q: number; r: number } | null>
   paintBufferedAdditionsRef: MutableRefObject<{ q1: number; r1: number; q2: number; r2: number; tier: 0 | 1 | 2 }[]>
   paintBufferedRemovalsRef: MutableRefObject<{ q1: number; r1: number; q2: number; r2: number }[]>
+  railBufferedAdditionsRef: MutableRefObject<{ q1: number; r1: number; q2: number; r2: number }[]>
+  railBufferedRemovalsRef: MutableRefObject<{ q1: number; r1: number; q2: number; r2: number }[]>
   skipExpensiveLayersRef: MutableRefObject<boolean>
   roadNetworkRef: MutableRefObject<RoadNetwork>
+  batchAddRoadEdgesRef: MutableRefObject<(edges: { q1: number; r1: number; q2: number; r2: number; tier: 0 | 1 | 2 }[]) => void>
+  batchRemoveRoadEdgesRef: MutableRefObject<(edges: { q1: number; r1: number; q2: number; r2: number }[]) => void>
   addRoadEdgeRef: MutableRefObject<(q1: number, r1: number, q2: number, r2: number, tier: 0 | 1 | 2) => void>
   removeRoadEdgeAllTiersRef: MutableRefObject<(q1: number, r1: number, q2: number, r2: number) => void>
+  batchAddRailEdgesRef: MutableRefObject<(edges: { q1: number; r1: number; q2: number; r2: number }[]) => void>
+  batchRemoveRailEdgesRef: MutableRefObject<(edges: { q1: number; r1: number; q2: number; r2: number }[]) => void>
   addRailEdgeRef: MutableRefObject<(q1: number, r1: number, q2: number, r2: number) => void>
   removeRailEdgeRef: MutableRefObject<(q1: number, r1: number, q2: number, r2: number) => void>
   drawRef: MutableRefObject<() => void>
@@ -36,8 +42,8 @@ export interface RoadRailPaintRefs {
 function paintAtClient(clientX: number, clientY: number, refs: RoadRailPaintRefs) {
   const { metaRef, hexesRef, hexEdgeModeRef, roadPaintModeRef, railPaintModeRef,
     roadPaintBrushRef, roadPaintEraserRef, railPaintEraserRef, prevEdgeHexRef,
-    paintBufferedAdditionsRef, paintBufferedRemovalsRef,
-    roadNetworkRef, addRailEdgeRef, removeRailEdgeRef,
+    paintBufferedAdditionsRef, paintBufferedRemovalsRef, railBufferedAdditionsRef, railBufferedRemovalsRef,
+    roadNetworkRef,
     clientToLogical, getPaper, drawRef } = refs
 
   const meta = metaRef.current
@@ -80,8 +86,10 @@ function paintAtClient(clientX: number, clientY: number, refs: RoadRailPaintRefs
       const eraser = railPaintEraserRef.current
       const prev = prevEdgeHexRef.current
       if (prev && (prev.q !== hex.q || prev.r !== hex.r) && hexAdjacent(prev.q, prev.r, hex.q, hex.r)) {
-        if (eraser) removeRailEdgeRef.current(prev.q, prev.r, hex.q, hex.r)
-        else addRailEdgeRef.current(prev.q, prev.r, hex.q, hex.r)
+        if (eraser) railBufferedRemovalsRef.current.push({ q1: prev.q, r1: prev.r, q2: hex.q, r2: hex.r })
+        else railBufferedAdditionsRef.current.push({ q1: prev.q, r1: prev.r, q2: hex.q, r2: hex.r })
+        roadsController.markDirty()
+        drawRef.current()
       }
     }
 
@@ -93,8 +101,10 @@ function paintAtClient(clientX: number, clientY: number, refs: RoadRailPaintRefs
 /** Attaches road/rail stroke paint handlers to `el`. Returns cleanup. */
 export function attachRoadRailPaintHandlers(el: HTMLElement, refs: RoadRailPaintRefs): () => void {
   const { roadPaintModeRef, railPaintModeRef,
-    isPaintingRef, prevEdgeHexRef, paintBufferedAdditionsRef, paintBufferedRemovalsRef,
-    skipExpensiveLayersRef, addRoadEdgeRef, removeRoadEdgeAllTiersRef,
+    isPaintingRef, prevEdgeHexRef,
+    paintBufferedAdditionsRef, paintBufferedRemovalsRef, railBufferedAdditionsRef, railBufferedRemovalsRef,
+    skipExpensiveLayersRef, batchAddRoadEdgesRef, batchRemoveRoadEdgesRef,
+    batchAddRailEdgesRef, batchRemoveRailEdgesRef,
     drawRef, setRoadDataVersion } = refs
 
   const onDown = (e: MouseEvent) => {
@@ -102,10 +112,10 @@ export function attachRoadRailPaintHandlers(el: HTMLElement, refs: RoadRailPaint
     if ((e.target as HTMLElement).tagName !== 'CANVAS') return
     if (!roadPaintModeRef.current && !railPaintModeRef.current) return
     isPaintingRef.current = true
-    if (roadPaintModeRef.current) {
-      paintBufferedAdditionsRef.current = []
-      paintBufferedRemovalsRef.current = []
-    }
+    paintBufferedAdditionsRef.current = []
+    paintBufferedRemovalsRef.current = []
+    railBufferedAdditionsRef.current = []
+    railBufferedRemovalsRef.current = []
     prevEdgeHexRef.current = null
     paintAtClient(e.clientX, e.clientY, refs)
   }
@@ -116,10 +126,14 @@ export function attachRoadRailPaintHandlers(el: HTMLElement, refs: RoadRailPaint
   }
   const onUp = () => {
     isPaintingRef.current = false
-    for (const e of paintBufferedAdditionsRef.current) addRoadEdgeRef.current(e.q1, e.r1, e.q2, e.r2, e.tier)
-    for (const e of paintBufferedRemovalsRef.current) removeRoadEdgeAllTiersRef.current(e.q1, e.r1, e.q2, e.r2)
+    batchAddRoadEdgesRef.current(paintBufferedAdditionsRef.current)
+    batchRemoveRoadEdgesRef.current(paintBufferedRemovalsRef.current)
+    batchAddRailEdgesRef.current(railBufferedAdditionsRef.current)
+    batchRemoveRailEdgesRef.current(railBufferedRemovalsRef.current)
     paintBufferedAdditionsRef.current = []
     paintBufferedRemovalsRef.current = []
+    railBufferedAdditionsRef.current = []
+    railBufferedRemovalsRef.current = []
     skipExpensiveLayersRef.current = true
     setRoadDataVersion(v => v + 1)
     requestAnimationFrame(() => {

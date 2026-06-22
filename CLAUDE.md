@@ -145,6 +145,21 @@ During a label drag (or any single-item edit that would otherwise rebuild an ent
 
 This makes drag cost O(1) regardless of scene size. Currently wired for settlement label drag only.
 
+### Zustand store — batch updates
+
+The `persist` middleware serializes the **entire store to localStorage on every `set()` call**. Calling a store action N times in a loop (e.g. on mouseup after a paint stroke) causes N full JSON serializations, N React re-renders, and N undo snapshots — this is the main source of multi-second freezes after paint strokes.
+
+**Rule: never call store actions in a loop.** If a user gesture (paint stroke, batch import, multi-select edit) needs to write N items, accumulate them during the gesture and flush with a single `set()` at the end.
+
+**Pattern:**
+1. During the gesture (mousemove): push items into a local buffer (`useRef` array) — no store writes.
+2. On gesture end (mouseup): call one `batchXxx` action that applies the whole buffer in a single `set()`.
+3. The `batchXxx` action: call `pushUndoSnapshot()` once, compute the full next state, then one `set({ ... })`.
+
+Existing batch actions to follow as examples: `batchToggleRiverEdges` in `riversSlice.ts`, `batchAddRoadEdges` / `batchRemoveRoadEdges` in `roadsSlice.ts`, `batchAddRailEdges` / `batchRemoveRailEdges` in `railsSlice.ts`, and `batchOverrideHexTerrain` / `batchOverrideHexBackground` / `batchOverrideHexElevation` in `terrainSlice.ts`.
+
+---
+
 ### Shared UI primitives — `src/components/ui.tsx`
 
 `SliderRow`, `ResetButton`, and `SectionLabel` live in `ui.tsx`. **Before writing any of these patterns inline, import from there.** If a new pattern appears in more than one place, add it to `ui.tsx` instead of duplicating it.

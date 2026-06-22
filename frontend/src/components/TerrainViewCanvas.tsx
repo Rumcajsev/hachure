@@ -224,7 +224,8 @@ terrainColors, terrainTextureScales, terrainTextureBlendModes, terrainTextureOpa
     setSelectedRailSegmentKeys, toggleRailSegmentSelection, setSelectedRailHopKey,
     setRailSegmentProp, clearRailSegmentProp, setRailHopProp, clearRailHopProp,
     railSegmentProps, railHopProps,
-    addRoadEdge, removeRoadHexEdges, removeRoadEdgeAllTiers, addRailEdge, removeRailEdge, removeRailHexEdges,
+    addRoadEdge, removeRoadHexEdges, removeRoadEdgeAllTiers, batchAddRoadEdges, batchRemoveRoadEdges,
+    addRailEdge, removeRailEdge, removeRailHexEdges, batchAddRailEdges, batchRemoveRailEdges,
     activePanel,
     roadControlOverrides, setRoadControlOverride, deleteRoadControlOverride,
     roadSnapBindings, setRoadSnapBinding, deleteRoadSnapBinding,
@@ -395,11 +396,17 @@ terrainColors, terrainTextureScales, terrainTextureBlendModes, terrainTextureOpa
   const addRoadEdgeRef = useRef(addRoadEdge)
   const removeRoadHexEdgesRef = useRef(removeRoadHexEdges)
   const removeRoadEdgeAllTiersRef = useRef(removeRoadEdgeAllTiers)
+  const batchAddRoadEdgesRef = useRef(batchAddRoadEdges)
+  const batchRemoveRoadEdgesRef = useRef(batchRemoveRoadEdges)
   const roadNetworkRef = useRef(new RoadNetwork())
   const paintBufferedAdditionsRef = useRef<{ q1: number; r1: number; q2: number; r2: number; tier: 0 | 1 | 2 }[]>([])
   const paintBufferedRemovalsRef = useRef<{ q1: number; r1: number; q2: number; r2: number }[]>([])
+  const railBufferedAdditionsRef = useRef<{ q1: number; r1: number; q2: number; r2: number }[]>([])
+  const railBufferedRemovalsRef = useRef<{ q1: number; r1: number; q2: number; r2: number }[]>([])
   const addRailEdgeRef = useRef(addRailEdge)
   const removeRailEdgeRef = useRef(removeRailEdge)
+  const batchAddRailEdgesRef = useRef(batchAddRailEdges)
+  const batchRemoveRailEdgesRef = useRef(batchRemoveRailEdges)
   const removeRailHexEdgesRef = useRef(removeRailHexEdges)
   const activePanelRef = useRef(activePanel)
   const roadControlOverridesRef = useRef(roadControlOverrides)
@@ -663,8 +670,12 @@ const terrainTextureFileRef = useRef(terrainTextureFile)
   addRoadEdgeRef.current = addRoadEdge
   removeRoadHexEdgesRef.current = removeRoadHexEdges
   removeRoadEdgeAllTiersRef.current = removeRoadEdgeAllTiers
+  batchAddRoadEdgesRef.current = batchAddRoadEdges
+  batchRemoveRoadEdgesRef.current = batchRemoveRoadEdges
   addRailEdgeRef.current = addRailEdge
   removeRailEdgeRef.current = removeRailEdge
+  batchAddRailEdgesRef.current = batchAddRailEdges
+  batchRemoveRailEdgesRef.current = batchRemoveRailEdges
   removeRailHexEdgesRef.current = removeRailHexEdges
   activePanelRef.current = activePanel
   urbanHexesRef.current = urbanHexes
@@ -2314,9 +2325,14 @@ terrainTextureFileRef.current = terrainTextureFile
     return attachRoadRailPaintHandlers(el, {
       metaRef, hexesRef, hexEdgeModeRef, roadPaintModeRef, railPaintModeRef,
       roadPaintBrushRef, roadPaintEraserRef, railPaintEraserRef,
-      isPaintingRef, prevEdgeHexRef, paintBufferedAdditionsRef, paintBufferedRemovalsRef,
+      isPaintingRef, prevEdgeHexRef,
+      paintBufferedAdditionsRef, paintBufferedRemovalsRef,
+      railBufferedAdditionsRef, railBufferedRemovalsRef,
       skipExpensiveLayersRef, roadNetworkRef,
-      addRoadEdgeRef, removeRoadEdgeAllTiersRef, addRailEdgeRef, removeRailEdgeRef,
+      batchAddRoadEdgesRef, batchRemoveRoadEdgesRef,
+      addRoadEdgeRef, removeRoadEdgeAllTiersRef,
+      batchAddRailEdgesRef, batchRemoveRailEdgesRef,
+      addRailEdgeRef, removeRailEdgeRef,
       drawRef, clientToLogical, getPaper, setRoadDataVersion,
     })
   }, [clientToLogical, getPaper])
