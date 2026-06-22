@@ -42,6 +42,24 @@ export function hexAdjacent(q1: number, r1: number, q2: number, r2: number): boo
   return Math.max(Math.abs(dq), Math.abs(dr), Math.abs(dq + dr)) === 1
 }
 
+/** All hex axial coords on the straight line from (q1,r1) to (q2,r2), inclusive.
+ *  Uses cube-coordinate lerp + round so no hexes are skipped even at large steps. */
+export function hexLineBetween(q1: number, r1: number, q2: number, r2: number): [number, number][] {
+  const dist = Math.max(Math.abs(q2 - q1), Math.abs(r2 - r1), Math.abs((q2 + r2) - (q1 + r1)))
+  if (dist === 0) return [[q1, r1]]
+  const result: [number, number][] = []
+  for (let i = 0; i <= dist; i++) {
+    const t = i / dist
+    const fq = q1 + (q2 - q1) * t, fr = r1 + (r2 - r1) * t, fs = -(fq + fr)
+    let rq = Math.round(fq), rr = Math.round(fr), rs = Math.round(fs)
+    const dq = Math.abs(rq - fq), dr = Math.abs(rr - fr), ds = Math.abs(rs - fs)
+    if (dq > dr && dq > ds) rq = -rr - rs
+    else if (dr > ds) rr = -rq - rs
+    result.push([rq, rr])
+  }
+  return result
+}
+
 /** Centripetal Catmull-Rom curve interpolation via Barry-Goldman — prevents cusps and
  *  loops at sharp angles. */
 export function catmullRom(pts: [number, number][], steps: number): [number, number][] {

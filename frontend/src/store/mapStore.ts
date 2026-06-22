@@ -48,7 +48,6 @@ export interface BlobOverride {
   lobeAmp?: number
   lobeThreshold?: number
   lobeDirection?: number
-  simplify?: number
   textureScale?: number
   enabled?: boolean
   width?: number
@@ -88,6 +87,7 @@ export type HexEdgeMode = 'whole' | 'half'
 
 export type ActiveTool =
   | { type: 'none' }
+  | { type: 'select' }
   | { type: 'terrain'; brush: string }
   | { type: 'elevation'; brush: 'flat' | 'hills' | 'mountains' }
   | { type: 'water' }
@@ -427,7 +427,6 @@ export const DEFAULT_TERRAIN_BLOB = {
   lobeAmp: 0.49,
   lobeThreshold: 0.08,
   lobeDirection: -1 as const,
-  simplify: 0,
   topoStyle: 0,
 }
 
@@ -890,12 +889,9 @@ export const useMapStore = create<MapStore>()(persist((set, get) => ({
     terrainBlobLobeAmp: s.terrainBlobLobeAmp,
     terrainBlobLobeThreshold: s.terrainBlobLobeThreshold,
     terrainBlobLobeDirection: s.terrainBlobLobeDirection,
-    terrainBlobSimplify: s.terrainBlobSimplify,
     terrainBlobTopoStyle: s.terrainBlobTopoStyle,
     terrainBlobSplatDensity: s.terrainBlobSplatDensity,
     terrainBlobSplatSize: s.terrainBlobSplatSize,
-    terrainBlobHoleDensity: s.terrainBlobHoleDensity,
-    terrainBlobHoleSize: s.terrainBlobHoleSize,
     terrainBlobOutlineEnabled: s.terrainBlobOutlineEnabled,
     terrainBlobOutlineColor: s.terrainBlobOutlineColor,
     terrainBlobOutlineWidth: s.terrainBlobOutlineWidth,

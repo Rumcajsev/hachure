@@ -243,15 +243,11 @@ export function buildTerrainBlobTopology(
  *  This is the input-shaping step that runs before the organic deformation pipeline. */
 export function shapeInputPolygon(
   poly: [number, number][],
-  simplify: number,
   topoStyle: number,
   R: number,
   seed: number,
 ): [number, number][] {
-  // Base spacing is R (≈ natural hex corner spacing), topoStyle adds on top so any
-  // non-zero value guarantees fewer vertices than the raw hex outline.
   if (topoStyle > 0) return resamplePerimeter(poly, (1 + topoStyle) * R, seed)
-  if (simplify > 0) return douglasPeuckerClosed(poly, simplify * R)
   return poly
 }
 
@@ -267,6 +263,7 @@ export function shapeTerrainBlobs(
   lobeDirection: number,
   R: number,
   blobSeeds: Record<string, number> = {},
+  stableSeeds?: number[],  // per-poly seed override; stable across handle drags
 ): { terrain: string; polys: [number, number][][]; blobKeys: string[] }[] {
   const result: { terrain: string; polys: [number, number][][]; blobKeys: string[] }[] = []
 
@@ -275,7 +272,10 @@ export function shapeTerrainBlobs(
     const p1Amp = bumpFraction * R
     const p2Amp = bumpFraction * lobeAmp * R * lobeDirection
 
-    const rawSeeds = rawPolys.map(poly => {
+    const rawSeeds = rawPolys.map((poly, i) => {
+      if (stableSeeds?.[i] !== undefined) {
+        return { posHash: stableSeeds[i], seed: stableSeeds[i] ^ (blobSeeds[String(stableSeeds[i])] ?? 0) }
+      }
       const posHash = Math.abs(Math.round(poly[0][0] * 73 + poly[0][1] * 97))
       return { posHash, seed: posHash ^ (blobSeeds[String(posHash)] ?? 0) }
     })
@@ -326,7 +326,6 @@ export function buildTerrainBlobsV2(
   lobeThreshold: number,
   lobeDirection: number,
   R: number,
-  simplify: number = 0,
   topoStyle: number = 0,
 ): { terrain: string; polys: [number, number][][] }[] {
   const topology = buildTerrainBlobTopology(projected, R)
@@ -334,7 +333,7 @@ export function buildTerrainBlobsV2(
     ...entry,
     rawPolys: entry.rawPolys.map(poly => {
       const seed = Math.abs(Math.round(poly[0][0] * 73 + poly[0][1] * 97))
-      return shapeInputPolygon(poly, simplify, topoStyle, R, seed)
+      return shapeInputPolygon(poly, topoStyle, R, seed)
     }),
   }))
   return shapeTerrainBlobs(
@@ -613,25 +612,22 @@ export function cutRawPolysWithCorridors(
 export type BlobSplatParams = {
   splatDensity: number  // expected satellites per R of perimeter (0 = none)
   splatSize: number     // satellite radius as fraction of R
-  holeDensity: number   // expected holes per 6R of perimeter (0 = none)
-  holeSize: number      // hole radius as fraction of R
 }
 
-/** Generate procedural satellite splats (small blobs near edges) and holes (clearings inside)
- *  for all terrain blobs. Both are seeded deterministically from blob geometry so they are
- *  stable across re-renders without being stored. Runs after shaping and mask edits. */
+/** Generate procedural satellite splats (small blobs near blob edges).
+ *  Seeded deterministically from blob geometry — stable across re-renders. */
 export function generateBlobSplats(
   blobs: { terrain: string; polys: [number, number][][] }[],
   params: BlobSplatParams,
   R: number,
   shapeParams: BlobShapeParams,
 ): { terrain: string; polys: [number, number][][] }[] {
-  const { splatDensity, splatSize, holeDensity, holeSize } = params
-  if (splatDensity <= 0 && holeDensity <= 0) return blobs
+  const { splatDensity, splatSize } = params
+  if (splatDensity <= 0) return blobs
 
   return blobs.map(blob => {
     const addSplats: [number, number][][] = []
-    const subtractPolys: [number, number][][] = []
+
 
     for (const poly of blob.polys) {
       const n = poly.length
@@ -708,84 +704,87 @@ export function generateBlobSplats(
         }
       }
 
-      // ── Interior holes ──────────────────────────────────────────────────────
-      if (holeDensity > 0) {
-        // Expected holes proportional to blob perimeter (scales with blob size)
-        const expected = holeDensity * totalLen / (6 * R)
-        const numHoles = Math.floor(expected) + (rng() < (expected % 1) ? 1 : 0)
-
-        // Bounding box for rejection sampling
-        let minX = poly[0][0], maxX = poly[0][0]
-        let minY = poly[0][1], maxY = poly[0][1]
-        for (const [x, y] of poly) {
-          if (x < minX) minX = x; if (x > maxX) maxX = x
-          if (y < minY) minY = y; if (y > maxY) maxY = y
-        }
-
-        for (let h = 0; h < numHoles; h++) {
-          const hr = R * holeSize * (0.6 + rng() * 0.6)
-          const minDist = hr * 1.5  // hole center must be this far from boundary
-
-          let hcx = 0, hcy = 0, found = false
-          for (let attempt = 0; attempt < 40; attempt++) {
-            const tx = minX + rng() * (maxX - minX)
-            const ty = minY + rng() * (maxY - minY)
-            if (!pointInPolygon(tx, ty, poly)) continue
-
-            // Approximate distance to nearest boundary segment
-            let minBd = Infinity
-            for (let i = 0; i < n; i++) {
-              const a = poly[i], b = poly[(i + 1) % n]
-              const edx = b[0] - a[0], edy = b[1] - a[1]
-              const len2 = edx * edx + edy * edy
-              const t2 = len2 < 1e-9 ? 0 : Math.max(0, Math.min(1, ((tx - a[0]) * edx + (ty - a[1]) * edy) / len2))
-              const d = Math.hypot(a[0] + t2 * edx - tx, a[1] + t2 * edy - ty)
-              if (d < minBd) minBd = d
-            }
-            if (minBd >= minDist) { hcx = tx; hcy = ty; found = true; break }
-          }
-          if (!found) continue
-
-          const holeSeed = seed ^ (h * 0x7F3D) ^ 0xB4E1
-          const nPts = 8 + Math.floor(rng() * 5)
-          const circle: [number, number][] = []
-          for (let i = 0; i < nPts; i++) {
-            const angle = (i / nPts) * Math.PI * 2
-            circle.push([hcx + Math.cos(angle) * hr, hcy + Math.sin(angle) * hr])
-          }
-
-          const sp = shapeParams
-          const p1Amp = sp.bump * hr
-          const p2Amp = sp.bump * sp.lobeAmp * hr * sp.lobeDirection
-          let out: [number, number][] = circle
-          out = subdivideClosedPolygon(out, Math.max(hr * 0.25, 1))
-          out = perturbXY(out, makePermutation(holeSeed), makePermutation(holeSeed + 31), sp.sweepFreq / hr, p1Amp)
-          out = resampleSmoothQuad(out, 3)
-          out = perturbNormal(out, makePermutation(holeSeed + 67), makePermutation(holeSeed + 113), sp.lobeFreq / hr, p2Amp, sp.lobeThreshold)
-
-          if (out.length >= 3) subtractPolys.push(out)
-        }
-      }
     }
 
-    // Apply holes to original polys, then append satellites
-    let polys = blob.polys
-    if (subtractPolys.length > 0) {
-      const cutMPoly: polygonClipping.MultiPolygon = subtractPolys.map(c => [c as polygonClipping.Ring])
-      const next: [number, number][][] = []
-      for (const poly of polys) {
-        if (poly.length < 3) continue
-        const subject: polygonClipping.MultiPolygon = [[poly as polygonClipping.Ring]]
-        try {
-          const result = polygonClipping.difference(subject, cutMPoly)
-          for (const p of result) {
-            if (p[0]?.length >= 3) next.push(p[0] as [number, number][])
-          }
-        } catch { next.push(poly) }
-      }
-      polys = next
-    }
-
-    return { ...blob, polys: [...polys, ...addSplats] }
+    return { ...blob, polys: [...blob.polys, ...addSplats] }
   })
+}
+
+// ---------------------------------------------------------------------------
+// Export terrain blob rebuild
+// ---------------------------------------------------------------------------
+
+export interface ExportBlobParams {
+  projected: { hex: GeneratedHex; verts: [number, number][] }[]
+  terrainBlobOverrides: Record<string, unknown>
+  blobComponents: Map<string, string>
+  blobComponentsByTerrain: Map<string, Map<string, string>>
+  realisticCoastline: boolean
+  waterOverrides: Record<string, unknown>
+  terrainTypeBlobStyles: Record<string, { enabled?: boolean; smooth?: number; offset?: number; bump?: number; sweepFreq?: number; lobeFreq?: number; lobeAmp?: number; lobeThreshold?: number; lobeDirection?: number } | undefined>
+  smooth: number; offset: number; bump: number; sweepFreq: number
+  lobeFreq: number; lobeAmp: number; lobeThreshold: number; lobeDirection: number
+  R: number
+}
+
+export function buildExportTerrainBlobs(p: ExportBlobParams): {
+  exportTerrainBlobs: ReturnType<typeof buildTerrainBlobsV2>
+  exportWaterBlobs: ReturnType<typeof buildTerrainBlobsV2>
+} {
+  const { projected, terrainBlobOverrides, blobComponents, blobComponentsByTerrain,
+    realisticCoastline, waterOverrides, terrainTypeBlobStyles,
+    smooth, offset, bump, sweepFreq, lobeFreq, lobeAmp, lobeThreshold, lobeDirection, R } = p
+
+  const overriddenKeys = new Set(Object.keys(terrainBlobOverrides))
+  const isPureSea = (h: GeneratedHex) =>
+    h.terrain === 'water' && (!h.coastline_clip || h.coastline_clip.length === 0)
+
+  const terrainTypeSet = new Set<string>()
+  for (const { hex } of projected) {
+    const h = hex as GeneratedHex
+    if (realisticCoastline && isPureSea(h)) continue
+    for (const t of coastalBlobTerrains(h, realisticCoastline)) {
+      if (t !== 'clear' && t !== 'water') terrainTypeSet.add(t)
+    }
+  }
+
+  const exportTerrainBlobs = [...terrainTypeSet].flatMap(terrain => {
+    const componentMap = blobComponentsByTerrain.get(terrain) ?? new Map<string, string>()
+    const terrainProjected = projected
+      .filter(({ hex }) => {
+        const h = hex as GeneratedHex
+        if (realisticCoastline && isPureSea(h)) return false
+        if (!coastalBlobTerrains(h, realisticCoastline).includes(terrain)) return false
+        if (overriddenKeys.size > 0) {
+          const ck = componentMap.get(`${h.q},${h.r}`)
+          if (ck && overriddenKeys.has(ck)) return false
+        }
+        return true
+      })
+      .map(({ hex, verts }) => ({ hex: { ...hex, terrain }, verts }))
+    if (terrainProjected.length === 0) return []
+    const ts = terrainTypeBlobStyles[terrain]?.enabled ? terrainTypeBlobStyles[terrain] : null
+    return buildTerrainBlobsV2(
+      terrainProjected,
+      ts?.smooth ?? smooth, ts?.offset ?? offset, ts?.bump ?? bump,
+      ts?.sweepFreq ?? sweepFreq, ts?.lobeFreq ?? lobeFreq,
+      ts?.lobeAmp ?? lobeAmp, ts?.lobeThreshold ?? lobeThreshold,
+      ts?.lobeDirection ?? lobeDirection, R,
+    )
+  })
+
+  const waterOverriddenKeys = new Set(Object.keys(waterOverrides))
+  const defaultWaterProjected = projected
+    .filter(({ hex }) => {
+      if (hex.terrain !== 'water') return false
+      const ck = blobComponents.get(`${hex.q},${hex.r}`)
+      return !ck || !waterOverriddenKeys.has(ck)
+    })
+    .map(({ hex, verts }) => ({ hex: { ...hex, terrain: 'water' }, verts }))
+
+  const exportWaterBlobs = defaultWaterProjected.length > 0
+    ? buildTerrainBlobsV2(defaultWaterProjected, smooth, offset, bump, sweepFreq, lobeFreq, lobeAmp, lobeThreshold, lobeDirection, R)
+    : []
+
+  return { exportTerrainBlobs, exportWaterBlobs }
 }
