@@ -453,10 +453,10 @@ export const DEFAULT_LAKE_BLOB = {
 
 export const DEFAULT_RIVER_GEOM = {
   widthScale: 1.0,
-  wiggleAmp: 0.25,
-  wiggleFreq: 2.5,
+  wiggleAmp: 0.10,
+  wiggleFreq: 1.0,
   smoothing: 10,
-  pathSmoothing: 0,
+  pathSmoothing: 5,
 }
 
 export const DEFAULT_ROAD_GEOM = {

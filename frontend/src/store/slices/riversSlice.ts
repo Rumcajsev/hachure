@@ -131,10 +131,10 @@ export const createRiversSlice = (set: Set, get: () => MapStore): RiversSlice =>
     riverTierStyles: DEFAULT_RIVER_TIER_STYLES.map(s => ({ ...s, effect: { ...s.effect } })) as [RiverTierStyle, RiverTierStyle, RiverTierStyle],
     riverStyle: { ...DEFAULT_RIVER_STYLE },   // legacy
     riverWidthScale: 1.0,   // legacy
-    riverWiggleFreq: 2.5,
-    riverWiggleAmp: 0.25,
+    riverWiggleFreq: 1.0,
+    riverWiggleAmp: 0.10,
     riverSmoothing: 10,
-    riverPathSmoothing: 0,
+    riverPathSmoothing: 5,
     riverNodeEditMode: false,
     riverChainOverrides: {},
     riverHopProps: {},
