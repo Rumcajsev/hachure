@@ -39,6 +39,7 @@ export type RiversSlice = {
   setShowRiverLabels: (v: boolean) => void
   setRiverLabelColor: (v: string) => void
   toggleRiverEdge: (q1: number, r1: number, q2: number, r2: number) => void
+  batchToggleRiverEdges: (pairs: [number, number, number, number][], mode: 'add' | 'remove') => void
   setRiverEdges: (edges: { q1: number; r1: number; q2: number; r2: number }[]) => void
   setRiverSelectMode: (v: boolean) => void
   setSelectedSegmentKeys: (keys: string[]) => void
@@ -239,6 +240,24 @@ export const createRiversSlice = (set: Set, get: () => MapStore): RiversSlice =>
       const k = edgeKey(q1, r1, q2, r2)
       const idx = riverEdges.findIndex(e => edgeKey(e.q1, e.r1, e.q2, e.r2) === k)
       set({ riverEdges: idx >= 0 ? riverEdges.filter((_, i) => i !== idx) : [...riverEdges, { q1, r1, q2, r2, tier: riverPaintTier }] })
+    },
+    batchToggleRiverEdges: (pairs, mode) => {
+      if (pairs.length === 0) return
+      get().pushUndoSnapshot()
+      const { riverEdges, riverPaintTier } = get()
+      const existingKeys = new Set(riverEdges.map(e => edgeKey(e.q1, e.r1, e.q2, e.r2)))
+      let next = [...riverEdges]
+      for (const [q1, r1, q2, r2] of pairs) {
+        const k = edgeKey(q1, r1, q2, r2)
+        if (mode === 'add' && !existingKeys.has(k)) {
+          next.push({ q1, r1, q2, r2, tier: riverPaintTier })
+          existingKeys.add(k)
+        } else if (mode === 'remove' && existingKeys.has(k)) {
+          next = next.filter(e => edgeKey(e.q1, e.r1, e.q2, e.r2) !== k)
+          existingKeys.delete(k)
+        }
+      }
+      set({ riverEdges: next })
     },
     setRiverEdges: (edges) => set({ riverEdges: edges }),
 

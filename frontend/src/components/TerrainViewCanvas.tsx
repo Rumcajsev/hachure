@@ -232,7 +232,7 @@ terrainColors, terrainTextureScales, terrainTextureBlendModes, terrainTextureOpa
     roadWiggleAmp, roadWiggleFreq, roadSmoothing, roadPathSmoothing, roadCenterPull, roadTierGeometry, roadDensityMinChain, roadWiggleDragging,
     roadChainOverrides, setRoadChainOverride,
     riverEdges,
-    riverEditMode, toggleRiverEdge,
+    riverEditMode, toggleRiverEdge, batchToggleRiverEdges,
     riverNodeEditMode, riverChainOverrides, setRiverChainOverride,
     riverHopProps, selectedHopKey, setRiverHopProp, setSelectedHopKey,
     roadSelectMode, selectedRoadSegmentKeys, selectedRoadHopKey,
@@ -463,6 +463,7 @@ terrainColors, terrainTextureScales, terrainTextureBlendModes, terrainTextureOpa
   const riverEdgesRef = useRef(riverEdges)
   const riverEditModeRef = useRef(riverEditMode)
   const toggleRiverEdgeRef = useRef(toggleRiverEdge)
+  const batchToggleRiverEdgesRef = useRef(batchToggleRiverEdges)
   const showRiverLabelsRef = useRef(showRiverLabels)
   const riverLabelColorRef = useRef(riverLabelColor)
   const riverSegmentPropsRef = useRef(riverSegmentProps)
@@ -733,6 +734,7 @@ const terrainTextureFileRef = useRef(terrainTextureFile)
   riverEdgesRef.current = riverEdges
   riverEditModeRef.current = riverEditMode
   toggleRiverEdgeRef.current = toggleRiverEdge
+  batchToggleRiverEdgesRef.current = batchToggleRiverEdges
   showRiverLabelsRef.current = showRiverLabels
   riverLabelColorRef.current = riverLabelColor
   riverSegmentPropsRef.current = riverSegmentProps
@@ -2769,7 +2771,7 @@ terrainTextureFileRef.current = terrainTextureFile
   mouseHandlerRefsRef.current = {
     canvasRef, frameDimsRef, paperDimsRef, zoomRef,
     clientToLogicalRef, getPaperRef, drawRef,
-    riverEdgesRef, toggleRiverEdgeRef, highlightEdgePathsRef, setHighlightEdgePathRef,
+    riverEdgesRef, toggleRiverEdgeRef, batchToggleRiverEdgesRef, highlightEdgePathsRef, setHighlightEdgePathRef,
     activeToolRef, activePanelRef,
     liveLabelOffsetRef, labelBBoxCacheRef, labelDragStateRef, hoveredLabelIdRef,
     labelOffsetsRef, editingLabelRef, setLabelOffsetRef, setActiveToolRef,

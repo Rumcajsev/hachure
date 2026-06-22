@@ -47,6 +47,7 @@ export interface MouseHandlerRefs {
   // Edge paint data (used by edgePaintTool)
   riverEdgesRef: MutableRefObject<RiverEdge[]>
   toggleRiverEdgeRef: MutableRefObject<(q1: number, r1: number, q2: number, r2: number) => void>
+  batchToggleRiverEdgesRef: MutableRefObject<(pairs: [number, number, number, number][], mode: 'add' | 'remove') => void>
   highlightEdgePathsRef: MutableRefObject<Record<string, [number, number][][]>>
   setHighlightEdgePathRef: MutableRefObject<(id: string, segments: [number, number][][]) => void>
   // Tool & panel
@@ -849,9 +850,7 @@ export function handleMouseDown(e: MEDown, refs: MouseHandlerRefs): void {
     }
     const onUp = () => {
       if (_edgePaintMode === 'river' && edgeDragRef.current) {
-        for (const pair of edgeDragRef.current.pendingRiverToggles) {
-          refs.toggleRiverEdgeRef.current(...pair)
-        }
+        refs.batchToggleRiverEdgesRef.current(edgeDragRef.current.pendingRiverToggles, edgeDragRef.current.mode)
         refs.setIsRiverEdgePainting(false)
       }
       edgeDragRef.current = null
