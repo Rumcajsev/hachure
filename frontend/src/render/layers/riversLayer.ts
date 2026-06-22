@@ -1,4 +1,5 @@
 import { LayerCache } from '../../lib/LayerCache'
+import type { LayerController } from '../types'
 import { drawRivers } from '../../lib/drawRivers'
 import type { DrawRiversParams } from '../../lib/drawRivers'
 
@@ -15,7 +16,7 @@ export interface RiversInput {
 
 const cache = new LayerCache()
 
-export const riversController = {
+export const riversController: LayerController<RiversInput> = {
   markDirty(): void { cache.markDirty() },
   dispose(): void { cache.dispose() },
   get lastRebuilt(): boolean { return cache.lastRebuilt },

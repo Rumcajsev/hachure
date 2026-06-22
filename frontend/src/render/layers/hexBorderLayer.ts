@@ -1,6 +1,7 @@
 import { LayerCache } from '../../lib/LayerCache'
+import type { LayerController } from '../types'
 import { drawHexBorders } from '../../lib/drawHexBorders'
-import type { GeneratedHex } from '../../store/mapStore'
+import type { GeneratedHex, MapStore } from '../../store/mapStore'
 
 export interface HexBorderInput {
   pw: number
@@ -21,7 +22,12 @@ export interface HexBorderInput {
 
 const cache = new LayerCache()
 
-export const hexBorderController = {
+export const hexBorderDeps = (s: MapStore) => [
+  s.hexBorderMode, s.hexEdgeMode, s.hexBorderOpacity, s.hexBorderColor, s.hexBorderDifference,
+  s.generatedHexes, s.excludedHexKeys, s.disabledHexKeys, s.autoDisabledOceanHexKeys,
+]
+
+export const hexBorderController: LayerController<HexBorderInput> = {
   markDirty(): void { cache.markDirty() },
   dispose(): void { cache.dispose() },
   get lastRebuilt(): boolean { return cache.lastRebuilt },

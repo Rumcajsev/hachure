@@ -1,4 +1,6 @@
 import { LayerCache } from '../../lib/LayerCache'
+import type { LayerController } from '../types'
+import type { MapStore } from '../../store/mapStore'
 import { drawHighlights } from '../../lib/drawHighlights'
 import type { HighlightsParams } from '../../lib/drawHighlights'
 
@@ -12,7 +14,11 @@ export interface HighlightsInput extends HighlightsParams {
 
 const cache = new LayerCache()
 
-export const highlightsController = {
+export const highlightsDeps = (s: MapStore) => [
+  s.highlights, s.highlightedHexes, s.highlightLines, s.highlightEdgePaths,
+]
+
+export const highlightsController: LayerController<HighlightsInput> = {
   markDirty(): void { cache.markDirty() },
   dispose(): void { cache.dispose() },
   get lastRebuilt(): boolean { return cache.lastRebuilt },

@@ -1,4 +1,6 @@
 import { LayerCache } from '../../lib/LayerCache'
+import type { LayerController } from '../types'
+import type { MapStore } from '../../store/mapStore'
 import { drawSettlements } from '../../lib/drawSettlements'
 import type { DrawSettlementsParams } from '../../lib/drawSettlements'
 
@@ -16,7 +18,12 @@ export interface SettlementsInput extends DrawSettlementsParams {
 
 const cache = new LayerCache()
 
-export const settlementsController = {
+export const settlementsDeps = (s: MapStore) => [
+  s.settlements, s.settlementTierStyles, s.labelPresetId,
+  s.labelOverrides, s.labelOffsets, s.mapBgColor,
+]
+
+export const settlementsController: LayerController<SettlementsInput> = {
   markDirty(): void { cache.markDirty() },
   dispose(): void { cache.dispose() },
   get lastRebuilt(): boolean { return cache.lastRebuilt },

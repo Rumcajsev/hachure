@@ -1,4 +1,6 @@
 import { LayerCache } from '../../lib/LayerCache'
+import type { LayerController } from '../types'
+import type { MapStore } from '../../store/mapStore'
 import { drawHexNumbers } from '../../lib/drawHexNumbers'
 import type { HexNumberParams } from '../../lib/drawHexNumbers'
 
@@ -12,7 +14,14 @@ export type HexNumbersInput = Omit<HexNumberParams, 'ctx'> & {
 
 const cache = new LayerCache()
 
-export const hexNumbersController = {
+// hexNumberMap is a TVC memo of (hexNumbersEnabled, generatedHexes, hexOrientation, hexNumberStartCorner)
+// — we depend on those source props directly rather than the computed memo.
+export const hexNumbersDeps = (s: MapStore) => [
+  s.hexNumbersEnabled, s.hexNumberEdge, s.hexNumberColor, s.hexNumberFontScale,
+  s.hexOrientation, s.hexNumberStartCorner, s.labelPresetId, s.labelOverrides, s.generatedHexes,
+]
+
+export const hexNumbersController: LayerController<HexNumbersInput> = {
   markDirty(): void { cache.markDirty() },
   dispose(): void { cache.dispose() },
   get lastRebuilt(): boolean { return cache.lastRebuilt },

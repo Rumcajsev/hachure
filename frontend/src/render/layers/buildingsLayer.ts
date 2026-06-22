@@ -1,4 +1,6 @@
 import { LayerCache } from '../../lib/LayerCache'
+import type { LayerController } from '../types'
+import type { MapStore } from '../../store/mapStore'
 import { drawAllBuildings } from '../../lib/drawBuildings'
 import type { DrawBuildingsParams } from '../../lib/drawBuildings'
 import { drawAllBuildingsV2 } from '../../lib/drawBuildingsV2'
@@ -17,7 +19,9 @@ export interface BuildingsInput extends DrawBuildingsParams {
 
 const cache = new LayerCache()
 
-export const buildingsController = {
+export const buildingsDeps = (s: MapStore) => [s.urbanHexes, s.urbanStyle]
+
+export const buildingsController: LayerController<BuildingsInput> = {
   markDirty(): void { cache.markDirty() },
   dispose(): void { cache.dispose() },
   get lastRebuilt(): boolean { return cache.lastRebuilt },

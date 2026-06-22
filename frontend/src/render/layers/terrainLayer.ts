@@ -1,6 +1,7 @@
 import { LayerCache } from '../../lib/LayerCache'
 import { drawTerrain } from '../../lib/drawTerrain'
 import type { DrawTerrainParams } from '../../lib/drawTerrain'
+import type { LayerController } from '../types'
 
 export interface TerrainInput {
   pw: number
@@ -22,7 +23,7 @@ export interface TerrainInput {
 
 const cache = new LayerCache()
 
-export const terrainController = {
+export const terrainController: LayerController<TerrainInput> = {
   markDirty(): void { cache.markDirty() },
   dispose(): void { cache.dispose() },
   get lastRebuilt(): boolean { return cache.lastRebuilt },

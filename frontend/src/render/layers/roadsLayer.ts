@@ -1,4 +1,5 @@
 import { LayerCache } from '../../lib/LayerCache'
+import type { LayerController } from '../types'
 import { drawRoadsAndRails } from '../../lib/drawRoadsRails'
 import type { DrawRoadsRailsParams, BBox } from '../../lib/drawRoadsRails'
 
@@ -21,7 +22,7 @@ export interface RoadsInput extends DrawRoadsRailsParams {
 
 const cache = new LayerCache()
 
-export const roadsController = {
+export const roadsController: LayerController<RoadsInput> = {
   markDirty(): void { cache.markDirty() },
   dispose(): void { cache.dispose() },
   get lastRebuilt(): boolean { return cache.lastRebuilt },
