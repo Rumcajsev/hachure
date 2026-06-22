@@ -1241,31 +1241,53 @@ terrainTextureFileRef.current = terrainTextureFile
   smoothedCoastlineBoundaryRef.current = smoothedCoastlineBoundary
 
 
+  // Shared tier chain data — computed once, reused by riverAutoCorridors and the chain useEffect.
+  // Skips empty tiers to avoid redundant buildRiverChainsV2 calls.
+  type _RiverChainV2 = import('../lib/riverChains').RiverChainV2
+  const prevRiverTierChainsRawRef = useRef<[_RiverChainV2[], _RiverChainV2[], _RiverChainV2[]]>([[], [], []])
+  const riverTierChainsRaw = useMemo((): [_RiverChainV2[], _RiverChainV2[], _RiverChainV2[]] => {
+    if (isRiverEdgePainting) return prevRiverTierChainsRawRef.current
+    const tierEdges: [typeof riverEdges, typeof riverEdges, typeof riverEdges] = [[], [], []]
+    for (const e of riverEdges) tierEdges[e.tier ?? 1].push(e)
+    const result = ([0, 1, 2] as const).map(tier => {
+      if (tierEdges[tier].length === 0) return [] as _RiverChainV2[]
+      const style = riverTierStyles?.[tier]
+      const amp  = style?.wiggleAmp     ?? riverWiggleAmp
+      const freq = style?.wiggleFreq    ?? riverWiggleFreq
+      const sm   = style?.smoothing     ?? riverSmoothing
+      const ps   = style?.pathSmoothing ?? riverPathSmoothing
+      return buildRiverChainsV2(tierEdges[tier], generatedHexes, riverChainOverrides, freq, amp, sm, riverHopProps, riverSegmentProps, ps)
+    }) as [_RiverChainV2[], _RiverChainV2[], _RiverChainV2[]]
+    prevRiverTierChainsRawRef.current = result
+    return result
+  }, [isRiverEdgePainting, riverEdges, riverTierStyles, riverWiggleFreq, riverWiggleAmp, riverSmoothing, riverPathSmoothing, riverChainOverrides, riverHopProps, riverSegmentProps, generatedHexes])
+
   // River corridor polygons in canvas coords — computed here (before defaultTerrainBlobs) so the
   // pre-shaping cut can use them. The cut happens on raw hex-outline polygons so the cut edge
   // goes through the full organic shaping pipeline (inset, bump, lobe) just like any other blob edge.
+  // Uses riverTierChainsRaw — no extra buildRiverChainsV2 call.
   const prevRiverAutoCorridorsRef = useRef<[number, number][][]>(EMPTY_CORRIDORS)
   const riverAutoCorridors = useMemo((): [number, number][][] => {
     if (isRiverEdgePainting) return prevRiverAutoCorridorsRef.current
     if (!riverBlobCutEnabled || riverEdges.length === 0 || generatedHexes.length === 0 || !generatedMetadata || !paperDims) return EMPTY_CORRIDORS
     const { pw, ph } = paperDims
     const meta = generatedMetadata
-    // Use px=0,py=0 to match the paper-local coordinate system used by projectedHexes/rawPolys.
     const proj = (lonlat: [number, number]): [number, number] =>
       projectToCanvas(lonlat[0], lonlat[1], meta, pw, ph, 0, 0)
-    const chains = buildRiverChainsV2(riverEdges, generatedHexes, riverChainOverrides, riverWiggleFreq, riverWiggleAmp, riverSmoothing, riverHopProps, riverSegmentProps, riverPathSmoothing)
     const halfW = hexRadius * riverBlobCutWidth
     const corridors: [number, number][][] = []
-    for (const chain of chains) {
-      const pts = chain.chain.map(proj)
-      if (pts.length < 2) continue
-      const upper = offsetPolyline(pts, +halfW)
-      const lower = offsetPolyline(pts, -halfW).slice().reverse()
-      if (upper.length + lower.length >= 3) corridors.push([...upper, ...lower])
+    for (const tierChains of riverTierChainsRaw) {
+      for (const chain of tierChains) {
+        const pts = chain.chain.map(proj)
+        if (pts.length < 2) continue
+        const upper = offsetPolyline(pts, +halfW)
+        const lower = offsetPolyline(pts, -halfW).slice().reverse()
+        if (upper.length + lower.length >= 3) corridors.push([...upper, ...lower])
+      }
     }
     prevRiverAutoCorridorsRef.current = corridors
     return corridors
-  }, [isRiverEdgePainting, riverBlobCutEnabled, riverBlobCutWidth, riverEdges, generatedHexes, riverWiggleFreq, riverWiggleAmp, riverSmoothing, riverPathSmoothing, riverChainOverrides, riverHopProps, riverSegmentProps, hexRadius, generatedMetadata, paperDims])
+  }, [isRiverEdgePainting, riverTierChainsRaw, riverBlobCutEnabled, riverBlobCutWidth, riverEdges, generatedHexes, hexRadius, generatedMetadata, paperDims])
 
   const prevTerrainBlobsRef = useRef<{ terrain: string; polys: [number, number][][]; blobKeys: string[] }[]>([])
   type TerrainBlobCacheEntry = { hexKey: string; rawPolys: [number, number][][]; hexCenters: [number, number][]; styleKey: string; blobs: { terrain: string; polys: [number, number][][]; blobKeys: string[] }[]; handleGroups?: Map<string, { edgeKey: string; cx: number; cy: number }[]>; simplifiedPolyGroups?: Map<string, [number, number][][]> }
@@ -1898,24 +1920,17 @@ terrainTextureFileRef.current = terrainTextureFile
   // (hexBorder, buildings, settlements, highlights, hexNumbers handled by startLayerDirtySync)
   useEffect(() => {
     if (isRiverEdgePainting) return
-    const tierEdges: [typeof riverEdges, typeof riverEdges, typeof riverEdges] = [[], [], []]
-    for (const e of riverEdges) tierEdges[e.tier ?? 1].push(e)
-    cachedRiverTierChainDataRef.current = ([0, 1, 2] as const).map(tier => {
-      const style = riverTierStyles?.[tier]
-      const amp  = style?.wiggleAmp     ?? riverWiggleAmp
-      const freq = style?.wiggleFreq    ?? riverWiggleFreq
-      const sm   = style?.smoothing     ?? riverSmoothing
-      const ps   = style?.pathSmoothing ?? riverPathSmoothing
-      return buildRiverChainsV2(tierEdges[tier], generatedHexes, riverChainOverrides, freq, amp, sm, riverHopProps, riverSegmentProps, ps)
-        .map(c => ({ vertices: c.chain, segKey: c.segKey, hopKeys: c.hopKeys, hopRanges: c.hopRanges }))
-    }) as [ChainEntry[], ChainEntry[], ChainEntry[]]
-    const rv2 = buildRiverChainsV2(riverEdges, generatedHexes, riverChainOverrides, riverWiggleFreq, riverWiggleAmp, riverSmoothing, riverHopProps, riverSegmentProps, riverPathSmoothing)
+    // riverTierChainsRaw is already built by the useMemo above — just map to ChainEntry format
+    cachedRiverTierChainDataRef.current = riverTierChainsRaw.map(chains =>
+      chains.map(c => ({ vertices: c.chain, segKey: c.segKey, hopKeys: c.hopKeys, hopRanges: c.hopRanges }))
+    ) as [ChainEntry[], ChainEntry[], ChainEntry[]]
+    const rv2 = [...riverTierChainsRaw[0], ...riverTierChainsRaw[1], ...riverTierChainsRaw[2]]
     riverChainsV2Ref.current = rv2
     cachedRiverChainDataRef.current = rv2.map(c => ({ vertices: c.chain, segKey: c.segKey, hopKeys: c.hopKeys, hopRanges: c.hopRanges }))
     computedRiverChainsRef.current = cachedRiverChainDataRef.current
     riverChainCache.chains = cachedRiverChainDataRef.current
     riversController.markDirty()
-  }, [isRiverEdgePainting, riverEdges, riverChainOverrides, riverTierStyles, riverWidthScale, riverWiggleFreq, riverWiggleAmp, riverSmoothing, riverPathSmoothing, showRiverLabels, riverLabelColor, riverSegmentProps, riverSelectMode, selectedSegmentKeys, riverStyle, riverHopProps, selectedHopKey, labelOffsets, generatedHexes])
+  }, [isRiverEdgePainting, riverTierChainsRaw, riverWidthScale, showRiverLabels, riverLabelColor, riverSelectMode, selectedSegmentKeys, riverStyle, selectedHopKey, labelOffsets])
   useEffect(() => { roadsController.markDirty() }, [smoothedRailData, roadTierStyles, railStyle, roadSegmentProps, roadHopProps, selectedRoadSegmentKeys, selectedRoadHopKey, roadSelectMode, railSegmentProps, railHopProps, selectedRailSegmentKeys, selectedRailHopKey, railSelectMode])
   useEffect(() => {
     if (bridgesEnabled) {
