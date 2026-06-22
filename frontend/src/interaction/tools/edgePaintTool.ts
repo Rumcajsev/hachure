@@ -2,6 +2,10 @@
  * Edge paint tool — shared logic for river edges and highlight edge paths.
  * Both features paint/erase hex edges; what differs is which store collection
  * gets updated. The hover+drag scaffolding in mouseHandlers.ts calls these.
+ *
+ * For river edges, paintEdge does NOT update the store directly. It returns
+ * `riverPair` so the caller can accumulate changes and apply them on mouseup
+ * in one batch — keeping the store silent during the drag stroke.
  */
 import type { MutableRefObject } from 'react'
 import type { GeneratedHex, RiverEdge } from '../../store/mapStore'
@@ -17,7 +21,6 @@ export interface EdgePaintRefs {
   highlightsRef:        MutableRefObject<HighlightObj[]>
   hexesRef:             MutableRefObject<GeneratedHex[]>
   riverEdgesRef:        MutableRefObject<RiverEdge[]>
-  toggleRiverEdgeRef:   MutableRefObject<(q1: number, r1: number, q2: number, r2: number) => void>
   highlightEdgePathsRef: MutableRefObject<Record<string, [number, number][][]>>
   setHighlightEdgePathRef: MutableRefObject<(id: string, segments: [number, number][][]) => void>
 }
@@ -33,16 +36,25 @@ export function isEdgePaintActive(refs: EdgePaintRefs): 'highlight' | 'river' | 
   return hl?.mode === 'edge' ? 'highlight' : false
 }
 
+export type PaintEdgeResult = {
+  action: 'add' | 'remove'
+  /** For river edges: the canonical hex pair to toggle. Null for highlight edges. */
+  riverPair: [number, number, number, number] | null
+} | null
+
 /**
  * Paint or erase a single hex edge. forceMode locks the whole drag stroke to
  * one direction instead of toggling on each cell.
- * Returns the effective action ('add'|'remove'), or null if nothing was done.
+ *
+ * For river mode: does NOT update the store — returns riverPair for the caller
+ * to accumulate and flush on mouseup.
+ * For highlight mode: updates store immediately (highlight state is cheap to update).
  */
 export function paintEdge(
   hexQ: number, hexR: number, edgeI: number,
   refs: EdgePaintRefs,
   forceMode?: 'add' | 'remove',
-): 'add' | 'remove' | null {
+): PaintEdgeResult {
   const mode = isEdgePaintActive(refs)
   if (!mode) return null
 
@@ -78,14 +90,14 @@ export function paintEdge(
     const k = ek(hexQ, hexR, neighbor.q, neighbor.r)
     const exists = refs.riverEdgesRef.current.some(e => ek(e.q1, e.r1, e.q2, e.r2) === k)
 
-    if (forceMode === 'add' && exists) return 'add'
-    if (forceMode === 'remove' && !exists) return 'remove'
+    if (forceMode === 'add' && exists) return { action: 'add', riverPair: [hexQ, hexR, neighbor.q, neighbor.r] }
+    if (forceMode === 'remove' && !exists) return { action: 'remove', riverPair: [hexQ, hexR, neighbor.q, neighbor.r] }
 
-    refs.toggleRiverEdgeRef.current(hexQ, hexR, neighbor.q, neighbor.r)
-    return exists ? 'remove' : 'add'
+    // Return coords for caller to apply — store is NOT touched here
+    return { action: exists ? 'remove' : 'add', riverPair: [hexQ, hexR, neighbor.q, neighbor.r] }
   }
 
-  // Highlight edge paint — append/remove from segment chains
+  // Highlight edge paint — updates store immediately (no deferred path needed)
   const hlId = refs.activeHighlightIdRef.current!
   const segments = refs.highlightEdgePathsRef.current[hlId] ?? []
   const ck0 = vk(geoV0), ck1 = vk(geoV1)
@@ -99,8 +111,8 @@ export function paintEdge(
   const segIdx = segments.findIndex(s => edgeIdx(s) !== -1)
   const exists = segIdx !== -1
 
-  if (forceMode === 'add' && exists) return 'add'
-  if (forceMode === 'remove' && !exists) return 'remove'
+  if (forceMode === 'add' && exists) return { action: 'add', riverPair: null }
+  if (forceMode === 'remove' && !exists) return { action: 'remove', riverPair: null }
 
   let nextSegments: [number, number][][]
   if (exists) {
@@ -141,5 +153,5 @@ export function paintEdge(
   }
   refs.setHighlightEdgePathRef.current(hlId, nextSegments)
   highlightsController.markDirty()
-  return exists ? 'remove' : 'add'
+  return { action: exists ? 'remove' : 'add', riverPair: null }
 }

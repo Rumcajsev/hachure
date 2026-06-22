@@ -254,7 +254,7 @@ export interface MapRefs {
   zoomRef: { current: any }
   getPaperRef: { current: any }
   surroundColorRef: { current: any }
-  edgeDragRef: { current: { mode: 'add' | 'remove'; painted: Set<string> } | null }
+  edgeDragRef: { current: { mode: 'add' | 'remove'; painted: Set<string>; pendingRiverToggles: Array<[number, number, number, number]> } | null }
   isRiverEdgePaintingRef: { current: boolean }
 }
 

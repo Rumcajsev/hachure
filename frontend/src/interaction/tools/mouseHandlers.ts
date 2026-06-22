@@ -5,7 +5,7 @@
  */
 import type { MutableRefObject } from 'react'
 import type { GeneratedHex, GridMetadata, RiverEdge } from '../../store/mapStore'
-import { isEdgePaintActive, paintEdge } from './edgePaintTool'
+import { isEdgePaintActive, paintEdge, type PaintEdgeResult } from './edgePaintTool'
 import { WORLDCOVER_CLASSES } from '../../store/mapStore'
 import { projectToCanvas, unprojectFromCanvas, computeWorldcoverBbox } from '../../lib/projection'
 import { pointInPolygon } from '../../lib/geometry'
@@ -99,7 +99,7 @@ export interface MouseHandlerRefs {
   // Edge paint
   hoveredEdgeRef: MutableRefObject<{ hexQ: number; hexR: number; edgeI: number } | null>
   hoverRafRef: MutableRefObject<number | null>
-  edgeDragRef: MutableRefObject<{ mode: 'add' | 'remove'; painted: Set<string> } | null>
+  edgeDragRef: MutableRefObject<{ mode: 'add' | 'remove'; painted: Set<string>; pendingRiverToggles: Array<[number, number, number, number]> } | null>
   // Drag suppression
   draggedRef: MutableRefObject<boolean>
   // Blob mask
@@ -366,7 +366,8 @@ export function handleMouseMove(e: ME, refs: MouseHandlerRefs): void {
       const paintKey = `${best.hexQ},${best.hexR},${best.edgeI}`
       if (!edgeDragRef.current.painted.has(paintKey)) {
         edgeDragRef.current.painted.add(paintKey)
-        paintEdge(best.hexQ, best.hexR, best.edgeI, refs, edgeDragRef.current.mode)
+        const result = paintEdge(best.hexQ, best.hexR, best.edgeI, refs, edgeDragRef.current.mode)
+        if (result?.riverPair) edgeDragRef.current.pendingRiverToggles.push(result.riverPair)
       }
     }
   }
@@ -542,7 +543,8 @@ export function handleClick(e: MEShift, refs: MouseHandlerRefs): void {
   // Edge-paint click
   if (isEdgePaintActive(refs) && hoveredEdgeRef.current) {
     const { hexQ, hexR, edgeI } = hoveredEdgeRef.current
-    paintEdge(hexQ, hexR, edgeI, refs)
+    const result = paintEdge(hexQ, hexR, edgeI, refs)
+    if (result?.riverPair) refs.toggleRiverEdgeRef.current(...result.riverPair)
     return
   }
 
@@ -837,15 +839,22 @@ export function handleMouseDown(e: MEDown, refs: MouseHandlerRefs): void {
   if (_edgePaintMode && hoveredEdgeRef.current) {
     const { hexQ, hexR, edgeI } = hoveredEdgeRef.current
     const paintKey = `${hexQ},${hexR},${edgeI}`
-    const firstAction = paintEdge(hexQ, hexR, edgeI, refs)
-    if (firstAction) {
-      edgeDragRef.current = { mode: firstAction, painted: new Set([paintKey]) }
+    const firstResult = paintEdge(hexQ, hexR, edgeI, refs)
+    if (firstResult) {
+      const pendingRiverToggles: Array<[number, number, number, number]> = []
+      if (firstResult.riverPair) pendingRiverToggles.push(firstResult.riverPair)
+      edgeDragRef.current = { mode: firstResult.action, painted: new Set([paintKey]), pendingRiverToggles }
       draggedRef.current = true
       if (_edgePaintMode === 'river') refs.setIsRiverEdgePainting(true)
     }
     const onUp = () => {
+      if (_edgePaintMode === 'river' && edgeDragRef.current) {
+        for (const pair of edgeDragRef.current.pendingRiverToggles) {
+          refs.toggleRiverEdgeRef.current(...pair)
+        }
+        refs.setIsRiverEdgePainting(false)
+      }
       edgeDragRef.current = null
-      if (_edgePaintMode === 'river') refs.setIsRiverEdgePainting(false)
       window.removeEventListener('mouseup', onUp)
     }
     window.addEventListener('mouseup', onUp); return

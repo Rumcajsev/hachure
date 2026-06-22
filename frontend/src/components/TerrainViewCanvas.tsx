@@ -2489,7 +2489,7 @@ terrainTextureFileRef.current = terrainTextureFile
 
   // Click → select hex
   const draggedRef = useRef(false)
-  const edgeDragRef = useRef<{ mode: 'add' | 'remove'; painted: Set<string> } | null>(null)
+  const edgeDragRef = useRef<{ mode: 'add' | 'remove'; painted: Set<string>; pendingRiverToggles: Array<[number, number, number, number]> } | null>(null)
   const mouseHandlerRefsRef = useRef<MouseHandlerRefs | null>(null)
 
   const mapRefsRef = useRef<MapRefs | null>(null)
