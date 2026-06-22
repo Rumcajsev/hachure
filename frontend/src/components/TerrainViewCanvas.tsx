@@ -1191,48 +1191,14 @@ terrainTextureFileRef.current = terrainTextureFile
   // Ocean sea keys: pure-sea hexes (terrain='sea', no clip) that are reachable via
   // flood-fill from any pure-sea hex adjacent to a coastal hex (one with coastline_clip).
   // Inland water bodies form isolated islands with no path to the coast — excluded.
-  const oceanWaterKeys = useMemo(() => {
-    if (!realisticCoastline) return new Set<string>()
-    const hexByKey = new Map<string, GeneratedHex>()
-    for (const h of generatedHexes) hexByKey.set(`${h.q},${h.r}`, h)
-    const NEIGHBORS = [[1,0],[-1,0],[0,1],[0,-1],[1,-1],[-1,1]]
-    const visited = new Set<string>()
-    const queue: string[] = []
-    // Seed: pure-water hexes adjacent to any hex with coastline_clip
-    for (const h of generatedHexes) {
-      if (!h.coastline_clip || h.coastline_clip.length === 0) continue
-      for (const [dq, dr] of NEIGHBORS) {
-        const nb = hexByKey.get(`${h.q + dq},${h.r + dr}`)
-        if (!nb || nb.terrain !== 'water' || (nb.coastline_clip?.length ?? 0) > 0) continue
-        const nk = `${nb.q},${nb.r}`
-        if (!visited.has(nk)) { visited.add(nk); queue.push(nk) }
-      }
-    }
-    // BFS through connected pure-water hexes
-    while (queue.length > 0) {
-      const k = queue.pop()!
-      const parts = k.split(',')
-      const q = parseInt(parts[0]), r = parseInt(parts[1])
-      for (const [dq, dr] of NEIGHBORS) {
-        const nb = hexByKey.get(`${q + dq},${r + dr}`)
-        if (!nb || nb.terrain !== 'water' || (nb.coastline_clip?.length ?? 0) > 0) continue
-        const nk = `${nb.q},${nb.r}`
-        if (!visited.has(nk)) { visited.add(nk); queue.push(nk) }
-      }
-    }
-    return visited
-  }, [generatedHexes, realisticCoastline])
-  const oceanWaterKeysRef = useRef(oceanWaterKeys)
-  oceanWaterKeysRef.current = oceanWaterKeys
-
   // Raw projected land polygon boundary — unsmoothed, for debug overlay and as V3 input.
   const rawCoastlineBoundary = useMemo((): [number, number][][] => {
     const raw = generatedMetadata?.coastline_boundary
     if (!raw || raw.length === 0 || !paperDims) return []
-    const { pw, ph, px, py } = paperDims
+    const { pw, ph } = paperDims
     return raw.map(ring =>
       ring.map(([lon, lat]) =>
-        projectToCanvas(lon, lat, generatedMetadata!, pw, ph, px, py) as [number, number]
+        projectToCanvas(lon, lat, generatedMetadata!, pw, ph, 0, 0) as [number, number]
       )
     )
   }, [generatedMetadata, paperDims])
@@ -2748,7 +2714,7 @@ terrainTextureFileRef.current = terrainTextureFile
     iconPlaceModeRef, iconSnapRef, isPaintingRef, labelBBoxCacheRef, labelDragStateRef, labelOffsetsRef, labelOverlaysRef, labelSnapRef,
     lastBuildingCacheEpochRef, liveLabelOffsetRef, mapBgColorRef, mapBorderColorRef, mapBorderEnabledRef, mapBorderWidthRef, mapImageElementRef, mapImageOpacityRef,
     mapImageTransformRef, mapOverlayRef, mapStyleRef, megaHexColorRef, megaHexEnabledRef, megaHexLineWidthRef, megaHexOpacityRef, megaHexOriginQRef,
-    megaHexOriginRRef, megaHexRadiusRef, metaRef, mountainsColorRef, oceanWaterKeysRef, osmRiverWaysRef, pageGridRef, paintHoverTargetRef,
+    megaHexOriginRRef, megaHexRadiusRef, metaRef, mountainsColorRef, osmRiverWaysRef, pageGridRef, paintHoverTargetRef,
     panRef, patternCacheRef, placedIconsRef, placedLabelsRef, projectedHexesRef, railBaseDataRef, railControlOverridesRef, railEdgesRef,
     railGeomOverrideRef, railHopPropsRef, railNodeEditModeRef, railPathSmoothingRef, railSegmentPropsRef, railSmoothingRef, railStyleRef, railWiggleAmpRef,
     railWiggleFreqRef, rawCoastlineBoundaryRef, rawRoadWaysRef, realisticCoastlineRef, reliefShadingOpacityRef, resolvedLabelSpecsRef, riverChainOverridesRef, riverChainsV2Ref,

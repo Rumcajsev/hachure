@@ -202,8 +202,8 @@ async def terrain_stream_generator(config: GridConfig) -> AsyncGenerator[str, No
             pct_done = 15 + int(65 * (tile_num + 1) / n_active)
             yield f"data: {json.dumps({'step': 'classify', 'message': f'Classified {classified_count}/{n_hexes} hexes…', 'progress': pct_done, 'hexes': batch})}\n\n"
 
-        # Step 4: coastline clips
-        yield f"data: {json.dumps({'step': 'coastline', 'message': 'Computing coastline clips…', 'progress': 82})}\n\n"
+        # Step 4: build global land polygon for the sea mask overlay
+        yield f"data: {json.dumps({'step': 'coastline', 'message': 'Computing coastline boundary…', 'progress': 82})}\n\n"
 
         def _build_land_poly():
             polys = []
@@ -225,36 +225,6 @@ async def terrain_stream_generator(config: GridConfig) -> AsyncGenerator[str, No
             return []
 
         meta['coastline_boundary'] = _boundary_rings(land_poly)
-
-        def _rings(geom) -> list[list[list[float]]]:
-            if geom.geom_type == "Polygon":
-                return [[[round(c[0], 6), round(c[1], 6)] for c in geom.exterior.coords]]
-            if geom.geom_type == "MultiPolygon":
-                return [[[round(c[0], 6), round(c[1], 6)] for c in p.exterior.coords] for p in geom.geoms]
-            return []
-
-        for i, hex_data in enumerate(hexes):
-            if land_poly is None:
-                hex_data["coastline_clip"] = None
-                continue
-            hex_poly = hex_polys.get(i)
-            if hex_poly is None:
-                hex_data["coastline_clip"] = None
-                continue
-            try:
-                inter = hex_poly.intersection(land_poly)
-            except Exception:
-                hex_data["coastline_clip"] = None
-                continue
-            if inter.is_empty:
-                hex_data["coastline_clip"] = None
-                continue
-            area_ratio = inter.area / hex_poly.area if hex_poly.area > 0 else 0
-            if area_ratio > 0.99 or area_ratio < 0.01:
-                hex_data["coastline_clip"] = None
-                continue
-            rings = _rings(inter)
-            hex_data["coastline_clip"] = rings if rings else None
 
         yield f"data: {json.dumps({'step': 'done', 'message': 'Done', 'progress': 100, 'hexes': hexes, 'metadata': meta})}\n\n"
 

@@ -44,7 +44,6 @@ export type DrawTerrainParams = {
   R: number
   realisticCoastline: boolean
   coastlineDebugRaw: boolean
-  oceanWaterKeys: Set<string>
   beachStrip: boolean
   beachColor: string
   beachWidth: number
@@ -283,7 +282,6 @@ export function drawTerrain(tCtx: Ctx, params: DrawTerrainParams): void {
     terrainBlobParams,
     hexes, hexTerrainLayers, R,
     realisticCoastline, coastlineDebugRaw,
-    oceanWaterKeys,
     beachStrip, beachColor, beachWidth,
     coastlineBoundaryRings, coastlineRawBoundaryRings,
     // edge blobs destructured inline below where used
@@ -721,109 +719,25 @@ export function drawTerrain(tCtx: Ctx, params: DrawTerrainParams): void {
     })
   }
 
-  // ── 6. Coastline ────────────────────────────────────────────────────────────
+  // ── 6. Coastline — single sea mask overlay ──────────────────────────────────
+  // Fill everything outside the land polygon with sea color in one pass.
+  // The evenodd rule punches the land polygon out of the full-canvas rect,
+  // leaving only the ocean areas filled. Manually painted land hexes within
+  // the sea area remain visible because their terrain was drawn before this pass.
   if (realisticCoastline && coastlineBoundaryRings.length > 0) {
     const seaColor = terrainColors['water'] ?? '#3a6898'
-
-    // Ocean hexes — solid sea fill.  Skip hexes the user has manually painted
-    // with non-sea terrain so their paint isn't erased by the sea fill.
     tCtx.fillStyle = seaColor
     tCtx.beginPath()
-    for (const { hex, verts } of projected) {
-      const key = `${hex.q},${hex.r}`
-      if (!oceanWaterKeys.has(key)) continue
-      if (!inMargin(verts) && !hex.partial) continue
-      if (hex.manual_override && hexTerrainLayers(hex).some(t => t !== 'water')) continue
-      tCtx.moveTo(verts[0][0], verts[0][1])
-      for (let i = 1; i < verts.length; i++) tCtx.lineTo(verts[i][0], verts[i][1])
+    tCtx.rect(px, py, pw, ph)
+    for (const ring of coastlineBoundaryRings) {
+      if (ring.length < 2) continue
+      tCtx.moveTo(ring[0][0], ring[0][1])
+      for (let i = 1; i < ring.length; i++) tCtx.lineTo(ring[i][0], ring[i][1])
       tCtx.closePath()
-    }
-    // Coastal hexes — evenodd: hex outline + land clip, with per-ring inversion detection.
-    //
-    // Sutherland-Hodgman can return the sea-side piece instead of the land-side piece
-    // when the ring enters and exits the hex close together (thin peninsula, coastal notch).
-    // We detect this per ring: pointInPolygon(hexCenter, ring) tells us if the center is
-    // inside the land ring; pointInPolygon(hexCenter, clip) tells us if the clip contains
-    // the center.  They should agree — if they don't, the clip is inverted.
-    //
-    // Not inverted → add hex + clip to evenodd path (sea fills the gap).
-    // Inverted     → collect clip for a separate solid fill (clip IS the sea area).
-    const invertedClips: [number, number][][] = []
-
-    for (const { hex, verts } of projected) {
-      if (!inMargin(verts) && !hex.partial) continue
-
-      const cx = verts.reduce((s, v) => s + v[0], 0) / verts.length
-      const cy = verts.reduce((s, v) => s + v[1], 0) / verts.length
-      const minClipArea = polyArea(verts) * 0.01   // skip clips < 1% of hex (floating-point dust)
-
-      let addedHex = false
-      let hasAnyClip = false
-
-      for (const ring of coastlineBoundaryRings) {
-        const clipped = clipPolygonToConvex(ring, verts)
-        if (clipped.length < 3) continue
-        if (polyArea(clipped) < minClipArea) continue
-
-        hasAnyClip = true
-        const centerInsideRing  = pointInPolygon(cx, cy, ring)
-        const centerInsideClip  = pointInPolygon(cx, cy, clipped)
-        const inverted = centerInsideRing !== centerInsideClip
-
-        if (inverted) {
-          // Clip is the sea area — handle with a separate solid fill below.
-          invertedClips.push(clipped)
-        } else {
-          // Clip is the land area — evenodd: sea fills hex minus clip.
-          if (!addedHex) {
-            tCtx.moveTo(verts[0][0], verts[0][1])
-            for (let i = 1; i < verts.length; i++) tCtx.lineTo(verts[i][0], verts[i][1])
-            tCtx.closePath()
-            addedHex = true
-          }
-          tCtx.moveTo(clipped[0][0], clipped[0][1])
-          for (let i = 1; i < clipped.length; i++) tCtx.lineTo(clipped[i][0], clipped[i][1])
-          tCtx.closePath()
-        }
-      }
-
-      // No ring intersected but backend flagged as coastal — smoothing voted it ocean.
-      if (!hasAnyClip && hex.coastline_clip && hex.coastline_clip.length > 0
-          && !(hex.manual_override && hexTerrainLayers(hex).some(t => t !== 'water'))) {
-        tCtx.moveTo(verts[0][0], verts[0][1])
-        for (let i = 1; i < verts.length; i++) tCtx.lineTo(verts[i][0], verts[i][1])
-        tCtx.closePath()
-      }
-
-      // DEBUG — remove before ship
-      if (hex.coastline_clip && hex.coastline_clip.length > 0) {
-        const hexArea = polyArea(verts)
-        for (const ring of coastlineBoundaryRings) {
-          const clipped = clipPolygonToConvex(ring, verts)
-          const clipArea = clipped.length >= 3 ? polyArea(clipped) : 0
-          console.log(`[coast6] q=${hex.q} r=${hex.r} terrain=${hex.terrain} hexArea=${hexArea.toFixed(1)} clipArea=${clipArea.toFixed(1)} ratio=${(clipArea/hexArea).toFixed(3)} hasAnyClip=${hasAnyClip} addedHex=${addedHex}`)
-        }
-        if (coastlineBoundaryRings.length === 0) {
-          console.log(`[coast6] q=${hex.q} r=${hex.r} NO RINGS`)
-        }
-      }
     }
     tCtx.fill('evenodd')
 
-    // Inverted-clip solid fill: these polygons are the sea areas that S-H returned
-    // as land clips.  Fill them directly with sea color on top of the evenodd result.
-    if (invertedClips.length > 0) {
-      tCtx.fillStyle = seaColor
-      tCtx.beginPath()
-      for (const clip of invertedClips) {
-        tCtx.moveTo(clip[0][0], clip[0][1])
-        for (let i = 1; i < clip.length; i++) tCtx.lineTo(clip[i][0], clip[i][1])
-        tCtx.closePath()
-      }
-      tCtx.fill()
-    }
-
-    // Beach strip — stroke the smoothed polygon boundary directly
+    // Beach strip — stroke the smoothed land polygon boundary
     if (beachStrip) {
       tCtx.strokeStyle = beachColor
       tCtx.lineWidth = beachWidth * R * 2

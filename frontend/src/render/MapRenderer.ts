@@ -151,7 +151,6 @@ export interface MapRefs {
   megaHexRadiusRef: { current: any }
   metaRef: { current: any }
   mountainsColorRef: { current: any }
-  oceanWaterKeysRef: { current: any }
   osmRiverWaysRef: { current: any }
   pageGridRef: { current: any }
   paintHoverTargetRef: { current: any }
@@ -273,7 +272,7 @@ export function drawMap(refs: MapRefs, exportTarget?: ExportTarget): void {
     iconPlaceModeRef, iconSnapRef, isPaintingRef, labelBBoxCacheRef, labelDragStateRef, labelOffsetsRef, labelOverlaysRef, labelSnapRef,
     lastBuildingCacheEpochRef, liveLabelOffsetRef, mapBgColorRef, mapBorderColorRef, mapBorderEnabledRef, mapBorderWidthRef, mapImageElementRef, mapImageOpacityRef,
     mapImageTransformRef, mapOverlayRef, mapStyleRef, megaHexColorRef, megaHexEnabledRef, megaHexLineWidthRef, megaHexOpacityRef, megaHexOriginQRef,
-    megaHexOriginRRef, megaHexRadiusRef, metaRef, mountainsColorRef, oceanWaterKeysRef, osmRiverWaysRef, pageGridRef, paintHoverTargetRef,
+    megaHexOriginRRef, megaHexRadiusRef, metaRef, mountainsColorRef, osmRiverWaysRef, pageGridRef, paintHoverTargetRef,
     panRef, patternCacheRef, placedIconsRef, placedLabelsRef, projectedHexesRef, railBaseDataRef, railControlOverridesRef, railEdgesRef,
     railGeomOverrideRef, railHopPropsRef, railNodeEditModeRef, railPathSmoothingRef, railSegmentPropsRef, railSmoothingRef, railStyleRef, railWiggleAmpRef,
     railWiggleFreqRef, rawCoastlineBoundaryRef, rawRoadWaysRef, realisticCoastlineRef, reliefShadingOpacityRef, resolvedLabelSpecsRef, riverChainOverridesRef, riverChainsV2Ref,
@@ -452,7 +451,6 @@ export function drawMap(refs: MapRefs, exportTarget?: ExportTarget): void {
     R,
     realisticCoastline: realisticCoastlineRef.current,
     coastlineDebugRaw: coastlineDebugRawRef.current,
-    oceanWaterKeys: oceanWaterKeysRef.current,
     beachStrip: beachStripRef.current,
     beachColor: beachColorRef.current,
     beachWidth: beachWidthRef.current,

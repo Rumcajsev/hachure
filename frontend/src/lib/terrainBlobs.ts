@@ -31,19 +31,12 @@ function effectiveLandTerrain(hex: GeneratedHex): string {
   return best
 }
 
-/** Terrain layers a coastal hex contributes to the blob system.
- *  Uses hexTerrainLayers as the source of truth in both modes; when realistic
- *  coastline is on, 'sea' is stripped because section 6 handles sea fill. */
+/** Terrain layers a hex contributes to the blob system.
+ *  When realistic coastline is on, 'water' is stripped — the sea mask overlay
+ *  handles all ocean fill so blobs don't need to account for it. */
 export function coastalBlobTerrains(hex: GeneratedHex, realisticCoastline: boolean): string[] {
-  if (!hex.coastline_clip || hex.coastline_clip.length === 0) return hexTerrainLayers(hex)
-  const land = effectiveLandTerrain(hex)
-  const base = realisticCoastline
-    ? hexTerrainLayers(hex).filter(t => t !== 'water')
-    : hexTerrainLayers(hex)
-  if (land === 'clear') return base
-  const merged = new Set(base)
-  merged.add(land)
-  return [...merged]
+  if (!realisticCoastline) return hexTerrainLayers(hex)
+  return hexTerrainLayers(hex).filter(t => t !== 'water')
 }
 
 // ── Topo-style perimeter resampling ─────────────────────────────────────────
@@ -736,8 +729,7 @@ export function buildExportTerrainBlobs(p: ExportBlobParams): {
     smooth, offset, bump, sweepFreq, lobeFreq, lobeAmp, lobeThreshold, lobeDirection, R } = p
 
   const overriddenKeys = new Set(Object.keys(terrainBlobOverrides))
-  const isPureSea = (h: GeneratedHex) =>
-    h.terrain === 'water' && (!h.coastline_clip || h.coastline_clip.length === 0)
+  const isPureSea = (h: GeneratedHex) => h.terrain === 'water'
 
   const terrainTypeSet = new Set<string>()
   for (const { hex } of projected) {
