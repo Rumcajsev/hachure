@@ -334,22 +334,25 @@ export function drawTerrain(tCtx: Ctx, params: DrawTerrainParams): void {
   // ── 3b. Land clip (V3 realistic coastline) ──────────────────────────────────
   // Restrict all terrain blob rendering to land areas so nothing bleeds across
   // the coastline boundary into the sea.  Ocean hexes are excluded entirely;
-  // coastal hexes are clipped to the portion inside the smoothed land polygon.
-  const landClipActive = realisticCoastline && coastlineBoundaryRings.length > 0
+  // coastal hexes are clipped to the portion inside the raw land polygon.
+  // Raw rings (not smoothed) are used here and in section 6 so the clip matches
+  // the raster coverage used for hex classification — Chaikin/DP smoothing can
+  // shrink the polygon and leave coastal hexes with real land pixels uncovered.
+  const landClipActive = realisticCoastline && coastlineRawBoundaryRings.length > 0
   if (landClipActive) {
     tCtx.save()
     tCtx.beginPath()
     for (const { hex, verts } of projected) {
       if (edgeMode === 'whole' && hex.partial) continue
       if (!hex.partial && !inMargin(verts)) continue
-      // Consistent with section 6: let the coastline polygon decide which hexes
-      // are coastal. If any ring intersects this hex, add only the land-side
-      // portion to the clip path. Manually-painted hexes bypass the restriction
-      // so their terrain is always fully visible (section 6 paints sea on top).
+      // Let the raw coastline polygon decide which hexes are coastal. If any ring
+      // intersects this hex, add only the land-side portion to the clip path.
+      // Manually-painted hexes bypass the restriction so their terrain is always
+      // fully visible (section 6 paints sea on top).
       // If no ring intersects, add the full hex — it sits entirely on one side.
       let addedLand = false
       if (!hex.manual_override) {
-        for (const ring of coastlineBoundaryRings) {
+        for (const ring of coastlineRawBoundaryRings) {
           const clipped = clipPolygonToConvex(ring, verts)
           if (clipped.length < 3) continue
           tCtx.moveTo(clipped[0][0], clipped[0][1])
@@ -724,12 +727,12 @@ export function drawTerrain(tCtx: Ctx, params: DrawTerrainParams): void {
   // The evenodd rule punches the land polygon out of the full-canvas rect,
   // leaving only the ocean areas filled. Manually painted land hexes within
   // the sea area remain visible because their terrain was drawn before this pass.
-  if (realisticCoastline && coastlineBoundaryRings.length > 0) {
+  if (realisticCoastline && coastlineRawBoundaryRings.length > 0) {
     const seaColor = terrainColors['water'] ?? '#3a6898'
     tCtx.fillStyle = seaColor
     tCtx.beginPath()
     tCtx.rect(px, py, pw, ph)
-    for (const ring of coastlineBoundaryRings) {
+    for (const ring of coastlineRawBoundaryRings) {
       if (ring.length < 2) continue
       tCtx.moveTo(ring[0][0], ring[0][1])
       for (let i = 1; i < ring.length; i++) tCtx.lineTo(ring[i][0], ring[i][1])
@@ -737,8 +740,8 @@ export function drawTerrain(tCtx: Ctx, params: DrawTerrainParams): void {
     }
     tCtx.fill('evenodd')
 
-    // Beach strip — stroke the smoothed land polygon boundary
-    if (beachStrip) {
+    // Beach strip — stroke the smoothed land polygon boundary for a clean visual line
+    if (beachStrip && coastlineBoundaryRings.length > 0) {
       tCtx.strokeStyle = beachColor
       tCtx.lineWidth = beachWidth * R * 2
       tCtx.lineJoin = 'round'
