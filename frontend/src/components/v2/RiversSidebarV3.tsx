@@ -65,16 +65,14 @@ export function TerrainCutFlyout({ onClose }: { onClose: () => void }) {
     setRiverBlobCutEnabled, setRiverBlobCutWidth, setRiverBlobCutVariance, setRiverBlobCutFreqScale } = useMapStore()
   const widthSlider    = useDeferredSlider(Math.round(riverBlobCutWidth * 100), v => setRiverBlobCutWidth(v / 100))
   const varianceSlider = useDeferredSlider(Math.round(riverBlobCutVariance * 100), v => setRiverBlobCutVariance(v / 100))
-  const freqSlider     = useDeferredSlider(Math.round(riverBlobCutFreqScale * 10), v => setRiverBlobCutFreqScale(v / 10))
   return (
     <FlyoutShell title="Terrain cut" subtitle="carve river corridors out of terrain blobs" onClose={onClose}>
       <ToggleRow label="Enabled" checked={riverBlobCutEnabled} onChange={setRiverBlobCutEnabled} />
-      <MiniSlider label="Width"    display={(widthSlider.value / 100).toFixed(2) + '×'} value={widthSlider.value}    min={1}  max={100} step={1}  disabled={!riverBlobCutEnabled} onChange={widthSlider.onChange}    onDragEnd={widthSlider.onDragEnd} />
-      <MiniSlider label="Variance" display={`${varianceSlider.value}%`}                  value={varianceSlider.value} min={0}  max={100} step={1}  disabled={!riverBlobCutEnabled} onChange={varianceSlider.onChange} onDragEnd={varianceSlider.onDragEnd} />
-      <MiniSlider label="Scale"    display={(freqSlider.value / 10).toFixed(1) + '×'}    value={freqSlider.value}     min={1}  max={40}  step={1}  disabled={!riverBlobCutEnabled || varianceSlider.value === 0} onChange={freqSlider.onChange} onDragEnd={freqSlider.onDragEnd} />
+      <MiniSlider label="Width"    display={(widthSlider.value / 100).toFixed(2) + '×'} value={widthSlider.value}    min={1} max={100} step={1} disabled={!riverBlobCutEnabled} onChange={widthSlider.onChange}    onDragEnd={widthSlider.onDragEnd} />
+      <MiniSlider label="Variance" display={`${varianceSlider.value}%`}                  value={varianceSlider.value} min={0} max={100} step={1} disabled={!riverBlobCutEnabled} onChange={varianceSlider.onChange} onDragEnd={varianceSlider.onDragEnd} />
       {riverBlobCutEnabled && (
         <div style={{ padding: '4px 14px 8px', fontFamily: t.mono, fontSize: 9, color: t.inkFaint, lineHeight: 1.5 }}>
-          Width is a multiple of hex radius. Variance 0% = straight edge. Scale controls wave frequency.
+          Width is a multiple of hex radius. Variance 0% = straight edge.
         </div>
       )}
     </FlyoutShell>

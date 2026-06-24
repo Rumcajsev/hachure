@@ -71,20 +71,18 @@ function FSectionDivider() {
 
 export function RoadTerrainCutFlyout({ onClose }: { onClose: () => void }) {
   const t = useTheme()
-  const { roadBlobCutEnabled, roadBlobCutWidth, roadBlobCutVariance, roadBlobCutFreqScale,
-    setRoadBlobCutEnabled, setRoadBlobCutWidth, setRoadBlobCutVariance, setRoadBlobCutFreqScale } = useMapStore()
+  const { roadBlobCutEnabled, roadBlobCutWidth, roadBlobCutVariance,
+    setRoadBlobCutEnabled, setRoadBlobCutWidth, setRoadBlobCutVariance } = useMapStore()
   const widthSlider    = useDeferredSlider(Math.round(roadBlobCutWidth * 100), v => setRoadBlobCutWidth(v / 100))
   const varianceSlider = useDeferredSlider(Math.round(roadBlobCutVariance * 100), v => setRoadBlobCutVariance(v / 100))
-  const freqSlider     = useDeferredSlider(Math.round(roadBlobCutFreqScale * 10), v => setRoadBlobCutFreqScale(v / 10))
   return (
     <FlyoutShell title="Terrain cut" subtitle="carve road corridors out of terrain blobs" onClose={onClose}>
       <ToggleRow label="Enabled" checked={roadBlobCutEnabled} onChange={setRoadBlobCutEnabled} />
-      <MiniSlider label="Width"    display={(widthSlider.value / 100).toFixed(2) + '×'} value={widthSlider.value}    min={1}  max={100} step={1} disabled={!roadBlobCutEnabled} onChange={widthSlider.onChange}    onDragEnd={widthSlider.onDragEnd} />
-      <MiniSlider label="Variance" display={`${varianceSlider.value}%`}                  value={varianceSlider.value} min={0}  max={100} step={1} disabled={!roadBlobCutEnabled} onChange={varianceSlider.onChange} onDragEnd={varianceSlider.onDragEnd} />
-      <MiniSlider label="Scale"    display={(freqSlider.value / 10).toFixed(1) + '×'}    value={freqSlider.value}     min={1}  max={40}  step={1} disabled={!roadBlobCutEnabled || varianceSlider.value === 0} onChange={freqSlider.onChange} onDragEnd={freqSlider.onDragEnd} />
+      <MiniSlider label="Width"    display={(widthSlider.value / 100).toFixed(2) + '×'} value={widthSlider.value}    min={1} max={100} step={1} disabled={!roadBlobCutEnabled} onChange={widthSlider.onChange}    onDragEnd={widthSlider.onDragEnd} />
+      <MiniSlider label="Variance" display={`${varianceSlider.value}%`}                  value={varianceSlider.value} min={0} max={100} step={1} disabled={!roadBlobCutEnabled} onChange={varianceSlider.onChange} onDragEnd={varianceSlider.onDragEnd} />
       {roadBlobCutEnabled && (
         <div style={{ padding: '4px 14px 8px', fontFamily: t.mono, fontSize: 9, color: t.inkFaint, lineHeight: 1.5 }}>
-          Width is a multiple of hex radius. Variance 0% = straight edge. Scale controls wave frequency.
+          Width is a multiple of hex radius. Variance 0% = straight edge.
         </div>
       )}
     </FlyoutShell>
@@ -558,8 +556,10 @@ export function BridgesFlyout({ onClose }: { onClose: () => void }) {
   const {
     bridgesEnabled, setBridgesEnabled,
     bridgeStyle, setBridgeStyle,
+    bridgeLengthScale, setBridgeLengthScale,
     bridgeTiers, updateBridgeTier, addBridgeTier, removeBridgeTier,
   } = useMapStore()
+  const lengthSlider = useDeferredSlider(Math.round(bridgeLengthScale * 100), v => setBridgeLengthScale(v / 100))
 
   return (
     <FlyoutShell title="Bridges" onClose={onClose}>
@@ -575,6 +575,9 @@ export function BridgesFlyout({ onClose }: { onClose: () => void }) {
               onChange={setBridgeStyle}
             />
           </div>
+          <FSectionDivider />
+          <FSectionLabel label="Size" />
+          <MiniSlider label="Length" display={(lengthSlider.value / 100).toFixed(2) + '×'} value={lengthSlider.value} min={80} max={400} step={5} onChange={lengthSlider.onChange} onDragEnd={lengthSlider.onDragEnd} />
           <FSectionDivider />
           <FSectionLabel label="Tiers" />
           {bridgeTiers.map((bt, idx) => (
