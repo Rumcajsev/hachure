@@ -96,6 +96,10 @@ export type RoadsSlice = {
   fetchMotorwayHexes: () => Promise<void>
   applyMotorwayHexes: () => void
   clearMotorwayHexes: () => void
+  roadBlobCutEnabled: boolean
+  roadBlobCutWidth: number
+  setRoadBlobCutEnabled: (v: boolean) => void
+  setRoadBlobCutWidth: (v: number) => void
 }
 
 type Set = (partial: Partial<MapStore> | ((s: MapStore) => Partial<MapStore>)) => void
@@ -141,6 +145,8 @@ export const createRoadsSlice = (set: Set, get: () => MapStore): RoadsSlice => (
   motorwayHexesStatus: 'idle',
   motorwayHexesError: null,
   motorwayHexesFast: true,
+  roadBlobCutEnabled: false,
+  roadBlobCutWidth: 0.3,
 
   clearRoads: () => set(s => ({
     rawRoadWays: [], osmHexPaths: [], roadTypeFetchStatus: {}, osmHighlightTier: null, osmSpotlightMode: false, osmSpotlightTiers: [true, true, true, true] as [boolean, boolean, boolean, boolean],
@@ -452,6 +458,8 @@ export const createRoadsSlice = (set: Set, get: () => MapStore): RoadsSlice => (
 
   clearMotorwayHexes: () => set({ motorwayHexes: [], motorwayHexesStatus: 'idle', motorwayHexesError: null }),
   setMotorwayHexesFast: (v) => set({ motorwayHexesFast: v }),
+  setRoadBlobCutEnabled: (v) => set({ roadBlobCutEnabled: v }),
+  setRoadBlobCutWidth: (v) => set({ roadBlobCutWidth: v }),
 
   fetchMotorwayHexes: async () => {
     const { generatedMetadata, hexOrientation, motorwayHexesFast } = get()

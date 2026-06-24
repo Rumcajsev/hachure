@@ -228,6 +228,7 @@ terrainColors, terrainTextureScales, terrainTextureBlendModes, terrainTextureOpa
     roadSnapBindings, setRoadSnapBinding, deleteRoadSnapBinding,
     roadNodeEditMode,
     roadWiggleAmp, roadWiggleFreq, roadSmoothing, roadPathSmoothing, roadCenterPull, roadTierGeometry, roadDensityMinChain, roadWiggleDragging,
+    roadBlobCutEnabled, roadBlobCutWidth, setRoadBlobCutEnabled, setRoadBlobCutWidth,
     roadChainOverrides, setRoadChainOverride,
     riverEdges,
     riverEditMode, toggleRiverEdge, batchToggleRiverEdges,
@@ -1263,6 +1264,27 @@ terrainTextureFileRef.current = terrainTextureFile
     return corridors
   }, [riverTierChainsRaw, riverBlobCutEnabled, riverBlobCutWidth, riverEdges, generatedHexes, hexRadius, generatedMetadata, paperDims])
 
+  const roadAutoCorridors = useMemo((): [number, number][][] => {
+    if (!roadBlobCutEnabled || !generatedMetadata || !paperDims) return EMPTY_CORRIDORS
+    const { pw, ph } = paperDims
+    const meta = generatedMetadata
+    const proj = (pt: [number, number]): [number, number] =>
+      projectToCanvas(pt[0], pt[1], meta, pw, ph, 0, 0)
+    const halfW = hexRadius * roadBlobCutWidth
+    const chains = roadNetworkRef.current.getBaseData(
+      roadWiggleAmp, roadWiggleFreq, roadSegmentProps, roadHopProps, 2,
+    ).chains
+    const corridors: [number, number][][] = []
+    for (const c of chains) {
+      const pts = c.chain.map(proj)
+      if (pts.length < 2) continue
+      const upper = offsetPolyline(pts, +halfW)
+      const lower = offsetPolyline(pts, -halfW).slice().reverse()
+      if (upper.length + lower.length >= 3) corridors.push([...upper, ...lower])
+    }
+    return corridors
+  }, [roadBlobCutEnabled, roadBlobCutWidth, roadDataVersion, hexRadius, generatedMetadata, paperDims, roadWiggleAmp, roadWiggleFreq, roadSegmentProps, roadHopProps])
+
   const prevTerrainBlobsRef = useRef<{ terrain: string; polys: [number, number][][]; blobKeys: string[] }[]>([])
   type TerrainBlobCacheEntry = { hexKey: string; rawPolys: [number, number][][]; hexCenters: [number, number][]; clusterCenters?: [number, number][][]; styleKey: string; blobs: { terrain: string; polys: [number, number][][]; blobKeys: string[] }[]; handleGroups?: Map<string, { edgeKey: string; cx: number; cy: number }[]>; simplifiedPolyGroups?: Map<string, [number, number][][]> }
   const perTerrainBlobCache = useRef(new Map<string, TerrainBlobCacheEntry>())
@@ -1333,10 +1355,12 @@ terrainTextureFileRef.current = terrainTextureFile
         return h && Object.keys(h).length > 0 ? `${ck}:${JSON.stringify(h)}` : ''
       }).filter(Boolean).join('~')
       // Filter to corridors that spatially overlap this terrain's hex extents so terrains
-      // with no nearby rivers keep a stable empty corridorKey and don't miss cache when
-      // the river cut toggle or corridor geometry changes.
+      // with no nearby features keep a stable empty corridorKey and don't miss cache.
+      const allCorridors = riverAutoCorridors.length === 0 && roadAutoCorridors.length === 0
+        ? EMPTY_CORRIDORS
+        : [...riverAutoCorridors, ...roadAutoCorridors]
       const relevantCorridors = (() => {
-        if (riverAutoCorridors.length === 0) return riverAutoCorridors
+        if (allCorridors.length === 0) return allCorridors
         let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity
         for (const [cx, cy] of hexOrigCenterByKey.values()) {
           if (cx - hexRadius < minX) minX = cx - hexRadius
@@ -1344,7 +1368,7 @@ terrainTextureFileRef.current = terrainTextureFile
           if (cy - hexRadius < minY) minY = cy - hexRadius
           if (cy + hexRadius > maxY) maxY = cy + hexRadius
         }
-        return riverAutoCorridors.filter(corridor => {
+        return allCorridors.filter(corridor => {
           let cMinX = Infinity, cMaxX = -Infinity, cMinY = Infinity, cMaxY = -Infinity
           for (const [px, py] of corridor) {
             if (px < cMinX) cMinX = px; if (px > cMaxX) cMaxX = px
@@ -1451,7 +1475,7 @@ terrainTextureFileRef.current = terrainTextureFile
     prevTerrainBlobsRef.current = result
     console.log(`[blobUseMemo] total ${(performance.now()-_tMemo0).toFixed(1)}ms`)
     return result
-  }, [isTerrainPainting, projectedHexes, blobComponentsByTerrain, terrainBlobOverrides, terrainTypeBlobStyles, terrainBlobSmooth, terrainBlobOffset, terrainBlobBump, terrainBlobSweepFreq, terrainBlobLobeFreq, terrainBlobLobeAmp, terrainBlobLobeThreshold, terrainBlobLobeDirection, terrainBlobTopoStyle, terrainBlobClusterSize, hexRadius, realisticCoastline, blobSeeds, elevationOverridesTerrain, blobHandleOverrides, riverAutoCorridors])
+  }, [isTerrainPainting, projectedHexes, blobComponentsByTerrain, terrainBlobOverrides, terrainTypeBlobStyles, terrainBlobSmooth, terrainBlobOffset, terrainBlobBump, terrainBlobSweepFreq, terrainBlobLobeFreq, terrainBlobLobeAmp, terrainBlobLobeThreshold, terrainBlobLobeDirection, terrainBlobTopoStyle, terrainBlobClusterSize, hexRadius, realisticCoastline, blobSeeds, elevationOverridesTerrain, blobHandleOverrides, riverAutoCorridors, roadAutoCorridors])
   const defaultTerrainBlobsRef = useRef(defaultTerrainBlobs)
   defaultTerrainBlobsRef.current = defaultTerrainBlobs
 

@@ -67,6 +67,33 @@ function FSectionDivider() {
   return <div style={{ margin: '6px 12px 4px', borderTop: `1px solid ${t.line2}` }} />
 }
 
+// ── RoadTerrainCutFlyout ───────────────────────────────────────────────────────
+
+export function RoadTerrainCutFlyout({ onClose }: { onClose: () => void }) {
+  const t = useTheme()
+  const { roadBlobCutEnabled, roadBlobCutWidth, setRoadBlobCutEnabled, setRoadBlobCutWidth } = useMapStore()
+  const widthSlider = useDeferredSlider(Math.round(roadBlobCutWidth * 100), v => setRoadBlobCutWidth(v / 100))
+  return (
+    <FlyoutShell title="Terrain cut" subtitle="carve road corridors out of terrain blobs" onClose={onClose}>
+      <ToggleRow label="Enabled" checked={roadBlobCutEnabled} onChange={setRoadBlobCutEnabled} />
+      <MiniSlider
+        label="Width"
+        display={(widthSlider.value / 100).toFixed(2) + '×'}
+        value={widthSlider.value}
+        min={1} max={100} step={1}
+        disabled={!roadBlobCutEnabled}
+        onChange={widthSlider.onChange}
+        onDragEnd={widthSlider.onDragEnd}
+      />
+      {roadBlobCutEnabled && (
+        <div style={{ padding: '4px 14px 8px', fontFamily: t.mono, fontSize: 9, color: t.inkFaint, lineHeight: 1.5 }}>
+          Width is a multiple of hex radius. Reactively follows road geometry — removing a road restores the terrain.
+        </div>
+      )}
+    </FlyoutShell>
+  )
+}
+
 // ── RoadShapeFlyout ────────────────────────────────────────────────────────────
 
 export function RoadShapeFlyout({ onClose }: { onClose: () => void }) {
@@ -811,6 +838,7 @@ export function RoadsSidebarV3() {
         )}
         <TGap />
         <TriggerRow label="Road shape" active={flyout === 'road-shape'} onClick={() => toggleFlyout('road-shape')} />
+        <TriggerRow label="Terrain cut" active={flyout === 'road-terrain-cut'} onClick={() => toggleFlyout('road-terrain-cut')} />
         {dataSource === 'osm' && (
           <TriggerRow label="Fetch from OSM" active={flyout === 'road-import'} icon={IMPORT_ICON} onClick={() => toggleFlyout('road-import')} />
         )}
@@ -857,6 +885,7 @@ export function RoadsSidebarV3() {
       {flyout === 'road-style' && <RoadStyleFlyout tier={cogTier} onClose={() => setFlyout(null)} />}
       {flyout === 'rail-style' && <RailStyleFlyout onClose={() => setFlyout(null)} />}
       {flyout === 'road-shape' && <RoadShapeFlyout onClose={() => setFlyout(null)} />}
+      {flyout === 'road-terrain-cut' && <RoadTerrainCutFlyout onClose={() => setFlyout(null)} />}
       {flyout === 'rail-shape' && <RailShapeFlyout onClose={() => setFlyout(null)} />}
       {flyout === 'road-import' && <OsmRoadsFlyout onClose={() => setFlyout(null)} />}
       {flyout === 'rail-import' && <OsmRailsFlyout onClose={() => setFlyout(null)} />}

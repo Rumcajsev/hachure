@@ -1018,6 +1018,10 @@ if (fromVersion < 64) {
     if (s.terrainBlobSplatDensity === undefined) s.terrainBlobSplatDensity = 0
     if (s.terrainBlobSplatSize === undefined) s.terrainBlobSplatSize = 0.3
   }
+  if (fromVersion < 86) {
+    if (s.roadBlobCutEnabled === undefined) s.roadBlobCutEnabled = false
+    if (s.roadBlobCutWidth === undefined) s.roadBlobCutWidth = 0.3
+  }
   if (fromVersion < 84) {
     const tiers = s.riverTierStyles as Array<Record<string, unknown>> | undefined
     if (tiers) {
