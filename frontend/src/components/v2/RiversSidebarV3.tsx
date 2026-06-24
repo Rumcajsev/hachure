@@ -70,7 +70,7 @@ export function TerrainCutFlyout({ onClose }: { onClose: () => void }) {
         label="Width"
         display={(widthSlider.value / 100).toFixed(2) + '×'}
         value={widthSlider.value}
-        min={10} max={300} step={5}
+        min={1} max={100} step={1}
         disabled={!riverBlobCutEnabled}
         onChange={widthSlider.onChange}
         onDragEnd={widthSlider.onDragEnd}

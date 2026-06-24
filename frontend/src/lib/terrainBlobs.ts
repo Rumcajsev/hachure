@@ -681,7 +681,7 @@ export function perturbCorridorsForTerrain(
   R: number,
   corridorHalfWidth: number,
   terrainSeed: number,
-  scale = 0.4,
+  scale = 2.0,
 ): [number, number][][] {
   const amp = bump * corridorHalfWidth * scale
   if (corridors.length === 0 || amp < 0.5) return corridors
