@@ -681,16 +681,18 @@ export function perturbCorridorsForTerrain(
   R: number,
   corridorHalfWidth: number,
   terrainSeed: number,
-  scale = 0.35,
+  scale = 0.4,
 ): [number, number][][] {
   const amp = bump * corridorHalfWidth * scale
   if (corridors.length === 0 || amp < 0.5) return corridors
   return corridors.map((corridor, ci) => {
     const s = (terrainSeed ^ (ci * 7919)) >>> 0
     let p: [number, number][] = subdivideClosedPolygon(corridor, R * 0.3)
-    const permX = makePermutation(s)
-    const permY = makePermutation(s + 31)
-    p = perturbXY(p, permX, permY, sweepFreq / R, amp)
+    const permA = makePermutation(s)
+    const permB = makePermutation(s + 31)
+    // Displace along the polygon normal (perpendicular to the bank) so the variation
+    // is fully visible regardless of river orientation. threshold=0 → continuous displacement.
+    p = perturbNormal(p, permA, permB, sweepFreq / R, amp, 0)
     return p
   })
 }
