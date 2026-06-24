@@ -1431,7 +1431,7 @@ terrainTextureFileRef.current = terrainTextureFile
       // matching the terrain style without risking overlap into the river.
       const terrainSeed = terrain.split('').reduce((a, c) => (a * 31 + c.charCodeAt(0)) | 0, 0)
       const cuttingCorridors = relevantCorridors.length === 0 ? relevantCorridors
-        : perturbCorridorsForTerrain(relevantCorridors, bump, sweepFreq, hexRadius, terrainSeed)
+        : perturbCorridorsForTerrain(relevantCorridors, bump, sweepFreq, hexRadius, hexRadius * riverBlobCutWidth, terrainSeed)
       const blobs = cuttingCorridors.length === 0 ? shaped : shaped.map(entry => {
         const cutPolys: [number, number][][] = []
         const cutKeys: string[] = []

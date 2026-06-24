@@ -679,10 +679,11 @@ export function perturbCorridorsForTerrain(
   bump: number,
   sweepFreq: number,
   R: number,
+  corridorHalfWidth: number,
   terrainSeed: number,
   scale = 0.35,
 ): [number, number][][] {
-  const amp = bump * R * scale
+  const amp = bump * corridorHalfWidth * scale
   if (corridors.length === 0 || amp < 0.5) return corridors
   return corridors.map((corridor, ci) => {
     const s = (terrainSeed ^ (ci * 7919)) >>> 0
