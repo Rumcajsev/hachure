@@ -15,6 +15,8 @@ export interface SlopeToolRefs {
   slopeHoverTargetRef: MutableRefObject<SlopeHoverTarget>
   setSlopeEdgeRef: MutableRefObject<(edgeKey: string, highHexKey: string) => void>
   removeSlopeEdgeRef: MutableRefObject<(edgeKey: string) => void>
+  batchSetSlopeEdgesRef: MutableRefObject<(edges: Record<string, string>) => void>
+  batchRemoveSlopeEdgesRef: MutableRefObject<(edgeKeys: string[]) => void>
   slopeEdgesRef: MutableRefObject<Record<string, string>>
   clientToLogical: LogicalFn
   getPaper: GetPaperFn
@@ -70,7 +72,6 @@ function computeSlopeHover(
       if (d >= bestDist) continue
       bestDist = d
 
-      // Determine which hex the cursor is closer to → that is the LOW hex
       const hexCenter: [number, number] = [cx, cy]
       const nCx = nverts.reduce((s, v) => s + v[0], 0) / 6
       const nCy = nverts.reduce((s, v) => s + v[1], 0) / 6
@@ -96,9 +97,14 @@ function computeSlopeHover(
 }
 
 export function attachSlopeHandlers(el: HTMLElement, refs: SlopeToolRefs): () => void {
-  const { slopeModeRef, slopeHoverTargetRef, setSlopeEdgeRef, removeSlopeEdgeRef, slopeEdgesRef, draw } = refs
+  const { slopeModeRef, slopeHoverTargetRef, batchSetSlopeEdgesRef, batchRemoveSlopeEdgesRef, slopeEdgesRef, draw } = refs
 
   let hoverRaf: number | null = null
+  let isDragging = false
+  let dragMode: 'set' | 'erase' = 'set'
+  const paintedInDrag = new Set<string>()
+  const pendingSet: Record<string, string> = {}
+  const pendingRemove: string[] = []
 
   const scheduleRedraw = () => {
     if (hoverRaf === null) hoverRaf = requestAnimationFrame(() => { hoverRaf = null; draw() })
@@ -118,6 +124,16 @@ export function attachSlopeHandlers(el: HTMLElement, refs: SlopeToolRefs): () =>
       slopeHoverTargetRef.current = next
       scheduleRedraw()
     }
+
+    // During drag: paint any new edge the cursor enters
+    if (isDragging && next && !paintedInDrag.has(next.edgeKey)) {
+      paintedInDrag.add(next.edgeKey)
+      if (dragMode === 'set') {
+        pendingSet[next.edgeKey] = next.highHexKey
+      } else {
+        pendingRemove.push(next.edgeKey)
+      }
+    }
   }
 
   const onDown = (e: MouseEvent) => {
@@ -128,13 +144,34 @@ export function attachSlopeHandlers(el: HTMLElement, refs: SlopeToolRefs): () =>
     if (!target) return
     const { edgeKey, highHexKey } = target
     const existing = slopeEdgesRef.current[edgeKey]
-    if (existing === highHexKey) {
-      // Same direction clicked again → erase
-      removeSlopeEdgeRef.current(edgeKey)
+
+    // Same direction on an already-set edge → erase stroke; otherwise set/flip stroke
+    dragMode = existing === highHexKey ? 'erase' : 'set'
+    paintedInDrag.clear()
+    paintedInDrag.add(edgeKey)
+
+    if (dragMode === 'set') {
+      pendingSet[edgeKey] = highHexKey
     } else {
-      // Not set, or set from the other side → set/flip
-      setSlopeEdgeRef.current(edgeKey, highHexKey)
+      pendingRemove.push(edgeKey)
     }
+    isDragging = true
+  }
+
+  const onUp = () => {
+    if (!isDragging) return
+    isDragging = false
+
+    const hasSet = Object.keys(pendingSet).length > 0
+    const hasRemove = pendingRemove.length > 0
+
+    if (hasSet) batchSetSlopeEdgesRef.current({ ...pendingSet })
+    if (hasRemove) batchRemoveSlopeEdgesRef.current([...pendingRemove])
+
+    // Clear accumulators
+    for (const k of Object.keys(pendingSet)) delete pendingSet[k]
+    pendingRemove.length = 0
+    paintedInDrag.clear()
   }
 
   const onLeave = () => {
@@ -144,11 +181,13 @@ export function attachSlopeHandlers(el: HTMLElement, refs: SlopeToolRefs): () =>
   el.addEventListener('mousedown', onDown)
   el.addEventListener('mouseleave', onLeave)
   window.addEventListener('mousemove', onMove)
+  window.addEventListener('mouseup', onUp)
 
   return () => {
     el.removeEventListener('mousedown', onDown)
     el.removeEventListener('mouseleave', onLeave)
     window.removeEventListener('mousemove', onMove)
+    window.removeEventListener('mouseup', onUp)
     if (hoverRaf !== null) cancelAnimationFrame(hoverRaf)
   }
 }

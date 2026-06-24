@@ -74,6 +74,8 @@ export type TerrainSlice = {
   slopeEdges: Record<string, string>
   setSlopeEdge: (edgeKey: string, highHexKey: string) => void
   removeSlopeEdge: (edgeKey: string) => void
+  batchSetSlopeEdges: (edges: Record<string, string>) => void
+  batchRemoveSlopeEdges: (edgeKeys: string[]) => void
   // Custom terrain types
   customTerrains: CustomTerrain[]
   addCustomTerrain: (terrain: CustomTerrain) => void
@@ -1053,6 +1055,14 @@ export const createTerrainSlice = (set: Set, get: () => MapStore): TerrainSlice 
   removeSlopeEdge: (edgeKey) => set((s) => {
     const { [edgeKey]: _, ...rest } = s.slopeEdges
     return { slopeEdges: rest }
+  }),
+  batchSetSlopeEdges: (edges) => set((s) => ({
+    slopeEdges: { ...s.slopeEdges, ...edges },
+  })),
+  batchRemoveSlopeEdges: (edgeKeys) => set((s) => {
+    const next = { ...s.slopeEdges }
+    for (const k of edgeKeys) delete next[k]
+    return { slopeEdges: next }
   }),
   setEdgeBlobWidth: (v) => set({ edgeBlobWidth: v }),
   setEdgeBlobOverride: (key, override) => set((s) => {

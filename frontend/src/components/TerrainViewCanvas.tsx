@@ -346,6 +346,8 @@ terrainColors, terrainTextureScales, terrainTextureBlendModes, terrainTextureOpa
   const slopeHoverTargetRef = useRef<import('../lib/drawSlopes').SlopeHoverTarget>(null)
   const setSlopeEdgeRef = useRef(setSlopeEdge)
   const removeSlopeEdgeRef = useRef(removeSlopeEdge)
+  const batchSetSlopeEdgesRef = useRef(useMapStore.getState().batchSetSlopeEdges)
+  const batchRemoveSlopeEdgesRef = useRef(useMapStore.getState().batchRemoveSlopeEdges)
   const paintEdgeBlobRef = useRef(paintEdgeBlob)
   const eraseEdgeBlobRef = useRef(eraseEdgeBlob)
   const edgeBlobPaintedRef = useRef(edgeBlobPainted)
@@ -912,6 +914,8 @@ terrainTextureFileRef.current = terrainTextureFile
   slopeEdgesRef.current = slopeEdges
   setSlopeEdgeRef.current = setSlopeEdge
   removeSlopeEdgeRef.current = removeSlopeEdge
+  batchSetSlopeEdgesRef.current = useMapStore.getState().batchSetSlopeEdges
+  batchRemoveSlopeEdgesRef.current = useMapStore.getState().batchRemoveSlopeEdges
   edgeBlobOverridesRef.current = edgeBlobOverrides
   customTerrainsRef.current = customTerrains
   edgeBlobWidthRef.current = edgeBlobWidth
@@ -2544,7 +2548,7 @@ terrainTextureFileRef.current = terrainTextureFile
     if (!el) return
     return attachSlopeHandlers(el, {
       metaRef, hexesRef, slopeModeRef, slopeHoverTargetRef,
-      setSlopeEdgeRef, removeSlopeEdgeRef, slopeEdgesRef,
+      setSlopeEdgeRef, removeSlopeEdgeRef, batchSetSlopeEdgesRef, batchRemoveSlopeEdgesRef, slopeEdgesRef,
       clientToLogical, getPaper, draw,
     })
   }, [clientToLogical, getPaper, draw])
