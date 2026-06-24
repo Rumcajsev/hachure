@@ -71,23 +71,20 @@ function FSectionDivider() {
 
 export function RoadTerrainCutFlyout({ onClose }: { onClose: () => void }) {
   const t = useTheme()
-  const { roadBlobCutEnabled, roadBlobCutWidth, setRoadBlobCutEnabled, setRoadBlobCutWidth } = useMapStore()
-  const widthSlider = useDeferredSlider(Math.round(roadBlobCutWidth * 100), v => setRoadBlobCutWidth(v / 100))
+  const { roadBlobCutEnabled, roadBlobCutWidth, roadBlobCutVariance, roadBlobCutFreqScale,
+    setRoadBlobCutEnabled, setRoadBlobCutWidth, setRoadBlobCutVariance, setRoadBlobCutFreqScale } = useMapStore()
+  const widthSlider    = useDeferredSlider(Math.round(roadBlobCutWidth * 100), v => setRoadBlobCutWidth(v / 100))
+  const varianceSlider = useDeferredSlider(Math.round(roadBlobCutVariance * 100), v => setRoadBlobCutVariance(v / 100))
+  const freqSlider     = useDeferredSlider(Math.round(roadBlobCutFreqScale * 10), v => setRoadBlobCutFreqScale(v / 10))
   return (
     <FlyoutShell title="Terrain cut" subtitle="carve road corridors out of terrain blobs" onClose={onClose}>
       <ToggleRow label="Enabled" checked={roadBlobCutEnabled} onChange={setRoadBlobCutEnabled} />
-      <MiniSlider
-        label="Width"
-        display={(widthSlider.value / 100).toFixed(2) + '×'}
-        value={widthSlider.value}
-        min={1} max={100} step={1}
-        disabled={!roadBlobCutEnabled}
-        onChange={widthSlider.onChange}
-        onDragEnd={widthSlider.onDragEnd}
-      />
+      <MiniSlider label="Width"    display={(widthSlider.value / 100).toFixed(2) + '×'} value={widthSlider.value}    min={1}  max={100} step={1} disabled={!roadBlobCutEnabled} onChange={widthSlider.onChange}    onDragEnd={widthSlider.onDragEnd} />
+      <MiniSlider label="Variance" display={`${varianceSlider.value}%`}                  value={varianceSlider.value} min={0}  max={100} step={1} disabled={!roadBlobCutEnabled} onChange={varianceSlider.onChange} onDragEnd={varianceSlider.onDragEnd} />
+      <MiniSlider label="Scale"    display={(freqSlider.value / 10).toFixed(1) + '×'}    value={freqSlider.value}     min={1}  max={40}  step={1} disabled={!roadBlobCutEnabled || varianceSlider.value === 0} onChange={freqSlider.onChange} onDragEnd={freqSlider.onDragEnd} />
       {roadBlobCutEnabled && (
         <div style={{ padding: '4px 14px 8px', fontFamily: t.mono, fontSize: 9, color: t.inkFaint, lineHeight: 1.5 }}>
-          Width is a multiple of hex radius. Reactively follows road geometry — removing a road restores the terrain.
+          Width is a multiple of hex radius. Variance 0% = straight edge. Scale controls wave frequency.
         </div>
       )}
     </FlyoutShell>

@@ -1006,7 +1006,7 @@ export const useMapStore = create<MapStore>()(persist((set, get) => ({
     labelPresetId: s.labelPresetId,
     labelOverrides: s.labelOverrides,
   }),
-  version: 86,
+  version: 87,
   migrate: migratePersisted,
   merge: (persisted, current) => rehydrateState({ ...current, ...(persisted as Partial<MapStore>) }),
 }))

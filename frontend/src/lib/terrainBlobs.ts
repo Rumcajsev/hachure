@@ -670,29 +670,27 @@ export function applyBlobMaskEdits(
 }
 
 /**
- * Return a perturbed copy of each corridor polygon using the cutting terrain's
- * own blob parameters (scaled down so the variation never reaches the river).
- * Scale of ~0.35 keeps max displacement well under typical corridor halfWidth.
+ * Return a perturbed copy of each corridor polygon.
+ * variance (0–1): amplitude as a fraction of corridorHalfWidth; 0 = straight cut.
+ * freqScale: multiplier on the base sweepFreq — small = broad waves, large = tight bumps.
  */
 export function perturbCorridorsForTerrain(
   corridors: [number, number][][],
-  bump: number,
+  variance: number,
+  freqScale: number,
   sweepFreq: number,
   R: number,
   corridorHalfWidth: number,
   terrainSeed: number,
-  scale = 2.0,
 ): [number, number][][] {
-  const amp = bump * corridorHalfWidth * scale
+  const amp = variance * corridorHalfWidth
   if (corridors.length === 0 || amp < 0.5) return corridors
   return corridors.map((corridor, ci) => {
     const s = (terrainSeed ^ (ci * 7919)) >>> 0
     let p: [number, number][] = subdivideClosedPolygon(corridor, R * 0.3)
     const permA = makePermutation(s)
     const permB = makePermutation(s + 31)
-    // Displace along the polygon normal (perpendicular to the bank) so the variation
-    // is fully visible regardless of river orientation. threshold=0 → continuous displacement.
-    p = perturbNormal(p, permA, permB, sweepFreq / R, amp, 0)
+    p = perturbNormal(p, permA, permB, (sweepFreq * freqScale) / R, amp, 0)
     return p
   })
 }

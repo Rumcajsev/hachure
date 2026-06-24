@@ -1022,6 +1022,12 @@ if (fromVersion < 64) {
     if (s.roadBlobCutEnabled === undefined) s.roadBlobCutEnabled = false
     if (s.roadBlobCutWidth === undefined) s.roadBlobCutWidth = 0.3
   }
+  if (fromVersion < 87) {
+    if (s.riverBlobCutVariance === undefined) s.riverBlobCutVariance = 0.5
+    if (s.riverBlobCutFreqScale === undefined) s.riverBlobCutFreqScale = 1.0
+    if (s.roadBlobCutVariance === undefined) s.roadBlobCutVariance = 0.5
+    if (s.roadBlobCutFreqScale === undefined) s.roadBlobCutFreqScale = 1.0
+  }
   if (fromVersion < 84) {
     const tiers = s.riverTierStyles as Array<Record<string, unknown>> | undefined
     if (tiers) {

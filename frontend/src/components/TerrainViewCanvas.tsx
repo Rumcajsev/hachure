@@ -228,7 +228,8 @@ terrainColors, terrainTextureScales, terrainTextureBlendModes, terrainTextureOpa
     roadSnapBindings, setRoadSnapBinding, deleteRoadSnapBinding,
     roadNodeEditMode,
     roadWiggleAmp, roadWiggleFreq, roadSmoothing, roadPathSmoothing, roadCenterPull, roadTierGeometry, roadDensityMinChain, roadWiggleDragging,
-    roadBlobCutEnabled, roadBlobCutWidth, setRoadBlobCutEnabled, setRoadBlobCutWidth,
+    roadBlobCutEnabled, roadBlobCutWidth, roadBlobCutVariance, roadBlobCutFreqScale,
+    setRoadBlobCutEnabled, setRoadBlobCutWidth, setRoadBlobCutVariance, setRoadBlobCutFreqScale,
     roadChainOverrides, setRoadChainOverride,
     riverEdges,
     riverEditMode, toggleRiverEdge, batchToggleRiverEdges,
@@ -247,7 +248,7 @@ terrainColors, terrainTextureScales, terrainTextureBlendModes, terrainTextureOpa
     riverTierStyles, riverStyle,
     riverWidthScale,
     riverWiggleFreq, riverWiggleAmp, riverSmoothing, riverPathSmoothing,
-    riverBlobCutEnabled, riverBlobCutWidth,
+    riverBlobCutEnabled, riverBlobCutWidth, riverBlobCutVariance, riverBlobCutFreqScale,
     terrainBlobOverrides, setTerrainBlobOverride,
     terrainTypeBlobStyles,
     waterOverrides, setWaterOverride,
@@ -1354,31 +1355,34 @@ terrainTextureFileRef.current = terrainTextureFile
         const h = blobHandleOverrides[ck]
         return h && Object.keys(h).length > 0 ? `${ck}:${JSON.stringify(h)}` : ''
       }).filter(Boolean).join('~')
-      // Filter to corridors that spatially overlap this terrain's hex extents so terrains
-      // with no nearby features keep a stable empty corridorKey and don't miss cache.
-      const allCorridors = riverAutoCorridors.length === 0 && roadAutoCorridors.length === 0
-        ? EMPTY_CORRIDORS
-        : [...riverAutoCorridors, ...roadAutoCorridors]
-      const relevantCorridors = (() => {
-        if (allCorridors.length === 0) return allCorridors
-        let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity
-        for (const [cx, cy] of hexOrigCenterByKey.values()) {
-          if (cx - hexRadius < minX) minX = cx - hexRadius
-          if (cx + hexRadius > maxX) maxX = cx + hexRadius
-          if (cy - hexRadius < minY) minY = cy - hexRadius
-          if (cy + hexRadius > maxY) maxY = cy + hexRadius
+      // Compute terrain bbox for corridor spatial filter
+      let bboxMinX = Infinity, bboxMaxX = -Infinity, bboxMinY = Infinity, bboxMaxY = -Infinity
+      for (const [cx, cy] of hexOrigCenterByKey.values()) {
+        if (cx - hexRadius < bboxMinX) bboxMinX = cx - hexRadius
+        if (cx + hexRadius > bboxMaxX) bboxMaxX = cx + hexRadius
+        if (cy - hexRadius < bboxMinY) bboxMinY = cy - hexRadius
+        if (cy + hexRadius > bboxMaxY) bboxMaxY = cy + hexRadius
+      }
+      const overlapsBbox = (corridor: [number, number][]) => {
+        let cMinX = Infinity, cMaxX = -Infinity, cMinY = Infinity, cMaxY = -Infinity
+        for (const [px, py] of corridor) {
+          if (px < cMinX) cMinX = px; if (px > cMaxX) cMaxX = px
+          if (py < cMinY) cMinY = py; if (py > cMaxY) cMaxY = py
         }
-        return allCorridors.filter(corridor => {
-          let cMinX = Infinity, cMaxX = -Infinity, cMinY = Infinity, cMaxY = -Infinity
-          for (const [px, py] of corridor) {
-            if (px < cMinX) cMinX = px; if (px > cMaxX) cMaxX = px
-            if (py < cMinY) cMinY = py; if (py > cMaxY) cMaxY = py
-          }
-          return cMaxX >= minX && cMinX <= maxX && cMaxY >= minY && cMinY <= maxY
-        })
-      })()
-      const corridorKey = relevantCorridors.map(c => `${c.length}:${c[0]?.[0].toFixed(0)},${c[0]?.[1].toFixed(0)}`).join('|')
-      const styleKey = `${smooth}|${offset}|${bump}|${sweepFreq}|${lobeFreq}|${lobeAmp}|${lobeThreshold}|${lobeDirection}|${terrainBlobTopoStyle}|${hexRadius}|${JSON.stringify(blobSeeds)}|${handleKey}|${corridorKey}`
+        return cMaxX >= bboxMinX && cMinX <= bboxMaxX && cMaxY >= bboxMinY && cMinY <= bboxMaxY
+      }
+      const terrainSeed = terrain.split('').reduce((a, c) => (a * 31 + c.charCodeAt(0)) | 0, 0)
+      const relevantRiverCorridors = riverAutoCorridors.filter(overlapsBbox)
+      const relevantRoadCorridors  = roadAutoCorridors.filter(overlapsBbox)
+      const perturbedRiverCorridors = relevantRiverCorridors.length === 0 ? relevantRiverCorridors
+        : perturbCorridorsForTerrain(relevantRiverCorridors, riverBlobCutVariance, riverBlobCutFreqScale, sweepFreq, hexRadius, hexRadius * riverBlobCutWidth, terrainSeed)
+      const perturbedRoadCorridors  = relevantRoadCorridors.length === 0 ? relevantRoadCorridors
+        : perturbCorridorsForTerrain(relevantRoadCorridors, roadBlobCutVariance, roadBlobCutFreqScale, sweepFreq, hexRadius, hexRadius * roadBlobCutWidth, terrainSeed + 1)
+      const relevantCorridors = perturbedRiverCorridors.length === 0 && perturbedRoadCorridors.length === 0
+        ? EMPTY_CORRIDORS : [...perturbedRiverCorridors, ...perturbedRoadCorridors]
+      const corridorKey = `r${relevantRiverCorridors.map(c => `${c.length}:${c[0]?.[0].toFixed(0)},${c[0]?.[1].toFixed(0)}`).join('|')}` +
+        `|d${relevantRoadCorridors.map(c => `${c.length}:${c[0]?.[0].toFixed(0)},${c[0]?.[1].toFixed(0)}`).join('|')}`
+      const styleKey = `${smooth}|${offset}|${bump}|${sweepFreq}|${lobeFreq}|${lobeAmp}|${lobeThreshold}|${lobeDirection}|${terrainBlobTopoStyle}|${hexRadius}|${JSON.stringify(blobSeeds)}|${handleKey}|${corridorKey}|${riverBlobCutVariance}|${riverBlobCutFreqScale}|${roadBlobCutVariance}|${roadBlobCutFreqScale}`
       const cached = perTerrainBlobCache.current.get(terrain)
 
       // Compute rawPolys (topology cache)
@@ -1450,17 +1454,12 @@ terrainTextureFileRef.current = terrainTextureFile
       const shaped = shapeTerrainBlobs([{ terrain, rawPolys: displacedPolys, hexCenters, clusterCenters: topoClusterCenters }], smooth, offset, bump, sweepFreq, lobeFreq, lobeAmp, lobeThreshold, lobeDirection, hexRadius, blobSeeds, stableSeeds)
       console.log(`[blobUseMemo] shapeTerrainBlobs terrain=${terrain} polys=${displacedPolys.length} took ${(performance.now()-_tBlob0).toFixed(1)}ms`)
 
-      // Apply river corridor cut to final shaped polys. Corridors are perturbed using
-      // this terrain's bump/sweepFreq (scaled down) so the cut edge has organic character
-      // matching the terrain style without risking overlap into the river.
-      const terrainSeed = terrain.split('').reduce((a, c) => (a * 31 + c.charCodeAt(0)) | 0, 0)
-      const cuttingCorridors = relevantCorridors.length === 0 ? relevantCorridors
-        : perturbCorridorsForTerrain(relevantCorridors, bump, sweepFreq, hexRadius, hexRadius * riverBlobCutWidth, terrainSeed)
-      const blobs = cuttingCorridors.length === 0 ? shaped : shaped.map(entry => {
+      // Cut shaped blobs with the already-perturbed corridors (perturbation happened above).
+      const blobs = relevantCorridors.length === 0 ? shaped : shaped.map(entry => {
         const cutPolys: [number, number][][] = []
         const cutKeys: string[] = []
         for (let i = 0; i < entry.polys.length; i++) {
-          const pieces = cutRawPolysWithCorridors([entry.polys[i]], cuttingCorridors)
+          const pieces = cutRawPolysWithCorridors([entry.polys[i]], relevantCorridors)
           for (const piece of pieces) { cutPolys.push(piece); cutKeys.push(entry.blobKeys[i]) }
         }
         return { ...entry, polys: cutPolys, blobKeys: cutKeys }
@@ -1475,7 +1474,7 @@ terrainTextureFileRef.current = terrainTextureFile
     prevTerrainBlobsRef.current = result
     console.log(`[blobUseMemo] total ${(performance.now()-_tMemo0).toFixed(1)}ms`)
     return result
-  }, [isTerrainPainting, projectedHexes, blobComponentsByTerrain, terrainBlobOverrides, terrainTypeBlobStyles, terrainBlobSmooth, terrainBlobOffset, terrainBlobBump, terrainBlobSweepFreq, terrainBlobLobeFreq, terrainBlobLobeAmp, terrainBlobLobeThreshold, terrainBlobLobeDirection, terrainBlobTopoStyle, terrainBlobClusterSize, hexRadius, realisticCoastline, blobSeeds, elevationOverridesTerrain, blobHandleOverrides, riverAutoCorridors, roadAutoCorridors])
+  }, [isTerrainPainting, projectedHexes, blobComponentsByTerrain, terrainBlobOverrides, terrainTypeBlobStyles, terrainBlobSmooth, terrainBlobOffset, terrainBlobBump, terrainBlobSweepFreq, terrainBlobLobeFreq, terrainBlobLobeAmp, terrainBlobLobeThreshold, terrainBlobLobeDirection, terrainBlobTopoStyle, terrainBlobClusterSize, hexRadius, realisticCoastline, blobSeeds, elevationOverridesTerrain, blobHandleOverrides, riverAutoCorridors, roadAutoCorridors, riverBlobCutVariance, riverBlobCutFreqScale, roadBlobCutVariance, roadBlobCutFreqScale])
   const defaultTerrainBlobsRef = useRef(defaultTerrainBlobs)
   defaultTerrainBlobsRef.current = defaultTerrainBlobs
 
