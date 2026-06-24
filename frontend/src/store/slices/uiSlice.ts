@@ -442,6 +442,7 @@ export const createUiSlice = (set: Set, get: () => MapStore): UiSlice => ({
         customTerrains: s.customTerrains,
         edgeBlobPainted: s.edgeBlobPainted, edgeBlobWidth: s.edgeBlobWidth,
         edgeBlobOverrides: s.edgeBlobOverrides,
+        slopeEdges: s.slopeEdges,
         terrainBlobOverrides: s.terrainBlobOverrides, terrainTypeBlobStyles: s.terrainTypeBlobStyles,
         terrainBlobSmooth: s.terrainBlobSmooth, terrainBlobOffset: s.terrainBlobOffset,
         terrainBlobBump: s.terrainBlobBump, terrainBlobSweepFreq: s.terrainBlobSweepFreq,
@@ -1023,10 +1024,18 @@ if (fromVersion < 64) {
     if (s.roadBlobCutWidth === undefined) s.roadBlobCutWidth = 0.3
   }
   if (fromVersion < 87) {
-    if (s.riverBlobCutVariance === undefined) s.riverBlobCutVariance = 0.5
-    if (s.riverBlobCutFreqScale === undefined) s.riverBlobCutFreqScale = 1.0
-    if (s.roadBlobCutVariance === undefined) s.roadBlobCutVariance = 0.5
-    if (s.roadBlobCutFreqScale === undefined) s.roadBlobCutFreqScale = 1.0
+    // variance/freqScale superseded by roughness in v88 — no-op
+  }
+  if (fromVersion < 88) {
+    if (s.riverBlobCutRoughness === undefined) s.riverBlobCutRoughness = 0.3
+    if (s.roadBlobCutRoughness === undefined) s.roadBlobCutRoughness = 0.3
+    delete (s as Record<string, unknown>).riverBlobCutVariance
+    delete (s as Record<string, unknown>).riverBlobCutFreqScale
+    delete (s as Record<string, unknown>).roadBlobCutVariance
+    delete (s as Record<string, unknown>).roadBlobCutFreqScale
+  }
+  if (fromVersion < 88) {
+    if (!s.slopeEdges) s.slopeEdges = {}
   }
   if (fromVersion < 84) {
     const tiers = s.riverTierStyles as Array<Record<string, unknown>> | undefined

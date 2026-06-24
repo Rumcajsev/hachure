@@ -71,18 +71,18 @@ function FSectionDivider() {
 
 export function RoadTerrainCutFlyout({ onClose }: { onClose: () => void }) {
   const t = useTheme()
-  const { roadBlobCutEnabled, roadBlobCutWidth, roadBlobCutVariance,
-    setRoadBlobCutEnabled, setRoadBlobCutWidth, setRoadBlobCutVariance } = useMapStore()
-  const widthSlider    = useDeferredSlider(Math.round(roadBlobCutWidth * 100), v => setRoadBlobCutWidth(v / 100))
-  const varianceSlider = useDeferredSlider(Math.round(roadBlobCutVariance * 100), v => setRoadBlobCutVariance(v / 100))
+  const { roadBlobCutEnabled, roadBlobCutWidth, roadBlobCutRoughness,
+    setRoadBlobCutEnabled, setRoadBlobCutWidth, setRoadBlobCutRoughness } = useMapStore()
+  const widthSlider     = useDeferredSlider(Math.round(roadBlobCutWidth * 100), v => setRoadBlobCutWidth(v / 100))
+  const roughnessSlider = useDeferredSlider(Math.round(roadBlobCutRoughness * 100), v => setRoadBlobCutRoughness(v / 100))
   return (
     <FlyoutShell title="Terrain cut" subtitle="carve road corridors out of terrain blobs" onClose={onClose}>
       <ToggleRow label="Enabled" checked={roadBlobCutEnabled} onChange={setRoadBlobCutEnabled} />
-      <MiniSlider label="Width"    display={(widthSlider.value / 100).toFixed(2) + '×'} value={widthSlider.value}    min={1} max={100} step={1} disabled={!roadBlobCutEnabled} onChange={widthSlider.onChange}    onDragEnd={widthSlider.onDragEnd} />
-      <MiniSlider label="Variance" display={`${varianceSlider.value}%`}                  value={varianceSlider.value} min={0} max={100} step={1} disabled={!roadBlobCutEnabled} onChange={varianceSlider.onChange} onDragEnd={varianceSlider.onDragEnd} />
+      <MiniSlider label="Width"     display={(widthSlider.value / 100).toFixed(2) + '×'} value={widthSlider.value}     min={1} max={100} step={1} disabled={!roadBlobCutEnabled} onChange={widthSlider.onChange}     onDragEnd={widthSlider.onDragEnd} />
+      <MiniSlider label="Roughness" display={`${roughnessSlider.value}%`}                 value={roughnessSlider.value} min={0} max={100} step={1} disabled={!roadBlobCutEnabled} onChange={roughnessSlider.onChange} onDragEnd={roughnessSlider.onDragEnd} />
       {roadBlobCutEnabled && (
         <div style={{ padding: '4px 14px 8px', fontFamily: t.mono, fontSize: 9, color: t.inkFaint, lineHeight: 1.5 }}>
-          Width is a multiple of hex radius. Variance 0% = straight edge.
+          Width is a multiple of hex radius. Roughness 0% = straight edge.
         </div>
       )}
     </FlyoutShell>

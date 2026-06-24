@@ -61,18 +61,18 @@ function SectionToggle({ label, enabled, onChange, accentColor }: { label: strin
 
 export function TerrainCutFlyout({ onClose }: { onClose: () => void }) {
   const t = useTheme()
-  const { riverBlobCutEnabled, riverBlobCutWidth, riverBlobCutVariance, riverBlobCutFreqScale,
-    setRiverBlobCutEnabled, setRiverBlobCutWidth, setRiverBlobCutVariance, setRiverBlobCutFreqScale } = useMapStore()
-  const widthSlider    = useDeferredSlider(Math.round(riverBlobCutWidth * 100), v => setRiverBlobCutWidth(v / 100))
-  const varianceSlider = useDeferredSlider(Math.round(riverBlobCutVariance * 100), v => setRiverBlobCutVariance(v / 100))
+  const { riverBlobCutEnabled, riverBlobCutWidth, riverBlobCutRoughness,
+    setRiverBlobCutEnabled, setRiverBlobCutWidth, setRiverBlobCutRoughness } = useMapStore()
+  const widthSlider     = useDeferredSlider(Math.round(riverBlobCutWidth * 100), v => setRiverBlobCutWidth(v / 100))
+  const roughnessSlider = useDeferredSlider(Math.round(riverBlobCutRoughness * 100), v => setRiverBlobCutRoughness(v / 100))
   return (
     <FlyoutShell title="Terrain cut" subtitle="carve river corridors out of terrain blobs" onClose={onClose}>
       <ToggleRow label="Enabled" checked={riverBlobCutEnabled} onChange={setRiverBlobCutEnabled} />
-      <MiniSlider label="Width"    display={(widthSlider.value / 100).toFixed(2) + '×'} value={widthSlider.value}    min={1} max={100} step={1} disabled={!riverBlobCutEnabled} onChange={widthSlider.onChange}    onDragEnd={widthSlider.onDragEnd} />
-      <MiniSlider label="Variance" display={`${varianceSlider.value}%`}                  value={varianceSlider.value} min={0} max={100} step={1} disabled={!riverBlobCutEnabled} onChange={varianceSlider.onChange} onDragEnd={varianceSlider.onDragEnd} />
+      <MiniSlider label="Width"     display={(widthSlider.value / 100).toFixed(2) + '×'} value={widthSlider.value}     min={1} max={100} step={1} disabled={!riverBlobCutEnabled} onChange={widthSlider.onChange}     onDragEnd={widthSlider.onDragEnd} />
+      <MiniSlider label="Roughness" display={`${roughnessSlider.value}%`}                 value={roughnessSlider.value} min={0} max={100} step={1} disabled={!riverBlobCutEnabled} onChange={roughnessSlider.onChange} onDragEnd={roughnessSlider.onDragEnd} />
       {riverBlobCutEnabled && (
         <div style={{ padding: '4px 14px 8px', fontFamily: t.mono, fontSize: 9, color: t.inkFaint, lineHeight: 1.5 }}>
-          Width is a multiple of hex radius. Variance 0% = straight edge.
+          Width is a multiple of hex radius. Roughness 0% = straight edge.
         </div>
       )}
     </FlyoutShell>

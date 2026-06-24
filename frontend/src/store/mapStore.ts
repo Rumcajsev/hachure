@@ -157,6 +157,7 @@ export type ActiveTool =
   | { type: 'mega-hex-origin' }
   | { type: 'align-image' }
   | { type: 'label-drag' }
+  | { type: 'slope' }
   /** Label follows cursor until left-click confirms placement or Escape cancels.
    *  dx/dy are stored relative to the icon centre (cx, cy), not the auto-placer output. */
   | { type: 'label-follow'; id: string; iconCx: number; iconCy: number; prevDx: number; prevDy: number }
@@ -1006,7 +1007,7 @@ export const useMapStore = create<MapStore>()(persist((set, get) => ({
     labelPresetId: s.labelPresetId,
     labelOverrides: s.labelOverrides,
   }),
-  version: 87,
+  version: 88,
   migrate: migratePersisted,
   merge: (persisted, current) => rehydrateState({ ...current, ...(persisted as Partial<MapStore>) }),
 }))
