@@ -1225,6 +1225,18 @@ export function TerrainSidebarV3() {
           )
         })}
         <TGap />
+        <ElevBrushRow
+          tier={2}
+          label="slope"
+          color="#8a6a40"
+          active={activeTool.type === 'slope'}
+          shortcut="S"
+          showCog={false}
+          cogOpen={false}
+          customShape={false}
+          onSelect={() => activeTool.type === 'slope' ? setActiveTool({ type: 'none' }) : setActiveTool({ type: 'slope' })}
+        />
+        <TGap />
         <TriggerRow label="Import / classify" active={flyout === 'e-import'} onClick={() => toggleFlyout('e-import')} icon={IMPORT_ICON} />
         {(heightmapUrl || elevationStatus === 'done') && (
           <>

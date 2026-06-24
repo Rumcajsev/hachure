@@ -8,6 +8,7 @@ import { buildTerrainBlobsV2, bleedPolygon } from './terrainBlobs'
 import { clipPolygonToConvex, pointInPolygon } from './geometry'
 import { makePermutation, perlinNoise2D } from './noise'
 import { findEdgeChains, buildEdgeBlobPolys, type EdgeBlobChain, type EdgeBlobParams, parseEdgeBlobKey, sharedEdgeVertices } from './edgeBlobs'
+import { drawSlopes } from './drawSlopes'
 import { drawHistoricalIcons, type HistoricalIconTerrainParams } from './drawHistoricalIcons'
 
 type Ctx = CanvasRenderingContext2D | OffscreenCanvasRenderingContext2D
@@ -79,6 +80,7 @@ export type DrawTerrainParams = {
   terrainBlobOutlineColor: string
   terrainBlobOutlineWidth: number
   terrainBlobEffect: StrokeEffect
+  slopeEdges: Record<string, string>
 }
 
 export type { EdgeBlobParams, EdgeBlobChain }
@@ -796,6 +798,10 @@ export function drawTerrain(tCtx: Ctx, params: DrawTerrainParams): void {
     }
     tCtx.drawImage(params.contourCanvas, params.px, params.py, params.pw, params.ph)
     tCtx.restore()
+  }
+
+  if (Object.keys(params.slopeEdges).length > 0) {
+    drawSlopes(tCtx, params.slopeEdges, params.hexVertMap, R)
   }
 
 }

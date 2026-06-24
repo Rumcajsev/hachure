@@ -7,7 +7,7 @@ import { computeDragLiveData, computeRoadProjections, computeLiveRiverChainData 
 import { liveClassParamsRef } from '../lib/liveClassParamsRef'
 import { _drawHoveredEdgePreview } from '../lib/drawHighlights'
 import { _drawWorldcoverOverlay, _drawRawOsmRoadsOverlay } from '../lib/drawDebugOverlays'
-import { _drawTerrainPaintOverlay, _drawElevationPaintOverlay } from '../lib/drawPaintOverlays'
+import { _drawTerrainPaintOverlay, _drawElevationPaintOverlay, _drawSlopeOverlay } from '../lib/drawPaintOverlays'
 import { _drawBlobHandleOverlay, _drawBlobMaskPreview } from '../lib/drawBlobHandleOverlay'
 import { drawLabels as _drawLabels, _drawLabelDragHandles } from '../lib/drawLabels'
 import { drawIcons as _drawIcons } from '../lib/drawIcons'
@@ -53,6 +53,7 @@ export interface MapRefs {
   blobMaskDrawingRef: { current: any }
   blobMaskStrokeRef: { current: any }
   bridgeOverridesRef: { current: any }
+  bridgeLengthScaleRef: { current: any }
   bridgeStyleRef: { current: any }
   bridgeTiersRef: { current: any }
   bridgesEnabledRef: { current: any }
@@ -86,6 +87,9 @@ export interface MapRefs {
   editingLabelRef: { current: any }
   elevationPaintBrushRef: { current: any }
   elevationPaintModeRef: { current: any }
+  slopeEdgesRef: { current: Record<string, string> }
+  slopeModeRef: { current: boolean }
+  slopeHoverTargetRef: { current: import('../lib/drawSlopes').SlopeHoverTarget }
   elevationTypeBlobStylesRef: { current: any }
   excludedHexKeysRef: { current: any }
   frameDimsRef: { current: any }
@@ -265,7 +269,7 @@ export function drawMap(refs: MapRefs, exportTarget?: ExportTarget): void {
     clipToHexGridRef, coastlineDebugRawRef, contourCanvasRef, contourDisabledElevClassesSetRef, contourDisabledTerrainsSetRef, customTerrainsRef, dataSourceRef, defaultBackgroundBlobsRef,
     defaultElevationBlobsRef, defaultTerrainBlobsMaskedRef, defaultWaterBlobsRef, detectedBridgesRef, disabledHexKeysRef, dragLiveDensePosRef, dragLiveOverrideRef, draggingCpKeyRef,
     draggingCpKindRef, draggingDensePtRef, draggingLabelRef, drawOsmHighlightRef, drawPerfRef, edgeBlobOverridesRef, edgeBlobPaintedRef, edgeBlobWidthRef,
-    editingLabelRef, elevationPaintBrushRef, elevationPaintModeRef, elevationTypeBlobStylesRef, excludedHexKeysRef, frameDimsRef, hexBorderColorRef, hexBorderDifferenceRef,
+    editingLabelRef, elevationPaintBrushRef, elevationPaintModeRef, elevationTypeBlobStylesRef, excludedHexKeysRef, frameDimsRef, hexBorderColorRef, hexBorderDifferenceRef, slopeEdgesRef, slopeModeRef, slopeHoverTargetRef,
     hexBorderModeRef, hexBorderOpacityRef, hexBuildingGeoCacheRef, hexEdgeModeRef, hexIdxRef, hexNumberColorRef, hexNumberEdgeRef, hexNumberFontScaleRef,
     hexNumberMapRef, hexNumbersEnabledRef, hexRadiusRef, hexVertMapRef, hexesRef, highlightEdgePathsRef, highlightLinesRef, highlightedHexesRef,
     highlightsRef, hillsColorRef, hillshadeCanvasRef, hillshadeDisabledElevClassesSetRef, hillshadeDisabledTerrainsSetRef, hillshadeEnabledRef, historicalIconParamsRef, historicalIconSetsRef,
@@ -479,6 +483,7 @@ export function drawMap(refs: MapRefs, exportTarget?: ExportTarget): void {
     contourCanvas: contourCanvasRef.current,
     contourDisabledTerrains: contourDisabledTerrainsSetRef.current,
     contourDisabledElevClasses: contourDisabledElevClassesSetRef.current,
+    slopeEdges: slopeEdgesRef.current ?? {},
   }
 
   const _tTerrain0 = performance.now()
@@ -910,6 +915,7 @@ export function drawMap(refs: MapRefs, exportTarget?: ExportTarget): void {
       tierStyles: roadTierStylesRef.current as [RoadTierStyle, RoadTierStyle, RoadTierStyle],
       railStyle: railStyleRef.current,
       lineScale: isExport ? lineScale : 1,
+      lengthScale: bridgeLengthScaleRef.current,
       project,
     })
     ctx.restore()
@@ -1103,6 +1109,7 @@ export function drawMap(refs: MapRefs, exportTarget?: ExportTarget): void {
       bgPaintHold: bgPaintHoldRef.current,
       R,
     })
+    _drawSlopeOverlay(ctx, slopeModeRef.current, slopeHoverTargetRef.current, R)
   }
 
 

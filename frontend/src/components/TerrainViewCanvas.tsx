@@ -2803,6 +2803,7 @@ terrainTextureFileRef.current = terrainTextureFile
     terrainTextureTintColorsRef, terrainTextureTintOpacitiesRef, terrainTypeBlobStylesRef, textureCacheRef, urbanHexesRef, urbanStyleRef, waterOverridesRef, worldcoverImageElementRef,
     zoomRef, getPaperRef, surroundColorRef,
     edgeDragRef,
+    slopeEdgesRef, slopeModeRef, slopeHoverTargetRef,
   } satisfies MapRefs
 
   osmOverlayRefsRef.current = {

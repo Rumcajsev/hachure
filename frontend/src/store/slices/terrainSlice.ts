@@ -70,6 +70,10 @@ export type TerrainSlice = {
   edgeBlobPainted: Record<string, string>
   edgeBlobWidth: number
   edgeBlobOverrides: Record<string, BlobOverride>
+  // Slope edges: edgeKey → 'q,r' of the uphill hex
+  slopeEdges: Record<string, string>
+  setSlopeEdge: (edgeKey: string, highHexKey: string) => void
+  removeSlopeEdge: (edgeKey: string) => void
   // Custom terrain types
   customTerrains: CustomTerrain[]
   addCustomTerrain: (terrain: CustomTerrain) => void
@@ -243,6 +247,7 @@ export const createTerrainSlice = (set: Set, get: () => MapStore): TerrainSlice 
   edgeBlobPainted: {},
   edgeBlobWidth: 0.25,
   edgeBlobOverrides: {},
+  slopeEdges: {},
 
   customTerrains: [],
   addCustomTerrain: (terrain) => set(s => ({ customTerrains: [...s.customTerrains, terrain] })),
@@ -320,6 +325,7 @@ export const createTerrainSlice = (set: Set, get: () => MapStore): TerrainSlice 
     highlights: [],
     edgeBlobPainted: {},
     edgeBlobOverrides: {},
+    slopeEdges: {},
     terrainBlobOverrides: {},
     waterOverrides: {},
     blobHandleOverrides: {},
@@ -1039,6 +1045,14 @@ export const createTerrainSlice = (set: Set, get: () => MapStore): TerrainSlice 
   eraseEdgeBlob: (edgeKey) => set((s) => {
     const { [edgeKey]: _, ...rest } = s.edgeBlobPainted
     return { edgeBlobPainted: rest }
+  }),
+
+  setSlopeEdge: (edgeKey, highHexKey) => set((s) => ({
+    slopeEdges: { ...s.slopeEdges, [edgeKey]: highHexKey },
+  })),
+  removeSlopeEdge: (edgeKey) => set((s) => {
+    const { [edgeKey]: _, ...rest } = s.slopeEdges
+    return { slopeEdges: rest }
   }),
   setEdgeBlobWidth: (v) => set({ edgeBlobWidth: v }),
   setEdgeBlobOverride: (key, override) => set((s) => {

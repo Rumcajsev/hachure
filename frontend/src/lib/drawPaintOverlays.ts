@@ -3,6 +3,7 @@
  * Never called during export.
  */
 import { TERRAIN_COLORS } from '../store/mapStore'
+import { drawSlopeHover, type SlopeHoverTarget } from './drawSlopes'
 
 type PaintTarget =
   | { type: 'hex'; verts: [number, number][] }
@@ -160,4 +161,14 @@ export function _drawElevationPaintOverlay(p: ElevationPaintOverlayParams): void
     }
     ctx.restore()
   }
+}
+
+export function _drawSlopeOverlay(
+  ctx: CanvasRenderingContext2D,
+  slopeMode: boolean,
+  slopeHoverTarget: SlopeHoverTarget,
+  R: number,
+): void {
+  if (!slopeMode || !slopeHoverTarget) return
+  drawSlopeHover(ctx, slopeHoverTarget, R)
 }
