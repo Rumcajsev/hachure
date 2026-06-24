@@ -921,11 +921,15 @@ function ElevationCogFlyout({ cls, defaultColor, onClose }: { cls: 'hills' | 'mo
   const typeStyle = elevationTypeBlobStyles[cls]
   const overrideEnabled = typeStyle?.enabled ?? false
 
-  const storeSmooth       = overrideEnabled ? (typeStyle?.smooth       ?? terrainBlobSmooth)       : terrainBlobSmooth
-  const storeOffset       = overrideEnabled ? (typeStyle?.offset       ?? terrainBlobOffset)       : terrainBlobOffset
-  const storeBump         = overrideEnabled ? (typeStyle?.bump         ?? terrainBlobBump)         : terrainBlobBump
-  const storeLobeAmp      = overrideEnabled ? (typeStyle?.lobeAmp      ?? terrainBlobLobeAmp)      : terrainBlobLobeAmp
-  const storeClusterSize  = overrideEnabled ? (typeStyle?.clusterSize  ?? terrainBlobClusterSize)  : terrainBlobClusterSize
+  const storeSmooth        = overrideEnabled ? (typeStyle?.smooth        ?? terrainBlobSmooth)        : terrainBlobSmooth
+  const storeOffset        = overrideEnabled ? (typeStyle?.offset        ?? terrainBlobOffset)        : terrainBlobOffset
+  const storeBump          = overrideEnabled ? (typeStyle?.bump          ?? terrainBlobBump)          : terrainBlobBump
+  const storeSweepFreq     = overrideEnabled ? (typeStyle?.sweepFreq     ?? terrainBlobSweepFreq)     : terrainBlobSweepFreq
+  const storeLobeFreq      = overrideEnabled ? (typeStyle?.lobeFreq      ?? terrainBlobLobeFreq)      : terrainBlobLobeFreq
+  const storeLobeAmp       = overrideEnabled ? (typeStyle?.lobeAmp       ?? terrainBlobLobeAmp)       : terrainBlobLobeAmp
+  const storeLobeThreshold = overrideEnabled ? (typeStyle?.lobeThreshold ?? terrainBlobLobeThreshold) : terrainBlobLobeThreshold
+  const storeLobeDirection = overrideEnabled ? (typeStyle?.lobeDirection ?? terrainBlobLobeDirection) : terrainBlobLobeDirection
+  const storeClusterSize   = overrideEnabled ? (typeStyle?.clusterSize   ?? terrainBlobClusterSize)   : terrainBlobClusterSize
   const cogSmoothSlider       = useDeferredSlider(storeSmooth,                   v => { if (overrideEnabled) setElevationTypeBlobStyle(cls, { smooth: v }) })
   const cogBumpSlider         = useDeferredSlider(Math.round(storeBump * 100),   v => { if (overrideEnabled) setElevationTypeBlobStyle(cls, { bump: v / 100 }) })
   const cogOffsetSlider       = useDeferredSlider(Math.round(storeOffset * 100), v => { if (overrideEnabled) setElevationTypeBlobStyle(cls, { offset: v / 100 }) })
