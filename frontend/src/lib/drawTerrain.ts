@@ -631,6 +631,17 @@ export function drawTerrain(tCtx: Ctx, params: DrawTerrainParams): void {
         lobeDirection: override?.lobeDirection  ?? typeStyle?.lobeDirection  ?? terrainBlobParams.lobeDirection,
         width:         override?.width          ?? typeStyle?.width          ?? edgeBlobWidth,
       }
+      // Elevation edge blobs ('hills'/'mountains') use the elevation color + relief shading.
+      // They don't extend into adjacent hexes — they're standalone blobs straddling the edge.
+      if (chain.terrain === 'hills' || chain.terrain === 'mountains') {
+        const polys = buildEdgeBlobPolys(chain, hexVertMap, chainParams, R, undefined)
+        if (polys.length > 0) {
+          const elevColor = chain.terrain === 'hills' ? params.hillsColor : params.mountainsColor
+          drawElevationBlobsWithShading(tCtx, polys, elevColor, params.reliefShadingOpacity)
+        }
+        continue
+      }
+
       // 'clear' edges trim terrain blobs — no extension toward matching hexes needed.
       const hexTerrainSet = chain.terrain === 'clear' ? undefined : terrainToHexes.get(chain.terrain)
       const polys = buildEdgeBlobPolys(chain, hexVertMap, chainParams, R, hexTerrainSet)

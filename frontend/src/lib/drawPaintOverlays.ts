@@ -25,7 +25,8 @@ export function _drawTerrainPaintOverlay(p: TerrainPaintOverlayParams): void {
     terrainColors, terrainBackgroundPaintEnabled, bgPaintHold, R } = p
   if (!terrainPaintMode) return
 
-  const rawColor = terrainColors[terrainPaintBrush] ?? TERRAIN_COLORS[terrainPaintBrush] ?? '#888888'
+  const isEraser = terrainPaintBrush === 'eraser'
+  const rawColor = isEraser ? '#cc4444' : (terrainColors[terrainPaintBrush] ?? TERRAIN_COLORS[terrainPaintBrush] ?? '#888888')
 
   if (strokeTrail.size > 0) {
     ctx.save()
@@ -100,10 +101,11 @@ export interface ElevationPaintOverlayParams {
   elevationPaintBrush: string
   strokeTrail: Map<string, PaintTarget>
   paintHoverTarget: PaintTarget | null
+  R: number
 }
 
 export function _drawElevationPaintOverlay(p: ElevationPaintOverlayParams): void {
-  const { ctx, elevationPaintMode, elevationPaintBrush, strokeTrail, paintHoverTarget } = p
+  const { ctx, elevationPaintMode, elevationPaintBrush, strokeTrail, paintHoverTarget, R } = p
   if (!elevationPaintMode) return
 
   const brushColor: Record<string, string> = { flat: '#3a7a3a', hills: '#7a7a30', mountains: '#7a4a20' }
@@ -111,30 +113,51 @@ export function _drawElevationPaintOverlay(p: ElevationPaintOverlayParams): void
 
   if (strokeTrail.size > 0) {
     ctx.save()
-    ctx.fillStyle = color
-    ctx.globalAlpha = 0.35
     for (const target of strokeTrail.values()) {
-      if (target.type !== 'hex') continue
-      const { verts } = target
-      ctx.beginPath()
-      ctx.moveTo(verts[0][0], verts[0][1])
-      for (let i = 1; i < verts.length; i++) ctx.lineTo(verts[i][0], verts[i][1])
-      ctx.closePath()
-      ctx.fill()
+      if (target.type === 'hex') {
+        ctx.globalAlpha = 0.35
+        ctx.fillStyle = color
+        ctx.beginPath()
+        const { verts } = target
+        ctx.moveTo(verts[0][0], verts[0][1])
+        for (let i = 1; i < verts.length; i++) ctx.lineTo(verts[i][0], verts[i][1])
+        ctx.closePath()
+        ctx.fill()
+      } else {
+        ctx.globalAlpha = 0.55
+        ctx.strokeStyle = color
+        ctx.lineWidth = R * 0.40
+        ctx.lineCap = 'round'
+        ctx.beginPath()
+        ctx.moveTo(target.p1[0], target.p1[1])
+        ctx.lineTo(target.p2[0], target.p2[1])
+        ctx.stroke()
+      }
     }
     ctx.restore()
   }
 
-  if (paintHoverTarget?.type === 'hex') {
+  if (paintHoverTarget) {
     ctx.save()
-    ctx.globalAlpha = 0.45
-    ctx.fillStyle = color
-    ctx.beginPath()
-    const { verts } = paintHoverTarget
-    ctx.moveTo(verts[0][0], verts[0][1])
-    for (let i = 1; i < verts.length; i++) ctx.lineTo(verts[i][0], verts[i][1])
-    ctx.closePath()
-    ctx.fill()
+    if (paintHoverTarget.type === 'hex') {
+      ctx.globalAlpha = 0.45
+      ctx.fillStyle = color
+      ctx.beginPath()
+      const { verts } = paintHoverTarget
+      ctx.moveTo(verts[0][0], verts[0][1])
+      for (let i = 1; i < verts.length; i++) ctx.lineTo(verts[i][0], verts[i][1])
+      ctx.closePath()
+      ctx.fill()
+    } else {
+      ctx.globalAlpha = 0.70
+      ctx.strokeStyle = color
+      ctx.lineWidth = R * 0.40
+      ctx.lineCap = 'round'
+      ctx.beginPath()
+      ctx.moveTo(paintHoverTarget.p1[0], paintHoverTarget.p1[1])
+      ctx.lineTo(paintHoverTarget.p2[0], paintHoverTarget.p2[1])
+      ctx.stroke()
+    }
     ctx.restore()
   }
 }

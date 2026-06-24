@@ -32,6 +32,7 @@ export interface TerrainPaintRefs {
   pendingTerrainPaintRef: MutableRefObject<{ q: number; r: number; terrain: string }[]>
   pendingBgPaintRef: MutableRefObject<{ q: number; r: number; terrain: string | undefined }[]>
   pendingElevationPaintRef: MutableRefObject<{ q: number; r: number; cls: 'flat' | 'hills' | 'mountains' }[]>
+  pendingEraseTerrainRef: MutableRefObject<{ q: number; r: number }[]>
   hexGeomMapRef: MutableRefObject<Map<string, { vertices: [number, number][] }>>
   terrainPaintBrushRef: MutableRefObject<string>
   elevationPaintBrushRef: MutableRefObject<'flat' | 'hills' | 'mountains'>
@@ -40,6 +41,7 @@ export interface TerrainPaintRefs {
   batchOverrideHexTerrainRef: MutableRefObject<(ops: { q: number; r: number; terrain: string }[]) => void>
   batchOverrideHexBackgroundRef: MutableRefObject<(ops: { q: number; r: number; terrain: string | undefined }[]) => void>
   batchOverrideHexElevationRef: MutableRefObject<(ops: { q: number; r: number; cls: 'flat' | 'hills' | 'mountains' }[]) => void>
+  batchResetHexOverrideRef: MutableRefObject<(ops: { q: number; r: number }[]) => void>
   eraseEdgeBlobRef: MutableRefObject<(key: string) => void>
   paintEdgeBlobRef: MutableRefObject<(key: string, terrain: string) => void>
   clientToLogical: LogicalFn
@@ -124,10 +126,11 @@ export function attachTerrainPaintHandlers(el: HTMLElement, refs: TerrainPaintRe
     edgePaintHoldRef, bgPaintHoldRef,
     isPaintingRef, lastPaintedKeyRef, lastPaintedEdgeKeyRef,
     strokeTrailRef, strokeTypeRef, paintHoverTargetRef,
-    pendingTerrainPaintRef, pendingBgPaintRef, pendingElevationPaintRef,
+    pendingTerrainPaintRef, pendingBgPaintRef, pendingElevationPaintRef, pendingEraseTerrainRef,
     hexGeomMapRef, terrainPaintBrushRef, elevationPaintBrushRef,
     edgeBlobPaintedRef, hoverRafRef,
     batchOverrideHexTerrainRef, batchOverrideHexBackgroundRef, batchOverrideHexElevationRef,
+    batchResetHexOverrideRef,
     eraseEdgeBlobRef, paintEdgeBlobRef,
     draw, setIsTerrainPainting,
   } = refs
@@ -163,6 +166,8 @@ export function attachTerrainPaintHandlers(el: HTMLElement, refs: TerrainPaintRe
         strokeTrailRef.current.set(`hex:${key}`, { type: 'hex', q, r, verts })
         if (elevationPaintModeRef.current) {
           pendingElevationPaintRef.current.push({ q, r, cls: elevationPaintBrushRef.current })
+        } else if (terrainPaintBrushRef.current === 'eraser') {
+          pendingEraseTerrainRef.current.push({ q, r })
         } else if (terrainBackgroundPaintEnabledRef.current || bgPaintHoldRef.current) {
           const brush = terrainPaintBrushRef.current
           pendingBgPaintRef.current.push({ q, r, terrain: brush === 'clear' ? undefined : brush })
@@ -174,11 +179,22 @@ export function attachTerrainPaintHandlers(el: HTMLElement, refs: TerrainPaintRe
       if (target.edgeKey !== lastPaintedEdgeKeyRef.current) {
         lastPaintedEdgeKeyRef.current = target.edgeKey
         strokeTrailRef.current.set(`edge:${target.edgeKey}`, target)
-        const brush = terrainPaintBrushRef.current
-        if (brush === 'clear' && edgeBlobPaintedRef.current[target.edgeKey] === 'clear') {
-          eraseEdgeBlobRef.current(target.edgeKey)
+        if (elevationPaintModeRef.current) {
+          const elBrush = elevationPaintBrushRef.current
+          if (elBrush === 'flat') {
+            eraseEdgeBlobRef.current(target.edgeKey)
+          } else {
+            paintEdgeBlobRef.current(target.edgeKey, elBrush)
+          }
         } else {
-          paintEdgeBlobRef.current(target.edgeKey, brush)
+          const brush = terrainPaintBrushRef.current
+          if (brush === 'eraser') {
+            eraseEdgeBlobRef.current(target.edgeKey)
+          } else if (brush === 'clear' && edgeBlobPaintedRef.current[target.edgeKey] === 'clear') {
+            eraseEdgeBlobRef.current(target.edgeKey)
+          } else {
+            paintEdgeBlobRef.current(target.edgeKey, brush)
+          }
         }
       }
     }
@@ -195,6 +211,7 @@ export function attachTerrainPaintHandlers(el: HTMLElement, refs: TerrainPaintRe
     pendingTerrainPaintRef.current = []
     pendingBgPaintRef.current = []
     pendingElevationPaintRef.current = []
+    pendingEraseTerrainRef.current = []
     hexGeomMapRef.current = new Map(hexesRef.current.map(h => [`${h.q},${h.r}`, { vertices: h.vertices }]))
     setIsTerrainPainting(true)
     const target = computeHoverTarget(e.clientX, e.clientY)
@@ -236,6 +253,10 @@ export function attachTerrainPaintHandlers(el: HTMLElement, refs: TerrainPaintRe
         batchOverrideHexElevationRef.current(pendingElevationPaintRef.current)
         pendingElevationPaintRef.current = []
       }
+      if (pendingEraseTerrainRef.current.length > 0) {
+        batchResetHexOverrideRef.current(pendingEraseTerrainRef.current)
+        pendingEraseTerrainRef.current = []
+      }
       setIsTerrainPainting(false)
     }
     isPaintingRef.current = false
@@ -251,7 +272,7 @@ export function attachTerrainPaintHandlers(el: HTMLElement, refs: TerrainPaintRe
   }
 
   const onKeyDown = (e: KeyboardEvent) => {
-    if (!terrainPaintModeRef.current) return
+    if (!terrainPaintModeRef.current && !elevationPaintModeRef.current) return
     if (e.key === 'Shift' && !terrainEdgePaintEnabledRef.current && !edgePaintHoldRef.current) {
       edgePaintHoldRef.current = true
       paintHoverTargetRef.current = null

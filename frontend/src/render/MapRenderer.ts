@@ -1090,6 +1090,7 @@ export function drawMap(refs: MapRefs, exportTarget?: ExportTarget): void {
       elevationPaintBrush: elevationPaintBrushRef.current,
       strokeTrail: strokeTrailRef.current,
       paintHoverTarget: paintHoverTargetRef.current,
+      R,
     })
     _drawTerrainPaintOverlay({
       ctx,
