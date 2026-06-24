@@ -1628,9 +1628,11 @@ terrainTextureFileRef.current = terrainTextureFile
       const RANK = { flat: 0, hills: 1, mountains: 2 } as const
       return RANK[byRange] >= RANK[byMedian] ? byRange : byMedian
     }
-    const hexKey = `imp:${elevationImportEnabled}|${rangeHillsM},${rangeMountainsM},${medianHillsM},${medianMountainsM}|` + projectedHexes.map(p => { const h = p.hex as GeneratedHex; const cls = liveElevClass(h); return `${h.q},${h.r}:${cls ?? ''}:${cls === 'mountains' ? 'h' : ''}:${h.elevation_manual_override ? '1' : '0'}` }).join('|')
     const hillsStyle = elevationTypeBlobStyles['hills']
     const mountainsStyle = elevationTypeBlobStyles['mountains']
+    const hillsClusterSize  = (hillsStyle?.enabled && hillsStyle.clusterSize  != null) ? hillsStyle.clusterSize  : terrainBlobClusterSize
+    const mountainsClusterSize = (mountainsStyle?.enabled && mountainsStyle.clusterSize != null) ? mountainsStyle.clusterSize : terrainBlobClusterSize
+    const hexKey = `imp:${elevationImportEnabled}|${rangeHillsM},${rangeMountainsM},${medianHillsM},${medianMountainsM}|cs:${hillsClusterSize},${mountainsClusterSize}|` + projectedHexes.map(p => { const h = p.hex as GeneratedHex; const cls = liveElevClass(h); return `${h.q},${h.r}:${cls ?? ''}:${cls === 'mountains' ? 'h' : ''}:${h.elevation_manual_override ? '1' : '0'}` }).join('|')
     const styleKey = `${terrainBlobSmooth}|${terrainBlobOffset}|${terrainBlobBump}|${terrainBlobSweepFreq}|${terrainBlobLobeFreq}|${terrainBlobLobeAmp}|${terrainBlobLobeThreshold}|${terrainBlobLobeDirection}|${terrainBlobTopoStyle}|${hexRadius}|${JSON.stringify(hillsStyle)}|${JSON.stringify(mountainsStyle)}`
     if (elevationBlobsCache.current?.hexKey === hexKey && elevationBlobsCache.current?.styleKey === styleKey) {
       return elevationBlobsCache.current.blobs
@@ -1646,6 +1648,7 @@ terrainTextureFileRef.current = terrainTextureFile
       const lobeAmp       = useCustom ? (clsStyle?.lobeAmp       ?? terrainBlobLobeAmp)       : terrainBlobLobeAmp
       const lobeThreshold = useCustom ? (clsStyle?.lobeThreshold ?? terrainBlobLobeThreshold) : terrainBlobLobeThreshold
       const lobeDirection = useCustom ? (clsStyle?.lobeDirection ?? terrainBlobLobeDirection) : terrainBlobLobeDirection
+      const clusterSize   = cls === 'hills' ? hillsClusterSize : mountainsClusterSize
       const elevProjected = projectedHexes
         .filter(p => {
           const h = p.hex as GeneratedHex
@@ -1658,7 +1661,7 @@ terrainTextureFileRef.current = terrainTextureFile
       if (elevProjected.length === 0) return { topo: null, polys: [] as [number, number][][] }
       const topoEntry = elevationBlobsCache.current?.hexKey === hexKey && cachedTopo
         ? cachedTopo
-        : (buildTerrainBlobTopology(elevProjected, hexRadius).find(e => e.terrain === cls) ?? null)
+        : (buildTerrainBlobTopology(elevProjected, hexRadius, clusterSize).find(e => e.terrain === cls) ?? null)
       if (!topoEntry) return { topo: null, polys: [] as [number, number][][] }
       const shapedEntry = {
         ...topoEntry,
@@ -1676,7 +1679,7 @@ terrainTextureFileRef.current = terrainTextureFile
     elevationBlobsCache.current = { hexKey, topoHills: hillsResult.topo, topoMountains: mountainsResult.topo, styleKey, blobs }
     prevElevationBlobsRef.current = blobs
     return blobs
-  }, [isTerrainPainting, projectedHexes, terrainBlobSmooth, terrainBlobOffset, terrainBlobBump, terrainBlobSweepFreq, terrainBlobLobeFreq, terrainBlobLobeAmp, terrainBlobLobeThreshold, terrainBlobLobeDirection, terrainBlobTopoStyle, hexRadius, elevationTypeBlobStyles, elevationImportEnabled, classificationParams])
+  }, [isTerrainPainting, projectedHexes, terrainBlobSmooth, terrainBlobOffset, terrainBlobBump, terrainBlobSweepFreq, terrainBlobLobeFreq, terrainBlobLobeAmp, terrainBlobLobeThreshold, terrainBlobLobeDirection, terrainBlobTopoStyle, terrainBlobClusterSize, hexRadius, elevationTypeBlobStyles, elevationImportEnabled, classificationParams])
   const defaultElevationBlobsRef = useRef(defaultElevationBlobs)
   defaultElevationBlobsRef.current = defaultElevationBlobs
 

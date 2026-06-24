@@ -207,11 +207,10 @@ function applyTextureOverlay(
   }
 }
 
-function drawElevationBlobsWithShading(
+function drawElevationBlobs(
   tCtx: Ctx,
   polys: [number, number][][],
   color: string,
-  reliefOpacity: number,
 ): void {
   if (polys.length === 0) return
   tCtx.fillStyle = color
@@ -223,34 +222,6 @@ function drawElevationBlobsWithShading(
     tCtx.closePath()
   }
   tCtx.fill('evenodd')
-
-  if (reliefOpacity <= 0) return
-
-  for (const poly of polys) {
-    if (poly.length < 3) continue
-    let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity
-    for (const [x, y] of poly) {
-      if (x < minX) minX = x; if (x > maxX) maxX = x
-      if (y < minY) minY = y; if (y > maxY) maxY = y
-    }
-    const cx = (minX + maxX) / 2, cy = (minY + maxY) / 2
-    const half = Math.hypot(maxX - minX, maxY - minY) * 0.55
-    const d = half * 0.707
-    const grad = tCtx.createLinearGradient(cx - d, cy - d, cx + d, cy + d)
-    grad.addColorStop(0,    `rgba(255,255,255,${(reliefOpacity * 0.8).toFixed(3)})`)
-    grad.addColorStop(0.28, `rgba(255,255,255,0)`)
-    grad.addColorStop(0.72, `rgba(0,0,0,0)`)
-    grad.addColorStop(1,    `rgba(0,0,0,${(reliefOpacity * 0.6).toFixed(3)})`)
-    tCtx.save()
-    tCtx.beginPath()
-    tCtx.moveTo(poly[0][0], poly[0][1])
-    for (let i = 1; i < poly.length; i++) tCtx.lineTo(poly[i][0], poly[i][1])
-    tCtx.closePath()
-    tCtx.clip()
-    tCtx.fillStyle = grad
-    tCtx.fillRect(minX, minY, maxX - minX, maxY - minY)
-    tCtx.restore()
-  }
 }
 
 /**
@@ -373,8 +344,8 @@ export function drawTerrain(tCtx: Ctx, params: DrawTerrainParams): void {
   // ── 3c. Elevation blobs (hills / mountains) ──────────────────────────────────
   {
     const { elevationBlobs, hillsColor, mountainsColor, reliefShadingOpacity, elevationTypeBlobStyles } = params
-    drawElevationBlobsWithShading(tCtx, elevationBlobs.hills, hillsColor, reliefShadingOpacity)
-    drawElevationBlobsWithShading(tCtx, elevationBlobs.mountains, mountainsColor, reliefShadingOpacity)
+    drawElevationBlobs(tCtx, elevationBlobs.hills, hillsColor)
+    drawElevationBlobs(tCtx, elevationBlobs.mountains, mountainsColor)
 
     for (const [cls, polys] of [['hills', elevationBlobs.hills], ['mountains', elevationBlobs.mountains]] as const) {
       if (polys.length > 0) {
@@ -637,7 +608,7 @@ export function drawTerrain(tCtx: Ctx, params: DrawTerrainParams): void {
         const polys = buildEdgeBlobPolys(chain, hexVertMap, chainParams, R, undefined)
         if (polys.length > 0) {
           const elevColor = chain.terrain === 'hills' ? params.hillsColor : params.mountainsColor
-          drawElevationBlobsWithShading(tCtx, polys, elevColor, params.reliefShadingOpacity)
+          drawElevationBlobs(tCtx, polys, elevColor)
         }
         continue
       }

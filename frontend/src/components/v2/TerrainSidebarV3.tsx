@@ -906,6 +906,7 @@ function ElevationCogFlyout({ cls, defaultColor, onClose }: { cls: 'hills' | 'mo
     terrainTextureEnabled, setTerrainTextureEnabled,
     terrainBlobSmooth, terrainBlobOffset, terrainBlobBump, terrainBlobSweepFreq,
     terrainBlobLobeFreq, terrainBlobLobeAmp, terrainBlobLobeThreshold, terrainBlobLobeDirection,
+    terrainBlobClusterSize,
     terrainBlobOutlineEnabled, terrainBlobOutlineColor, terrainBlobOutlineWidth,
     elevationTypeBlobStyles, setElevationTypeBlobStyle,
   } = useMapStore()
@@ -920,23 +921,20 @@ function ElevationCogFlyout({ cls, defaultColor, onClose }: { cls: 'hills' | 'mo
   const typeStyle = elevationTypeBlobStyles[cls]
   const overrideEnabled = typeStyle?.enabled ?? false
 
-  const storeSmooth        = overrideEnabled ? (typeStyle?.smooth        ?? terrainBlobSmooth)        : terrainBlobSmooth
-  const storeOffset        = overrideEnabled ? (typeStyle?.offset        ?? terrainBlobOffset)        : terrainBlobOffset
-  const storeBump          = overrideEnabled ? (typeStyle?.bump          ?? terrainBlobBump)          : terrainBlobBump
-  const storeSweepFreq     = overrideEnabled ? (typeStyle?.sweepFreq     ?? terrainBlobSweepFreq)     : terrainBlobSweepFreq
-  const storeLobeFreq      = overrideEnabled ? (typeStyle?.lobeFreq      ?? terrainBlobLobeFreq)      : terrainBlobLobeFreq
-  const storeLobeAmp       = overrideEnabled ? (typeStyle?.lobeAmp       ?? terrainBlobLobeAmp)       : terrainBlobLobeAmp
-  const storeLobeThreshold = overrideEnabled ? (typeStyle?.lobeThreshold ?? terrainBlobLobeThreshold) : terrainBlobLobeThreshold
-  const storeLobeDirection = overrideEnabled ? (typeStyle?.lobeDirection ?? terrainBlobLobeDirection) : terrainBlobLobeDirection
-  const cogSmoothSlider          = useDeferredSlider(storeSmooth,                       v => { if (overrideEnabled) setElevationTypeBlobStyle(cls, { smooth: v }) })
-  const cogBumpSlider            = useDeferredSlider(Math.round(storeBump * 100),        v => { if (overrideEnabled) setElevationTypeBlobStyle(cls, { bump: v / 100 }) })
-  const cogOffsetSlider          = useDeferredSlider(Math.round(storeOffset * 100),      v => { if (overrideEnabled) setElevationTypeBlobStyle(cls, { offset: v / 100 }) })
-  const cogSweepFreqSlider       = useDeferredSlider(Math.round(storeSweepFreq * 100),   v => { if (overrideEnabled) setElevationTypeBlobStyle(cls, { sweepFreq: v / 100 }) })
-  const cogLobeFreqSlider        = useDeferredSlider(Math.round(storeLobeFreq * 10),     v => { if (overrideEnabled) setElevationTypeBlobStyle(cls, { lobeFreq: v / 10 }) })
-  const cogLobeAmpSlider         = useDeferredSlider(Math.round(storeLobeAmp * 100),     v => { if (overrideEnabled) setElevationTypeBlobStyle(cls, { lobeAmp: v / 100 }) })
-  const cogLobeThresholdSlider   = useDeferredSlider(Math.round(storeLobeThreshold * 100), v => { if (overrideEnabled) setElevationTypeBlobStyle(cls, { lobeThreshold: v / 100 }) })
-  const texScaleSlider           = useDeferredSlider(Math.round(textureScale * 10),        v => setTerrainTextureScale(cls, v / 10))
-  const texOpacitySlider         = useDeferredSlider(Math.round(textureOpacity * 100),     v => setTerrainTextureOpacity(cls, v / 100))
+  const storeSmooth       = overrideEnabled ? (typeStyle?.smooth       ?? terrainBlobSmooth)       : terrainBlobSmooth
+  const storeOffset       = overrideEnabled ? (typeStyle?.offset       ?? terrainBlobOffset)       : terrainBlobOffset
+  const storeBump         = overrideEnabled ? (typeStyle?.bump         ?? terrainBlobBump)         : terrainBlobBump
+  const storeLobeAmp      = overrideEnabled ? (typeStyle?.lobeAmp      ?? terrainBlobLobeAmp)      : terrainBlobLobeAmp
+  const storeClusterSize  = overrideEnabled ? (typeStyle?.clusterSize  ?? terrainBlobClusterSize)  : terrainBlobClusterSize
+  const cogSmoothSlider       = useDeferredSlider(storeSmooth,                   v => { if (overrideEnabled) setElevationTypeBlobStyle(cls, { smooth: v }) })
+  const cogBumpSlider         = useDeferredSlider(Math.round(storeBump * 100),   v => { if (overrideEnabled) setElevationTypeBlobStyle(cls, { bump: v / 100 }) })
+  const cogOffsetSlider       = useDeferredSlider(Math.round(storeOffset * 100), v => { if (overrideEnabled) setElevationTypeBlobStyle(cls, { offset: v / 100 }) })
+  const cogClusterSizeSlider  = useDeferredSlider(storeClusterSize,              v => { if (overrideEnabled) setElevationTypeBlobStyle(cls, { clusterSize: v }) })
+  const texScaleSlider        = useDeferredSlider(Math.round(textureScale * 10),        v => setTerrainTextureScale(cls, v / 10))
+  const texOpacitySlider      = useDeferredSlider(Math.round(textureOpacity * 100),     v => setTerrainTextureOpacity(cls, v / 100))
+  const cogFringeRef = useRef(storeLobeAmp)
+  const [cogFringeLocal, setCogFringeLocal] = useState(Math.round(storeLobeAmp * 100))
+  useEffect(() => { setCogFringeLocal(Math.round(storeLobeAmp * 100)); cogFringeRef.current = storeLobeAmp }, [storeLobeAmp])
 
   const handleEnableToggle = (checked: boolean) => {
     if (checked) {
@@ -944,7 +942,8 @@ function ElevationCogFlyout({ cls, defaultColor, onClose }: { cls: 'hills' | 'mo
         enabled: true,
         smooth: terrainBlobSmooth, offset: terrainBlobOffset, bump: terrainBlobBump,
         sweepFreq: terrainBlobSweepFreq, lobeFreq: terrainBlobLobeFreq,
-        lobeAmp: terrainBlobLobeAmp, lobeThreshold: terrainBlobLobeThreshold, lobeDirection: terrainBlobLobeDirection,
+        lobeAmp: terrainBlobLobeAmp, lobeThreshold: terrainBlobLobeThreshold,
+        lobeDirection: terrainBlobLobeDirection, clusterSize: terrainBlobClusterSize,
       })
     } else {
       setElevationTypeBlobStyle(cls, { enabled: false })
@@ -1029,13 +1028,14 @@ function ElevationCogFlyout({ cls, defaultColor, onClose }: { cls: 'hills' | 'mo
         {overrideEnabled && (
           <div>
             <BlobPresetChips currentValues={{ smooth: storeSmooth, offset: storeOffset, bump: storeBump, sweepFreq: storeSweepFreq, lobeFreq: storeLobeFreq, lobeAmp: storeLobeAmp, lobeThreshold: storeLobeThreshold, lobeDirection: storeLobeDirection }} onSelect={applyBlobPreset} />
-            <MiniSlider label="Corner Rounding" display={cogSmoothSlider.value}                                                               value={cogSmoothSlider.value}        min={0}   max={5}   step={1}    onChange={cogSmoothSlider.onChange}        onDragEnd={cogSmoothSlider.onDragEnd} />
-            <MiniSlider label="Waviness"        display={`${cogBumpSlider.value}%`}                                                           value={cogBumpSlider.value}          min={0}   max={60}  step={1}    onChange={cogBumpSlider.onChange}          onDragEnd={cogBumpSlider.onDragEnd} />
-            <MiniSlider label="Inset"           display={`${cogOffsetSlider.value > 0 ? '+' : ''}${cogOffsetSlider.value}%`}                  value={cogOffsetSlider.value}        min={-80} max={30}  step={1}    onChange={cogOffsetSlider.onChange}        onDragEnd={cogOffsetSlider.onDragEnd} />
-            <MiniSlider label="Wave Scale"      display={(cogSweepFreqSlider.value / 100).toFixed(2)}                                         value={cogSweepFreqSlider.value}     min={40}  max={100} step={1}    onChange={cogSweepFreqSlider.onChange}     onDragEnd={cogSweepFreqSlider.onDragEnd} />
-            <MiniSlider label="Scale"    display={(cogLobeFreqSlider.value / 10).toFixed(1)}  value={cogLobeFreqSlider.value}     min={20} max={50}  step={1} onChange={cogLobeFreqSlider.onChange}     onDragEnd={cogLobeFreqSlider.onDragEnd} />
-            <MiniSlider label="Strength" display={`${cogLobeAmpSlider.value}%`}               value={cogLobeAmpSlider.value}      min={0}  max={100} step={1} onChange={cogLobeAmpSlider.onChange}      onDragEnd={cogLobeAmpSlider.onDragEnd} />
-            <MiniSlider label="Sparsity" display={`${cogLobeThresholdSlider.value}%`}         value={cogLobeThresholdSlider.value} min={0}  max={40}  step={1} onChange={cogLobeThresholdSlider.onChange} onDragEnd={cogLobeThresholdSlider.onDragEnd} />
+            <MiniSlider label="Cluster size"    display={cogClusterSizeSlider.value === 0 ? 'off' : `${cogClusterSizeSlider.value} hexes`} value={cogClusterSizeSlider.value} min={0} max={20} step={1} onChange={cogClusterSizeSlider.onChange} onDragEnd={cogClusterSizeSlider.onDragEnd} />
+            <MiniSlider label="Corner Rounding" display={cogSmoothSlider.value}                                                              value={cogSmoothSlider.value}      min={0} max={5}   step={1} onChange={cogSmoothSlider.onChange}        onDragEnd={cogSmoothSlider.onDragEnd} />
+            <MiniSlider label="Waviness"        display={`${cogBumpSlider.value}%`}                                                          value={cogBumpSlider.value}        min={0} max={60}  step={1} onChange={cogBumpSlider.onChange}          onDragEnd={cogBumpSlider.onDragEnd} />
+            <MiniSlider label="Inset"           display={`${cogOffsetSlider.value > 0 ? '+' : ''}${cogOffsetSlider.value}%`}                 value={cogOffsetSlider.value}      min={-80} max={30} step={1} onChange={cogOffsetSlider.onChange}       onDragEnd={cogOffsetSlider.onDragEnd} />
+            <MiniSlider label="Fringe" display={`${cogFringeLocal}%`} value={cogFringeLocal} min={0} max={100} step={1}
+              onChange={v => { cogFringeRef.current = v / 100; setCogFringeLocal(v) }}
+              onDragEnd={() => { const amp = cogFringeRef.current; if (overrideEnabled) setElevationTypeBlobStyle(cls, { lobeAmp: amp, lobeFreq: 2.0 + amp * 3.0, lobeThreshold: 0 }) }}
+            />
           </div>
         )}
       </div>
