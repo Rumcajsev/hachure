@@ -30,6 +30,7 @@ export type TerrainSlice = {
   terrainBlobLobeThreshold: number
   terrainBlobLobeDirection: number
   terrainBlobTopoStyle: number
+  terrainBlobClusterSize: number
   terrainBlobSplatDensity: number
   terrainBlobSplatSize: number
   terrainBlobOutlineEnabled: boolean
@@ -93,6 +94,7 @@ export type TerrainSlice = {
   addHexTerrainLayer: (q: number, r: number, terrain: string) => void
   removeHexTerrainLayer: (q: number, r: number, terrain: string) => void
   resetHexOverride: (q: number, r: number) => void
+  batchResetHexOverride: (ops: { q: number; r: number }[]) => void
   setTerrainLayersEnabled: (v: boolean) => void
   setTerrainBlobSmooth: (v: number) => void
   setTerrainBlobOffset: (v: number) => void
@@ -103,6 +105,7 @@ export type TerrainSlice = {
   setTerrainBlobLobeThreshold: (v: number) => void
   setTerrainBlobLobeDirection: (v: number) => void
   setTerrainBlobTopoStyle: (v: number) => void
+  setTerrainBlobClusterSize: (v: number) => void
   setTerrainBlobSplatDensity: (v: number) => void
   setTerrainBlobSplatSize: (v: number) => void
   setTerrainBlobOutlineEnabled: (v: boolean) => void
@@ -201,6 +204,7 @@ export const createTerrainSlice = (set: Set, get: () => MapStore): TerrainSlice 
   terrainBlobLobeThreshold: DEFAULT_TERRAIN_BLOB.lobeThreshold,
   terrainBlobLobeDirection: DEFAULT_TERRAIN_BLOB.lobeDirection,
   terrainBlobTopoStyle: DEFAULT_TERRAIN_BLOB.topoStyle,
+  terrainBlobClusterSize: 0,
   terrainBlobSplatDensity: 0,
   terrainBlobSplatSize: 0.3,
   terrainBlobOutlineEnabled: false,
@@ -284,18 +288,22 @@ export const createTerrainSlice = (set: Set, get: () => MapStore): TerrainSlice 
     settlementMoveIndex: null,
     settlementPlaceTier: null,
     rawRoadWays: [],
+    osmHexPaths: [],
     roadEdges: [],
     roadsDisplayMode: 'per_hex',
     roadsVisibleTiers: [true, true, true],
     roadsStatus: 'idle',
     roadsError: null,
     rawRailWays: [],
+    osmRailHexPaths: [],
     railEdges: [],
     railsStatus: 'idle',
     railsError: null,
     railPaintMode: false,
     railPaintEraser: false,
     activeTool: { type: 'none' } as ActiveTool,
+    osmRiverWays: [],
+    appliedOsmRiverIndices: [],
     riverEdges: [],
     riverEditMode: false,
     elevationStatus: 'idle',
@@ -917,6 +925,19 @@ export const createTerrainSlice = (set: Set, get: () => MapStore): TerrainSlice 
     set({ generatedHexes: updated })
   },
 
+  batchResetHexOverride: (ops) => {
+    if (!ops.length) return
+    const { generatedHexes, terrainRules, disabledTerrains, realisticCoastline } = get()
+    const opSet = new Set(ops.map(op => `${op.q},${op.r}`))
+    const updated = generatedHexes.map((h) => {
+      if (!opSet.has(`${h.q},${h.r}`)) return h
+      const terrain = classifyHex(h.coverage ?? {}, terrainRules, disabledTerrains, realisticCoastline)
+      const { terrains, backgroundTerrain } = classifyWithBackground(terrain, classifyHexLayers(h.coverage ?? {}, terrainRules, disabledTerrains, realisticCoastline))
+      return { ...h, terrain, terrains, backgroundTerrain, manual_override: false }
+    })
+    set({ generatedHexes: updated })
+  },
+
   setTerrainBlobSmooth: (v) => set({ terrainBlobSmooth: v }),
   setTerrainBlobOffset: (v) => set({ terrainBlobOffset: v }),
   setTerrainBlobBump: (v) => set({ terrainBlobBump: v }),
@@ -926,6 +947,7 @@ export const createTerrainSlice = (set: Set, get: () => MapStore): TerrainSlice 
   setTerrainBlobLobeThreshold: (v) => set({ terrainBlobLobeThreshold: v }),
   setTerrainBlobLobeDirection: (v) => set({ terrainBlobLobeDirection: v }),
   setTerrainBlobTopoStyle: (v) => set({ terrainBlobTopoStyle: v }),
+  setTerrainBlobClusterSize: (v) => set({ terrainBlobClusterSize: v }),
   setTerrainBlobSplatDensity: (v) => set({ terrainBlobSplatDensity: v }),
   setTerrainBlobSplatSize: (v) => set({ terrainBlobSplatSize: v }),
   setTerrainBlobOutlineEnabled: (v) => set({ terrainBlobOutlineEnabled: v }),

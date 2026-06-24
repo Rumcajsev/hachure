@@ -1,6 +1,48 @@
 import { create } from 'zustand'
-import { persist, createJSONStorage } from 'zustand/middleware'
+import { persist } from 'zustand/middleware'
 import { get as idbGet, set as idbSet, del as idbDel } from 'idb-keyval'
+
+// Debounce JSON.stringify + IDB writes, and skip the write entirely when the
+// persisted state hasn't changed (e.g. pure tool/panel switches).
+let _persistTimer: ReturnType<typeof setTimeout> | null = null
+let _persistPending: { name: string; value: unknown } | null = null
+let _lastSaved: string | null = null
+const _debouncedIdbStorage = {
+  getItem: async (name: string) => {
+    const str = await idbGet<string>(name).catch(() => null)
+    if (str == null) return null
+    try { return JSON.parse(str) } catch { return null }
+  },
+  setItem: (_name: string, value: unknown) => {
+    _persistPending = { name: _name, value }
+    if (_persistTimer) clearTimeout(_persistTimer)
+    _persistTimer = setTimeout(() => {
+      if (_persistPending) {
+        const serialized = JSON.stringify(_persistPending.value)
+        if (serialized !== _lastSaved) {
+          _lastSaved = serialized
+          idbSet(_persistPending.name, serialized).catch(() => {})
+        }
+        _persistPending = null
+      }
+      _persistTimer = null
+    }, 400)
+  },
+  removeItem: (name: string) => idbDel(name).catch(() => {}),
+}
+if (typeof window !== 'undefined') {
+  window.addEventListener('beforeunload', () => {
+    if (_persistTimer) { clearTimeout(_persistTimer); _persistTimer = null }
+    if (_persistPending) {
+      const serialized = JSON.stringify(_persistPending.value)
+      if (serialized !== _lastSaved) {
+        _lastSaved = serialized
+        idbSet(_persistPending.name, serialized).catch(() => {})
+      }
+      _persistPending = null
+    }
+  })
+}
 
 import { type SetupSlice, createSetupSlice } from './slices/setupSlice'
 import { type TerrainSlice, createTerrainSlice } from './slices/terrainSlice'
@@ -49,6 +91,7 @@ export interface BlobOverride {
   lobeThreshold?: number
   lobeDirection?: number
   textureScale?: number
+  clusterSize?: number
   enabled?: boolean
   width?: number
   // Legacy fields — kept for migration; use effect instead
@@ -743,11 +786,7 @@ export const useMapStore = create<MapStore>()(persist((set, get) => ({
   ...createLabelOffsetsSlice(set),
 }), {
   name: 'ig2-map-store',
-  storage: createJSONStorage(() => ({
-    getItem: (name) => idbGet(name).catch(() => null),
-    setItem: (name, value) => idbSet(name, value).catch(() => {}),
-    removeItem: (name) => idbDel(name).catch(() => {}),
-  })),
+  storage: _debouncedIdbStorage,
   partialize: (s) => ({
     step: s.step,
     paperSize: s.paperSize,
@@ -776,8 +815,6 @@ export const useMapStore = create<MapStore>()(persist((set, get) => ({
     rawRoadWays: s.rawRoadWays,
     osmHexPaths: s.osmHexPaths,
     roadEdges: s.roadEdges,
-    roadsDisplayMode: s.roadsDisplayMode,
-
     roadsVisibleTiers: s.roadsVisibleTiers,
     roadsStatus: s.roadsStatus,
     rawRailWays: s.rawRailWays,
@@ -820,7 +857,6 @@ export const useMapStore = create<MapStore>()(persist((set, get) => ({
     elevationOverridesTerrain: s.elevationOverridesTerrain,
     elevationTypeBlobStyles: s.elevationTypeBlobStyles,
     heightmapMeta: s.heightmapMeta,
-    activePanel: s.activePanel,
     mapStyle: s.mapStyle,
     hexBorderMode: s.hexBorderMode,
     hexBorderOpacity: s.hexBorderOpacity,
@@ -970,7 +1006,7 @@ export const useMapStore = create<MapStore>()(persist((set, get) => ({
     labelPresetId: s.labelPresetId,
     labelOverrides: s.labelOverrides,
   }),
-  version: 84,
+  version: 85,
   migrate: migratePersisted,
   merge: (persisted, current) => rehydrateState({ ...current, ...(persisted as Partial<MapStore>) }),
 }))

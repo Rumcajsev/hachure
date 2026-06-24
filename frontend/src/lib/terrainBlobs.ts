@@ -152,9 +152,46 @@ export function resizeToHexAnchors(
   })
 }
 
+function subClusterHexesByQR(hexQRKeys: string[], clusterSize: number): Map<string, number> {
+  const DIRS: [number, number][] = [[1, 0], [-1, 0], [0, 1], [0, -1], [1, -1], [-1, 1]]
+  const hexSet = new Set(hexQRKeys)
+  const sorted = [...hexQRKeys].sort((a, b) => {
+    const [aq, ar] = a.split(',').map(Number)
+    const [bq, br] = b.split(',').map(Number)
+    return aq !== bq ? aq - bq : ar - br
+  })
+  const assignment = new Map<string, number>()
+  let clusterId = 0
+  for (const startKey of sorted) {
+    if (assignment.has(startKey)) continue
+    const queue = [startKey]
+    const queued = new Set([startKey])
+    let count = 0
+    while (queue.length > 0 && count < clusterSize) {
+      const key = queue.shift()!
+      if (assignment.has(key)) continue
+      assignment.set(key, clusterId)
+      count++
+      if (count < clusterSize) {
+        const [q, r] = key.split(',').map(Number)
+        for (const [dq, dr] of DIRS) {
+          const nk = `${q + dq},${r + dr}`
+          if (hexSet.has(nk) && !assignment.has(nk) && !queued.has(nk)) {
+            queue.push(nk)
+            queued.add(nk)
+          }
+        }
+      }
+    }
+    clusterId++
+  }
+  return assignment
+}
+
 export function buildTerrainBlobTopology(
   projected: { hex: { terrain: string; partial: boolean }; verts: [number, number][] }[],
   R: number,
+  clusterSize = 0,
 ): BlobTopologyEntry[] {
   const SNAP = Math.max(2, R * 0.015)
   const vk = (p: [number, number]) => `${Math.round(p[0] / SNAP)},${Math.round(p[1] / SNAP)}`
@@ -162,6 +199,25 @@ export function buildTerrainBlobTopology(
   const edgeCount = new Map<string, Map<string, number>>()
   const edgeEnds = new Map<string, [string, string]>()
   const hexCentersByTerrain = new Map<string, [number, number][]>()
+
+  // Pre-compute sub-cluster assignments when clusterSize >= 2
+  const hexToGroupKey = new Map<string, string>()
+  if (clusterSize >= 2) {
+    const hexQRByTerrain = new Map<string, string[]>()
+    for (const { hex } of projected) {
+      const t = hex.terrain
+      if (t === 'clear') continue
+      const q = (hex as unknown as { q?: number }).q
+      const r = (hex as unknown as { r?: number }).r
+      if (q == null || r == null) continue
+      if (!hexQRByTerrain.has(t)) hexQRByTerrain.set(t, [])
+      hexQRByTerrain.get(t)!.push(`${q},${r}`)
+    }
+    for (const [terrain, keys] of hexQRByTerrain) {
+      const clusters = subClusterHexesByQR(keys, clusterSize)
+      for (const [qr, cid] of clusters) hexToGroupKey.set(`${terrain}:${qr}`, `${terrain}:${cid}`)
+    }
+  }
 
   for (const { hex, verts } of projected) {
     const t = hex.terrain
@@ -171,10 +227,15 @@ export function buildTerrainBlobTopology(
       if (!hexCentersByTerrain.has(t)) hexCentersByTerrain.set(t, [])
       hexCentersByTerrain.get(t)!.push([cx, cy])
     }
+    const q = (hex as unknown as { q?: number }).q
+    const r = (hex as unknown as { r?: number }).r
+    const groupKey = t !== 'clear' && hexToGroupKey.size > 0 && q != null && r != null
+      ? (hexToGroupKey.get(`${t}:${q},${r}`) ?? t)
+      : t
     let tc: Map<string, number> | null = null
     if (t !== 'clear') {
-      if (!edgeCount.has(t)) edgeCount.set(t, new Map())
-      tc = edgeCount.get(t)!
+      if (!edgeCount.has(groupKey)) edgeCount.set(groupKey, new Map())
+      tc = edgeCount.get(groupKey)!
     }
     for (let i = 0; i < 6; i++) {
       const a = verts[i], b = verts[(i + 1) % 6]
@@ -189,9 +250,12 @@ export function buildTerrainBlobTopology(
     }
   }
 
-  const result: BlobTopologyEntry[] = []
+  const polysByTerrain = new Map<string, [number, number][][]>()
 
-  for (const [terrain, tc] of edgeCount) {
+  for (const [groupKey, tc] of edgeCount) {
+    const terrain = clusterSize >= 2 && groupKey.includes(':')
+      ? groupKey.slice(0, groupKey.indexOf(':'))
+      : groupKey
     const adj = new Map<string, string[]>()
     for (const [ek, count] of tc) {
       if (count !== 1) continue
@@ -204,7 +268,8 @@ export function buildTerrainBlobTopology(
 
     const visitedVerts = new Set<string>()
     const visitedEdges = new Set<string>()
-    const rawPolys: [number, number][][] = []
+    if (!polysByTerrain.has(terrain)) polysByTerrain.set(terrain, [])
+    const terrainPolys = polysByTerrain.get(terrain)!
 
     for (const [startKey] of adj) {
       if (visitedVerts.has(startKey)) continue
@@ -222,12 +287,14 @@ export function buildTerrainBlobTopology(
         if (!next || next === startKey) break
         cur = next
       }
-      if (pts.length >= 3) rawPolys.push(pts)
+      if (pts.length >= 3) terrainPolys.push(pts)
     }
-
-    result.push({ terrain, rawPolys, hexCenters: hexCentersByTerrain.get(terrain) ?? [] })
   }
 
+  const result: BlobTopologyEntry[] = []
+  for (const [terrain, rawPolys] of polysByTerrain) {
+    result.push({ terrain, rawPolys, hexCenters: hexCentersByTerrain.get(terrain) ?? [] })
+  }
   return result
 }
 
@@ -319,9 +386,10 @@ export function buildTerrainBlobsV2(
   lobeThreshold: number,
   lobeDirection: number,
   R: number,
-  topoStyle: number = 0,
+  topoStyle = 0,
+  clusterSize = 0,
 ): { terrain: string; polys: [number, number][][] }[] {
-  const topology = buildTerrainBlobTopology(projected, R)
+  const topology = buildTerrainBlobTopology(projected, R, clusterSize)
   const shapedTopology = topology.map(entry => ({
     ...entry,
     rawPolys: entry.rawPolys.map(poly => {
@@ -714,9 +782,10 @@ export interface ExportBlobParams {
   blobComponentsByTerrain: Map<string, Map<string, string>>
   realisticCoastline: boolean
   waterOverrides: Record<string, unknown>
-  terrainTypeBlobStyles: Record<string, { enabled?: boolean; smooth?: number; offset?: number; bump?: number; sweepFreq?: number; lobeFreq?: number; lobeAmp?: number; lobeThreshold?: number; lobeDirection?: number } | undefined>
+  terrainTypeBlobStyles: Record<string, { enabled?: boolean; smooth?: number; offset?: number; bump?: number; sweepFreq?: number; lobeFreq?: number; lobeAmp?: number; lobeThreshold?: number; lobeDirection?: number; clusterSize?: number } | undefined>
   smooth: number; offset: number; bump: number; sweepFreq: number
   lobeFreq: number; lobeAmp: number; lobeThreshold: number; lobeDirection: number
+  clusterSize: number
   R: number
 }
 
@@ -726,7 +795,7 @@ export function buildExportTerrainBlobs(p: ExportBlobParams): {
 } {
   const { projected, terrainBlobOverrides, blobComponents, blobComponentsByTerrain,
     realisticCoastline, waterOverrides, terrainTypeBlobStyles,
-    smooth, offset, bump, sweepFreq, lobeFreq, lobeAmp, lobeThreshold, lobeDirection, R } = p
+    smooth, offset, bump, sweepFreq, lobeFreq, lobeAmp, lobeThreshold, lobeDirection, clusterSize, R } = p
 
   const overriddenKeys = new Set(Object.keys(terrainBlobOverrides))
   const isPureSea = (h: GeneratedHex) => h.terrain === 'water'
@@ -761,7 +830,7 @@ export function buildExportTerrainBlobs(p: ExportBlobParams): {
       ts?.smooth ?? smooth, ts?.offset ?? offset, ts?.bump ?? bump,
       ts?.sweepFreq ?? sweepFreq, ts?.lobeFreq ?? lobeFreq,
       ts?.lobeAmp ?? lobeAmp, ts?.lobeThreshold ?? lobeThreshold,
-      ts?.lobeDirection ?? lobeDirection, R,
+      ts?.lobeDirection ?? lobeDirection, R, 0, ts?.clusterSize ?? clusterSize,
     )
   })
 

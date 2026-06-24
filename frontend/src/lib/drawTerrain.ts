@@ -15,7 +15,7 @@ type Ctx = CanvasRenderingContext2D | OffscreenCanvasRenderingContext2D
 export type BlobParams = {
   smooth: number; offset: number; bump: number
   sweepFreq: number; lobeFreq: number; lobeAmp: number
-  lobeThreshold: number; lobeDirection: number; topoStyle: number
+  lobeThreshold: number; lobeDirection: number; topoStyle: number; clusterSize: number
 }
 
 export type DrawTerrainParams = {
@@ -538,9 +538,10 @@ export function drawTerrain(tCtx: Ctx, params: DrawTerrainParams): void {
         const ovLobeAmp         = override.lobeAmp         ?? terrainBlobParams.lobeAmp
         const ovLobeThreshold   = override.lobeThreshold   ?? terrainBlobParams.lobeThreshold
         const ovLobeDirection   = override.lobeDirection   ?? terrainBlobParams.lobeDirection
+        const ovClusterSize     = override.clusterSize     ?? terrainBlobParams.clusterSize
         const ovBlobs = buildTerrainBlobsV2(
           ovProjected, ovSmooth, ovOffset, ovNoise,
-          ovSweepFreq, ovLobeFreq, ovLobeAmp, ovLobeThreshold, ovLobeDirection, R, terrainBlobParams.topoStyle,
+          ovSweepFreq, ovLobeFreq, ovLobeAmp, ovLobeThreshold, ovLobeDirection, R, terrainBlobParams.topoStyle, ovClusterSize,
         )
         const ovPolys = ovBlobs.find(b => b.terrain === terrain)?.polys ?? []
 

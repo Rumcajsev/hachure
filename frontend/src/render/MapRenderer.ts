@@ -232,6 +232,7 @@ export interface MapRefs {
   terrainBlobOutlineWidthRef: { current: any }
   terrainBlobOverridesRef: { current: any }
   terrainBlobSmoothRef: { current: any }
+  terrainBlobClusterSizeRef: { current: any }
   terrainBlobSweepFreqRef: { current: any }
   terrainBlobTopoStyleRef: { current: any }
   terrainColorsRef: { current: any }
@@ -282,7 +283,7 @@ export function drawMap(refs: MapRefs, exportTarget?: ExportTarget): void {
     roadWiggleFreqRef, roadsRebuildCountRef, screenPwRef, selectedHopKeyRef, selectedSegmentKeysRef, settlementTierStylesRef, settlementsRef, showElevationClassOverlayRef,
     showElevationDebugRef, showRawOsmRoadsRef, showRiverLabelsRef, showWorldcoverOverlayRef, skipExpensiveLayersRef, smoothedCoastlineBoundaryRef, smoothedRailDataRef, snapPreviewRef,
     strokeTrailRef, terrainBackgroundPaintEnabledRef, terrainBlobBumpRef, terrainBlobEffectRef, terrainBlobLobeAmpRef, terrainBlobLobeDirectionRef, terrainBlobLobeFreqRef, terrainBlobLobeThresholdRef,
-    terrainBlobOffsetRef, terrainBlobOutlineColorRef, terrainBlobOutlineEnabledRef, terrainBlobOutlineWidthRef, terrainBlobOverridesRef, terrainBlobSmoothRef, terrainBlobSweepFreqRef, terrainBlobTopoStyleRef,
+    terrainBlobOffsetRef, terrainBlobOutlineColorRef, terrainBlobOutlineEnabledRef, terrainBlobOutlineWidthRef, terrainBlobOverridesRef, terrainBlobSmoothRef, terrainBlobSweepFreqRef, terrainBlobTopoStyleRef, terrainBlobClusterSizeRef,
     terrainColorsRef, terrainPaintBrushRef, terrainPaintModeRef, terrainTextureBlendModesRef, terrainTextureEnabledRef, terrainTextureFileRef, terrainTextureOpacitiesRef, terrainTextureScalesRef,
     terrainTextureTintColorsRef, terrainTextureTintOpacitiesRef, terrainTypeBlobStylesRef, textureCacheRef, urbanHexesRef, urbanStyleRef, waterOverridesRef, worldcoverImageElementRef,
     zoomRef, getPaperRef, surroundColorRef,
@@ -440,7 +441,7 @@ export function drawMap(refs: MapRefs, exportTarget?: ExportTarget): void {
       bump: terrainBlobBumpRef.current, sweepFreq: terrainBlobSweepFreqRef.current,
       lobeFreq: terrainBlobLobeFreqRef.current, lobeAmp: terrainBlobLobeAmpRef.current,
       lobeThreshold: terrainBlobLobeThresholdRef.current, lobeDirection: terrainBlobLobeDirectionRef.current,
-      topoStyle: terrainBlobTopoStyleRef.current,
+      topoStyle: terrainBlobTopoStyleRef.current, clusterSize: terrainBlobClusterSizeRef.current,
     },
     terrainBlobOutlineEnabled: terrainBlobOutlineEnabledRef.current,
     terrainBlobOutlineColor: terrainBlobOutlineColorRef.current,
@@ -513,6 +514,7 @@ export function drawMap(refs: MapRefs, exportTarget?: ExportTarget): void {
           lobeAmp: terrainBlobLobeAmpRef.current,
           lobeThreshold: terrainBlobLobeThresholdRef.current,
           lobeDirection: terrainBlobLobeDirectionRef.current,
+          clusterSize: terrainBlobClusterSizeRef.current,
           R,
         })
       : { exportTerrainBlobs: terrainParams.defaultTerrainBlobs, exportWaterBlobs: terrainParams.defaultWaterBlobs }

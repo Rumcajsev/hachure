@@ -99,6 +99,7 @@ function ShapeSettingsFlyout({ onClose }: { onClose: () => void }) {
     terrainBlobLobeThreshold, setTerrainBlobLobeThreshold,
     terrainBlobLobeDirection, setTerrainBlobLobeDirection,
     terrainBlobTopoStyle, setTerrainBlobTopoStyle,
+    terrainBlobClusterSize, setTerrainBlobClusterSize,
     terrainBlobSplatDensity, setTerrainBlobSplatDensity,
     terrainBlobSplatSize, setTerrainBlobSplatSize,
     terrainBlobOutlineEnabled, setTerrainBlobOutlineEnabled,
@@ -115,6 +116,7 @@ function ShapeSettingsFlyout({ onClose }: { onClose: () => void }) {
   const fringeRef      = useRef(terrainBlobLobeAmp)
   const [fringeLocal, setFringeLocal] = useState(Math.round(terrainBlobLobeAmp * 100))
   useEffect(() => { setFringeLocal(Math.round(terrainBlobLobeAmp * 100)); fringeRef.current = terrainBlobLobeAmp }, [terrainBlobLobeAmp])
+  const clusterSizeSlider  = useDeferredSlider(terrainBlobClusterSize, setTerrainBlobClusterSize)
   const splatDensitySlider = useDeferredSlider(Math.round(terrainBlobSplatDensity * 10), v => setTerrainBlobSplatDensity(v / 10))
   const splatSizeSlider    = useDeferredSlider(Math.round(terrainBlobSplatSize * 100),   v => setTerrainBlobSplatSize(v / 100))
   const topoSlider         = useDeferredSlider(Math.round(terrainBlobTopoStyle * 10),  v => setTerrainBlobTopoStyle(v / 10))
@@ -149,6 +151,7 @@ function ShapeSettingsFlyout({ onClose }: { onClose: () => void }) {
         lobeDirection: terrainBlobLobeDirection,
       }} onSelect={id => applyTerrainBlobPreset(id)} />
       <MiniSlider label="Topo style"     display={topoSlider.value === 0 ? 'off' : `${Math.round(topoSlider.value) / 10}×`}                               value={topoSlider.value}      min={0}   max={30}  step={1}    onChange={topoSlider.onChange}         onDragEnd={topoSlider.onDragEnd}         accentColor={t.rust} />
+      <MiniSlider label="Cluster size"   display={clusterSizeSlider.value === 0 ? 'off' : `${clusterSizeSlider.value} hexes`}                             value={clusterSizeSlider.value} min={0} max={20}  step={1}    onChange={clusterSizeSlider.onChange} onDragEnd={clusterSizeSlider.onDragEnd} accentColor={t.rust} />
       <MiniSlider label="Corner Rounding" display={Math.round(smoothSlider.value * 4) / 4}                                                                 value={smoothSlider.value}    min={0}   max={2}   step={0.25} onChange={smoothSlider.onChange}       onDragEnd={smoothSlider.onDragEnd}       accentColor={t.rust} />
       <MiniSlider label="Waviness"       display={`${bumpSlider.value}%`}                                                                                  value={bumpSlider.value}      min={0}   max={60}  step={1}    onChange={bumpSlider.onChange}         onDragEnd={bumpSlider.onDragEnd}         accentColor={t.rust} />
       <MiniSlider label="Inset"          display={`${offsetSlider.value > 0 ? '+' : ''}${offsetSlider.value}%`}                                            value={offsetSlider.value}    min={-80} max={30}  step={1}    onChange={offsetSlider.onChange}       onDragEnd={offsetSlider.onDragEnd}       accentColor={t.rust} />
@@ -623,6 +626,7 @@ function TerrainCogFlyout({ terrain, onClose }: { terrain: string; onClose: () =
     terrainTypeBlobStyles, setTerrainTypeBlobStyle,
     terrainBlobSmooth, terrainBlobOffset, terrainBlobBump, terrainBlobSweepFreq,
     terrainBlobLobeFreq, terrainBlobLobeAmp, terrainBlobLobeThreshold, terrainBlobLobeDirection,
+    terrainBlobClusterSize,
     terrainBlobOutlineEnabled, terrainBlobOutlineColor, terrainBlobOutlineWidth,
     edgeBlobWidth,
     activeTool, setActiveTool,
@@ -649,10 +653,12 @@ function TerrainCogFlyout({ terrain, onClose }: { terrain: string; onClose: () =
   const storeLobeAmp       = overrideEnabled ? (typeStyle?.lobeAmp       ?? terrainBlobLobeAmp)       : terrainBlobLobeAmp
   const storeLobeThreshold = overrideEnabled ? (typeStyle?.lobeThreshold ?? terrainBlobLobeThreshold) : terrainBlobLobeThreshold
   const storeLobeDirection = overrideEnabled ? (typeStyle?.lobeDirection ?? terrainBlobLobeDirection) : terrainBlobLobeDirection
+  const storeClusterSize   = overrideEnabled ? (typeStyle?.clusterSize   ?? terrainBlobClusterSize)   : terrainBlobClusterSize
   // Per-terrain blob sliders trigger shapeTerrainBlobs on every store write — defer all to drag end.
   const cogSmoothSlider   = useDeferredSlider(storeSmooth,                    v => { if (overrideEnabled) setTerrainTypeBlobStyle(terrain, { smooth: v }) })
   const cogBumpSlider     = useDeferredSlider(Math.round(storeBump * 100),    v => { if (overrideEnabled) setTerrainTypeBlobStyle(terrain, { bump: v / 100 }) })
-  const cogOffsetSlider   = useDeferredSlider(Math.round(storeOffset * 100),  v => { if (overrideEnabled) setTerrainTypeBlobStyle(terrain, { offset: v / 100 }) })
+  const cogOffsetSlider      = useDeferredSlider(Math.round(storeOffset * 100),  v => { if (overrideEnabled) setTerrainTypeBlobStyle(terrain, { offset: v / 100 }) })
+  const cogClusterSizeSlider = useDeferredSlider(storeClusterSize, v => { if (overrideEnabled) setTerrainTypeBlobStyle(terrain, { clusterSize: v }) })
   const texScaleSlider    = useDeferredSlider(Math.round(textureScale * 10),    v => setTerrainTextureScale(terrain, v / 10))
   const texOpacitySlider  = useDeferredSlider(Math.round(textureOpacity * 100), v => setTerrainTextureOpacity(terrain, v / 100))
   const cogFringeRef      = useRef(storeLobeAmp)
@@ -792,6 +798,7 @@ function TerrainCogFlyout({ terrain, onClose }: { terrain: string; onClose: () =
             onChange={v => { cogFringeRef.current = v / 100; setCogFringeLocal(v) }}
             onDragEnd={() => { if (overrideEnabled) { const amp = cogFringeRef.current; setTerrainTypeBlobStyle(terrain, { lobeAmp: amp, lobeFreq: 2.0 + amp * 3.0, lobeThreshold: 0 }) } }}
           />
+          <MiniSlider label="Cluster size" display={cogClusterSizeSlider.value === 0 ? 'off' : `${cogClusterSizeSlider.value} hexes`} value={cogClusterSizeSlider.value} min={0} max={20} step={1} onChange={cogClusterSizeSlider.onChange} onDragEnd={cogClusterSizeSlider.onDragEnd} />
           <div style={{ margin: '6px 12px 2px', borderTop: `1px solid ${tk.line2}`, paddingTop: 8 }}>
             <span style={{ fontFamily: tk.mono, fontSize: 9, letterSpacing: 0.8, color: tk.inkFaint, textTransform: 'uppercase', fontWeight: 600 }}>Edge painting</span>
           </div>
@@ -1174,6 +1181,12 @@ export function TerrainSidebarV3() {
             onCog={() => openCog(ct.id)}
           />
         ))}
+        <BrushRow
+          label="Eraser"
+          color="#cc4444"
+          active={terrainPaintMode && terrainPaintBrush === 'eraser'}
+          onSelect={() => selectBrush('eraser')}
+        />
         <DashedAddBtn
           label="Add terrain"
           dataAttr="data-add-terrain-flyout"

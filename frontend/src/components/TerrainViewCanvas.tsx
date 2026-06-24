@@ -196,13 +196,13 @@ export const TerrainViewCanvas = forwardRef<TerrainViewCanvasHandle, { surroundC
     hexBorderMode, hexEdgeMode, hexBorderOpacity, hexBorderColor, hexBorderDifference,
     terrainBlobSmooth, terrainBlobOffset, terrainBlobBump,
     terrainBlobSweepFreq, terrainBlobLobeFreq, terrainBlobLobeAmp, terrainBlobLobeThreshold, terrainBlobLobeDirection,
-    terrainBlobTopoStyle,
+    terrainBlobTopoStyle, terrainBlobClusterSize,
     terrainBlobSplatDensity, terrainBlobSplatSize,
     terrainBlobOutlineEnabled, terrainBlobOutlineColor, terrainBlobOutlineWidth, terrainBlobEffect,
 terrainColors, terrainTextureScales, terrainTextureBlendModes, terrainTextureOpacities,
     terrainTextureTintColors, terrainTextureTintOpacities,
     terrainTextureFile, terrainTextureEnabled,
-    terrainPaintMode, terrainPaintBrush, overrideHexTerrain, batchOverrideHexTerrain, batchOverrideHexBackground, resetHexOverride,
+    terrainPaintMode, terrainPaintBrush, overrideHexTerrain, batchOverrideHexTerrain, batchOverrideHexBackground, resetHexOverride, batchResetHexOverride,
     elevationPaintMode, elevationPaintBrush, overrideHexElevation, batchOverrideHexElevation,
     elevationTypeBlobStyles,
     terrainLayersEnabled,
@@ -512,6 +512,7 @@ terrainColors, terrainTextureScales, terrainTextureBlendModes, terrainTextureOpa
   const terrainBlobLobeThresholdRef = useRef(terrainBlobLobeThreshold)
   const terrainBlobLobeDirectionRef = useRef(terrainBlobLobeDirection)
   const terrainBlobTopoStyleRef = useRef(terrainBlobTopoStyle)
+  const terrainBlobClusterSizeRef = useRef(terrainBlobClusterSize)
   const terrainBlobOutlineEnabledRef = useRef(terrainBlobOutlineEnabled)
   const terrainBlobOutlineColorRef = useRef(terrainBlobOutlineColor)
   const terrainBlobOutlineWidthRef = useRef(terrainBlobOutlineWidth)
@@ -812,6 +813,7 @@ const terrainTextureFileRef = useRef(terrainTextureFile)
   terrainBlobLobeThresholdRef.current = terrainBlobLobeThreshold
   terrainBlobLobeDirectionRef.current = terrainBlobLobeDirection
   terrainBlobTopoStyleRef.current = terrainBlobTopoStyle
+  terrainBlobClusterSizeRef.current = terrainBlobClusterSize
   terrainBlobOutlineEnabledRef.current = terrainBlobOutlineEnabled
   terrainBlobOutlineColorRef.current = terrainBlobOutlineColor
   terrainBlobOutlineWidthRef.current = terrainBlobOutlineWidth
@@ -1311,6 +1313,7 @@ terrainTextureFileRef.current = terrainTextureFile
       const lobeAmp         = ts?.lobeAmp         ?? terrainBlobLobeAmp
       const lobeThreshold   = ts?.lobeThreshold   ?? terrainBlobLobeThreshold
       const lobeDirection   = ts?.lobeDirection   ?? terrainBlobLobeDirection
+      const clusterSize     = ts?.clusterSize     ?? terrainBlobClusterSize
 
       // Build raw hex centers keyed by "q,r" (needed for canonical key lookup)
       const hexOrigCenterByKey = new Map<string, [number, number]>()
@@ -1323,7 +1326,7 @@ terrainTextureFileRef.current = terrainTextureFile
         ])
       }
 
-      const hexKey = `eot:${elevationOverridesTerrain}|` + terrainProjected.map(p => `${(p.hex as GeneratedHex).q},${(p.hex as GeneratedHex).r}`).join('|')
+      const hexKey = `eot:${elevationOverridesTerrain}|cs:${clusterSize}|` + terrainProjected.map(p => `${(p.hex as GeneratedHex).q},${(p.hex as GeneratedHex).r}`).join('|')
       const canonicalKeySet = new Set([...componentMap.values()])
       const handleKey = [...canonicalKeySet].sort().map(ck => {
         const h = blobHandleOverrides[ck]
@@ -1359,7 +1362,7 @@ terrainTextureFileRef.current = terrainTextureFile
       if (cached?.hexKey === hexKey) {
         rawPolys = cached.rawPolys
       } else {
-        const topo = buildTerrainBlobTopology(terrainProjected, hexRadius)
+        const topo = buildTerrainBlobTopology(terrainProjected, hexRadius, clusterSize)
         rawPolys = topo.find(e => e.terrain === terrain)?.rawPolys ?? []
       }
 
@@ -1432,7 +1435,7 @@ terrainTextureFileRef.current = terrainTextureFile
     prevTerrainBlobsRef.current = result
     console.log(`[blobUseMemo] total ${(performance.now()-_tMemo0).toFixed(1)}ms`)
     return result
-  }, [isTerrainPainting, projectedHexes, blobComponentsByTerrain, terrainBlobOverrides, terrainTypeBlobStyles, terrainBlobSmooth, terrainBlobOffset, terrainBlobBump, terrainBlobSweepFreq, terrainBlobLobeFreq, terrainBlobLobeAmp, terrainBlobLobeThreshold, terrainBlobLobeDirection, terrainBlobTopoStyle, hexRadius, realisticCoastline, blobSeeds, elevationOverridesTerrain, blobHandleOverrides, riverAutoCorridors])
+  }, [isTerrainPainting, projectedHexes, blobComponentsByTerrain, terrainBlobOverrides, terrainTypeBlobStyles, terrainBlobSmooth, terrainBlobOffset, terrainBlobBump, terrainBlobSweepFreq, terrainBlobLobeFreq, terrainBlobLobeAmp, terrainBlobLobeThreshold, terrainBlobLobeDirection, terrainBlobTopoStyle, terrainBlobClusterSize, hexRadius, realisticCoastline, blobSeeds, elevationOverridesTerrain, blobHandleOverrides, riverAutoCorridors])
   const defaultTerrainBlobsRef = useRef(defaultTerrainBlobs)
   defaultTerrainBlobsRef.current = defaultTerrainBlobs
 
@@ -1507,13 +1510,13 @@ terrainTextureFileRef.current = terrainTextureFile
       const hexKey = `eot:${elevationOverridesTerrain}|` + bgProjected.map(p => `${p.hex.q},${p.hex.r}`).join('|')
       const cached = backgroundBlobCache.current.get(terrain)
       if (cached?.hexKey === hexKey) return cached.blobs
-      const blobs = buildTerrainBlobsV2(bgProjected, terrainBlobSmooth, terrainBlobOffset, terrainBlobBump, terrainBlobSweepFreq, terrainBlobLobeFreq, terrainBlobLobeAmp, terrainBlobLobeThreshold, terrainBlobLobeDirection, hexRadius, terrainBlobTopoStyle)
+      const blobs = buildTerrainBlobsV2(bgProjected, terrainBlobSmooth, terrainBlobOffset, terrainBlobBump, terrainBlobSweepFreq, terrainBlobLobeFreq, terrainBlobLobeAmp, terrainBlobLobeThreshold, terrainBlobLobeDirection, hexRadius, terrainBlobTopoStyle, terrainBlobClusterSize)
       backgroundBlobCache.current.set(terrain, { hexKey, blobs })
       return blobs
     })
     prevBackgroundBlobsRef.current = result
     return result
-  }, [isTerrainPainting, projectedHexes, hexRadius, terrainLayersEnabled, terrainBlobSmooth, terrainBlobOffset, terrainBlobBump, terrainBlobSweepFreq, terrainBlobLobeFreq, terrainBlobLobeAmp, terrainBlobLobeThreshold, terrainBlobLobeDirection, terrainBlobTopoStyle, elevationOverridesTerrain])
+  }, [isTerrainPainting, projectedHexes, hexRadius, terrainLayersEnabled, terrainBlobSmooth, terrainBlobOffset, terrainBlobBump, terrainBlobSweepFreq, terrainBlobLobeFreq, terrainBlobLobeAmp, terrainBlobLobeThreshold, terrainBlobLobeDirection, terrainBlobTopoStyle, terrainBlobClusterSize, elevationOverridesTerrain])
   const defaultBackgroundBlobsRef = useRef(defaultBackgroundBlobs)
   defaultBackgroundBlobsRef.current = defaultBackgroundBlobs
 
@@ -2202,14 +2205,17 @@ terrainTextureFileRef.current = terrainTextureFile
   const pendingTerrainPaintRef = useRef<{ q: number; r: number; terrain: string }[]>([])
   const pendingBgPaintRef = useRef<{ q: number; r: number; terrain: string | undefined }[]>([])
   const pendingElevationPaintRef = useRef<{ q: number; r: number; cls: 'flat' | 'hills' | 'mountains' }[]>([])
+  const pendingEraseTerrainRef = useRef<{ q: number; r: number }[]>([])
   // Fast hex lookup rebuilt at stroke start (vertices are stable geometry)
   const hexGeomMapRef = useRef<Map<string, { vertices: [number, number][] }>>(new Map())
   const batchOverrideHexTerrainRef = useRef(batchOverrideHexTerrain)
   const batchOverrideHexBackgroundRef = useRef(batchOverrideHexBackground)
   const batchOverrideHexElevationRef = useRef(batchOverrideHexElevation)
+  const batchResetHexOverrideRef = useRef(batchResetHexOverride)
   batchOverrideHexTerrainRef.current = batchOverrideHexTerrain
   batchOverrideHexBackgroundRef.current = batchOverrideHexBackground
   batchOverrideHexElevationRef.current = batchOverrideHexElevation
+  batchResetHexOverrideRef.current = batchResetHexOverride
 
   useEffect(() => {
     const el = containerRef.current
@@ -2221,10 +2227,11 @@ terrainTextureFileRef.current = terrainTextureFile
       edgePaintHoldRef, bgPaintHoldRef,
       isPaintingRef, lastPaintedKeyRef, lastPaintedEdgeKeyRef,
       strokeTrailRef, strokeTypeRef, paintHoverTargetRef,
-      pendingTerrainPaintRef, pendingBgPaintRef, pendingElevationPaintRef,
+      pendingTerrainPaintRef, pendingBgPaintRef, pendingElevationPaintRef, pendingEraseTerrainRef,
       hexGeomMapRef, terrainPaintBrushRef, elevationPaintBrushRef,
       edgeBlobPaintedRef, hoverRafRef,
       batchOverrideHexTerrainRef, batchOverrideHexBackgroundRef, batchOverrideHexElevationRef,
+      batchResetHexOverrideRef,
       eraseEdgeBlobRef, paintEdgeBlobRef,
       clientToLogical, getPaper, draw, setIsTerrainPainting,
     })
@@ -2726,7 +2733,7 @@ terrainTextureFileRef.current = terrainTextureFile
     roadWiggleFreqRef, roadsRebuildCountRef, screenPwRef, selectedHopKeyRef, selectedSegmentKeysRef, settlementTierStylesRef, settlementsRef, showElevationClassOverlayRef,
     showElevationDebugRef, showRawOsmRoadsRef, showRiverLabelsRef, showWorldcoverOverlayRef, skipExpensiveLayersRef, smoothedCoastlineBoundaryRef, smoothedRailDataRef, snapPreviewRef,
     strokeTrailRef, terrainBackgroundPaintEnabledRef, terrainBlobBumpRef, terrainBlobEffectRef, terrainBlobLobeAmpRef, terrainBlobLobeDirectionRef, terrainBlobLobeFreqRef, terrainBlobLobeThresholdRef,
-    terrainBlobOffsetRef, terrainBlobOutlineColorRef, terrainBlobOutlineEnabledRef, terrainBlobOutlineWidthRef, terrainBlobOverridesRef, terrainBlobSmoothRef, terrainBlobSweepFreqRef, terrainBlobTopoStyleRef,
+    terrainBlobOffsetRef, terrainBlobOutlineColorRef, terrainBlobOutlineEnabledRef, terrainBlobOutlineWidthRef, terrainBlobOverridesRef, terrainBlobSmoothRef, terrainBlobSweepFreqRef, terrainBlobTopoStyleRef, terrainBlobClusterSizeRef,
     terrainColorsRef, terrainPaintBrushRef, terrainPaintModeRef, terrainTextureBlendModesRef, terrainTextureEnabledRef, terrainTextureFileRef, terrainTextureOpacitiesRef, terrainTextureScalesRef,
     terrainTextureTintColorsRef, terrainTextureTintOpacitiesRef, terrainTypeBlobStylesRef, textureCacheRef, urbanHexesRef, urbanStyleRef, waterOverridesRef, worldcoverImageElementRef,
     zoomRef, getPaperRef, surroundColorRef,
