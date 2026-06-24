@@ -669,9 +669,35 @@ export function applyBlobMaskEdits(
   })
 }
 
-/** Cut river corridors out of raw (pre-shaped) hex-outline polygons so the
- *  cut edge participates in the full blob shaping pipeline (inset, bump, lobe).
- *  Call this on rawPolys before passing them to shapeTerrainBlobs. */
+/**
+ * Return a perturbed copy of each corridor polygon using the cutting terrain's
+ * own blob parameters (scaled down so the variation never reaches the river).
+ * Scale of ~0.35 keeps max displacement well under typical corridor halfWidth.
+ */
+export function perturbCorridorsForTerrain(
+  corridors: [number, number][][],
+  bump: number,
+  sweepFreq: number,
+  R: number,
+  terrainSeed: number,
+  scale = 0.35,
+): [number, number][][] {
+  const amp = bump * R * scale
+  if (corridors.length === 0 || amp < 0.5) return corridors
+  return corridors.map((corridor, ci) => {
+    const s = (terrainSeed ^ (ci * 7919)) >>> 0
+    let p: [number, number][] = subdivideClosedPolygon(corridor, R * 0.3)
+    const permX = makePermutation(s)
+    const permY = makePermutation(s + 31)
+    p = perturbXY(p, permX, permY, sweepFreq / R, amp)
+    return p
+  })
+}
+
+/** Cut shaped blob polygons with river corridor polygons.
+ *  Call this after shapeTerrainBlobs so the cut edge is clean and not
+ *  distorted by resizeToHexAnchors. Use perturbCorridorsForTerrain first
+ *  to give the cut edge organic character matching the terrain's blob style. */
 export function cutRawPolysWithCorridors(
   rawPolys: [number, number][][],
   corridors: [number, number][][],

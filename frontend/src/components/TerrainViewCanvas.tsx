@@ -7,7 +7,7 @@ import { useTheme } from '../context/ThemeContext'
 import { hexAdjacent, hexLineBetween, catmullRom, offsetPolyline, pointInPolygon, distToSeg, douglasPeucker, douglasPeuckerClosed, chaikin } from '../lib/geometry'
 import { mulberry32, makePermutation } from '../lib/noise'
 import { projectToCanvas, unprojectFromCanvas, computePaper, computeWorldcoverBbox } from '../lib/projection'
-import { coastalBlobTerrains, bleedPolygon, buildTerrainBlobsV2, buildTerrainBlobTopology, shapeTerrainBlobs, shapeInputPolygon, computeConnectedComponents, applyBlobMaskEdits, cutRawPolysWithCorridors, generateBlobSplats, buildExportTerrainBlobs } from '../lib/terrainBlobs'
+import { coastalBlobTerrains, bleedPolygon, buildTerrainBlobsV2, buildTerrainBlobTopology, shapeTerrainBlobs, shapeInputPolygon, computeConnectedComponents, applyBlobMaskEdits, cutRawPolysWithCorridors, perturbCorridorsForTerrain, generateBlobSplats, buildExportTerrainBlobs } from '../lib/terrainBlobs'
 import type { BlobTopologyEntry } from '../lib/terrainBlobs'
 import { findEdgeChains as findEdgeChainsSync } from '../lib/edgeBlobs'
 import { riverChainCache, buildRiverChainsV2, type RiverChainCache } from '../lib/riverChains'
@@ -1426,13 +1426,17 @@ terrainTextureFileRef.current = terrainTextureFile
       const shaped = shapeTerrainBlobs([{ terrain, rawPolys: displacedPolys, hexCenters, clusterCenters: topoClusterCenters }], smooth, offset, bump, sweepFreq, lobeFreq, lobeAmp, lobeThreshold, lobeDirection, hexRadius, blobSeeds, stableSeeds)
       console.log(`[blobUseMemo] shapeTerrainBlobs terrain=${terrain} polys=${displacedPolys.length} took ${(performance.now()-_tBlob0).toFixed(1)}ms`)
 
-      // Apply river corridor cut to final shaped polys so the cut edge is clean and
-      // not distorted by resizeToHexAnchors. Each piece inherits the source poly's blobKey.
-      const blobs = relevantCorridors.length === 0 ? shaped : shaped.map(entry => {
+      // Apply river corridor cut to final shaped polys. Corridors are perturbed using
+      // this terrain's bump/sweepFreq (scaled down) so the cut edge has organic character
+      // matching the terrain style without risking overlap into the river.
+      const terrainSeed = terrain.split('').reduce((a, c) => (a * 31 + c.charCodeAt(0)) | 0, 0)
+      const cuttingCorridors = relevantCorridors.length === 0 ? relevantCorridors
+        : perturbCorridorsForTerrain(relevantCorridors, bump, sweepFreq, hexRadius, terrainSeed)
+      const blobs = cuttingCorridors.length === 0 ? shaped : shaped.map(entry => {
         const cutPolys: [number, number][][] = []
         const cutKeys: string[] = []
         for (let i = 0; i < entry.polys.length; i++) {
-          const pieces = cutRawPolysWithCorridors([entry.polys[i]], relevantCorridors)
+          const pieces = cutRawPolysWithCorridors([entry.polys[i]], cuttingCorridors)
           for (const piece of pieces) { cutPolys.push(piece); cutKeys.push(entry.blobKeys[i]) }
         }
         return { ...entry, polys: cutPolys, blobKeys: cutKeys }
