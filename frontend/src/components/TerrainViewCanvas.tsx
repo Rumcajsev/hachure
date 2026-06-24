@@ -1370,12 +1370,8 @@ terrainTextureFileRef.current = terrainTextureFile
         topoClusterCenters = topoEntry?.clusterCenters
       }
 
-      // Pre-cut raw polys with river corridors so the cut edge goes through the full
-      // shaping pipeline (inset, bump, lobe) and responds to all blob style settings.
-      const rawPolysForShaping = cutRawPolysWithCorridors(rawPolys, relevantCorridors)
-
       // Simplified polys — what handles are generated from and what the dashed overlay shows
-      const simplifiedPolys = rawPolysForShaping.map(p => {
+      const simplifiedPolys = rawPolys.map(p => {
         const seed = Math.abs(Math.round(p[0][0] * 73 + p[0][1] * 97))
         return shapeInputPolygon(p, terrainBlobTopoStyle, hexRadius, seed)
       })
@@ -1426,11 +1422,21 @@ terrainTextureFileRef.current = terrainTextureFile
       }
 
       const hexCenters = [...hexOrigCenterByKey.values()]
-      // clusterCenters indices match rawPolys/displacedPolys only when no corridor cutting occurs
-      const displacedClusterCenters = relevantCorridors.length === 0 ? topoClusterCenters : undefined
       const _tBlob0 = performance.now()
-      const blobs = shapeTerrainBlobs([{ terrain, rawPolys: displacedPolys, hexCenters, clusterCenters: displacedClusterCenters }], smooth, offset, bump, sweepFreq, lobeFreq, lobeAmp, lobeThreshold, lobeDirection, hexRadius, blobSeeds, stableSeeds)
+      const shaped = shapeTerrainBlobs([{ terrain, rawPolys: displacedPolys, hexCenters, clusterCenters: topoClusterCenters }], smooth, offset, bump, sweepFreq, lobeFreq, lobeAmp, lobeThreshold, lobeDirection, hexRadius, blobSeeds, stableSeeds)
       console.log(`[blobUseMemo] shapeTerrainBlobs terrain=${terrain} polys=${displacedPolys.length} took ${(performance.now()-_tBlob0).toFixed(1)}ms`)
+
+      // Apply river corridor cut to final shaped polys so the cut edge is clean and
+      // not distorted by resizeToHexAnchors. Each piece inherits the source poly's blobKey.
+      const blobs = relevantCorridors.length === 0 ? shaped : shaped.map(entry => {
+        const cutPolys: [number, number][][] = []
+        const cutKeys: string[] = []
+        for (let i = 0; i < entry.polys.length; i++) {
+          const pieces = cutRawPolysWithCorridors([entry.polys[i]], relevantCorridors)
+          for (const piece of pieces) { cutPolys.push(piece); cutKeys.push(entry.blobKeys[i]) }
+        }
+        return { ...entry, polys: cutPolys, blobKeys: cutKeys }
+      })
 
       perTerrainBlobCache.current.set(terrain, { hexKey, rawPolys, hexCenters, clusterCenters: topoClusterCenters, styleKey, blobs, handleGroups: newHandleGroups, simplifiedPolyGroups: newSimplifiedPolys })
       return blobs
