@@ -1264,7 +1264,7 @@ terrainTextureFileRef.current = terrainTextureFile
   }, [riverTierChainsRaw, riverBlobCutEnabled, riverBlobCutWidth, riverEdges, generatedHexes, hexRadius, generatedMetadata, paperDims])
 
   const prevTerrainBlobsRef = useRef<{ terrain: string; polys: [number, number][][]; blobKeys: string[] }[]>([])
-  type TerrainBlobCacheEntry = { hexKey: string; rawPolys: [number, number][][]; hexCenters: [number, number][]; styleKey: string; blobs: { terrain: string; polys: [number, number][][]; blobKeys: string[] }[]; handleGroups?: Map<string, { edgeKey: string; cx: number; cy: number }[]>; simplifiedPolyGroups?: Map<string, [number, number][][]> }
+  type TerrainBlobCacheEntry = { hexKey: string; rawPolys: [number, number][][]; hexCenters: [number, number][]; clusterCenters?: [number, number][][]; styleKey: string; blobs: { terrain: string; polys: [number, number][][]; blobKeys: string[] }[]; handleGroups?: Map<string, { edgeKey: string; cx: number; cy: number }[]>; simplifiedPolyGroups?: Map<string, [number, number][][]> }
   const perTerrainBlobCache = useRef(new Map<string, TerrainBlobCacheEntry>())
   const defaultTerrainBlobs = useMemo(() => {
     const _tMemo0 = performance.now()
@@ -1299,7 +1299,7 @@ terrainTextureFileRef.current = terrainTextureFile
           if (ck && overriddenKeys.has(ck)) return false
         }
         return true
-      }).map(p => ({ ...p, hex: { ...p.hex, terrain } }))
+      }).map(p => { const h = p.hex as GeneratedHex; return { ...p, hex: { ...p.hex, terrain, q: h.q, r: h.r } } })
       if (terrainProjected.length === 0) {
         perTerrainBlobCache.current.delete(terrain)
         return []
@@ -1359,11 +1359,15 @@ terrainTextureFileRef.current = terrainTextureFile
 
       // Compute rawPolys (topology cache)
       let rawPolys: [number, number][][]
+      let topoClusterCenters: [number, number][][] | undefined
       if (cached?.hexKey === hexKey) {
         rawPolys = cached.rawPolys
+        topoClusterCenters = cached.clusterCenters
       } else {
         const topo = buildTerrainBlobTopology(terrainProjected, hexRadius, clusterSize)
-        rawPolys = topo.find(e => e.terrain === terrain)?.rawPolys ?? []
+        const topoEntry = topo.find(e => e.terrain === terrain)
+        rawPolys = topoEntry?.rawPolys ?? []
+        topoClusterCenters = topoEntry?.clusterCenters
       }
 
       // Pre-cut raw polys with river corridors so the cut edge goes through the full
@@ -1422,11 +1426,13 @@ terrainTextureFileRef.current = terrainTextureFile
       }
 
       const hexCenters = [...hexOrigCenterByKey.values()]
+      // clusterCenters indices match rawPolys/displacedPolys only when no corridor cutting occurs
+      const displacedClusterCenters = relevantCorridors.length === 0 ? topoClusterCenters : undefined
       const _tBlob0 = performance.now()
-      const blobs = shapeTerrainBlobs([{ terrain, rawPolys: displacedPolys, hexCenters }], smooth, offset, bump, sweepFreq, lobeFreq, lobeAmp, lobeThreshold, lobeDirection, hexRadius, blobSeeds, stableSeeds)
+      const blobs = shapeTerrainBlobs([{ terrain, rawPolys: displacedPolys, hexCenters, clusterCenters: displacedClusterCenters }], smooth, offset, bump, sweepFreq, lobeFreq, lobeAmp, lobeThreshold, lobeDirection, hexRadius, blobSeeds, stableSeeds)
       console.log(`[blobUseMemo] shapeTerrainBlobs terrain=${terrain} polys=${displacedPolys.length} took ${(performance.now()-_tBlob0).toFixed(1)}ms`)
 
-      perTerrainBlobCache.current.set(terrain, { hexKey, rawPolys, hexCenters, styleKey, blobs, handleGroups: newHandleGroups, simplifiedPolyGroups: newSimplifiedPolys })
+      perTerrainBlobCache.current.set(terrain, { hexKey, rawPolys, hexCenters, clusterCenters: topoClusterCenters, styleKey, blobs, handleGroups: newHandleGroups, simplifiedPolyGroups: newSimplifiedPolys })
       return blobs
     })
     for (const t of perTerrainBlobCache.current.keys()) {
@@ -1505,7 +1511,7 @@ terrainTextureFileRef.current = terrainTextureFile
         const h = p.hex as GeneratedHex
         if (elevationOverridesTerrain && (h.elevation_class === 'hills' || h.elevation_class === 'mountains')) return false
         return h.backgroundTerrain === terrain || h.terrain === terrain
-      }).map(p => ({ ...p, hex: { ...p.hex, terrain } }))
+      }).map(p => { const h = p.hex as GeneratedHex; return { ...p, hex: { ...p.hex, terrain, q: h.q, r: h.r } } })
       if (bgProjected.length === 0) return []
       const hexKey = `eot:${elevationOverridesTerrain}|` + bgProjected.map(p => `${p.hex.q},${p.hex.r}`).join('|')
       const cached = backgroundBlobCache.current.get(terrain)

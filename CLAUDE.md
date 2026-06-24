@@ -145,6 +145,17 @@ During a label drag (or any single-item edit that would otherwise rebuild an ent
 
 This makes drag cost O(1) regardless of scene size. Currently wired for settlement label drag only.
 
+### Terrain blob pipeline — two separate paths
+
+`terrainBlobs.ts` exposes two entry points and they are used in **different contexts**:
+
+- **`buildTerrainBlobsV2`** — used by the export path (`MapRenderer.ts`) and the per-component blob-override path inside `drawTerrain.ts` (section 4b). It runs `buildTerrainBlobTopology` → `shapeInputPolygon` → `shapeTerrainBlobs` internally.
+- **`buildTerrainBlobTopology` + `shapeTerrainBlobs` called separately** — used by the interactive render path inside TVC's `defaultTerrainBlobs` useMemo. TVC calls topology first, then does its own intermediate work (handle displacement, corridor cutting, topo style, stable seeds), then calls `shapeTerrainBlobs` with a **manually constructed** topology entry.
+
+**Rule: when adding a field to `BlobTopologyEntry` or `shapeTerrainBlobs` inputs, you must wire it in both paths.** Fixing `buildTerrainBlobTopology` or `buildTerrainBlobsV2` alone has no effect on the interactive render. Always grep for all call sites of `shapeTerrainBlobs` before implementing topology changes.
+
+The TVC path also maintains its own two-level cache (`perTerrainBlobCache`): `hexKey` guards the topology (rawPolys), `styleKey` guards the shaping (final polys). Adding topology-derived data (like `clusterCenters`) requires updating both the cache entry type and the cache read/write at both levels.
+
 ### Zustand store — batch updates
 
 The `persist` middleware serializes the **entire store to localStorage on every `set()` call**. Calling a store action N times in a loop (e.g. on mouseup after a paint stroke) causes N full JSON serializations, N React re-renders, and N undo snapshots — this is the main source of multi-second freezes after paint strokes.

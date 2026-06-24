@@ -121,6 +121,8 @@ export type BlobTopologyEntry = {
   terrain: string
   rawPolys: [number, number][][]
   hexCenters: [number, number][]
+  /** Per-cluster hex centers parallel to rawPolys — used for per-blob inset anchoring when clustering is active */
+  clusterCenters?: [number, number][][]
 }
 
 export function preSmoothVar(pts: [number, number][], t: number): [number, number][] {
@@ -199,6 +201,7 @@ export function buildTerrainBlobTopology(
   const edgeCount = new Map<string, Map<string, number>>()
   const edgeEnds = new Map<string, [string, string]>()
   const hexCentersByTerrain = new Map<string, [number, number][]>()
+  const hexCentersByGroupKey = new Map<string, [number, number][]>()
 
   // Pre-compute sub-cluster assignments when clusterSize >= 2
   const hexToGroupKey = new Map<string, string>()
@@ -221,17 +224,19 @@ export function buildTerrainBlobTopology(
 
   for (const { hex, verts } of projected) {
     const t = hex.terrain
-    if (t !== 'clear') {
-      const cx = (verts[0][0] + verts[1][0] + verts[2][0] + verts[3][0] + verts[4][0] + verts[5][0]) / 6
-      const cy = (verts[0][1] + verts[1][1] + verts[2][1] + verts[3][1] + verts[4][1] + verts[5][1]) / 6
-      if (!hexCentersByTerrain.has(t)) hexCentersByTerrain.set(t, [])
-      hexCentersByTerrain.get(t)!.push([cx, cy])
-    }
     const q = (hex as unknown as { q?: number }).q
     const r = (hex as unknown as { r?: number }).r
     const groupKey = t !== 'clear' && hexToGroupKey.size > 0 && q != null && r != null
       ? (hexToGroupKey.get(`${t}:${q},${r}`) ?? t)
       : t
+    if (t !== 'clear') {
+      const cx = (verts[0][0] + verts[1][0] + verts[2][0] + verts[3][0] + verts[4][0] + verts[5][0]) / 6
+      const cy = (verts[0][1] + verts[1][1] + verts[2][1] + verts[3][1] + verts[4][1] + verts[5][1]) / 6
+      if (!hexCentersByTerrain.has(t)) hexCentersByTerrain.set(t, [])
+      hexCentersByTerrain.get(t)!.push([cx, cy])
+      if (!hexCentersByGroupKey.has(groupKey)) hexCentersByGroupKey.set(groupKey, [])
+      hexCentersByGroupKey.get(groupKey)!.push([cx, cy])
+    }
     let tc: Map<string, number> | null = null
     if (t !== 'clear') {
       if (!edgeCount.has(groupKey)) edgeCount.set(groupKey, new Map())
@@ -251,6 +256,7 @@ export function buildTerrainBlobTopology(
   }
 
   const polysByTerrain = new Map<string, [number, number][][]>()
+  const clusterCentersByTerrain = new Map<string, [number, number][][]>()
 
   for (const [groupKey, tc] of edgeCount) {
     const terrain = clusterSize >= 2 && groupKey.includes(':')
@@ -269,7 +275,10 @@ export function buildTerrainBlobTopology(
     const visitedVerts = new Set<string>()
     const visitedEdges = new Set<string>()
     if (!polysByTerrain.has(terrain)) polysByTerrain.set(terrain, [])
+    if (!clusterCentersByTerrain.has(terrain)) clusterCentersByTerrain.set(terrain, [])
     const terrainPolys = polysByTerrain.get(terrain)!
+    const terrainClusterCenters = clusterCentersByTerrain.get(terrain)!
+    const groupCenters = hexCentersByGroupKey.get(groupKey) ?? []
 
     for (const [startKey] of adj) {
       if (visitedVerts.has(startKey)) continue
@@ -287,13 +296,21 @@ export function buildTerrainBlobTopology(
         if (!next || next === startKey) break
         cur = next
       }
-      if (pts.length >= 3) terrainPolys.push(pts)
+      if (pts.length >= 3) {
+        terrainPolys.push(pts)
+        terrainClusterCenters.push(groupCenters)
+      }
     }
   }
 
   const result: BlobTopologyEntry[] = []
   for (const [terrain, rawPolys] of polysByTerrain) {
-    result.push({ terrain, rawPolys, hexCenters: hexCentersByTerrain.get(terrain) ?? [] })
+    const clusterCenters = clusterCentersByTerrain.get(terrain)
+    result.push({
+      terrain, rawPolys,
+      hexCenters: hexCentersByTerrain.get(terrain) ?? [],
+      clusterCenters: clusterCenters?.length ? clusterCenters : undefined,
+    })
   }
   return result
 }
@@ -327,7 +344,7 @@ export function shapeTerrainBlobs(
 ): { terrain: string; polys: [number, number][][]; blobKeys: string[] }[] {
   const result: { terrain: string; polys: [number, number][][]; blobKeys: string[] }[] = []
 
-  for (const { terrain, rawPolys, hexCenters } of topology) {
+  for (const { terrain, rawPolys, hexCenters, clusterCenters } of topology) {
     const resizeS = Math.max(0.1, 1 + offsetFraction)
     const p1Amp = bumpFraction * R
     const p2Amp = bumpFraction * lobeAmp * R * lobeDirection
@@ -348,7 +365,8 @@ export function shapeTerrainBlobs(
       const smoothRemainder = smooth - smoothPasses
       for (let pass = 0; pass < smoothPasses; pass++) p = preSmoothVar(p, 0.4)
       if (smoothRemainder > 0) p = preSmoothVar(p, 0.4 * smoothRemainder)
-      p = resizeToHexAnchors(p, hexCenters, resizeS)
+      const anchors = clusterCenters?.[i] ?? hexCenters
+      p = resizeToHexAnchors(p, anchors, resizeS)
 
       // R * 0.25 (was 0.15) halves the point count before perturbXY and the
       // 5× resampleSmoothQuad multiplier, cutting perturbNormal cost by ~40%.
