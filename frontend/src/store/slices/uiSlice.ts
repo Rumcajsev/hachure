@@ -417,6 +417,8 @@ export const createUiSlice = (set: Set, get: () => MapStore): UiSlice => ({
         riverChainOverrides: s.riverChainOverrides,
         riverWiggleAmp: s.riverWiggleAmp, riverWiggleFreq: s.riverWiggleFreq,
         riverTierStyles: s.riverTierStyles,
+        riverBlobCutEnabled: s.riverBlobCutEnabled, riverBlobCutWidth: s.riverBlobCutWidth, riverBlobCutRoughness: s.riverBlobCutRoughness,
+        roadBlobCutEnabled: s.roadBlobCutEnabled, roadBlobCutWidth: s.roadBlobCutWidth, roadBlobCutRoughness: s.roadBlobCutRoughness,
         riverSmoothing: s.riverSmoothing, riverWidthScale: s.riverWidthScale,
         riverPathSmoothing: s.riverPathSmoothing,
         showRiverLabels: s.showRiverLabels, riverLabelColor: s.riverLabelColor,
@@ -1033,8 +1035,6 @@ if (fromVersion < 64) {
     delete (s as Record<string, unknown>).riverBlobCutFreqScale
     delete (s as Record<string, unknown>).roadBlobCutVariance
     delete (s as Record<string, unknown>).roadBlobCutFreqScale
-  }
-  if (fromVersion < 88) {
     if (!s.slopeEdges) s.slopeEdges = {}
   }
   if (fromVersion < 84) {
