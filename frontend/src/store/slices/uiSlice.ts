@@ -444,7 +444,13 @@ export const createUiSlice = (set: Set, get: () => MapStore): UiSlice => ({
         customTerrains: s.customTerrains,
         edgeBlobPainted: s.edgeBlobPainted, edgeBlobWidth: s.edgeBlobWidth,
         edgeBlobOverrides: s.edgeBlobOverrides,
-        slopeEdges: s.slopeEdges,
+        slopeEdges: s.slopeEdges, slopeStyle: s.slopeStyle, slopeSmoothing: s.slopeSmoothing,
+        slopeTickSpacing: s.slopeTickSpacing, slopeTickLength: s.slopeTickLength,
+        elevationHachureEnabled: s.elevationHachureEnabled,
+        elevationShadowEnabled: s.elevationShadowEnabled,
+        elevationShadowOx: s.elevationShadowOx, elevationShadowOy: s.elevationShadowOy,
+        elevationShadowBl: s.elevationShadowBl, elevationShadowOp: s.elevationShadowOp,
+        elevationShadowPs: s.elevationShadowPs, elevationShadowColor: s.elevationShadowColor,
         terrainBlobOverrides: s.terrainBlobOverrides, terrainTypeBlobStyles: s.terrainTypeBlobStyles,
         terrainBlobSmooth: s.terrainBlobSmooth, terrainBlobOffset: s.terrainBlobOffset,
         terrainBlobBump: s.terrainBlobBump, terrainBlobSweepFreq: s.terrainBlobSweepFreq,
@@ -1036,6 +1042,30 @@ if (fromVersion < 64) {
     delete (s as Record<string, unknown>).roadBlobCutVariance
     delete (s as Record<string, unknown>).roadBlobCutFreqScale
     if (!s.slopeEdges) s.slopeEdges = {}
+  }
+  if (fromVersion < 89) {
+    if (!s.slopeStyle) s.slopeStyle = 'hachure'
+  }
+  if (fromVersion < 90) {
+    if (s.slopeSmoothing === undefined) s.slopeSmoothing = false
+  }
+  if (fromVersion < 91) {
+    if (s.slopeTickSpacing === undefined) s.slopeTickSpacing = 0.18
+    if (s.slopeTickLength  === undefined) s.slopeTickLength  = 0.22
+  }
+  if (fromVersion < 92) {
+    if (!s.elevationHachureEnabled) s.elevationHachureEnabled = {}
+  }
+  if (fromVersion < 93) {
+    if (!s.elevationShadowEnabled) s.elevationShadowEnabled = {}
+    if (!s.elevationShadowColor) s.elevationShadowColor = '#8a6840'
+  }
+  if (fromVersion < 96) {
+    if (s.elevationShadowOx === undefined) s.elevationShadowOx = 14
+    if (s.elevationShadowOy === undefined) s.elevationShadowOy = 16
+    if (s.elevationShadowBl === undefined) s.elevationShadowBl = 22
+    if (s.elevationShadowOp === undefined) s.elevationShadowOp = 30
+    if (s.elevationShadowPs === undefined) s.elevationShadowPs = 3
   }
   if (fromVersion < 84) {
     const tiers = s.riverTierStyles as Array<Record<string, unknown>> | undefined

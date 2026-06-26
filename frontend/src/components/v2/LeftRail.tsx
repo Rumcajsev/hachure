@@ -149,7 +149,18 @@ export function LeftRail() {
     else if (id === 'select') storeSetActiveTool({ type: 'select' })
   }
 
+  const toolOwnerPanel: RailPanel | null = (() => {
+    const tt = storeActiveTool.type
+    if (tt === 'terrain' || tt === 'elevation' || tt === 'water' || tt === 'blob-mask' || tt === 'hex-mask' || tt === 'hex-disable') return 'terrain'
+    if (tt === 'road' || tt === 'node-edit' || tt === 'road-select' || tt === 'rail' || tt === 'rail-node-edit' || tt === 'rail-select') return 'roads'
+    if (tt === 'river-paint' || tt === 'river-select' || tt === 'river-node-edit') return 'rivers'
+    if (tt === 'urban' || tt === 'label-drag' || tt === 'label-follow') return 'settlements'
+    if (tt === 'highlight-paint' || tt === 'highlight-erase' || tt === 'highlight-erase-any' || tt === 'icon-place' || tt === 'icon-erase' || tt === 'icon-erase-any' || tt === 'label-place' || tt === 'label-erase') return 'overlays'
+    return null
+  })()
+
   const handlePanelClick = (id: RailPanel) => {
+    storeSetActiveTool({ type: 'none' })
     setActivePanel(prev => prev === id ? null : id)
   }
 
@@ -206,7 +217,7 @@ export function LeftRail() {
               key={id}
               label={label}
               icon={icon}
-              active={activePanel === id}
+              active={activePanel === id || toolOwnerPanel === id}
               onClick={() => handlePanelClick(id)}
             />
           ))}

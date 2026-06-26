@@ -1,6 +1,9 @@
-/** Slope-edge (escarpment) rendering — hachure tick marks on the downhill side. */
+/** Slope-edge (escarpment) rendering — hachure, shading, or contour styles. */
 
 import { parseEdgeBlobKey, sharedEdgeVertices } from './edgeBlobs'
+import { chaikin } from './geometry'
+import { mulberry32 } from './noise'
+import type { SlopeStyle } from '../store/mapStore'
 
 type Ctx = CanvasRenderingContext2D | OffscreenCanvasRenderingContext2D
 
@@ -12,53 +15,30 @@ export type SlopeHoverTarget = {
   lowCenter: [number, number]
 } | null
 
-function drawHachures(
-  ctx: Ctx,
-  p1: [number, number],
-  p2: [number, number],
-  lowCenter: [number, number],
-  R: number,
-  alpha: number,
-  color: string,
-): void {
-  const tickLen = R * 0.22
-  const edgeDx = p2[0] - p1[0], edgeDy = p2[1] - p1[1]
-  const edgeLen = Math.hypot(edgeDx, edgeDy)
-  if (edgeLen < 1) return
+// ── Chain building ────────────────────────────────────────────────────────────
 
-  // Unit perpendicular pointing toward low hex center
-  const midX = (p1[0] + p2[0]) / 2, midY = (p1[1] + p2[1]) / 2
-  const toLowX = lowCenter[0] - midX, toLowY = lowCenter[1] - midY
-  const toLowLen = Math.hypot(toLowX, toLowY)
-  if (toLowLen < 1) return
-  const perpX = toLowX / toLowLen, perpY = toLowY / toLowLen
-
-  ctx.save()
-  ctx.globalAlpha = alpha
-  ctx.strokeStyle = color
-  ctx.lineWidth = R * 0.045
-  ctx.lineCap = 'round'
-  ctx.beginPath()
-
-  const TICKS = 3
-  for (let i = 0; i < TICKS; i++) {
-    const t = (i + 1) / (TICKS + 1)
-    const ox = p1[0] + edgeDx * t
-    const oy = p1[1] + edgeDy * t
-    ctx.moveTo(ox, oy)
-    ctx.lineTo(ox + perpX * tickLen, oy + perpY * tickLen)
-  }
-  ctx.stroke()
-  ctx.restore()
+type Segment = {
+  p1: [number, number]
+  p2: [number, number]
+  perpLow: [number, number]   // unit vector toward the downhill side
+  lowHexKey: string
 }
 
-export function drawSlopes(
-  ctx: Ctx,
+type SlopeChain = {
+  pts: [number, number][]
+  perpLows: [number, number][]  // perpLow for each segment (length = pts.length - 1)
+  isLoop: boolean
+}
+
+function vKey(p: [number, number]): string {
+  return `${Math.round(p[0])},${Math.round(p[1])}`
+}
+
+function buildSegments(
   slopeEdges: Record<string, string>,
   hexVertMap: Map<string, [number, number][]>,
-  R: number,
-  color = '#5a4a3a',
-): void {
+): Segment[] {
+  const segs: Segment[] = []
   for (const [edgeKey, highHexKey] of Object.entries(slopeEdges)) {
     const { q1, r1, q2, r2 } = parseEdgeBlobKey(edgeKey)
     const isHigh1 = `${q1},${r1}` === highHexKey
@@ -68,12 +48,334 @@ export function drawSlopes(
     if (!shared) continue
     const lowVerts = hexVertMap.get(`${lowQ},${lowR}`)
     if (!lowVerts) continue
-    const lowCenter: [number, number] = [
-      lowVerts.reduce((s, v) => s + v[0], 0) / lowVerts.length,
-      lowVerts.reduce((s, v) => s + v[1], 0) / lowVerts.length,
-    ]
-    drawHachures(ctx, shared[0], shared[1], lowCenter, R, 0.85, color)
+
+    const midX = (shared[0][0] + shared[1][0]) / 2
+    const midY = (shared[0][1] + shared[1][1]) / 2
+    const lowCx = lowVerts.reduce((s, v) => s + v[0], 0) / lowVerts.length
+    const lowCy = lowVerts.reduce((s, v) => s + v[1], 0) / lowVerts.length
+    const toLowX = lowCx - midX, toLowY = lowCy - midY
+    const toLowLen = Math.hypot(toLowX, toLowY)
+    if (toLowLen < 1) continue
+
+    segs.push({
+      p1: shared[0],
+      p2: shared[1],
+      perpLow: [toLowX / toLowLen, toLowY / toLowLen],
+      lowHexKey: `${lowQ},${lowR}`,
+    })
   }
+  return segs
+}
+
+function buildChains(segs: Segment[]): SlopeChain[] {
+  if (segs.length === 0) return []
+
+  // Vertex adjacency graph: key → [{segIdx, otherKey}]
+  const adj = new Map<string, { segIdx: number; otherKey: string }[]>()
+  const vertPos = new Map<string, [number, number]>()
+
+  for (let i = 0; i < segs.length; i++) {
+    const k1 = vKey(segs[i].p1), k2 = vKey(segs[i].p2)
+    vertPos.set(k1, segs[i].p1)
+    vertPos.set(k2, segs[i].p2)
+    if (!adj.has(k1)) adj.set(k1, [])
+    if (!adj.has(k2)) adj.set(k2, [])
+    adj.get(k1)!.push({ segIdx: i, otherKey: k2 })
+    adj.get(k2)!.push({ segIdx: i, otherKey: k1 })
+  }
+
+  const usedSegs = new Set<number>()
+  const chains: SlopeChain[] = []
+
+  const trace = (startKey: string) => {
+    const pts: [number, number][] = [vertPos.get(startKey)!]
+    const perpLows: [number, number][] = []
+    let curKey = startKey
+
+    while (true) {
+      const available = (adj.get(curKey) ?? []).filter(e => !usedSegs.has(e.segIdx))
+      if (available.length === 0) break
+      const { segIdx, otherKey } = available[0]
+      usedSegs.add(segIdx)
+      perpLows.push(segs[segIdx].perpLow)
+      pts.push(vertPos.get(otherKey)!)
+      curKey = otherKey
+      if (curKey === startKey) break  // completed a loop
+    }
+
+    if (pts.length >= 2) {
+      const isLoop = vKey(pts[0]) === vKey(pts[pts.length - 1])
+      chains.push({ pts, perpLows, isLoop })
+    }
+  }
+
+  // Endpoints (degree 1) first so chains start/end cleanly
+  for (const [k, edges] of adj) {
+    if (edges.length !== 1) continue
+    if (edges.every(e => usedSegs.has(e.segIdx))) continue
+    trace(k)
+  }
+
+  // Remaining (loops or junctions)
+  for (const [k, edges] of adj) {
+    if (edges.every(e => usedSegs.has(e.segIdx))) continue
+    trace(k)
+  }
+
+  return chains
+}
+
+// ── Hachure drawing ───────────────────────────────────────────────────────────
+
+function drawHachureChain(
+  ctx: Ctx,
+  chain: SlopeChain,
+  R: number,
+  smooth: boolean,
+  alpha: number,
+  color: string,
+  tickSpacingFactor: number,
+  tickLengthFactor: number,
+): void {
+  const tickLen = R * tickLengthFactor
+  const tickSpacing = R * tickSpacingFactor
+
+  // Arc lengths on the original pts, used to map smoothed arc pos → perpLow
+  const origArcs: number[] = [0]
+  for (let i = 1; i < chain.pts.length; i++) {
+    const dx = chain.pts[i][0] - chain.pts[i - 1][0]
+    const dy = chain.pts[i][1] - chain.pts[i - 1][1]
+    origArcs.push(origArcs[i - 1] + Math.hypot(dx, dy))
+  }
+  const origTotal = origArcs[origArcs.length - 1]
+
+  const getPerpLow = (arcPos: number): [number, number] => {
+    const target = origTotal > 0 ? Math.min(origTotal, arcPos) : 0
+    let si = 0
+    for (let i = 1; i < origArcs.length - 1; i++) {
+      if (origArcs[i] <= target) si = i
+    }
+    return chain.perpLows[Math.min(si, chain.perpLows.length - 1)]
+  }
+
+  // Optionally smooth
+  const pts = smooth
+    ? chaikin(chain.pts, 2, chain.isLoop)
+    : chain.pts
+
+  // Arc lengths on drawn pts
+  const arcs: number[] = [0]
+  for (let i = 1; i < pts.length; i++) {
+    const dx = pts[i][0] - pts[i - 1][0]
+    const dy = pts[i][1] - pts[i - 1][1]
+    arcs.push(arcs[i - 1] + Math.hypot(dx, dy))
+  }
+  const total = arcs[arcs.length - 1]
+  if (total < 1) return
+
+  const nTicks = Math.max(1, Math.round(total / tickSpacing))
+
+  // Seed from first chain vertex for determinism across re-renders
+  const rng = mulberry32(Math.round(chain.pts[0][0] * 7 + chain.pts[0][1] * 13))
+  const rand   = () => rng()
+  const signed = (amt: number) => (rand() - 0.5) * 2 * amt
+
+  // Parse hex color once for rgba() compositing
+  const cr = parseInt(color.slice(1, 3), 16)
+  const cg = parseInt(color.slice(3, 5), 16)
+  const cb = parseInt(color.slice(5, 7), 16)
+  const rgba = (a: number) => `rgba(${cr},${cg},${cb},${a.toFixed(2)})`
+
+  ctx.save()
+  ctx.lineCap = 'round'
+
+  for (let ti = 0; ti <= nTicks; ti++) {
+    const targetArc = (ti / nTicks) * total
+
+    // Find segment
+    let si = pts.length - 2
+    for (let i = 1; i < arcs.length; i++) {
+      if (arcs[i] >= targetArc) { si = i - 1; break }
+    }
+    si = Math.max(0, Math.min(si, pts.length - 2))
+
+    const segLen = arcs[si + 1] - arcs[si]
+    const t = segLen > 0 ? (targetArc - arcs[si]) / segLen : 0
+    const x = pts[si][0] + t * (pts[si + 1][0] - pts[si][0])
+    const y = pts[si][1] + t * (pts[si + 1][1] - pts[si][1])
+
+    // Local tangent
+    const dx = pts[si + 1][0] - pts[si][0]
+    const dy = pts[si + 1][1] - pts[si][1]
+    const tLen = Math.hypot(dx, dy)
+    if (tLen < 0.001) continue
+
+    // Perpendicular toward low side
+    const c1x = -dy / tLen, c1y = dx / tLen
+    const origArcPos = smooth && total > 0 ? (targetArc / total) * origTotal : targetArc
+    const [plx, ply] = getPerpLow(origArcPos)
+    const dot = c1x * plx + c1y * ply
+    const [px, py] = dot >= 0 ? [c1x, c1y] : [dy / tLen, -dx / tLen]
+
+    // Main tick — offset 25% off the edge, length jitter, position jitter, bezier bow
+    const len    = tickLen * (0.8 + rand() * 0.4)
+    const inset  = len * 0.25
+    const ox = x - px * inset + signed(0.6), oy = y - py * inset + signed(0.6)
+    const ex = ox + px * len,                ey = oy + py * len
+    const bow = signed(R * 0.025)
+    const cpx = (ox + ex) / 2 - py * bow
+    const cpy = (oy + ey) / 2 + px * bow
+
+    ctx.lineWidth = R * 0.038 * (0.88 + rand() * 0.24)
+    ctx.strokeStyle = rgba(alpha * (0.82 + rand() * 0.18))
+    ctx.beginPath()
+    ctx.moveTo(ox, oy)
+    ctx.quadraticCurveTo(cpx, cpy, ex, ey)
+    ctx.stroke()
+
+    // Shadow stroke — shorter, pulled ~40% downhill, slightly offset along chain
+    if (rand() > 0.3) {
+      const sLen = len * (0.35 + rand() * 0.2)
+      const pull = R * 0.08
+      const sx = ox + px * pull + signed(0.5)
+      const sy = oy + py * pull + signed(0.5)
+      const sbow = signed(R * 0.015)
+      const scpx = (sx + sx + px * sLen) / 2 - py * sbow
+      const scpy = (sy + sy + py * sLen) / 2 + px * sbow
+      ctx.lineWidth = R * 0.032 * (0.85 + rand() * 0.2)
+      ctx.strokeStyle = rgba(alpha * (0.45 + rand() * 0.25))
+      ctx.beginPath()
+      ctx.moveTo(sx, sy)
+      ctx.quadraticCurveTo(scpx, scpy, sx + px * sLen, sy + py * sLen)
+      ctx.stroke()
+    }
+  }
+
+  ctx.restore()
+}
+
+// ── Polygon shadow (shared by slope shading + elevation blob shadow) ─────────
+
+export function drawPolygonShadow(
+  ctx: Ctx,
+  polys: [number, number][][],
+  pw: number,
+  ph: number,
+  ox: number,
+  oy: number,
+  bl: number,
+  op: number,   // 0–100
+  ps: number,
+  color: string,
+): void {
+  if (polys.length === 0) return
+  const off = new OffscreenCanvas(pw, ph)
+  const oCtx = off.getContext('2d')!
+  oCtx.fillStyle = color
+  oCtx.beginPath()
+  for (const poly of polys) {
+    if (poly.length < 3) continue
+    oCtx.moveTo(poly[0][0], poly[0][1])
+    for (let i = 1; i < poly.length; i++) oCtx.lineTo(poly[i][0], poly[i][1])
+    oCtx.closePath()
+  }
+  oCtx.fill()
+  const opacity = op / 100
+  for (let i = 0; i < ps; i++) {
+    const t = ps === 1 ? 1 : i / (ps - 1)
+    const passBlur = bl * (0.6 + t * 0.4)
+    const passOp   = opacity * (1 - t * 0.3)
+    ctx.save()
+    ctx.filter = `blur(${passBlur.toFixed(1)}px)`
+    ctx.globalAlpha = passOp
+    ctx.drawImage(off, ox * (0.5 + t * 0.5), oy * (0.5 + t * 0.5))
+    ctx.restore()
+  }
+}
+
+// ── Blob hachure (elevation types) ───────────────────────────────────────────
+
+function polygonToChain(polygon: [number, number][]): SlopeChain {
+  if (polygon.length < 3) return { pts: [], perpLows: [], isLoop: false }
+
+  const cx = polygon.reduce((s, p) => s + p[0], 0) / polygon.length
+  const cy = polygon.reduce((s, p) => s + p[1], 0) / polygon.length
+
+  const perpLows: [number, number][] = []
+  for (let i = 0; i < polygon.length; i++) {
+    const p1 = polygon[i], p2 = polygon[(i + 1) % polygon.length]
+    const midX = (p1[0] + p2[0]) / 2, midY = (p1[1] + p2[1]) / 2
+    const dx = midX - cx, dy = midY - cy
+    const len = Math.hypot(dx, dy)
+    perpLows.push(len > 0.001 ? [dx / len, dy / len] : [0, 1])
+  }
+
+  // Close the loop by appending the first point
+  return { pts: [...polygon, polygon[0]], perpLows, isLoop: false }
+}
+
+export function drawBlobHachure(
+  ctx: Ctx,
+  polygons: [number, number][][],
+  R: number,
+  smooth: boolean,
+  tickSpacingFactor: number,
+  tickLengthFactor: number,
+  color: string,
+): void {
+  for (const polygon of polygons) {
+    const chain = polygonToChain(polygon)
+    if (chain.pts.length < 2) continue
+    drawHachureChain(ctx, chain, R, smooth, 0.85, color, tickSpacingFactor, tickLengthFactor)
+  }
+}
+
+// ── Public API ────────────────────────────────────────────────────────────────
+
+export function drawSlopes(
+  ctx: Ctx,
+  slopeEdges: Record<string, string>,
+  hexVertMap: Map<string, [number, number][]>,
+  R: number,
+  style: SlopeStyle = 'hachure',
+  smooth = false,
+  tickSpacingFactor = 0.18,
+  tickLengthFactor = 0.22,
+  color = '#5a4a3a',
+  pw = 0,
+  ph = 0,
+  shadowOx = 14,
+  shadowOy = 16,
+  shadowBl = 22,
+  shadowOp = 30,
+  shadowPs = 3,
+  shadowColor = '#8a6840',
+): void {
+  if (style === 'shading') {
+    const segs = buildSegments(slopeEdges, hexVertMap)
+    const seen = new Set<string>()
+    const polys: [number, number][][] = []
+    for (const seg of segs) {
+      if (seen.has(seg.lowHexKey)) continue
+      seen.add(seg.lowHexKey)
+      const verts = hexVertMap.get(seg.lowHexKey)
+      if (verts && verts.length >= 3) polys.push(verts)
+    }
+    drawPolygonShadow(ctx, polys, pw, ph, shadowOx, shadowOy, shadowBl, shadowOp, shadowPs, shadowColor)
+    return
+  }
+
+  const chains = buildChains(buildSegments(slopeEdges, hexVertMap))
+
+  if (style === 'hachure') {
+    for (const chain of chains)
+      drawHachureChain(ctx, chain, R, smooth, 0.85, color, tickSpacingFactor, tickLengthFactor)
+    return
+  }
+
+  // contour — TODO
+  for (const chain of chains)
+    drawHachureChain(ctx, chain, R, smooth, 0.85, color, tickSpacingFactor, tickLengthFactor)
 }
 
 export function drawSlopeHover(
@@ -83,5 +385,31 @@ export function drawSlopeHover(
   color = '#5a4a3a',
 ): void {
   if (!hover) return
-  drawHachures(ctx, hover.p1, hover.p2, hover.lowCenter, R, 0.45, color)
+  const tickLen = R * 0.22
+  const edgeDx = hover.p2[0] - hover.p1[0], edgeDy = hover.p2[1] - hover.p1[1]
+  const edgeLen = Math.hypot(edgeDx, edgeDy)
+  if (edgeLen < 1) return
+
+  const midX = (hover.p1[0] + hover.p2[0]) / 2, midY = (hover.p1[1] + hover.p2[1]) / 2
+  const toLowX = hover.lowCenter[0] - midX, toLowY = hover.lowCenter[1] - midY
+  const toLowLen = Math.hypot(toLowX, toLowY)
+  if (toLowLen < 1) return
+  const perpX = toLowX / toLowLen, perpY = toLowY / toLowLen
+
+  ctx.save()
+  ctx.globalAlpha = 0.45
+  ctx.strokeStyle = color
+  ctx.lineWidth = R * 0.04
+  ctx.lineCap = 'round'
+  ctx.beginPath()
+  const TICKS = 3
+  for (let i = 0; i < TICKS; i++) {
+    const t = (i + 1) / (TICKS + 1)
+    const ox = hover.p1[0] + edgeDx * t
+    const oy = hover.p1[1] + edgeDy * t
+    ctx.moveTo(ox, oy)
+    ctx.lineTo(ox + perpX * tickLen, oy + perpY * tickLen)
+  }
+  ctx.stroke()
+  ctx.restore()
 }

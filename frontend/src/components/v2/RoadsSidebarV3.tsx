@@ -8,7 +8,7 @@ import { DEFAULT_STROKE_EFFECT } from '../../store/mapStore'
 import { PALETTE_RAIL_LIGHT, PALETTE_RAIL_DARK } from '../../palettes'
 import { useTheme } from '../../context/ThemeContext'
 import {
-  BrushRow, MiniSlider, BigColorSwatch, SegmentedControl, ToggleRow, tintBg,
+  BrushRow, MiniSlider, ColorChip, ColorPickerHost, SegmentedControl, ToggleRow, tintBg,
   STRIP_W, FLYOUT_W, StripShell, FlyoutShell, V2Divider, TriggerRow, TGap,
   useDeferredSlider,
 } from './sidebar'
@@ -263,8 +263,10 @@ export function RoadStyleFlyout({ tier, onClose }: { tier: 0 | 1 | 2; onClose: (
       {/* ── Always-on: thickness + surface + fill dash ── */}
       <MiniSlider label="Thickness" display={s.outerW.toFixed(1)} value={s.outerW * 10} min={5} max={100} step={5} accentColor={tierColor} onChange={v => setRoadTierStyle(tier, { outerW: v / 10 })} />
       <FSectionDivider />
-      <FSectionLabel label="Surface" />
-      <BigColorSwatch value={s.inner} onChange={v => setRoadTierStyle(tier, { inner: v })} groups={ROAD_SURFACE_GROUPS} />
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '3px 14px' }}>
+        <FSectionLabel label="Surface" />
+        <ColorChip value={s.inner} onChange={v => setRoadTierStyle(tier, { inner: v })} groups={ROAD_SURFACE_GROUPS} label="Surface color" />
+      </div>
       <FSectionLabel label="Fill stroke" />
       <div style={{ padding: '4px 12px 8px' }}>
         <SegmentedControl options={DASH_OPTIONS} value={(fx.fillDash ?? s.fillDash) as StrokeDash} onChange={v => setFx({ fillDash: v as StrokeDash })} />
@@ -274,7 +276,10 @@ export function RoadStyleFlyout({ tier, onClose }: { tier: 0 | 1 | 2; onClose: (
       <SectionToggle label="Outline" enabled={fx.outlineEnabled} onChange={v => setFx({ outlineEnabled: v })} accentColor={tierColor} />
       {fx.outlineEnabled && (
         <>
-          <BigColorSwatch value={s.outer} onChange={v => setRoadTierStyle(tier, { outer: v })} groups={ROAD_CASING_GROUPS} />
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '3px 14px' }}>
+            <FSectionLabel label="Casing" />
+            <ColorChip value={s.outer} onChange={v => setRoadTierStyle(tier, { outer: v })} groups={ROAD_CASING_GROUPS} label="Casing color" />
+          </div>
           <FSectionLabel label="Stroke" />
           <div style={{ padding: '4px 12px 8px' }}>
             <SegmentedControl options={DASH_OPTIONS} value={(fx.outlineDash ?? s.caseDash) as StrokeDash} onChange={v => setFx({ outlineDash: v as StrokeDash })} />
@@ -347,13 +352,17 @@ export function RailStyleFlyout({ onClose }: { onClose: () => void }) {
       {railStyle.railStyle === 'classic' && (
         <>
           <FSectionDivider />
-          <FSectionLabel label="Inner color" />
-          <BigColorSwatch value={railStyle.innerColor} onChange={v => setRailStyle({ innerColor: v })} groups={RAIL_LIGHT_GROUPS} />
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '3px 14px' }}>
+            <FSectionLabel label="Inner color" />
+            <ColorChip value={railStyle.innerColor} onChange={v => setRailStyle({ innerColor: v })} groups={RAIL_LIGHT_GROUPS} label="Inner color" />
+          </div>
         </>
       )}
       <FSectionDivider />
-      <FSectionLabel label={railStyle.railStyle === 'classic' ? 'Outer color' : 'Line color'} />
-      <BigColorSwatch value={railStyle.outerColor} onChange={v => setRailStyle({ outerColor: v })} groups={RAIL_DARK_GROUPS} />
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '3px 14px' }}>
+        <FSectionLabel label={railStyle.railStyle === 'classic' ? 'Outer color' : 'Line color'} />
+        <ColorChip value={railStyle.outerColor} onChange={v => setRailStyle({ outerColor: v })} groups={RAIL_DARK_GROUPS} label="Outer color" />
+      </div>
 
       <FSectionDivider />
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '6px 12px 4px' }}>
@@ -802,6 +811,7 @@ export function RoadsSidebarV3() {
 
   return (
     <div style={{ position: 'relative', height: '100%', display: 'flex' }}>
+    <ColorPickerHost>
       <StripShell>
 
         <V2Divider label="Roads" />
@@ -900,6 +910,7 @@ export function RoadsSidebarV3() {
           }}
         />
       )}
+    </ColorPickerHost>
     </div>
   )
 }

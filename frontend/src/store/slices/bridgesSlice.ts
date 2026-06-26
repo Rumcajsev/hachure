@@ -11,10 +11,12 @@ export const DEFAULT_BRIDGE_TIERS: BridgeTier[] = []
 export interface BridgesSlice {
   bridgesEnabled: boolean
   bridgeStyle: 'plank' | 'icon'
+  bridgeLengthScale: number
   bridgeTiers: BridgeTier[]
   bridgeOverrides: Record<string, string>
   setBridgesEnabled: (v: boolean) => void
   setBridgeStyle: (v: 'plank' | 'icon') => void
+  setBridgeLengthScale: (v: number) => void
   updateBridgeTier: (id: string, update: Partial<Omit<BridgeTier, 'id'>>) => void
   addBridgeTier: () => void
   removeBridgeTier: (id: string) => void
@@ -29,11 +31,13 @@ export function createBridgesSlice(
   return {
     bridgesEnabled: true,
     bridgeStyle: 'plank',
+    bridgeLengthScale: 1.2,
     bridgeTiers: DEFAULT_BRIDGE_TIERS,
     bridgeOverrides: {},
 
     setBridgesEnabled: (v) => set(() => ({ bridgesEnabled: v })),
     setBridgeStyle: (v) => set(() => ({ bridgeStyle: v })),
+    setBridgeLengthScale: (v) => set(() => ({ bridgeLengthScale: v })),
 
     updateBridgeTier: (id, update) => set((s) => ({
       bridgeTiers: s.bridgeTiers.map(t => t.id === id ? { ...t, ...update } : t),

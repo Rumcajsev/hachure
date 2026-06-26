@@ -1,6 +1,6 @@
 import type { StrokeEffect, StrokeDash } from '../../store/mapStore'
 import { useTheme } from '../../context/ThemeContext'
-import { MiniSlider, BigColorSwatch, SegmentedControl, ToggleSwitch } from './sidebar'
+import { MiniSlider, ColorChip, SegmentedControl, ToggleSwitch } from './sidebar'
 
 const DASH_OPTIONS: { value: StrokeDash; label: string }[] = [
   { value: 'solid',    label: '——' },
@@ -54,7 +54,10 @@ export function StrokeEffectPanel({ effect, onChange, colorGroups, showOutline =
           <SectionToggle label="Outline" enabled={effect.outlineEnabled} onChange={v => onChange({ outlineEnabled: v })} />
           {effect.outlineEnabled && (
             <>
-              <BigColorSwatch value={effect.outlineColor} onChange={c => onChange({ outlineColor: c })} groups={colorGroups ?? []} />
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '3px 14px' }}>
+                <span style={{ fontFamily: t.mono, fontSize: 10, color: t.inkFaint }}>Color</span>
+                <ColorChip value={effect.outlineColor} onChange={c => onChange({ outlineColor: c })} groups={colorGroups ?? []} label="Outline color" />
+              </div>
               <MiniSlider label="Width" display={`${effect.outlineWidth}px`} value={effect.outlineWidth * 10} min={1} max={100} step={1} onChange={v => onChange({ outlineWidth: v / 10 })} />
               <SectionLabel label="Dash" />
               <div style={{ padding: '4px 12px 8px' }}>

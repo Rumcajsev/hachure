@@ -87,7 +87,19 @@ export interface MapRefs {
   editingLabelRef: { current: any }
   elevationPaintBrushRef: { current: any }
   elevationPaintModeRef: { current: any }
+  elevationHachureEnabledRef: { current: Record<string, boolean> }
+  elevationShadowEnabledRef: { current: Record<string, boolean> }
+  elevationShadowOxRef: { current: number }
+  elevationShadowOyRef: { current: number }
+  elevationShadowBlRef: { current: number }
+  elevationShadowOpRef: { current: number }
+  elevationShadowPsRef: { current: number }
+  elevationShadowColorRef: { current: string }
   slopeEdgesRef: { current: Record<string, string> }
+  slopeStyleRef: { current: import('../store/mapStore').SlopeStyle }
+  slopeSmoothingRef: { current: boolean }
+  slopeTickSpacingRef: { current: number }
+  slopeTickLengthRef: { current: number }
   slopeModeRef: { current: boolean }
   slopeHoverTargetRef: { current: import('../lib/drawSlopes').SlopeHoverTarget }
   elevationTypeBlobStylesRef: { current: any }
@@ -265,11 +277,11 @@ export function drawMap(refs: MapRefs, exportTarget?: ExportTarget): void {
   const {
     activeBlobEditIdRef, activeIconOverlayIdRef, activeToolRef, appliedOsmRiverIndicesRef, autoDisabledOceanHexKeysRef, beachColorRef, beachStripRef, beachWidthRef,
     bgPaintHoldRef, blobComponentsByTerrainRef, blobComponentsRef, blobDragLiveRef, blobEditModeRef, blobHandleDataRef, blobHandleOverridesRef, blobMaskDrawingRef,
-    blobMaskStrokeRef, bridgeOverridesRef, bridgeStyleRef, bridgeTiersRef, bridgesEnabledRef, cachedRiverChainDataRef, cachedRiverTierChainDataRef, canvasRef,
+    blobMaskStrokeRef, bridgeOverridesRef, bridgeLengthScaleRef, bridgeStyleRef, bridgeTiersRef, bridgesEnabledRef, cachedRiverChainDataRef, cachedRiverTierChainDataRef, canvasRef,
     clipToHexGridRef, coastlineDebugRawRef, contourCanvasRef, contourDisabledElevClassesSetRef, contourDisabledTerrainsSetRef, customTerrainsRef, dataSourceRef, defaultBackgroundBlobsRef,
     defaultElevationBlobsRef, defaultTerrainBlobsMaskedRef, defaultWaterBlobsRef, detectedBridgesRef, disabledHexKeysRef, dragLiveDensePosRef, dragLiveOverrideRef, draggingCpKeyRef,
     draggingCpKindRef, draggingDensePtRef, draggingLabelRef, drawOsmHighlightRef, drawPerfRef, edgeBlobOverridesRef, edgeBlobPaintedRef, edgeBlobWidthRef,
-    editingLabelRef, elevationPaintBrushRef, elevationPaintModeRef, elevationTypeBlobStylesRef, excludedHexKeysRef, frameDimsRef, hexBorderColorRef, hexBorderDifferenceRef, slopeEdgesRef, slopeModeRef, slopeHoverTargetRef,
+    editingLabelRef, elevationPaintBrushRef, elevationPaintModeRef, elevationTypeBlobStylesRef, excludedHexKeysRef, frameDimsRef, hexBorderColorRef, hexBorderDifferenceRef, elevationHachureEnabledRef, elevationShadowEnabledRef, elevationShadowOxRef, elevationShadowOyRef, elevationShadowBlRef, elevationShadowOpRef, elevationShadowPsRef, elevationShadowColorRef, slopeEdgesRef, slopeStyleRef, slopeSmoothingRef, slopeTickSpacingRef, slopeTickLengthRef, slopeModeRef, slopeHoverTargetRef,
     hexBorderModeRef, hexBorderOpacityRef, hexBuildingGeoCacheRef, hexEdgeModeRef, hexIdxRef, hexNumberColorRef, hexNumberEdgeRef, hexNumberFontScaleRef,
     hexNumberMapRef, hexNumbersEnabledRef, hexRadiusRef, hexVertMapRef, hexesRef, highlightEdgePathsRef, highlightLinesRef, highlightedHexesRef,
     highlightsRef, hillsColorRef, hillshadeCanvasRef, hillshadeDisabledElevClassesSetRef, hillshadeDisabledTerrainsSetRef, hillshadeEnabledRef, historicalIconParamsRef, historicalIconSetsRef,
@@ -483,7 +495,19 @@ export function drawMap(refs: MapRefs, exportTarget?: ExportTarget): void {
     contourCanvas: contourCanvasRef.current,
     contourDisabledTerrains: contourDisabledTerrainsSetRef.current,
     contourDisabledElevClasses: contourDisabledElevClassesSetRef.current,
+    elevationHachureEnabled: elevationHachureEnabledRef.current ?? {},
+    elevationShadowEnabled: elevationShadowEnabledRef.current ?? {},
+    elevationShadowOx: elevationShadowOxRef.current ?? 14,
+    elevationShadowOy: elevationShadowOyRef.current ?? 16,
+    elevationShadowBl: elevationShadowBlRef.current ?? 22,
+    elevationShadowOp: elevationShadowOpRef.current ?? 30,
+    elevationShadowPs: elevationShadowPsRef.current ?? 3,
+    elevationShadowColor: elevationShadowColorRef.current ?? '#8a6840',
     slopeEdges: slopeEdgesRef.current ?? {},
+    slopeStyle: slopeStyleRef.current ?? 'hachure',
+    slopeSmoothing: slopeSmoothingRef.current ?? false,
+    slopeTickSpacing: slopeTickSpacingRef.current ?? 0.18,
+    slopeTickLength: slopeTickLengthRef.current ?? 0.22,
   }
 
   const _tTerrain0 = performance.now()

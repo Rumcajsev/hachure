@@ -36,7 +36,8 @@ function AppV2Inner({ screen, setScreen, isDark, setIsDark }: {
   setIsDark: (v: boolean) => void
 }) {
   const { step, undo, redo, generateStatus, generateProgress, uiScale,
-          elevationStatus, heightmapUrl, fetchElevation, loadBuiltinPreset } = useMapStore()
+          elevationStatus, heightmapUrl, fetchElevation, loadBuiltinPreset,
+          resetToSetup } = useMapStore()
   const canvasHandleRef = useRef<TerrainViewCanvasHandle>(null)
 
   // If the store resets step to 'setup' while in the editor (e.g. mid-generation SSE flow),
@@ -110,7 +111,7 @@ function AppV2Inner({ screen, setScreen, isDark, setIsDark }: {
   if (activeScreen === 'landing') {
     return (
       <SetupLandingPage
-        onNewMap={() => { loadBuiltinPreset('standard'); setScreen('wizard') }}
+        onNewMap={() => { resetToSetup(); loadBuiltinPreset('standard'); setScreen('wizard') }}
         onResume={() => { setScreen('editor'); captureAndStoreThumb() }}
         onLoadFile={() => { /* TODO: file load */ setScreen('editor') }}
         isDark={isDark}

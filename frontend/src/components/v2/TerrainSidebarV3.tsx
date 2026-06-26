@@ -11,9 +11,9 @@ import { useTheme } from '../../context/ThemeContext'
 import { shouldSuppressShortcut } from '../../lib/keyboard'
 import { liveClassParamsRef, requestDraw } from '../../lib/liveClassParamsRef'
 import {
-  BrushRow, ElevBrushRow, ToggleRow, ToggleSwitch, DashedAddBtn, MiniSlider, BigColorSwatch, tintBg,
+  BrushRow, ElevBrushRow, ToggleRow, ToggleSwitch, DashedAddBtn, MiniSlider, ColorChip, ColorPickerHost, tintBg,
   STRIP_W, FLYOUT_W, StripShell, FlyoutShell, V2Divider, TriggerRow, TGap,
-  useDeferredSlider,
+  useDeferredSlider, SegmentedControl,
 } from './sidebar'
 import { TEXTURE_OPTIONS, TEXTURE_PATHS, DEFAULT_TERRAIN_TEXTURES } from '../../lib/terrainTextures'
 
@@ -40,6 +40,8 @@ type FlyoutId =
   | 'e-hillshade'
   | 'e-contours'
   | 't-terrain'
+  | 'e-terrain'
+  | 'e-slope'
   | null
 
 // ── Flyout content: blob shape ──────────────────────────────────────────────
@@ -87,7 +89,7 @@ function BlobPresetChips({
   )
 }
 
-function ShapeSettingsFlyout({ onClose }: { onClose: () => void }) {
+function ShapeSettingsFlyout({ onClose, usedAs }: { onClose: () => void; usedAs: Record<string, string> }) {
   const t = useTheme()
   const {
     terrainBlobSmooth, setTerrainBlobSmooth,
@@ -173,7 +175,10 @@ function ShapeSettingsFlyout({ onClose }: { onClose: () => void }) {
         <ToggleSwitch enabled={terrainBlobOutlineEnabled} onChange={setTerrainBlobOutlineEnabled} />
       </div>
       {terrainBlobOutlineEnabled && <>
-        <BigColorSwatch value={terrainBlobOutlineColor} onChange={setTerrainBlobOutlineColor} groups={PALETTE_TERRAIN_GROUPS} />
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '3px 14px' }}>
+          <span style={{ fontFamily: t.mono, fontSize: 10, color: t.inkFaint }}>Color</span>
+          <ColorChip value={terrainBlobOutlineColor} onChange={setTerrainBlobOutlineColor} groups={PALETTE_TERRAIN_GROUPS} usedAs={usedAs} label="Outline color" />
+        </div>
         <MiniSlider label="Width" display={`${terrainBlobOutlineWidth}px`} value={terrainBlobOutlineWidth} min={0.5} max={8} step={0.5} onChange={setTerrainBlobOutlineWidth} />
       </>}
       <div style={{ borderTop: `1px solid ${t.line2}`, padding: '6px 12px 2px' }}>
@@ -612,7 +617,7 @@ function TexturePickerPopover({
   )
 }
 
-function TerrainCogFlyout({ terrain, onClose }: { terrain: string; onClose: () => void }) {
+function TerrainCogFlyout({ terrain, onClose, usedAs }: { terrain: string; onClose: () => void; usedAs: Record<string, string> }) {
   const tk = useTheme()
   const [texturePickerOpen, setTexturePickerOpen] = useState(false)
   const texturePickerAnchorRef = useRef<HTMLDivElement>(null)
@@ -700,8 +705,10 @@ function TerrainCogFlyout({ terrain, onClose }: { terrain: string; onClose: () =
       onClose={onClose}
     >
       {/* Color */}
-      {sectionLabel('Color')}
-      <BigColorSwatch value={color} onChange={v => setTerrainColor(terrain, v)} groups={PALETTE_TERRAIN_GROUPS} />
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '8px 14px 4px' }}>
+        {sectionLabel('Color')}
+        <ColorChip value={color} onChange={v => setTerrainColor(terrain, v)} groups={PALETTE_TERRAIN_GROUPS} usedAs={usedAs} label="Terrain color" />
+      </div>
 
       {/* Texture */}
       <div style={{ borderTop: `1px solid ${tk.line2}`, paddingTop: 4 }}>
@@ -822,11 +829,16 @@ function TerrainCogFlyout({ terrain, onClose }: { terrain: string; onClose: () =
           />
         </div>
         {(typeStyle?.outlineEnabled ?? terrainBlobOutlineEnabled) && <>
-          <BigColorSwatch
-            value={typeStyle?.outlineColor ?? terrainBlobOutlineColor}
-            onChange={v => setTerrainTypeBlobStyle(terrain, { outlineColor: v })}
-            groups={PALETTE_TERRAIN_GROUPS}
-          />
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '3px 14px' }}>
+            <span style={{ fontFamily: tk.mono, fontSize: 10, color: tk.inkFaint }}>Color</span>
+            <ColorChip
+              value={typeStyle?.outlineColor ?? terrainBlobOutlineColor}
+              onChange={v => setTerrainTypeBlobStyle(terrain, { outlineColor: v })}
+              groups={PALETTE_TERRAIN_GROUPS}
+              usedAs={usedAs}
+              label="Outline color"
+            />
+          </div>
           <MiniSlider
             label="Width"
             display={`${typeStyle?.outlineWidth ?? terrainBlobOutlineWidth}px`}
@@ -893,7 +905,7 @@ function TerrainCogFlyout({ terrain, onClose }: { terrain: string; onClose: () =
 
 // ── Flyout content: elevation class settings ────────────────────────────────
 
-function ElevationCogFlyout({ cls, defaultColor, onClose }: { cls: 'hills' | 'mountains'; defaultColor: string; onClose: () => void }) {
+function ElevationCogFlyout({ cls, defaultColor, onClose, usedAs }: { cls: 'hills' | 'mountains'; defaultColor: string; onClose: () => void; usedAs: Record<string, string> }) {
   const tk = useTheme()
   const [texturePickerOpen, setTexturePickerOpen] = useState(false)
   const texturePickerAnchorRef = useRef<HTMLDivElement>(null)
@@ -909,6 +921,12 @@ function ElevationCogFlyout({ cls, defaultColor, onClose }: { cls: 'hills' | 'mo
     terrainBlobClusterSize,
     terrainBlobOutlineEnabled, terrainBlobOutlineColor, terrainBlobOutlineWidth,
     elevationTypeBlobStyles, setElevationTypeBlobStyle,
+    elevationHachureEnabled, setElevationHachureEnabled,
+    elevationShadowEnabled, setElevationShadowEnabled,
+    elevationShadowBl, setElevationShadowBl,
+    elevationShadowOp, setElevationShadowOp,
+    elevationShadowPs, setElevationShadowPs,
+    elevationShadowColor, setElevationShadowColor,
   } = useMapStore()
 
   const color = terrainColors[cls] ?? defaultColor
@@ -971,8 +989,10 @@ function ElevationCogFlyout({ cls, defaultColor, onClose }: { cls: 'hills' | 'mo
       subtitle={overrideEnabled ? 'Custom blob shape active' : 'Using default blob shape'}
       onClose={onClose}
     >
-      {sectionLabel('Color')}
-      <BigColorSwatch value={color} onChange={v => setTerrainColor(cls, v)} groups={PALETTE_TERRAIN_GROUPS} />
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '8px 14px 4px' }}>
+        {sectionLabel('Color')}
+        <ColorChip value={color} onChange={v => setTerrainColor(cls, v)} groups={PALETTE_TERRAIN_GROUPS} usedAs={usedAs} label="Terrain color" />
+      </div>
 
       <div style={{ borderTop: `1px solid ${tk.line2}`, paddingTop: 4 }}>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '6px 12px 6px' }}>
@@ -1054,11 +1074,16 @@ function ElevationCogFlyout({ cls, defaultColor, onClose }: { cls: 'hills' | 'mo
           />
         </div>
         {(typeStyle?.outlineEnabled ?? terrainBlobOutlineEnabled) && <>
-          <BigColorSwatch
-            value={typeStyle?.outlineColor ?? terrainBlobOutlineColor}
-            onChange={v => setElevationTypeBlobStyle(cls, { outlineColor: v })}
-            groups={PALETTE_TERRAIN_GROUPS}
-          />
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '3px 14px' }}>
+            <span style={{ fontFamily: tk.mono, fontSize: 10, color: tk.inkFaint }}>Color</span>
+            <ColorChip
+              value={typeStyle?.outlineColor ?? terrainBlobOutlineColor}
+              onChange={v => setElevationTypeBlobStyle(cls, { outlineColor: v })}
+              groups={PALETTE_TERRAIN_GROUPS}
+              usedAs={usedAs}
+              label="Outline color"
+            />
+          </div>
           <MiniSlider
             label="Width"
             display={`${typeStyle?.outlineWidth ?? terrainBlobOutlineWidth}px`}
@@ -1068,6 +1093,119 @@ function ElevationCogFlyout({ cls, defaultColor, onClose }: { cls: 'hills' | 'mo
           />
         </>}
       </div>
+      <div style={{ borderTop: `1px solid ${tk.line2}` }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '6px 12px' }}>
+          <span style={{ fontFamily: tk.mono, fontSize: 8.5, letterSpacing: 0.8, color: tk.inkFaint, textTransform: 'uppercase', fontWeight: 600 }}>Hachure</span>
+          <ToggleSwitch
+            enabled={elevationHachureEnabled[cls] ?? false}
+            onChange={v => setElevationHachureEnabled(cls, v)}
+          />
+        </div>
+      </div>
+      <div style={{ borderTop: `1px solid ${tk.line2}` }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '6px 12px' }}>
+          <span style={{ fontFamily: tk.mono, fontSize: 8.5, letterSpacing: 0.8, color: tk.inkFaint, textTransform: 'uppercase', fontWeight: 600 }}>Shadow</span>
+          <ToggleSwitch
+            enabled={elevationShadowEnabled[cls] ?? false}
+            onChange={v => setElevationShadowEnabled(cls, v)}
+          />
+        </div>
+        {(elevationShadowEnabled[cls] ?? false) && <>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '3px 14px' }}>
+            <span style={{ fontFamily: tk.mono, fontSize: 10, color: tk.inkFaint }}>Color</span>
+            <ColorChip value={elevationShadowColor} onChange={setElevationShadowColor} groups={PALETTE_TERRAIN_GROUPS} usedAs={usedAs} label="Shadow color" />
+          </div>
+          <MiniSlider label="Blur" display={`${elevationShadowBl}`} value={elevationShadowBl} min={4} max={50} step={1} onChange={setElevationShadowBl} />
+          <MiniSlider label="Opacity" display={`${elevationShadowOp}%`} value={elevationShadowOp} min={5} max={80} step={1} onChange={setElevationShadowOp} />
+          <MiniSlider label="Passes" display={`${elevationShadowPs}`} value={elevationShadowPs} min={1} max={5} step={1} onChange={setElevationShadowPs} />
+        </>}
+      </div>
+    </FlyoutShell>
+  )
+}
+
+// ── Slope cog flyout ────────────────────────────────────────────────────────
+
+function SlopeCogFlyout({ onClose, usedAs }: { onClose: () => void; usedAs: Record<string, string> }) {
+  const tk = useTheme()
+  const {
+    slopeStyle, setSlopeStyle,
+    slopeSmoothing, setSlopeSmoothing,
+    slopeTickSpacing, setSlopeTickSpacing,
+    slopeTickLength, setSlopeTickLength,
+    elevationShadowBl, setElevationShadowBl,
+    elevationShadowOp, setElevationShadowOp,
+    elevationShadowPs, setElevationShadowPs,
+    elevationShadowColor, setElevationShadowColor,
+  } = useMapStore()
+
+  const spacingSlider = useDeferredSlider(
+    Math.round(slopeTickSpacing * 100),
+    v => setSlopeTickSpacing(v / 100),
+  )
+  const lengthSlider = useDeferredSlider(
+    Math.round(slopeTickLength * 100),
+    v => setSlopeTickLength(v / 100),
+  )
+
+  const sectionLabel = (label: string) => (
+    <div style={{ padding: '6px 12px 2px', fontFamily: tk.mono, fontSize: 8.5, letterSpacing: 0.8, color: tk.inkFaint, textTransform: 'uppercase' as const, fontWeight: 600 }}>
+      {label}
+    </div>
+  )
+
+  return (
+    <FlyoutShell title="Slope" onClose={onClose}>
+      {sectionLabel('Style')}
+      <div style={{ padding: '4px 12px 10px' }}>
+        <SegmentedControl
+          options={[
+            { value: 'hachure', label: 'Hachure' },
+            { value: 'shading', label: 'Shading' },
+            { value: 'contour', label: 'Contour' },
+          ]}
+          value={slopeStyle}
+          onChange={setSlopeStyle}
+        />
+      </div>
+      {slopeStyle === 'hachure' && <>
+        <div style={{ borderTop: `1px solid ${tk.line2}` }}>
+          {sectionLabel('Hachure')}
+          <MiniSlider
+            label="Spacing"
+            display={`${spacingSlider.value}%`}
+            value={spacingSlider.value}
+            min={10} max={50} step={1}
+            onChange={spacingSlider.onChange}
+            onDragEnd={spacingSlider.onDragEnd}
+          />
+          <MiniSlider
+            label="Length"
+            display={`${lengthSlider.value}%`}
+            value={lengthSlider.value}
+            min={10} max={50} step={1}
+            onChange={lengthSlider.onChange}
+            onDragEnd={lengthSlider.onDragEnd}
+          />
+        </div>
+        <div style={{ borderTop: `1px solid ${tk.line2}` }}>
+          {sectionLabel('Chain smoothing')}
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '4px 12px 10px' }}>
+            <span style={{ fontFamily: tk.sans, fontSize: 11, color: tk.ink2 }}>Smooth connected edges</span>
+            <ToggleSwitch enabled={slopeSmoothing} onChange={setSlopeSmoothing} />
+          </div>
+        </div>
+      </>}
+      {slopeStyle === 'shading' && <div style={{ borderTop: `1px solid ${tk.line2}` }}>
+        {sectionLabel('Shadow')}
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '3px 14px' }}>
+          <span style={{ fontFamily: tk.mono, fontSize: 10, color: tk.inkFaint }}>Color</span>
+          <ColorChip value={elevationShadowColor} onChange={setElevationShadowColor} groups={PALETTE_TERRAIN_GROUPS} usedAs={usedAs} label="Shadow color" />
+        </div>
+        <MiniSlider label="Blur" display={`${elevationShadowBl}`} value={elevationShadowBl} min={4} max={50} step={1} onChange={setElevationShadowBl} />
+        <MiniSlider label="Opacity" display={`${elevationShadowOp}%`} value={elevationShadowOp} min={5} max={80} step={1} onChange={setElevationShadowOp} />
+        <MiniSlider label="Passes" display={`${elevationShadowPs}`} value={elevationShadowPs} min={1} max={5} step={1} onChange={setElevationShadowPs} />
+      </div>}
     </FlyoutShell>
   )
 }
@@ -1094,6 +1232,7 @@ export function TerrainSidebarV3() {
     elevationStatus,
     hillshadeEnabled,
     contoursEnabled,
+    slopeStyle,
   } = useMapStore()
 
   const [flyout, setFlyout] = useState<FlyoutId>(null)
@@ -1101,6 +1240,16 @@ export function TerrainSidebarV3() {
   const [cogElevBrush, setCogElevBrush] = useState<'hills' | 'mountains' | null>(null)
   const [addTerrainOpen, setAddTerrainOpen] = useState(false)
   const [addTerrainAnchorY, setAddTerrainAnchorY] = useState(0)
+
+  const usedAs: Record<string, string> = {}
+  const allTerrainEntries = [
+    ...Object.entries(TERRAIN_COLORS).map(([k]) => ({ id: k, label: terrainLabel(k) })),
+    ...customTerrains.map(ct => ({ id: ct.id, label: ct.name })),
+  ]
+  for (const { id, label } of allTerrainEntries) {
+    const color = (terrainColors[id] ?? TERRAIN_COLORS[id] ?? '').toLowerCase()
+    if (color) usedAs[color] = label
+  }
 
   const toggleFlyout = (id: NonNullable<FlyoutId>) =>
     setFlyout(prev => prev === id ? null : id)
@@ -1147,6 +1296,7 @@ export function TerrainSidebarV3() {
 
   return (
     <div style={{ position: 'relative', height: '100%', display: 'flex' }}>
+    <ColorPickerHost>
 
       {addTerrainOpen && (
         <AddTerrainFlyout
@@ -1231,10 +1381,11 @@ export function TerrainSidebarV3() {
           color="#8a6a40"
           active={activeTool.type === 'slope'}
           shortcut="S"
-          showCog={false}
-          cogOpen={false}
-          customShape={false}
+          showCog
+          cogOpen={flyout === 'e-slope'}
+          customShape={slopeStyle !== 'hachure'}
           onSelect={() => activeTool.type === 'slope' ? setActiveTool({ type: 'none' }) : setActiveTool({ type: 'slope' })}
+          onCog={() => toggleFlyout('e-slope')}
         />
         <TGap />
         <TriggerRow label="Import / classify" active={flyout === 'e-import'} onClick={() => toggleFlyout('e-import')} icon={IMPORT_ICON} />
@@ -1257,23 +1408,26 @@ export function TerrainSidebarV3() {
         <div style={{ height: 8 }} />
       </StripShell>
 
-      {flyout === 't-shape'      && <ShapeSettingsFlyout      onClose={() => setFlyout(null)} />}
+      {flyout === 't-shape'      && <ShapeSettingsFlyout      onClose={() => setFlyout(null)} usedAs={usedAs} />}
       {flyout === 't-import'     && <WorldCoverClassificationPanel onClose={() => setFlyout(null)} />}
       {flyout === 't-opts'       && <PaintingOptionsFlyout onClose={() => setFlyout(null)} />}
       {flyout === 'e-import'     && <ElevationFlyout      onClose={() => setFlyout(null)} />}
       {flyout === 'e-hillshade'  && <HilshadeFlyout       onClose={() => setFlyout(null)} />}
       {flyout === 'e-contours'   && <ContoursFlyout       onClose={() => setFlyout(null)} />}
       {flyout === 't-terrain' && cogTerrain && (
-        <TerrainCogFlyout key={cogTerrain} terrain={cogTerrain} onClose={() => setFlyout(null)} />
+        <TerrainCogFlyout key={cogTerrain} terrain={cogTerrain} onClose={() => setFlyout(null)} usedAs={usedAs} />
       )}
       {flyout === 'e-terrain' && cogElevBrush && (
         <ElevationCogFlyout
           cls={cogElevBrush}
           defaultColor={ELEV_BRUSHES.find(b => b.brush === cogElevBrush)?.color ?? '#888'}
           onClose={() => setFlyout(null)}
+          usedAs={usedAs}
         />
       )}
+      {flyout === 'e-slope' && <SlopeCogFlyout onClose={() => setFlyout(null)} usedAs={usedAs} />}
 
+    </ColorPickerHost>
     </div>
   )
 }

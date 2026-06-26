@@ -127,6 +127,7 @@ export type PaperSize = 'A4' | 'A3' | 'A2' | 'A1' | 'A0'
 export type Orientation = 'portrait' | 'landscape'
 export type HexOrientation = 'flat' | 'pointy'
 export type HexEdgeMode = 'whole' | 'half'
+export type SlopeStyle = 'hachure' | 'shading' | 'contour'
 
 export type ActiveTool =
   | { type: 'none' }
@@ -921,6 +922,18 @@ export const useMapStore = create<MapStore>()(persist((set, get) => ({
     edgeBlobWidth: s.edgeBlobWidth,
     edgeBlobOverrides: s.edgeBlobOverrides,
     slopeEdges: s.slopeEdges,
+    slopeStyle: s.slopeStyle,
+    slopeSmoothing: s.slopeSmoothing,
+    slopeTickSpacing: s.slopeTickSpacing,
+    slopeTickLength: s.slopeTickLength,
+    elevationHachureEnabled: s.elevationHachureEnabled,
+    elevationShadowEnabled: s.elevationShadowEnabled,
+    elevationShadowOx: s.elevationShadowOx,
+    elevationShadowOy: s.elevationShadowOy,
+    elevationShadowBl: s.elevationShadowBl,
+    elevationShadowOp: s.elevationShadowOp,
+    elevationShadowPs: s.elevationShadowPs,
+    elevationShadowColor: s.elevationShadowColor,
     terrainBlobOverrides: s.terrainBlobOverrides,
     terrainTypeBlobStyles: s.terrainTypeBlobStyles,
     terrainBlobSmooth: s.terrainBlobSmooth,
@@ -1012,7 +1025,7 @@ export const useMapStore = create<MapStore>()(persist((set, get) => ({
     labelPresetId: s.labelPresetId,
     labelOverrides: s.labelOverrides,
   }),
-  version: 88,
+  version: 96,
   migrate: migratePersisted,
   merge: (persisted, current) => rehydrateState({ ...current, ...(persisted as Partial<MapStore>) }),
 }))

@@ -16,6 +16,7 @@ export interface DrawBridgesParams {
   tierStyles: [RoadTierStyle, RoadTierStyle, RoadTierStyle]
   railStyle: RailStyle
   lineScale: number
+  lengthScale: number
   project: (lon: number, lat: number) => [number, number]
 }
 
@@ -34,7 +35,7 @@ function roadTierIndex(crossingType: BridgePoint['crossingType']): 0 | 1 | 2 {
 }
 
 export function drawBridges(params: DrawBridgesParams): void {
-  const { ctx, bridges, tiers, overrides, style, tierStyles, railStyle, lineScale, project } = params
+  const { ctx, bridges, tiers, overrides, style, tierStyles, railStyle, lineScale, lengthScale, project } = params
   if (bridges.length === 0) return
 
   for (const bridge of bridges) {
@@ -60,13 +61,13 @@ export function drawBridges(params: DrawBridgesParams): void {
     const rdx = Math.cos(angle), rdy = Math.sin(angle)
     let crossingDist: number
     if (wlen < 0.01) {
-      crossingDist = bridge.riverHW * 2 * 1.2
+      crossingDist = bridge.riverHW * 2 * lengthScale
     } else {
       const dwx = (wbx - wax) / wlen, dwy = (wby - way) / wlen
       const sinCross = Math.abs(rdx * dwy - rdy * dwx)
       crossingDist = sinCross > 0.05
-        ? Math.min(bridge.riverHW * 2 * 1.2 / sinCross, roadW * 8)
-        : bridge.riverHW * 2 * 1.2 * 20
+        ? Math.min(bridge.riverHW * 2 * lengthScale / sinCross, roadW * 8)
+        : bridge.riverHW * 2 * lengthScale * 20
     }
     crossingDist = Math.max(crossingDist, roadW * 1.5)
 

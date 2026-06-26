@@ -569,7 +569,7 @@ export function drawTerrain(tCtx: Ctx, params: DrawTerrainParams): void {
     const hexTerrainSetByTerrain = new Map<string, Set<string>>()
     for (const { hex } of params.projected) {
       for (const t of params.hexTerrainLayers(hex)) {
-        if (t === 'clear' || t === 'water') continue
+        if (t === 'clear') continue
         if (!hexTerrainSetByTerrain.has(t)) hexTerrainSetByTerrain.set(t, new Set())
         hexTerrainSetByTerrain.get(t)!.add(`${hex.q},${hex.r}`)
       }
@@ -582,10 +582,9 @@ export function drawTerrain(tCtx: Ctx, params: DrawTerrainParams): void {
 
     const BLOB_Z: Record<string, number> = { rough: 1, marsh: 2, light_woods: 4, woods: 5, sea: 10 }
 
-    // Build defaultBlobMap excluding lakes
     const defaultBlobMap = new Map<string, [number, number][][]>()
     for (const { terrain, polys } of terrainBlobs) {
-      if (terrain !== 'water') defaultBlobMap.set(terrain, polys)
+      defaultBlobMap.set(terrain, polys)
     }
 
     // Group overrides by their target terrain

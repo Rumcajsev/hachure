@@ -10,7 +10,7 @@ import {
 } from '../../palettes'
 import { useTheme } from '../../context/ThemeContext'
 import {
-  BrushRow, MiniSlider, BigColorSwatch, SegmentedControl, ToggleRow, tintBg,
+  BrushRow, MiniSlider, ColorChip, ColorPickerHost, SegmentedControl, ToggleRow, tintBg,
   StripShell, FlyoutShell, V2Divider, TriggerRow, TGap,
   useDeferredSlider,
 } from './sidebar'
@@ -143,14 +143,20 @@ export function RiverTierFlyout({ tier, onClose }: { tier: RiverTier; onClose: (
   return (
     <FlyoutShell title={s.label} subtitle={isModified ? 'modified' : undefined} onClose={onClose}>
       {/* Always-on: colour + width */}
-      <BigColorSwatch value={s.color} onChange={c => setS({ color: c })} groups={RIVER_FILL_GROUPS} />
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '3px 14px' }}>
+        <span style={{ fontFamily: t.mono, fontSize: 10, color: t.inkFaint }}>Color</span>
+        <ColorChip value={s.color} onChange={c => setS({ color: c })} groups={RIVER_FILL_GROUPS} label="Fill color" />
+      </div>
       <MiniSlider label="Width" display={`${s.widthScale.toFixed(2)}×`} value={Math.round(s.widthScale * 100)} min={10} max={300} step={5} accentColor={accentColor} onChange={v => setS({ widthScale: v / 100 })} />
 
       {/* Outline */}
       <SectionToggle label="Outline" enabled={fx.outlineEnabled} onChange={v => setFx({ outlineEnabled: v })} accentColor={accentColor} />
       {fx.outlineEnabled && (
         <>
-          <BigColorSwatch value={fx.outlineColor} onChange={c => setFx({ outlineColor: c })} groups={RIVER_STROKE_GROUPS} />
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '3px 14px' }}>
+            <span style={{ fontFamily: t.mono, fontSize: 10, color: t.inkFaint }}>Color</span>
+            <ColorChip value={fx.outlineColor} onChange={c => setFx({ outlineColor: c })} groups={RIVER_STROKE_GROUPS} label="Outline color" />
+          </div>
           <MiniSlider label="Width" display={`${fx.outlineWidth.toFixed(1)}px`} value={fx.outlineWidth * 10} min={1} max={60} step={1} accentColor={accentColor} onChange={v => setFx({ outlineWidth: v / 10 })} />
         </>
       )}
@@ -500,6 +506,7 @@ export function RiversSidebarV3() {
 
   return (
     <div style={{ position: 'relative', height: '100%', display: 'flex' }}>
+    <ColorPickerHost>
       <StripShell>
 
         <V2Divider label="Paint" />
@@ -567,6 +574,7 @@ export function RiversSidebarV3() {
         />
       )}
 
+    </ColorPickerHost>
     </div>
   )
 }

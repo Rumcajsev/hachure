@@ -1,6 +1,6 @@
 import type {
   MapStore, GeneratedHex, GridMetadata, GenerateProgress, BlobOverride,
-  ActiveTool, CustomTerrain, TerrainRules, ClassRule, StrokeEffect, BlobMaskEdit,
+  ActiveTool, CustomTerrain, TerrainRules, ClassRule, StrokeEffect, BlobMaskEdit, SlopeStyle,
 } from '../mapStore'
 import {
   DEFAULT_TERRAIN_RULES,
@@ -72,10 +72,34 @@ export type TerrainSlice = {
   edgeBlobOverrides: Record<string, BlobOverride>
   // Slope edges: edgeKey → 'q,r' of the uphill hex
   slopeEdges: Record<string, string>
+  slopeStyle: SlopeStyle
+  slopeSmoothing: boolean
+  slopeTickSpacing: number
+  slopeTickLength: number
+  elevationHachureEnabled: Record<string, boolean>
+  elevationShadowEnabled: Record<string, boolean>
+  elevationShadowOx: number
+  elevationShadowOy: number
+  elevationShadowBl: number
+  elevationShadowOp: number
+  elevationShadowPs: number
+  elevationShadowColor: string
   setSlopeEdge: (edgeKey: string, highHexKey: string) => void
   removeSlopeEdge: (edgeKey: string) => void
   batchSetSlopeEdges: (edges: Record<string, string>) => void
   batchRemoveSlopeEdges: (edgeKeys: string[]) => void
+  setSlopeStyle: (style: SlopeStyle) => void
+  setSlopeSmoothing: (v: boolean) => void
+  setSlopeTickSpacing: (v: number) => void
+  setSlopeTickLength: (v: number) => void
+  setElevationHachureEnabled: (cls: string, v: boolean) => void
+  setElevationShadowEnabled: (cls: string, v: boolean) => void
+  setElevationShadowOx: (v: number) => void
+  setElevationShadowOy: (v: number) => void
+  setElevationShadowBl: (v: number) => void
+  setElevationShadowOp: (v: number) => void
+  setElevationShadowPs: (v: number) => void
+  setElevationShadowColor: (v: string) => void
   // Custom terrain types
   customTerrains: CustomTerrain[]
   addCustomTerrain: (terrain: CustomTerrain) => void
@@ -250,6 +274,18 @@ export const createTerrainSlice = (set: Set, get: () => MapStore): TerrainSlice 
   edgeBlobWidth: 0.25,
   edgeBlobOverrides: {},
   slopeEdges: {},
+  slopeStyle: 'hachure' as SlopeStyle,
+  slopeSmoothing: false,
+  slopeTickSpacing: 0.18,
+  slopeTickLength: 0.22,
+  elevationHachureEnabled: {},
+  elevationShadowEnabled: {},
+  elevationShadowOx: 14,
+  elevationShadowOy: 16,
+  elevationShadowBl: 22,
+  elevationShadowOp: 30,
+  elevationShadowPs: 3,
+  elevationShadowColor: '#8a6840',
 
   customTerrains: [],
   addCustomTerrain: (terrain) => set(s => ({ customTerrains: [...s.customTerrains, terrain] })),
@@ -328,6 +364,18 @@ export const createTerrainSlice = (set: Set, get: () => MapStore): TerrainSlice 
     edgeBlobPainted: {},
     edgeBlobOverrides: {},
     slopeEdges: {},
+    slopeStyle: 'hachure' as SlopeStyle,
+    slopeSmoothing: false,
+    slopeTickSpacing: 0.18,
+    slopeTickLength: 0.22,
+    elevationHachureEnabled: {},
+    elevationShadowEnabled: {},
+    elevationShadowOx: 14,
+    elevationShadowOy: 16,
+    elevationShadowBl: 22,
+    elevationShadowOp: 30,
+    elevationShadowPs: 3,
+    elevationShadowColor: '#8a6840',
     terrainBlobOverrides: {},
     waterOverrides: {},
     blobHandleOverrides: {},
@@ -1064,6 +1112,22 @@ export const createTerrainSlice = (set: Set, get: () => MapStore): TerrainSlice 
     for (const k of edgeKeys) delete next[k]
     return { slopeEdges: next }
   }),
+  setSlopeStyle: (style) => set({ slopeStyle: style }),
+  setSlopeSmoothing: (v) => set({ slopeSmoothing: v }),
+  setSlopeTickSpacing: (v) => set({ slopeTickSpacing: v }),
+  setSlopeTickLength: (v) => set({ slopeTickLength: v }),
+  setElevationHachureEnabled: (cls, v) => set(s => ({
+    elevationHachureEnabled: { ...s.elevationHachureEnabled, [cls]: v },
+  })),
+  setElevationShadowEnabled: (cls, v) => set(s => ({
+    elevationShadowEnabled: { ...s.elevationShadowEnabled, [cls]: v },
+  })),
+  setElevationShadowOx: (v) => set({ elevationShadowOx: v }),
+  setElevationShadowOy: (v) => set({ elevationShadowOy: v }),
+  setElevationShadowBl: (v) => set({ elevationShadowBl: v }),
+  setElevationShadowOp: (v) => set({ elevationShadowOp: v }),
+  setElevationShadowPs: (v) => set({ elevationShadowPs: v }),
+  setElevationShadowColor: (v) => set({ elevationShadowColor: v }),
   setEdgeBlobWidth: (v) => set({ edgeBlobWidth: v }),
   setEdgeBlobOverride: (key, override) => set((s) => {
     if (override === null) {

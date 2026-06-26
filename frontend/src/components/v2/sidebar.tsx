@@ -1,4 +1,4 @@
-import { useRef, useState, useEffect } from 'react'
+import { useRef, useState, useEffect, createContext, useContext, useCallback, type ReactNode } from 'react'
 import { useTheme } from '../../context/ThemeContext'
 
 // ── Strip / flyout layout constants ──────────────────────────────────────────
@@ -837,9 +837,263 @@ export function MiniSlider({
   )
 }
 
-// ── BigColorSwatch ────────────────────────────────────────────────────────────
+// ── Color picker context + overlay ────────────────────────────────────────────
 
 type ColorGroup = { label: string; colors: readonly string[] }
+
+interface ColorPickerConfig {
+  value: string
+  onChange: (color: string) => void
+  groups: readonly ColorGroup[]
+  usedAs?: Record<string, string>
+  label?: string
+}
+
+interface ColorPickerCtx {
+  open: (cfg: ColorPickerConfig) => void
+  close: () => void
+}
+
+const ColorPickerContext = createContext<ColorPickerCtx | null>(null)
+
+export function ColorPickerHost({ children }: { children: ReactNode }) {
+  const [cfg, setCfg] = useState<ColorPickerConfig | null>(null)
+  const open = useCallback((c: ColorPickerConfig) => setCfg(c), [])
+  const close = useCallback(() => setCfg(null), [])
+  return (
+    <ColorPickerContext.Provider value={{ open, close }}>
+      {children}
+      {cfg && <ColorPickerOverlay cfg={cfg} onClose={close} />}
+    </ColorPickerContext.Provider>
+  )
+}
+
+function ColorPickerOverlay({ cfg, onClose }: { cfg: ColorPickerConfig; onClose: () => void }) {
+  const t = useTheme()
+  const inputRef = useRef<HTMLInputElement>(null)
+  const norm = (c: string) => c.toLowerCase()
+
+  const [localValue, setLocalValue] = useState(cfg.value)
+  const onChangeRef = useRef(cfg.onChange)
+  useEffect(() => { onChangeRef.current = cfg.onChange })
+
+  const pick = (color: string) => {
+    setLocalValue(color)
+    onChangeRef.current(color)
+    onClose()
+  }
+
+  return (
+    <div style={{
+      position: 'absolute',
+      top: 0, left: STRIP_W,
+      width: FLYOUT_W,
+      height: '100%',
+      zIndex: 100,
+      background: t.surface,
+      borderTop: `1px solid ${t.line}`,
+      borderRight: `1px solid ${t.line}`,
+      borderBottom: `1px solid ${t.line}`,
+      borderLeft: `3px solid ${t.ink}`,
+      boxShadow: t.shadowFlyout,
+      display: 'flex',
+      flexDirection: 'column',
+      overflow: 'hidden',
+    }}>
+      {/* Header */}
+      <div style={{
+        padding: '9px 12px 7px',
+        borderBottom: `1px solid ${t.line2}`,
+        display: 'flex', alignItems: 'center', gap: 8,
+        flexShrink: 0,
+      }}>
+        <button
+          onClick={onClose}
+          style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 2, color: t.inkFaint, display: 'flex', alignItems: 'center' }}
+        >
+          <svg width="8" height="8" viewBox="0 0 8 8" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round">
+            <path d="M6 2L2 6M2 2l4 4" />
+          </svg>
+        </button>
+        <div style={{ fontFamily: t.mono, fontSize: 9.5, fontWeight: 600, letterSpacing: 0.5, color: t.ink, flex: 1 }}>
+          {cfg.label ?? 'Color'}
+        </div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 5, padding: '2px 6px 2px 3px', border: `1px solid ${t.line}`, borderRadius: 3 }}>
+          <div style={{ width: 12, height: 12, borderRadius: 2, background: localValue, border: `1px solid ${t.line2}`, flexShrink: 0 }} />
+          <span style={{ fontFamily: t.mono, fontSize: 9, color: t.inkFaint }}>{localValue}</span>
+        </div>
+      </div>
+
+      {/* Palette groups */}
+      <div style={{ flex: 1, overflowY: 'auto', padding: '6px 0 4px' }}>
+        {cfg.groups.map(group => (
+          <div key={group.label} style={{ padding: '0 14px', marginBottom: 8 }}>
+            <div style={{ fontFamily: t.mono, fontSize: 8.5, letterSpacing: 0.8, color: t.inkFaint, textTransform: 'uppercase', fontWeight: 600, marginBottom: 4 }}>
+              {group.label}
+            </div>
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>
+              {group.colors.map(color => {
+                const active = norm(color) === norm(localValue)
+                const terrainName = cfg.usedAs?.[norm(color)]
+                return (
+                  <PickerSwatch
+                    key={color}
+                    color={color}
+                    active={active}
+                    terrainName={terrainName}
+                    onClick={() => pick(color)}
+                  />
+                )
+              })}
+            </div>
+          </div>
+        ))}
+      </div>
+
+      {/* Custom color */}
+      <div style={{
+        padding: '8px 14px',
+        borderTop: `1px solid ${t.line2}`,
+        display: 'flex', alignItems: 'center', gap: 8,
+        flexShrink: 0,
+      }}>
+        <button
+          onClick={() => {
+            if (inputRef.current) inputRef.current.value = localValue
+            inputRef.current?.click()
+          }}
+          style={{
+            width: 26, height: 26,
+            background: 'transparent',
+            border: `1px dashed ${t.line}`,
+            borderRadius: 3,
+            cursor: 'pointer', padding: 0, flexShrink: 0,
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+          }}
+        >
+          <svg width="10" height="10" viewBox="0 0 10 10" fill="none" stroke={t.inkFaint} strokeWidth="1.4" strokeLinecap="round">
+            <path d="M5 1v8M1 5h8" />
+          </svg>
+        </button>
+        <span style={{ fontFamily: t.mono, fontSize: 10, color: t.inkFaint }}>Custom color…</span>
+        <input
+          ref={inputRef}
+          type="color"
+          onChange={e => {
+            setLocalValue(e.target.value)
+            onChangeRef.current(e.target.value)
+          }}
+          onBlur={() => onClose()}
+          style={{ position: 'fixed', opacity: 0, width: 0, height: 0, pointerEvents: 'none' }}
+        />
+      </div>
+
+      {/* Legend */}
+      <div style={{
+        padding: '5px 14px 6px',
+        borderTop: `1px solid ${t.line2}`,
+        display: 'flex', alignItems: 'center', gap: 6,
+        flexShrink: 0,
+      }}>
+        <div style={{ width: 7, height: 7, borderRadius: '50%', background: t.paper, border: `1px solid ${t.line}`, flexShrink: 0 }} />
+        <span style={{ fontFamily: t.mono, fontSize: 8.5, color: t.inkFaint }}>dot = assigned to a terrain type</span>
+      </div>
+    </div>
+  )
+}
+
+function PickerSwatch({ color, active, terrainName, onClick }: {
+  color: string; active: boolean; terrainName?: string; onClick: () => void
+}) {
+  const t = useTheme()
+  const [hovered, setHovered] = useState(false)
+  return (
+    <div style={{ position: 'relative', flexShrink: 0 }}>
+      <button
+        onClick={onClick}
+        title={terrainName ?? color}
+        onMouseEnter={() => setHovered(true)}
+        onMouseLeave={() => setHovered(false)}
+        style={{
+          width: 26, height: 26,
+          background: color,
+          border: active ? `2px solid ${t.paper}` : `1px solid rgba(0,0,0,0.14)`,
+          borderRadius: 3,
+          cursor: 'pointer', padding: 0, flexShrink: 0,
+          boxSizing: 'border-box',
+          boxShadow: active ? `0 0 0 1.5px ${t.ink}` : 'none',
+          outline: 'none',
+          display: 'block',
+        }}
+      />
+      {terrainName && (
+        <div style={{
+          position: 'absolute', top: 2, right: 2,
+          width: 6, height: 6, borderRadius: '50%',
+          background: t.paper, border: `1px solid rgba(0,0,0,0.25)`,
+          pointerEvents: 'none',
+        }} />
+      )}
+      {hovered && terrainName && (
+        <div style={{
+          position: 'absolute',
+          bottom: 'calc(100% + 4px)',
+          left: '50%',
+          transform: 'translateX(-50%)',
+          background: t.ink,
+          color: t.paper,
+          fontFamily: t.mono, fontSize: 9,
+          padding: '3px 6px',
+          borderRadius: 3,
+          whiteSpace: 'nowrap',
+          pointerEvents: 'none',
+          zIndex: 200,
+        }}>
+          {terrainName}
+        </div>
+      )}
+    </div>
+  )
+}
+
+// ── ColorChip (trigger for ColorPickerOverlay) ─────────────────────────────────
+
+export function ColorChip({
+  value, onChange, groups, usedAs, label,
+}: {
+  value: string
+  onChange: (color: string) => void
+  groups: readonly ColorGroup[]
+  usedAs?: Record<string, string>
+  label?: string
+}) {
+  const t = useTheme()
+  const ctx = useContext(ColorPickerContext)
+  if (!ctx) return null
+  return (
+    <button
+      onClick={() => ctx.open({ value, onChange, groups, usedAs, label })}
+      style={{
+        display: 'inline-flex', alignItems: 'center', gap: 5,
+        padding: '2px 6px 2px 3px',
+        background: 'none',
+        border: `1px solid ${t.line}`,
+        borderRadius: 3,
+        cursor: 'pointer',
+        outline: 'none',
+        fontFamily: t.mono,
+      }}
+    >
+      <div style={{ width: 14, height: 14, borderRadius: 2, background: value, border: `1px solid ${t.line2}`, flexShrink: 0 }} />
+      <span style={{ fontSize: 9.5, color: t.inkFaint }}>{value}</span>
+      <svg width="6" height="4" viewBox="0 0 6 4" fill="none" style={{ flexShrink: 0, marginLeft: 1 }}>
+        <path d="M1 1l2 2 2-2" stroke={t.inkFaint} strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round" />
+      </svg>
+    </button>
+  )
+}
+
+// ── BigColorSwatch ────────────────────────────────────────────────────────────
 
 function SwatchBtn({ color, active, onClick }: { color: string; active: boolean; onClick: () => void }) {
   const t = useTheme()
