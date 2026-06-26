@@ -254,64 +254,49 @@ function polyArea(pts: [number, number][]): number {
   return Math.abs(a) * 0.5
 }
 
+// Terrain edge blobs are now baked into defaultTerrainBlobs via topology injection in
+// TerrainViewCanvas (strips merge at the raw-polygon stage, before organic shaping).
+// This function only handles 'clear' painted edges, which subtract from terrain blobs.
 function applyEdgeRibbons(
   blobs: { terrain: string; polys: [number, number][][] }[],
   edgeBlobPainted: Record<string, string>,
   hexVertMap: Map<string, [number, number][]>,
-  terrainTypeBlobStyles: Record<string, BlobOverride>,
   edgeBlobOverrides: Record<string, BlobOverride>,
   edgeBlobWidth: number,
   terrainBlobParams: BlobParams,
   R: number,
-  hexTerrainSetByTerrain: Map<string, Set<string>>,
 ): { terrain: string; polys: [number, number][][] }[] {
-  if (Object.keys(edgeBlobPainted).length === 0) return blobs
+  const clearPainted: Record<string, string> = {}
+  for (const [ek, t] of Object.entries(edgeBlobPainted)) {
+    if (t === 'clear') clearPainted[ek] = t
+  }
+  if (Object.keys(clearPainted).length === 0) return blobs
 
-  const chains = findEdgeChains(edgeBlobPainted, hexVertMap)
+  const chains = findEdgeChains(clearPainted, hexVertMap)
   if (chains.length === 0) return blobs
 
-  const ribbonsByTerrain = new Map<string, [number, number][][]>()
   const clearRibbons: [number, number][][] = []
-
   for (const chain of chains) {
-    const { terrain } = chain
-    if (terrain === 'hills' || terrain === 'mountains') continue
-
-    const typeStyle = terrainTypeBlobStyles[terrain]
     const override = edgeBlobOverrides[chain.chainKey]
     const chainParams: EdgeBlobParams = {
-      smooth:        override?.smooth        ?? typeStyle?.smooth        ?? terrainBlobParams.smooth,
-      bump:          override?.bump          ?? typeStyle?.bump          ?? terrainBlobParams.bump,
-      sweepFreq:     override?.sweepFreq     ?? typeStyle?.sweepFreq     ?? terrainBlobParams.sweepFreq,
-      lobeFreq:      override?.lobeFreq      ?? typeStyle?.lobeFreq      ?? terrainBlobParams.lobeFreq,
-      lobeAmp:       override?.lobeAmp       ?? typeStyle?.lobeAmp       ?? terrainBlobParams.lobeAmp,
-      lobeThreshold: override?.lobeThreshold ?? typeStyle?.lobeThreshold ?? terrainBlobParams.lobeThreshold,
-      lobeDirection: override?.lobeDirection ?? typeStyle?.lobeDirection ?? terrainBlobParams.lobeDirection,
-      width:         override?.width         ?? typeStyle?.width         ?? edgeBlobWidth,
+      smooth:        override?.smooth        ?? terrainBlobParams.smooth,
+      bump:          override?.bump          ?? terrainBlobParams.bump,
+      sweepFreq:     override?.sweepFreq     ?? terrainBlobParams.sweepFreq,
+      lobeFreq:      override?.lobeFreq      ?? terrainBlobParams.lobeFreq,
+      lobeAmp:       override?.lobeAmp       ?? terrainBlobParams.lobeAmp,
+      lobeThreshold: override?.lobeThreshold ?? terrainBlobParams.lobeThreshold,
+      lobeDirection: override?.lobeDirection ?? terrainBlobParams.lobeDirection,
+      width:         override?.width         ?? edgeBlobWidth,
     }
-
-    // Pass hexTerrainSet so buildEdgeBlobPolys extends the terrain-facing side to
-    // HEX_CONNECT_EXTEND (1.2R), guaranteeing the ribbon always overlaps the area blob
-    // regardless of inset settings. The extension is invisible after polygon union.
-    const hexTerrainSet = terrain !== 'clear' ? hexTerrainSetByTerrain.get(terrain) : undefined
-    const polys = buildEdgeBlobPolys(chain, hexVertMap, chainParams, R, hexTerrainSet)
-    if (polys.length === 0) continue
-
-    if (terrain === 'clear') {
-      clearRibbons.push(...polys)
-    } else {
-      if (!ribbonsByTerrain.has(terrain)) ribbonsByTerrain.set(terrain, [])
-      ribbonsByTerrain.get(terrain)!.push(...polys)
-    }
+    clearRibbons.push(...buildEdgeBlobPolys(chain, hexVertMap, chainParams, R))
   }
+  if (clearRibbons.length === 0) return blobs
 
-  if (ribbonsByTerrain.size === 0 && clearRibbons.length === 0) return blobs
-
-  const applyClears = (polys: [number, number][][]): [number, number][][] => {
-    if (clearRibbons.length === 0 || polys.length === 0) return polys
-    const clearClip: polygonClipping.MultiPolygon = clearRibbons.map(p => [p as polygonClipping.Ring])
+  const clearClip: polygonClipping.MultiPolygon = clearRibbons.map(p => [p as polygonClipping.Ring])
+  return blobs.map(blob => {
+    if (blob.polys.length === 0) return blob
     const next: [number, number][][] = []
-    for (const poly of polys) {
+    for (const poly of blob.polys) {
       if (poly.length < 3) continue
       try {
         const res = polygonClipping.difference([[poly as polygonClipping.Ring]], clearClip)
@@ -320,38 +305,8 @@ function applyEdgeRibbons(
         }
       } catch { next.push(poly) }
     }
-    return next
-  }
-
-  const result: { terrain: string; polys: [number, number][][] }[] = blobs.map(blob => {
-    let polys = blob.polys
-    const ribbons = ribbonsByTerrain.get(blob.terrain)
-    if (ribbons && ribbons.length > 0) {
-      try {
-        if (polys.length === 0) {
-          polys = ribbons
-        } else {
-          const subject: polygonClipping.MultiPolygon = polys.filter(p => p.length >= 3).map(p => [p as polygonClipping.Ring])
-          const clip: polygonClipping.MultiPolygon = ribbons.filter(p => p.length >= 3).map(p => [p as polygonClipping.Ring])
-          const merged = polygonClipping.union(subject, clip)
-          polys = merged.map(polygon => polygon[0] as [number, number][]).filter(p => p?.length >= 3)
-        }
-      } catch {
-        polys = [...polys, ...ribbons]
-      }
-    }
-    polys = applyClears(polys)
-    return polys === blob.polys ? blob : { ...blob, polys }
+    return next.length === blob.polys.length && next.every((p, i) => p === blob.polys[i]) ? blob : { ...blob, polys: next }
   })
-
-  // Ribbon-only terrains (edge blobs with no matching area hex blob yet)
-  for (const [terrain, ribbons] of ribbonsByTerrain) {
-    if (result.some(b => b.terrain === terrain)) continue
-    const polys = applyClears(ribbons.filter(p => p.length >= 3))
-    if (polys.length > 0) result.push({ terrain, polys })
-  }
-
-  return result
 }
 
 export function drawTerrain(tCtx: Ctx, params: DrawTerrainParams): void {
@@ -564,20 +519,10 @@ export function drawTerrain(tCtx: Ctx, params: DrawTerrainParams): void {
 
   // ── 4. Blob mode ────────────────────────────────────────────────────────────
   {
-    const { edgeBlobPainted, edgeBlobWidth, terrainTypeBlobStyles, edgeBlobOverrides, hexVertMap } = params
-    // Build per-terrain hex sets so ribbons can extend into adjacent area blobs.
-    const hexTerrainSetByTerrain = new Map<string, Set<string>>()
-    for (const { hex } of params.projected) {
-      for (const t of params.hexTerrainLayers(hex)) {
-        if (t === 'clear') continue
-        if (!hexTerrainSetByTerrain.has(t)) hexTerrainSetByTerrain.set(t, new Set())
-        hexTerrainSetByTerrain.get(t)!.add(`${hex.q},${hex.r}`)
-      }
-    }
+    const { edgeBlobPainted, edgeBlobWidth, edgeBlobOverrides, hexVertMap } = params
     const terrainBlobs = applyEdgeRibbons(
       defaultTerrainBlobs, edgeBlobPainted, hexVertMap,
-      terrainTypeBlobStyles, edgeBlobOverrides, edgeBlobWidth,
-      terrainBlobParams, R, hexTerrainSetByTerrain,
+      edgeBlobOverrides, edgeBlobWidth, terrainBlobParams, R,
     )
 
     const BLOB_Z: Record<string, number> = { rough: 1, marsh: 2, light_woods: 4, woods: 5, sea: 10 }
@@ -715,7 +660,6 @@ export function drawTerrain(tCtx: Ctx, params: DrawTerrainParams): void {
   } // end blob mode
 
   // ── 5b. Elevation edge blobs (hills / mountains only) ───────────────────────
-  // Terrain edge blobs are merged into area blobs in applyEdgeRibbons (section 4).
   {
     const { edgeBlobPainted, edgeBlobWidth, terrainTypeBlobStyles, edgeBlobOverrides, hexVertMap } = params
     if (Object.keys(edgeBlobPainted).length > 0) {
