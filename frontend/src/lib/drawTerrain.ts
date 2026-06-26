@@ -7,9 +7,10 @@ import { resolveBlobEffect } from './strokeEffect'
 import { buildTerrainBlobsV2, bleedPolygon } from './terrainBlobs'
 import { clipPolygonToConvex, pointInPolygon } from './geometry'
 import { makePermutation, perlinNoise2D } from './noise'
-import { findEdgeChains, buildEdgeBlobPolys, type EdgeBlobChain, type EdgeBlobParams, parseEdgeBlobKey, sharedEdgeVertices } from './edgeBlobs'
-import { drawSlopes } from './drawSlopes'
+import { findEdgeChains, buildEdgeBlobPolys, type EdgeBlobChain, type EdgeBlobParams } from './edgeBlobs'
+import { drawSlopes, drawBlobHachure, drawPolygonShadow } from './drawSlopes'
 import { drawHistoricalIcons, type HistoricalIconTerrainParams } from './drawHistoricalIcons'
+import polygonClipping from 'polygon-clipping'
 
 type Ctx = CanvasRenderingContext2D | OffscreenCanvasRenderingContext2D
 
@@ -81,6 +82,18 @@ export type DrawTerrainParams = {
   terrainBlobOutlineWidth: number
   terrainBlobEffect: StrokeEffect
   slopeEdges: Record<string, string>
+  slopeStyle: import('../store/mapStore').SlopeStyle
+  slopeSmoothing: boolean
+  slopeTickSpacing: number
+  slopeTickLength: number
+  elevationHachureEnabled: Record<string, boolean>
+  elevationShadowEnabled: Record<string, boolean>
+  elevationShadowOx: number
+  elevationShadowOy: number
+  elevationShadowBl: number
+  elevationShadowOp: number
+  elevationShadowPs: number
+  elevationShadowColor: string
 }
 
 export type { EdgeBlobParams, EdgeBlobChain }
@@ -241,6 +254,60 @@ function polyArea(pts: [number, number][]): number {
   return Math.abs(a) * 0.5
 }
 
+// Terrain edge blobs are integrated into the area blob topology in TVC's useMemo.
+// This function only handles 'clear' edge blobs, which subtract from terrain blobs.
+function applyEdgeRibbons(
+  blobs: { terrain: string; polys: [number, number][][] }[],
+  edgeBlobPainted: Record<string, string>,
+  hexVertMap: Map<string, [number, number][]>,
+  terrainTypeBlobStyles: Record<string, BlobOverride>,
+  edgeBlobOverrides: Record<string, BlobOverride>,
+  edgeBlobWidth: number,
+  terrainBlobParams: BlobParams,
+  R: number,
+): { terrain: string; polys: [number, number][][] }[] {
+  if (Object.keys(edgeBlobPainted).length === 0) return blobs
+  const hasClear = Object.values(edgeBlobPainted).some(t => t === 'clear')
+  if (!hasClear) return blobs
+
+  const chains = findEdgeChains(edgeBlobPainted, hexVertMap)
+  const clearRibbons: [number, number][][] = []
+
+  for (const chain of chains) {
+    if (chain.terrain !== 'clear') continue
+    const typeStyle = terrainTypeBlobStyles['clear']
+    const override = edgeBlobOverrides[chain.chainKey]
+    const chainParams: EdgeBlobParams = {
+      smooth:        override?.smooth        ?? typeStyle?.smooth        ?? terrainBlobParams.smooth,
+      bump:          override?.bump          ?? typeStyle?.bump          ?? terrainBlobParams.bump,
+      sweepFreq:     override?.sweepFreq     ?? typeStyle?.sweepFreq     ?? terrainBlobParams.sweepFreq,
+      lobeFreq:      override?.lobeFreq      ?? typeStyle?.lobeFreq      ?? terrainBlobParams.lobeFreq,
+      lobeAmp:       override?.lobeAmp       ?? typeStyle?.lobeAmp       ?? terrainBlobParams.lobeAmp,
+      lobeThreshold: override?.lobeThreshold ?? typeStyle?.lobeThreshold ?? terrainBlobParams.lobeThreshold,
+      lobeDirection: override?.lobeDirection ?? typeStyle?.lobeDirection ?? terrainBlobParams.lobeDirection,
+      width:         override?.width         ?? typeStyle?.width         ?? edgeBlobWidth,
+    }
+    const polys = buildEdgeBlobPolys(chain, hexVertMap, chainParams, R, undefined)
+    clearRibbons.push(...polys)
+  }
+
+  if (clearRibbons.length === 0) return blobs
+  const clearClip: polygonClipping.MultiPolygon = clearRibbons.map(p => [p as polygonClipping.Ring])
+
+  return blobs.map(blob => {
+    if (blob.polys.length === 0) return blob
+    try {
+      const subject: polygonClipping.MultiPolygon = blob.polys
+        .filter(p => p.length >= 3).map(p => [p as polygonClipping.Ring])
+      const res = polygonClipping.difference(subject, clearClip)
+      const polys = res.map(polygon => polygon[0] as [number, number][]).filter(p => p?.length >= 3)
+      return { ...blob, polys }
+    } catch {
+      return blob
+    }
+  })
+}
+
 export function drawTerrain(tCtx: Ctx, params: DrawTerrainParams): void {
   const {
     projected, edgeMode, inMargin,
@@ -345,7 +412,19 @@ export function drawTerrain(tCtx: Ctx, params: DrawTerrainParams): void {
 
   // ── 3c. Elevation blobs (hills / mountains) ──────────────────────────────────
   {
-    const { elevationBlobs, hillsColor, mountainsColor, reliefShadingOpacity, elevationTypeBlobStyles } = params
+    const { elevationBlobs, hillsColor, mountainsColor, reliefShadingOpacity, elevationTypeBlobStyles,
+      elevationShadowEnabled, elevationShadowBl, elevationShadowOp, elevationShadowPs, elevationShadowColor,
+      pw, ph } = params
+
+    for (const [cls, polys, clsColor] of [
+      ['hills', elevationBlobs.hills, hillsColor],
+      ['mountains', elevationBlobs.mountains, mountainsColor],
+    ] as const) {
+      if (elevationShadowEnabled[cls] && polys.length > 0) {
+        drawPolygonShadow(tCtx, polys, pw, ph, 0, 0, elevationShadowBl, elevationShadowOp, elevationShadowPs, elevationShadowColor || clsColor)
+      }
+    }
+
     drawElevationBlobs(tCtx, elevationBlobs.hills, hillsColor)
     drawElevationBlobs(tCtx, elevationBlobs.mountains, mountainsColor)
 
@@ -380,6 +459,11 @@ export function drawTerrain(tCtx: Ctx, params: DrawTerrainParams): void {
       }
       tCtx.stroke()
       tCtx.restore()
+    }
+
+    for (const [cls, polys] of [['hills', elevationBlobs.hills], ['mountains', elevationBlobs.mountains]] as const) {
+      if (!params.elevationHachureEnabled[cls] || polys.length === 0) continue
+      drawBlobHachure(tCtx, polys, R, params.slopeSmoothing, params.slopeTickSpacing, params.slopeTickLength, '#5a4a3a')
     }
   }
 
@@ -434,11 +518,18 @@ export function drawTerrain(tCtx: Ctx, params: DrawTerrainParams): void {
 
   // ── 4. Blob mode ────────────────────────────────────────────────────────────
   {
+    const { edgeBlobPainted, edgeBlobWidth, terrainTypeBlobStyles, edgeBlobOverrides, hexVertMap } = params
+    const terrainBlobs = applyEdgeRibbons(
+      defaultTerrainBlobs, edgeBlobPainted, hexVertMap,
+      terrainTypeBlobStyles, edgeBlobOverrides, edgeBlobWidth,
+      terrainBlobParams, R,
+    )
+
     const BLOB_Z: Record<string, number> = { rough: 1, marsh: 2, light_woods: 4, woods: 5, sea: 10 }
 
     // Build defaultBlobMap excluding lakes
     const defaultBlobMap = new Map<string, [number, number][][]>()
-    for (const { terrain, polys } of defaultTerrainBlobs) {
+    for (const { terrain, polys } of terrainBlobs) {
       if (terrain !== 'water') defaultBlobMap.set(terrain, polys)
     }
 
@@ -569,79 +660,31 @@ export function drawTerrain(tCtx: Ctx, params: DrawTerrainParams): void {
 
   } // end blob mode
 
-  // ── 5b. Edge blobs ───────────────────────────────────────────────────────────
-  const { edgeBlobPainted, edgeBlobWidth, terrainTypeBlobStyles, edgeBlobOverrides, hexVertMap } = params
-  if (Object.keys(edgeBlobPainted).length > 0) {
-    // Build terrain → hex-key set for the connection extension check.
-    // Includes both primary terrain layers and backgroundTerrain so edge blobs
-    // can extend into background hexes of the same type.
-    const terrainToHexes = new Map<string, Set<string>>()
-    for (const { hex } of projected) {
-      for (const t of hexTerrainLayers(hex)) {
-        if (!terrainToHexes.has(t)) terrainToHexes.set(t, new Set())
-        terrainToHexes.get(t)!.add(`${hex.q},${hex.r}`)
-      }
-      if (hex.backgroundTerrain) {
-        if (!terrainToHexes.has(hex.backgroundTerrain)) terrainToHexes.set(hex.backgroundTerrain, new Set())
-        terrainToHexes.get(hex.backgroundTerrain)!.add(`${hex.q},${hex.r}`)
-      }
-    }
-
-    const { terrainBlobParams } = params
-    const chains = findEdgeChains(edgeBlobPainted, hexVertMap)
-    for (const chain of chains) {
-      // Shape params: global terrain blob defaults → per-terrain blob style override → per-chain override.
-      // Width: global edge default → per-terrain width field → per-chain override.
-      const typeStyle = terrainTypeBlobStyles[chain.terrain]
-      const override = edgeBlobOverrides[chain.chainKey]
-      const chainParams: EdgeBlobParams = {
-        smooth:        override?.smooth         ?? typeStyle?.smooth         ?? terrainBlobParams.smooth,
-        bump:          override?.bump           ?? typeStyle?.bump           ?? terrainBlobParams.bump,
-        sweepFreq:     override?.sweepFreq      ?? typeStyle?.sweepFreq      ?? terrainBlobParams.sweepFreq,
-        lobeFreq:      override?.lobeFreq       ?? typeStyle?.lobeFreq       ?? terrainBlobParams.lobeFreq,
-        lobeAmp:       override?.lobeAmp        ?? typeStyle?.lobeAmp        ?? terrainBlobParams.lobeAmp,
-        lobeThreshold: override?.lobeThreshold  ?? typeStyle?.lobeThreshold  ?? terrainBlobParams.lobeThreshold,
-        lobeDirection: override?.lobeDirection  ?? typeStyle?.lobeDirection  ?? terrainBlobParams.lobeDirection,
-        width:         override?.width          ?? typeStyle?.width          ?? edgeBlobWidth,
-      }
-      // Elevation edge blobs ('hills'/'mountains') use the elevation color + relief shading.
-      // They don't extend into adjacent hexes — they're standalone blobs straddling the edge.
-      if (chain.terrain === 'hills' || chain.terrain === 'mountains') {
+  // ── 5b. Elevation edge blobs (hills / mountains only) ───────────────────────
+  // Terrain edge blobs are merged into area blobs in applyEdgeRibbons (section 4).
+  {
+    const { edgeBlobPainted, edgeBlobWidth, terrainTypeBlobStyles, edgeBlobOverrides, hexVertMap } = params
+    if (Object.keys(edgeBlobPainted).length > 0) {
+      const { terrainBlobParams } = params
+      const chains = findEdgeChains(edgeBlobPainted, hexVertMap)
+      for (const chain of chains) {
+        if (chain.terrain !== 'hills' && chain.terrain !== 'mountains') continue
+        const typeStyle = terrainTypeBlobStyles[chain.terrain]
+        const override = edgeBlobOverrides[chain.chainKey]
+        const chainParams: EdgeBlobParams = {
+          smooth:        override?.smooth        ?? typeStyle?.smooth        ?? terrainBlobParams.smooth,
+          bump:          override?.bump          ?? typeStyle?.bump          ?? terrainBlobParams.bump,
+          sweepFreq:     override?.sweepFreq     ?? typeStyle?.sweepFreq     ?? terrainBlobParams.sweepFreq,
+          lobeFreq:      override?.lobeFreq      ?? typeStyle?.lobeFreq      ?? terrainBlobParams.lobeFreq,
+          lobeAmp:       override?.lobeAmp       ?? typeStyle?.lobeAmp       ?? terrainBlobParams.lobeAmp,
+          lobeThreshold: override?.lobeThreshold ?? typeStyle?.lobeThreshold ?? terrainBlobParams.lobeThreshold,
+          lobeDirection: override?.lobeDirection ?? typeStyle?.lobeDirection ?? terrainBlobParams.lobeDirection,
+          width:         override?.width         ?? typeStyle?.width         ?? edgeBlobWidth,
+        }
         const polys = buildEdgeBlobPolys(chain, hexVertMap, chainParams, R, undefined)
-        if (polys.length > 0) {
-          const elevColor = chain.terrain === 'hills' ? params.hillsColor : params.mountainsColor
-          drawElevationBlobs(tCtx, polys, elevColor)
-        }
-        continue
-      }
-
-      // 'clear' edges trim terrain blobs — no extension toward matching hexes needed.
-      const hexTerrainSet = chain.terrain === 'clear' ? undefined : terrainToHexes.get(chain.terrain)
-      const polys = buildEdgeBlobPolys(chain, hexVertMap, chainParams, R, hexTerrainSet)
-      if (polys.length === 0) continue
-      const texScale = override?.textureScale ?? (params.terrainTextureScales[chain.terrain] ?? 3)
-      const edgeRawMode = terrainTextureBlendModes[chain.terrain] ?? 'multiply'
-      const edgeIsColor = edgeRawMode === 'color' || edgeRawMode === 'color-bg'
-      if (!edgeIsColor) {
-        const color = override?.color ?? terrainColors[chain.terrain] ?? '#cccccc'
-        tCtx.fillStyle = color
-        for (const poly of polys) {
-          if (poly.length < 3) continue
-          tCtx.beginPath()
-          tCtx.moveTo(poly[0][0], poly[0][1])
-          for (let i = 1; i < poly.length; i++) tCtx.lineTo(poly[i][0], poly[i][1])
-          tCtx.closePath()
-          tCtx.fill()
-        }
-      }
-      const edgeTex = terrainTextures.get(chain.terrain) ?? null
-      if (edgeTex) {
-        applyTextureOverlay(tCtx, edgeTex, polys, R, texScale, R * 0.12,
-          edgeRawMode as GlobalCompositeOperation,
-          terrainTextureOpacities[chain.terrain] ?? 0.6,
-          edgeIsColor ? (terrainColors[chain.terrain] ?? '') : (terrainTextureTintColors[chain.terrain] ?? ''),
-          edgeIsColor ? 1.0 : (terrainTextureTintOpacities[chain.terrain] ?? 0.5),
-          edgeIsColor)
+        if (polys.length === 0) continue
+        const elevColor = chain.terrain === 'hills' ? params.hillsColor : params.mountainsColor
+        drawElevationBlobs(tCtx, polys, elevColor)
       }
     }
   }
@@ -801,7 +844,9 @@ export function drawTerrain(tCtx: Ctx, params: DrawTerrainParams): void {
   }
 
   if (Object.keys(params.slopeEdges).length > 0) {
-    drawSlopes(tCtx, params.slopeEdges, params.hexVertMap, R)
+    drawSlopes(tCtx, params.slopeEdges, params.hexVertMap, R, params.slopeStyle, params.slopeSmoothing, params.slopeTickSpacing, params.slopeTickLength,
+      '#5a4a3a', params.pw, params.ph,
+      0, 0, params.elevationShadowBl, params.elevationShadowOp, params.elevationShadowPs, params.elevationShadowColor)
   }
 
 }

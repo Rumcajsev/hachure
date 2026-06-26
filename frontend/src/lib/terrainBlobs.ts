@@ -230,8 +230,8 @@ export function buildTerrainBlobTopology(
       ? (hexToGroupKey.get(`${t}:${q},${r}`) ?? t)
       : t
     if (t !== 'clear') {
-      const cx = (verts[0][0] + verts[1][0] + verts[2][0] + verts[3][0] + verts[4][0] + verts[5][0]) / 6
-      const cy = (verts[0][1] + verts[1][1] + verts[2][1] + verts[3][1] + verts[4][1] + verts[5][1]) / 6
+      const cx = verts.reduce((s, v) => s + v[0], 0) / verts.length
+      const cy = verts.reduce((s, v) => s + v[1], 0) / verts.length
       if (!hexCentersByTerrain.has(t)) hexCentersByTerrain.set(t, [])
       hexCentersByTerrain.get(t)!.push([cx, cy])
       if (!hexCentersByGroupKey.has(groupKey)) hexCentersByGroupKey.set(groupKey, [])
@@ -242,8 +242,8 @@ export function buildTerrainBlobTopology(
       if (!edgeCount.has(groupKey)) edgeCount.set(groupKey, new Map())
       tc = edgeCount.get(groupKey)!
     }
-    for (let i = 0; i < 6; i++) {
-      const a = verts[i], b = verts[(i + 1) % 6]
+    for (let i = 0; i < verts.length; i++) {
+      const a = verts[i], b = verts[(i + 1) % verts.length]
       const ka = vk(a), kb = vk(b)
       if (!vpos.has(ka)) vpos.set(ka, a)
       if (!vpos.has(kb)) vpos.set(kb, b)
