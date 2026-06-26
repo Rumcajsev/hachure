@@ -9,7 +9,7 @@ import { mulberry32, makePermutation } from '../lib/noise'
 import { projectToCanvas, unprojectFromCanvas, computePaper, computeWorldcoverBbox } from '../lib/projection'
 import { coastalBlobTerrains, bleedPolygon, buildTerrainBlobsV2, buildTerrainBlobTopology, shapeTerrainBlobs, shapeInputPolygon, computeConnectedComponents, applyBlobMaskEdits, cutRawPolysWithCorridors, perturbCorridorsForTerrain, generateBlobSplats, buildExportTerrainBlobs } from '../lib/terrainBlobs'
 import type { BlobTopologyEntry } from '../lib/terrainBlobs'
-import { findEdgeChains as findEdgeChainsSync, parseEdgeBlobKey, sharedEdgeVertices } from '../lib/edgeBlobs'
+import { findEdgeChains as findEdgeChainsSync } from '../lib/edgeBlobs'
 import { riverChainCache, buildRiverChainsV2, type RiverChainCache } from '../lib/riverChains'
 import { computeDragLiveData, computeRoadProjections, computeLiveRiverChainData } from '../lib/roadLiveGeometry'
 
@@ -1349,18 +1349,8 @@ terrainTextureFileRef.current = terrainTextureFile
         if (t !== 'clear' && t !== 'water') terrainTypeSet.add(t)
       }
     }
-    // Edge-painted terrain types with no area hexes still need a blob entry
-    for (const t of Object.values(edgeBlobPainted)) {
-      if (t !== 'clear' && t !== 'water' && t !== 'hills' && t !== 'mountains') terrainTypeSet.add(t)
-    }
     const terrainTypes = [...terrainTypeSet]
     blobHandleDataRef.current.clear()
-    // Canvas-space vertex map for virtual edge topology quads (built once, used per-terrain below)
-    const localHexVertMap = new Map<string, [number, number][]>()
-    for (const p of projectedHexes) {
-      const h = p.hex as GeneratedHex
-      localHexVertMap.set(`${h.q},${h.r}`, p.verts)
-    }
     // Each terrain type is computed independently so cross-terrain blob coupling is impossible.
     const result = terrainTypes.flatMap(terrain => {
       const componentMap = blobComponentsByTerrain.get(terrain) ?? new Map<string, string>()
@@ -1377,64 +1367,7 @@ terrainTextureFileRef.current = terrainTextureFile
         return true
       }).map(p => { const h = p.hex as GeneratedHex; return { ...p, hex: { ...p.hex, terrain, q: h.q, r: h.r } } })
 
-      // Build virtual quad entries for painted edges of this terrain.
-      // Boundary edges (one adjacent hex has terrain T) extend the topology outward
-      // through the shared edge, guaranteeing the blob always connects across the edge.
-      // Standalone edges (neither adjacent hex is terrain T) produce a centred quad blob.
-      const terrainHexQRSet = new Set<string>()
-      for (const p of terrainProjected) {
-        const h = p.hex as GeneratedHex
-        terrainHexQRSet.add(`${h.q},${h.r}`)
-      }
-      const virtualEntries: { hex: { terrain: string; partial: boolean; q: number; r: number }; verts: [number, number][] }[] = []
-      let virtualIdx = 0
-      for (const [edgeKey, edgeTerrain] of Object.entries(edgeBlobPainted)) {
-        if (edgeTerrain !== terrain) continue
-        const { q1, r1, q2, r2 } = parseEdgeBlobKey(edgeKey)
-        const shared = sharedEdgeVertices(q1, r1, q2, r2, localHexVertMap)
-        if (!shared) continue
-        const [p1, p2] = shared
-        const isT1 = terrainHexQRSet.has(`${q1},${r1}`)
-        const isT2 = terrainHexQRSet.has(`${q2},${r2}`)
-        if (isT1 && isT2) continue  // interior edge — both hexes already in topology
-        const ext = edgeBlobWidth * hexRadius
-        if (isT1 || isT2) {
-          // Boundary edge: extend outward through the edge, away from the terrain hex.
-          // Using the terrain hex's q,r so the virtual quad joins the same topology group.
-          const terrainQ = isT1 ? q1 : q2, terrainR = isT1 ? r1 : r2
-          const tv = localHexVertMap.get(`${terrainQ},${terrainR}`)!
-          const tcx = tv.reduce((s, v) => s + v[0], 0) / tv.length
-          const tcy = tv.reduce((s, v) => s + v[1], 0) / tv.length
-          const midX = (p1[0] + p2[0]) * 0.5, midY = (p1[1] + p2[1]) * 0.5
-          const dx = midX - tcx, dy = midY - tcy
-          const len = Math.hypot(dx, dy)
-          if (len < 0.001) continue
-          const nx = dx / len, ny = dy / len
-          virtualEntries.push({
-            hex: { terrain, partial: false, q: terrainQ, r: terrainR },
-            verts: [p1, p2, [p2[0] + nx * ext, p2[1] + ny * ext], [p1[0] + nx * ext, p1[1] + ny * ext]],
-          })
-        } else {
-          // Standalone edge: straddle the edge symmetrically (width/2 each side)
-          const edgeDx = p2[0] - p1[0], edgeDy = p2[1] - p1[1]
-          const edgeLen = Math.hypot(edgeDx, edgeDy)
-          if (edgeLen < 0.001) continue
-          const nx = -edgeDy / edgeLen, ny = edgeDx / edgeLen
-          const half = ext * 0.5
-          virtualEntries.push({
-            hex: { terrain, partial: false, q: -1000 - virtualIdx, r: 0 },
-            verts: [
-              [p1[0] - nx * half, p1[1] - ny * half],
-              [p2[0] - nx * half, p2[1] - ny * half],
-              [p2[0] + nx * half, p2[1] + ny * half],
-              [p1[0] + nx * half, p1[1] + ny * half],
-            ],
-          })
-          virtualIdx++
-        }
-      }
-
-      if (terrainProjected.length === 0 && virtualEntries.length === 0) {
+      if (terrainProjected.length === 0) {
         perTerrainBlobCache.current.delete(terrain)
         return []
       }
@@ -1460,11 +1393,7 @@ terrainTextureFileRef.current = terrainTextureFile
         ])
       }
 
-      const edgeKeysForTerrain = Object.entries(edgeBlobPainted)
-        .filter(([, t]) => t === terrain).map(([k]) => k).sort().join(';')
-      const hexKey = `eot:${elevationOverridesTerrain}|cs:${clusterSize}|` +
-        terrainProjected.map(p => `${(p.hex as GeneratedHex).q},${(p.hex as GeneratedHex).r}`).join('|') +
-        (edgeKeysForTerrain ? `|eb:${edgeKeysForTerrain}|ebw:${edgeBlobWidth.toFixed(3)}` : '')
+      const hexKey = `eot:${elevationOverridesTerrain}|cs:${clusterSize}|` + terrainProjected.map(p => `${(p.hex as GeneratedHex).q},${(p.hex as GeneratedHex).r}`).join('|')
       const canonicalKeySet = new Set([...componentMap.values()])
       const handleKey = [...canonicalKeySet].sort().map(ck => {
         const h = blobHandleOverrides[ck]
@@ -1507,8 +1436,7 @@ terrainTextureFileRef.current = terrainTextureFile
         rawPolys = cached.rawPolys
         topoClusterCenters = cached.clusterCenters
       } else {
-        const allProjected = virtualEntries.length > 0 ? [...terrainProjected, ...virtualEntries] : terrainProjected
-        const topo = buildTerrainBlobTopology(allProjected, hexRadius, clusterSize)
+        const topo = buildTerrainBlobTopology(terrainProjected, hexRadius, clusterSize)
         const topoEntry = topo.find(e => e.terrain === terrain)
         rawPolys = topoEntry?.rawPolys ?? []
         topoClusterCenters = topoEntry?.clusterCenters
@@ -1590,7 +1518,7 @@ terrainTextureFileRef.current = terrainTextureFile
     prevTerrainBlobsRef.current = result
     console.log(`[blobUseMemo] total ${(performance.now()-_tMemo0).toFixed(1)}ms`)
     return result
-  }, [isTerrainPainting, projectedHexes, blobComponentsByTerrain, terrainBlobOverrides, terrainTypeBlobStyles, terrainBlobSmooth, terrainBlobOffset, terrainBlobBump, terrainBlobSweepFreq, terrainBlobLobeFreq, terrainBlobLobeAmp, terrainBlobLobeThreshold, terrainBlobLobeDirection, terrainBlobTopoStyle, terrainBlobClusterSize, hexRadius, realisticCoastline, blobSeeds, elevationOverridesTerrain, blobHandleOverrides, riverAutoCorridors, roadAutoCorridors, riverBlobCutRoughness, roadBlobCutRoughness, edgeBlobPainted, edgeBlobWidth])
+  }, [isTerrainPainting, projectedHexes, blobComponentsByTerrain, terrainBlobOverrides, terrainTypeBlobStyles, terrainBlobSmooth, terrainBlobOffset, terrainBlobBump, terrainBlobSweepFreq, terrainBlobLobeFreq, terrainBlobLobeAmp, terrainBlobLobeThreshold, terrainBlobLobeDirection, terrainBlobTopoStyle, terrainBlobClusterSize, hexRadius, realisticCoastline, blobSeeds, elevationOverridesTerrain, blobHandleOverrides, riverAutoCorridors, roadAutoCorridors, riverBlobCutRoughness, roadBlobCutRoughness])
   const defaultTerrainBlobsRef = useRef(defaultTerrainBlobs)
   defaultTerrainBlobsRef.current = defaultTerrainBlobs
 
