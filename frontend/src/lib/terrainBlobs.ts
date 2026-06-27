@@ -10,30 +10,6 @@ import type { GridMetadata, GeneratedHex, BlobMaskEdit } from '../store/mapStore
 
 // ── Coastal hex helpers ──────────────────────────────────────────────────────
 
-/** Terrain to use for blob building and land-side color for a coastal hex.
- *  Ignores sea fraction so the hex participates in the correct terrain blob group. */
-function effectiveLandTerrain(hex: GeneratedHex): string {
-  if (hex.manual_override) {
-    if (hex.terrain && hex.terrain !== 'water') return hex.terrain
-    if (hex.terrains) {
-      for (const t of ['marsh', 'woods', 'light_woods', 'rough', 'clear'] as const) {
-        if (hex.terrains.includes(t)) return t
-      }
-    }
-  }
-  const cov = hex.coverage ?? {}
-  const candidates = ['marsh', 'woods', 'rough', 'clear']
-  let best = 'clear', bestFrac = 0
-  for (const t of candidates) {
-    const f = cov[t] ?? 0
-    if (f > bestFrac) { bestFrac = f; best = t }
-  }
-  return best
-}
-
-/** Terrain layers a hex contributes to the blob system.
- *  When realistic coastline is on, 'water' is stripped — the sea mask overlay
- *  handles all ocean fill so blobs don't need to account for it. */
 export function coastalBlobTerrains(hex: GeneratedHex): string[] {
   return hexTerrainLayers(hex)
 }

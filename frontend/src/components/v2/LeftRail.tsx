@@ -151,7 +151,7 @@ export function LeftRail() {
 
   const toolOwnerPanel: RailPanel | null = (() => {
     const tt = storeActiveTool.type
-    if (tt === 'terrain' || tt === 'elevation' || tt === 'water' || tt === 'blob-mask' || tt === 'hex-mask' || tt === 'hex-disable') return 'terrain'
+    if (tt === 'terrain' || tt === 'elevation' || tt === 'blob-mask' || tt === 'hex-mask' || tt === 'hex-disable') return 'terrain'
     if (tt === 'road' || tt === 'node-edit' || tt === 'road-select' || tt === 'rail' || tt === 'rail-node-edit' || tt === 'rail-select') return 'roads'
     if (tt === 'river-paint' || tt === 'river-select' || tt === 'river-node-edit') return 'rivers'
     if (tt === 'urban' || tt === 'label-drag' || tt === 'label-follow') return 'settlements'

@@ -988,7 +988,7 @@ terrainTextureFileRef.current = terrainTextureFile
     const terrainTypes = new Set<string>()
     for (const h of generatedHexes) {
       for (const t of hexTerrainLayers(h)) {
-        if (t !== 'clear' && t !== 'water') terrainTypes.add(t)
+        if (t !== 'clear') terrainTypes.add(t)
       }
     }
     for (const t of terrainTypes) {
