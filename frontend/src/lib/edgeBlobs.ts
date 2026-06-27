@@ -134,7 +134,7 @@ function hexCenter(q: number, r: number, hexVertMap: Map<string, [number, number
   ]
 }
 
-export type OrderedPath = {
+type OrderedPath = {
   path: [number, number][]
   orderedEdgeKeys: string[]   // length = path.length - 1; orderedEdgeKeys[i] → segment path[i]→path[i+1]
 }
@@ -143,7 +143,7 @@ export type OrderedPath = {
  * Walk the edges of a chain into an ordered list of polyline paths.
  * At branch points (3+ edges meeting) the path is split into arms.
  */
-export function buildOrderedPaths(
+function buildOrderedPaths(
   edgeKeys: string[],
   hexVertMap: Map<string, [number, number][]>,
 ): OrderedPath[] {
@@ -213,56 +213,6 @@ export function buildOrderedPaths(
   }
 
   return paths
-}
-
-/**
- * Build a flat (undeformed) closed strip polygon for one ordered edge path.
- * Inner face: exact hex corner vertices [v0, v1, …, vN] (no offset).
- * Outer face: offset outward by edgeBlobWidth * R, away from terrain hex side.
- *
- * When this polygon is injected into buildTerrainBlobTopology alongside the terrain
- * hex entries, edges shared with adjacent terrain hexes get count=2 → interior →
- * disappear, merging the strip seamlessly into the area blob at the topology stage.
- * Standalone inner edges (between two clear hexes) stay count=1 → exterior → visible
- * inner boundary of the bridge. Everything shapes together in one Perlin pass — no
- * seam, no overlap extension hack needed.
- */
-export function buildChainStripPoly(
-  path: [number, number][],
-  orderedEdgeKeys: string[],
-  terrainHexQRSet: Set<string>,
-  hexVertMap: Map<string, [number, number][]>,
-  edgeBlobWidth: number,
-  R: number,
-): [number, number][] | null {
-  if (path.length < 2 || orderedEdgeKeys.length !== path.length - 1) return null
-
-  // Count terrain hexes on left vs right of the path direction.
-  // offsetPolyline(path, +x) offsets LEFT in canvas-Y-down coords.
-  // cross = dx*(cy - py) - dy*(cx - px) > 0 → hex center is LEFT of the path.
-  let leftMatch = 0, rightMatch = 0
-  for (let i = 0; i < orderedEdgeKeys.length; i++) {
-    const { q1, r1, q2, r2 } = parseEdgeBlobKey(orderedEdgeKeys[i])
-    const dx = path[i + 1][0] - path[i][0]
-    const dy = path[i + 1][1] - path[i][1]
-    const tv1 = hexVertMap.get(`${q1},${r1}`)
-    const tv2 = hexVertMap.get(`${q2},${r2}`)
-    if (tv1 && terrainHexQRSet.has(`${q1},${r1}`)) {
-      const cx = tv1.reduce((s, v) => s + v[0], 0) / tv1.length
-      const cy = tv1.reduce((s, v) => s + v[1], 0) / tv1.length
-      if (dx * (cy - path[i][1]) - dy * (cx - path[i][0]) > 0) leftMatch++; else rightMatch++
-    }
-    if (tv2 && terrainHexQRSet.has(`${q2},${r2}`)) {
-      const cx = tv2.reduce((s, v) => s + v[0], 0) / tv2.length
-      const cy = tv2.reduce((s, v) => s + v[1], 0) / tv2.length
-      if (dx * (cy - path[i][1]) - dy * (cx - path[i][0]) > 0) leftMatch++; else rightMatch++
-    }
-  }
-
-  // Terrain on LEFT → outward is RIGHT → negative offset. Else positive.
-  const outOffset = leftMatch > rightMatch ? -edgeBlobWidth * R : edgeBlobWidth * R
-  const outerPath = offsetPolyline(path, outOffset)
-  return [...path, ...outerPath.reverse()]
 }
 
 /**
