@@ -1334,16 +1334,11 @@ terrainTextureFileRef.current = terrainTextureFile
     if (projectedHexes.length === 0 || hexRadius === 0) return []
     if (isTerrainPainting) return prevTerrainBlobsRef.current
     const overriddenKeys = new Set(Object.keys(terrainBlobOverrides))
-    // Pure-sea: terrain=sea with no coastline_clip. When realistic coastline is on these
-    // are excluded from blobs — section 6 handles their fill. When off, they enter the sea blob.
-    const isPureSea = (h: GeneratedHex) =>
-      h.terrain === 'water' && (!h.coastline_clip || h.coastline_clip.length === 0)
     const terrainTypeSet = new Set<string>()
     for (const p of projectedHexes) {
       const h = p.hex as GeneratedHex
-      if (realisticCoastline && isPureSea(h)) continue
-      for (const t of coastalBlobTerrains(h, realisticCoastline)) {
-        if (t !== 'clear' && t !== 'water') terrainTypeSet.add(t)
+      for (const t of coastalBlobTerrains(h)) {
+        if (t !== 'clear') terrainTypeSet.add(t)
       }
     }
     const terrainTypes = [...terrainTypeSet]
@@ -1353,8 +1348,7 @@ terrainTextureFileRef.current = terrainTextureFile
       const componentMap = blobComponentsByTerrain.get(terrain) ?? new Map<string, string>()
       const terrainProjected = projectedHexes.filter(p => {
         const h = p.hex as GeneratedHex
-        if (realisticCoastline && isPureSea(h)) return false
-        const terrains = coastalBlobTerrains(h, realisticCoastline)
+        const terrains = coastalBlobTerrains(h)
         if (!terrains.includes(terrain)) return false
         if (elevationOverridesTerrain && (h.elevation_class === 'hills' || h.elevation_class === 'mountains')) return false
         if (overriddenKeys.size > 0) {
@@ -1515,7 +1509,7 @@ terrainTextureFileRef.current = terrainTextureFile
     prevTerrainBlobsRef.current = result
     console.log(`[blobUseMemo] total ${(performance.now()-_tMemo0).toFixed(1)}ms`)
     return result
-  }, [isTerrainPainting, projectedHexes, blobComponentsByTerrain, terrainBlobOverrides, terrainTypeBlobStyles, terrainBlobSmooth, terrainBlobOffset, terrainBlobBump, terrainBlobSweepFreq, terrainBlobLobeFreq, terrainBlobLobeAmp, terrainBlobLobeThreshold, terrainBlobLobeDirection, terrainBlobTopoStyle, terrainBlobClusterSize, hexRadius, realisticCoastline, blobSeeds, elevationOverridesTerrain, blobHandleOverrides, riverAutoCorridors, roadAutoCorridors, riverBlobCutRoughness, roadBlobCutRoughness])
+  }, [isTerrainPainting, projectedHexes, blobComponentsByTerrain, terrainBlobOverrides, terrainTypeBlobStyles, terrainBlobSmooth, terrainBlobOffset, terrainBlobBump, terrainBlobSweepFreq, terrainBlobLobeFreq, terrainBlobLobeAmp, terrainBlobLobeThreshold, terrainBlobLobeDirection, terrainBlobTopoStyle, terrainBlobClusterSize, hexRadius, blobSeeds, elevationOverridesTerrain, blobHandleOverrides, riverAutoCorridors, roadAutoCorridors, riverBlobCutRoughness, roadBlobCutRoughness])
   const defaultTerrainBlobsRef = useRef(defaultTerrainBlobs)
   defaultTerrainBlobsRef.current = defaultTerrainBlobs
 

@@ -34,9 +34,8 @@ function effectiveLandTerrain(hex: GeneratedHex): string {
 /** Terrain layers a hex contributes to the blob system.
  *  When realistic coastline is on, 'water' is stripped — the sea mask overlay
  *  handles all ocean fill so blobs don't need to account for it. */
-export function coastalBlobTerrains(hex: GeneratedHex, realisticCoastline: boolean): string[] {
-  if (!realisticCoastline) return hexTerrainLayers(hex)
-  return hexTerrainLayers(hex).filter(t => t !== 'water')
+export function coastalBlobTerrains(hex: GeneratedHex): string[] {
+  return hexTerrainLayers(hex)
 }
 
 // ── Topo-style perimeter resampling ─────────────────────────────────────────
