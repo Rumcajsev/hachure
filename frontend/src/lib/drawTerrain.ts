@@ -35,9 +35,7 @@ export type DrawTerrainParams = {
   px: number; py: number; pw: number; ph: number
   backgroundTerrainBlobs: { terrain: string; polys: [number, number][][] }[]
   defaultTerrainBlobs: { terrain: string; polys: [number, number][][] }[]
-  defaultWaterBlobs: { terrain: string; polys: [number, number][][] }[]
   terrainBlobOverrides: Record<string, BlobOverride>
-  waterOverrides: Record<string, BlobOverride>
   blobComponents: Map<string, string>
   blobComponentsByTerrain: Map<string, Map<string, string>>
   terrainBlobParams: BlobParams
@@ -362,8 +360,8 @@ export function drawTerrain(tCtx: Ctx, params: DrawTerrainParams): void {
     terrainTextures,
     elevationTextureScales, elevationTextureBlendModes, elevationTextureOpacities,
     px, py, pw, ph,
-    backgroundTerrainBlobs, defaultTerrainBlobs, defaultWaterBlobs,
-    terrainBlobOverrides, waterOverrides,
+    backgroundTerrainBlobs, defaultTerrainBlobs,
+    terrainBlobOverrides,
     blobComponents, blobComponentsByTerrain,
     terrainBlobParams,
     hexes, hexTerrainLayers, R,
@@ -591,9 +589,9 @@ export function drawTerrain(tCtx: Ctx, params: DrawTerrainParams): void {
     const overridesByTerrain = new Map<string, Array<[string, BlobOverride]>>()
     for (const [canonicalKey, override] of Object.entries(terrainBlobOverrides)) {
       const canonicalHex = hexes.find(h => `${h.q},${h.r}` === canonicalKey)
-      if (!canonicalHex || canonicalHex.terrain === 'water') continue
+      if (!canonicalHex) continue
       const ovTerrain = override.terrain ?? canonicalHex.terrain
-      if (ovTerrain === 'clear' || ovTerrain === 'water') continue
+      if (ovTerrain === 'clear') continue
       if (!overridesByTerrain.has(ovTerrain)) overridesByTerrain.set(ovTerrain, [])
       overridesByTerrain.get(ovTerrain)!.push([canonicalKey, override])
     }
@@ -745,56 +743,7 @@ export function drawTerrain(tCtx: Ctx, params: DrawTerrainParams): void {
 
   if (landClipActive) tCtx.restore()
 
-  // ── 5. Water blobs ────────────────────────────────────────────────────────
-  // Rendered after the land clip is removed so water areas (excluded from the
-  // land polygon) are not clipped away when realisticCoastline is active.
-  {
-    const waterColor = terrainColors['water'] ?? '#3a6898'
-
-    const drawWaterPolys = (polys: [number, number][][], fillColor: string) => {
-      tCtx.fillStyle = fillColor
-      for (const poly of polys) {
-        if (poly.length < 3) continue
-        tCtx.beginPath()
-        tCtx.moveTo(poly[0][0], poly[0][1])
-        for (let i = 1; i < poly.length; i++) tCtx.lineTo(poly[i][0], poly[i][1])
-        tCtx.closePath()
-        tCtx.fill()
-      }
-    }
-
-    // Default water pass
-    const waterBlobPolys = defaultWaterBlobs.find(b => b.terrain === 'water')?.polys ?? []
-    if (waterBlobPolys.length > 0) drawWaterPolys(waterBlobPolys, waterColor)
-
-    // Override water passes
-    for (const [canonicalKey, override] of Object.entries(waterOverrides)) {
-      const componentKeySet = new Set<string>()
-      for (const [k, ck] of blobComponents) { if (ck === canonicalKey) componentKeySet.add(k) }
-
-      const ovWaterProjected = projected
-        .filter(p => p.hex.terrain === 'water' && componentKeySet.has(`${p.hex.q},${p.hex.r}`))
-        .map(p => ({ hex: { ...p.hex, terrain: 'water' }, verts: p.verts }))
-      if (ovWaterProjected.length === 0) continue
-
-      const ovSmooth        = override.smooth        ?? terrainBlobParams.smooth
-      const ovOffset        = override.offset        ?? terrainBlobParams.offset
-      const ovNoise         = override.bump          ?? terrainBlobParams.bump
-      const ovSweepFreq     = override.sweepFreq     ?? terrainBlobParams.sweepFreq
-      const ovLobeFreq      = override.lobeFreq      ?? terrainBlobParams.lobeFreq
-      const ovLobeAmp       = override.lobeAmp       ?? terrainBlobParams.lobeAmp
-      const ovLobeThreshold = override.lobeThreshold ?? terrainBlobParams.lobeThreshold
-      const ovLobeDirection = override.lobeDirection ?? terrainBlobParams.lobeDirection
-      const ovBlobs = buildTerrainBlobsV2(
-        ovWaterProjected, ovSmooth, ovOffset, ovNoise,
-        ovSweepFreq, ovLobeFreq, ovLobeAmp, ovLobeThreshold, ovLobeDirection, R,
-      )
-      const ovPolys = ovBlobs.find(b => b.terrain === 'water')?.polys ?? []
-      drawWaterPolys(ovPolys, override.color ?? waterColor)
-    }
-  }
-
-  // ── 5c. Historical icon stamps ───────────────────────────────────────────────
+  // ── 5. Historical icon stamps ───────────────────────────────────────────────
   if (params.mapStyle === 'historical_simple') {
     drawHistoricalIcons(tCtx, {
       blobs: defaultTerrainBlobs,

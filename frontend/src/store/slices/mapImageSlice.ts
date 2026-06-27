@@ -161,7 +161,6 @@ export const createMapImageSlice = (set: Set, get: () => MapStore): MapImageSlic
         edgeBlobPainted: {},
         edgeBlobOverrides: {},
         terrainBlobOverrides: {},
-        waterOverrides: {},
         bridgeOverrides: {},
         undoStack: [],
         redoStack: [],

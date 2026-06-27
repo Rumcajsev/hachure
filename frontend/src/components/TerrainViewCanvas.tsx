@@ -1,7 +1,7 @@
 import { useRef, useEffect, useCallback, useState, useMemo, forwardRef, useImperativeHandle, type CSSProperties } from 'react'
 import maplibregl from 'maplibre-gl'
 import 'maplibre-gl/dist/maplibre-gl.css'
-import { useMapStore, TERRAIN_COLORS, WATER_COLOR, TERRAIN_PRIORITY, hexTerrainLayers, edgeBlobCanonicalKey, WORLDCOVER_CLASSES, validColWidthsForRows, validRowHeightsForCols, cellPaperInfo, type GeneratedHex, type RoadTierStyle, type SettlementTier, type SettlementTierStyle, type BlobMaskEdit } from '../store/mapStore'
+import { useMapStore, TERRAIN_COLORS, TERRAIN_PRIORITY, hexTerrainLayers, edgeBlobCanonicalKey, WORLDCOVER_CLASSES, validColWidthsForRows, validRowHeightsForCols, cellPaperInfo, type GeneratedHex, type RoadTierStyle, type SettlementTier, type SettlementTierStyle, type BlobMaskEdit } from '../store/mapStore'
 import { BlobOverrideFlyout } from './BlobOverrideFlyout'
 import { useTheme } from '../context/ThemeContext'
 import { hexAdjacent, hexLineBetween, catmullRom, offsetPolyline, pointInPolygon, distToSeg, douglasPeucker, douglasPeuckerClosed, chaikin } from '../lib/geometry'
@@ -252,7 +252,6 @@ terrainColors, terrainTextureScales, terrainTextureBlendModes, terrainTextureOpa
     riverBlobCutEnabled, riverBlobCutWidth, riverBlobCutRoughness,
     terrainBlobOverrides, setTerrainBlobOverride,
     terrainTypeBlobStyles,
-    waterOverrides, setWaterOverride,
     edgeBlobPainted,
     paintEdgeBlob, eraseEdgeBlob,
     slopeEdges, setSlopeEdge, removeSlopeEdge, slopeStyle, slopeSmoothing, slopeTickSpacing, slopeTickLength,
@@ -553,7 +552,6 @@ const terrainTextureFileRef = useRef(terrainTextureFile)
   const terrainTextureEnabledRef = useRef(terrainTextureEnabled)
   const terrainBlobOverridesRef = useRef(terrainBlobOverrides)
   const terrainTypeBlobStylesRef = useRef(terrainTypeBlobStyles)
-  const waterOverridesRef = useRef(waterOverrides)
   const terrainRenderModeRef = useRef(terrainRenderMode)
   // Field mode refs — detached. Re-add when field render is reactivated.
   // const fieldFreqRef = useRef(fieldFreq)
@@ -920,7 +918,6 @@ terrainTextureFileRef.current = terrainTextureFile
   coastlineChaikinPassesRef.current = coastlineChaikinPasses
   terrainBlobOverridesRef.current = terrainBlobOverrides
   terrainTypeBlobStylesRef.current = terrainTypeBlobStyles
-  waterOverridesRef.current = waterOverrides
   terrainEdgePaintEnabledRef.current = terrainEdgePaintEnabled
   paintEdgeBlobRef.current = paintEdgeBlob
   eraseEdgeBlobRef.current = eraseEdgeBlob
@@ -1603,80 +1600,6 @@ terrainTextureFileRef.current = terrainTextureFile
   const defaultBackgroundBlobsRef = useRef(defaultBackgroundBlobs)
   defaultBackgroundBlobsRef.current = defaultBackgroundBlobs
 
-  const prevLakeBlobsRef = useRef<{ terrain: string; polys: [number, number][][] }[]>([])
-  const lakeBlobCache = useRef<{ hexKey: string; rawPolys: [number, number][][]; hexCenters: [number, number][]; styleKey: string; blobs: { terrain: string; polys: [number, number][][] }[] } | null>(null)
-  const defaultWaterBlobs = useMemo(() => {
-    if (projectedHexes.length === 0 || hexRadius === 0) return []
-    if (isTerrainPainting) return prevLakeBlobsRef.current
-    const waterOverriddenKeys = new Set(Object.keys(waterOverrides))
-    const defaultWaterProjected = projectedHexes
-      .filter(p => {
-        if (p.hex.terrain !== 'water') return false
-        const ck = blobComponents.get(`${p.hex.q},${p.hex.r}`)
-        return !ck || !waterOverriddenKeys.has(ck)
-      })
-      .map(p => ({ hex: { ...p.hex, terrain: 'water' }, verts: p.verts }))
-    if (defaultWaterProjected.length === 0) {
-      lakeBlobCache.current = null
-      return prevLakeBlobsRef.current
-    }
-    const wts = terrainTypeBlobStyles['water']?.enabled ? terrainTypeBlobStyles['water'] : null
-    const wSmooth        = wts?.smooth        ?? terrainBlobSmooth
-    const wOffset        = wts?.offset        ?? terrainBlobOffset
-    const wBump          = wts?.bump          ?? terrainBlobBump
-    const wSweepFreq     = wts?.sweepFreq     ?? terrainBlobSweepFreq
-    const wLobeFreq      = wts?.lobeFreq      ?? terrainBlobLobeFreq
-    const wLobeAmp       = wts?.lobeAmp       ?? terrainBlobLobeAmp
-    const wLobeThreshold = wts?.lobeThreshold ?? terrainBlobLobeThreshold
-    const wLobeDirection = wts?.lobeDirection ?? terrainBlobLobeDirection
-
-    const hexKey = defaultWaterProjected.map(p => `${p.hex.q},${p.hex.r}`).join('|')
-    const styleKey = `${wSmooth}|${wOffset}|${wBump}|${wSweepFreq}|${wLobeFreq}|${wLobeAmp}|${wLobeThreshold}|${wLobeDirection}|${terrainBlobTopoStyle}|${hexRadius}`
-    if (lakeBlobCache.current?.hexKey === hexKey && lakeBlobCache.current?.styleKey === styleKey) {
-      return lakeBlobCache.current.blobs
-    }
-    let waterRawPolys: [number, number][][]
-    let waterHexCenters: [number, number][]
-    if (lakeBlobCache.current?.hexKey === hexKey) {
-      waterRawPolys = lakeBlobCache.current.rawPolys
-      waterHexCenters = lakeBlobCache.current.hexCenters
-    } else {
-      const topo = buildTerrainBlobTopology(defaultWaterProjected, hexRadius)
-      const entry = topo.find(e => e.terrain === 'water')
-      waterRawPolys = entry?.rawPolys ?? []
-      waterHexCenters = entry?.hexCenters ?? []
-    }
-    const shapedWaterPolys = waterRawPolys.map(p => {
-      const seed = Math.abs(Math.round(p[0][0] * 73 + p[0][1] * 97))
-      return shapeInputPolygon(p, terrainBlobTopoStyle, hexRadius, seed)
-    })
-    const result = shapeTerrainBlobs([{ terrain: 'water', rawPolys: shapedWaterPolys, hexCenters: waterHexCenters }], wSmooth, wOffset, wBump, wSweepFreq, wLobeFreq, wLobeAmp, wLobeThreshold, wLobeDirection, hexRadius, {})
-    lakeBlobCache.current = { hexKey, rawPolys: waterRawPolys, hexCenters: waterHexCenters, styleKey, blobs: result }
-    prevLakeBlobsRef.current = result
-    return result
-  }, [isTerrainPainting, projectedHexes, blobComponents, waterOverrides, terrainTypeBlobStyles, terrainBlobSmooth, terrainBlobOffset, terrainBlobBump, terrainBlobSweepFreq, terrainBlobLobeFreq, terrainBlobLobeAmp, terrainBlobLobeThreshold, terrainBlobLobeDirection, terrainBlobTopoStyle, hexRadius])
-  const defaultWaterBlobsMasked = useMemo(() => {
-    if (blobMaskEdits.length === 0 || !generatedMetadata || !paperDims) return defaultWaterBlobs
-    const { pw, ph } = paperDims
-    const meta = generatedMetadata
-    const projectFn = (lonlat: [number, number]): [number, number] =>
-      projectToCanvas(lonlat[0], lonlat[1], meta, pw, ph, 0, 0)
-    const wts = terrainTypeBlobStyles['water']?.enabled ? terrainTypeBlobStyles['water'] : null
-    const shapeParams = {
-      R: hexRadius,
-      smooth: wts?.smooth ?? terrainBlobSmooth,
-      bump: wts?.bump ?? terrainBlobBump,
-      sweepFreq: wts?.sweepFreq ?? terrainBlobSweepFreq,
-      lobeFreq: wts?.lobeFreq ?? terrainBlobLobeFreq,
-      lobeAmp: wts?.lobeAmp ?? terrainBlobLobeAmp,
-      lobeThreshold: wts?.lobeThreshold ?? terrainBlobLobeThreshold,
-      lobeDirection: wts?.lobeDirection ?? terrainBlobLobeDirection,
-    }
-    return applyBlobMaskEdits(defaultWaterBlobs, blobMaskEdits, projectFn, shapeParams)
-  }, [defaultWaterBlobs, blobMaskEdits, generatedMetadata, paperDims, hexRadius, terrainTypeBlobStyles, terrainBlobSmooth, terrainBlobBump, terrainBlobSweepFreq, terrainBlobLobeFreq, terrainBlobLobeAmp, terrainBlobLobeThreshold, terrainBlobLobeDirection])
-  const defaultWaterBlobsRef = useRef(defaultWaterBlobsMasked)
-  defaultWaterBlobsRef.current = defaultWaterBlobsMasked
-
   const prevElevationBlobsRef = useRef<{ hills: [number, number][][]; mountains: [number, number][][] }>({ hills: [], mountains: [] })
   const elevationBlobsCache = useRef<{ hexKey: string; topoHills: BlobTopologyEntry | null; topoMountains: BlobTopologyEntry | null; styleKey: string; blobs: { hills: [number, number][][]; mountains: [number, number][][] } } | null>(null)
   const defaultElevationBlobs = useMemo(() => {
@@ -1882,7 +1805,7 @@ terrainTextureFileRef.current = terrainTextureFile
   //   forestTextureVersion, frameDims, draw])
 
   // Mark terrain layer dirty when terrain-affecting data changes (fills + textures are one layer)
-  useEffect(() => { terrainController.markDirty() }, [defaultTerrainBlobsSplatted, defaultTerrainBlobsMasked, defaultTerrainBlobs, defaultWaterBlobsMasked, defaultElevationBlobs, terrainColors, terrainTextureBlendModes, terrainTextureScales, terrainTextureOpacities, terrainTextureTintColors, terrainTextureTintOpacities, terrainTextureFile, terrainTextureEnabled, terrainBlobOverrides, terrainTypeBlobStyles, waterOverrides, terrainRenderMode, hexEdgeMode, generatedHexes, realisticCoastline, coastlineDebugRaw, smoothedCoastlineBoundary, rawCoastlineBoundary, beachStrip, beachColor, beachWidth, hillsColor, mountainsColor, reliefShadingOpacity, coastlineDPEpsilon, coastlineChaikinPasses, edgeBlobPainted, edgeBlobOverrides, edgeBlobWidth, mapStyle, historicalIconParams, elevationTypeBlobStyles, terrainBlobOutlineEnabled, terrainBlobOutlineColor, terrainBlobOutlineWidth, terrainBlobEffect, elevationOverridesTerrain, slopeEdges, slopeStyle, slopeSmoothing, slopeTickSpacing, slopeTickLength, elevationHachureEnabled, elevationShadowEnabled, elevationShadowOx, elevationShadowOy, elevationShadowBl, elevationShadowOp, elevationShadowPs, elevationShadowColor])
+  useEffect(() => { terrainController.markDirty() }, [defaultTerrainBlobsSplatted, defaultTerrainBlobsMasked, defaultTerrainBlobs, defaultElevationBlobs, terrainColors, terrainTextureBlendModes, terrainTextureScales, terrainTextureOpacities, terrainTextureTintColors, terrainTextureTintOpacities, terrainTextureFile, terrainTextureEnabled, terrainBlobOverrides, terrainTypeBlobStyles, terrainRenderMode, hexEdgeMode, generatedHexes, realisticCoastline, coastlineDebugRaw, smoothedCoastlineBoundary, rawCoastlineBoundary, beachStrip, beachColor, beachWidth, hillsColor, mountainsColor, reliefShadingOpacity, coastlineDPEpsilon, coastlineChaikinPasses, edgeBlobPainted, edgeBlobOverrides, edgeBlobWidth, mapStyle, historicalIconParams, elevationTypeBlobStyles, terrainBlobOutlineEnabled, terrainBlobOutlineColor, terrainBlobOutlineWidth, terrainBlobEffect, elevationOverridesTerrain, slopeEdges, slopeStyle, slopeSmoothing, slopeTickSpacing, slopeTickLength, elevationHachureEnabled, elevationShadowEnabled, elevationShadowOx, elevationShadowOy, elevationShadowBl, elevationShadowOp, elevationShadowPs, elevationShadowColor])
   useEffect(() => { terrainController.markDirty(); draw() }, [hillshadeDisabledTerrains, hillshadeDisabledElevClasses, contourDisabledTerrains, contourDisabledElevClasses]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // Decode heightmap PNG → ImageData when URL changes, then recompute derived canvases
@@ -2019,7 +1942,7 @@ terrainTextureFileRef.current = terrainTextureFile
   }, [activeTool.type])
 
   // Redraw when data changes
-  useEffect(() => { draw() }, [defaultElevationBlobs, generatedHexes, hexBorderMode, hexEdgeMode, hexBorderOpacity, hexBorderColor, hexBorderDifference, hexNumbersEnabled, hexNumberEdge, hexNumberColor, hexNumberFontScale, hexNumberStartCorner, hexNumberMap, roadDataVersion, smoothedRailData, showRawOsmRoads, roadNodeEditMode, riverNodeEditMode, riverChainOverrides, riverEdges, riverEditMode, riverWidthScale, riverWiggleFreq, riverWiggleAmp, riverSmoothing, riverPathSmoothing, showRiverLabels, riverLabelColor, riverSegmentProps, riverSelectMode, selectedSegmentKeys, riverTierStyles, riverStyle, riverHopProps, selectedHopKey, defaultTerrainBlobs, defaultWaterBlobsMasked, terrainColors, terrainTextureScales, terrainTextureBlendModes, terrainTextureOpacities, terrainTextureTintColors, terrainTextureTintOpacities, terrainTextureFile, terrainTextureEnabled, terrainBlobOverrides, terrainTypeBlobStyles, waterOverrides, terrainRenderMode, settlements, settlementTierStyles, urbanHexes, urbanStyle, roadTierStyles, railStyle, highlights, highlightedHexes, highlightLines, highlightEdgePaths, iconOverlays, placedIcons, labelOverlays, placedLabels, realisticCoastline, coastlineDebugRaw, smoothedCoastlineBoundary, rawCoastlineBoundary, beachStrip, beachColor, beachWidth, coastlineDPEpsilon, coastlineChaikinPasses, edgeBlobPainted, edgeBlobOverrides, edgeBlobWidth, roadSegmentProps, roadHopProps, selectedRoadSegmentKeys, selectedRoadHopKey, roadSelectMode, railNodeEditMode, railControlOverrides, railSelectMode, railWiggleAmp, railWiggleFreq, railSmoothing, railSegmentProps, railHopProps, selectedRailSegmentKeys, selectedRailHopKey, mapBgColor, mapBorderEnabled, mapBorderColor, mapBorderWidth, clipToHexGrid, excludedHexKeys, disabledHexKeys, autoDisabledOceanHexKeys, megaHexEnabled, megaHexRadius, megaHexColor, megaHexOpacity, megaHexLineWidth, megaHexOriginQ, megaHexOriginR, bridgesEnabled, bridgeStyle, bridgeLengthScale, bridgeTiers, bridgeOverrides, showElevationDebug, showElevationClassOverlay, mapStyle, labelOffsets, labelPresetId, labelOverrides, activeTool, blobEditMode, activeBlobEditId, blobHandleOverrides, blobMaskEdits, defaultTerrainBlobsMasked, draw])
+  useEffect(() => { draw() }, [defaultElevationBlobs, generatedHexes, hexBorderMode, hexEdgeMode, hexBorderOpacity, hexBorderColor, hexBorderDifference, hexNumbersEnabled, hexNumberEdge, hexNumberColor, hexNumberFontScale, hexNumberStartCorner, hexNumberMap, roadDataVersion, smoothedRailData, showRawOsmRoads, roadNodeEditMode, riverNodeEditMode, riverChainOverrides, riverEdges, riverEditMode, riverWidthScale, riverWiggleFreq, riverWiggleAmp, riverSmoothing, riverPathSmoothing, showRiverLabels, riverLabelColor, riverSegmentProps, riverSelectMode, selectedSegmentKeys, riverTierStyles, riverStyle, riverHopProps, selectedHopKey, defaultTerrainBlobs, terrainColors, terrainTextureScales, terrainTextureBlendModes, terrainTextureOpacities, terrainTextureTintColors, terrainTextureTintOpacities, terrainTextureFile, terrainTextureEnabled, terrainBlobOverrides, terrainTypeBlobStyles, terrainRenderMode, settlements, settlementTierStyles, urbanHexes, urbanStyle, roadTierStyles, railStyle, highlights, highlightedHexes, highlightLines, highlightEdgePaths, iconOverlays, placedIcons, labelOverlays, placedLabels, realisticCoastline, coastlineDebugRaw, smoothedCoastlineBoundary, rawCoastlineBoundary, beachStrip, beachColor, beachWidth, coastlineDPEpsilon, coastlineChaikinPasses, edgeBlobPainted, edgeBlobOverrides, edgeBlobWidth, roadSegmentProps, roadHopProps, selectedRoadSegmentKeys, selectedRoadHopKey, roadSelectMode, railNodeEditMode, railControlOverrides, railSelectMode, railWiggleAmp, railWiggleFreq, railSmoothing, railSegmentProps, railHopProps, selectedRailSegmentKeys, selectedRailHopKey, mapBgColor, mapBorderEnabled, mapBorderColor, mapBorderWidth, clipToHexGrid, excludedHexKeys, disabledHexKeys, autoDisabledOceanHexKeys, megaHexEnabled, megaHexRadius, megaHexColor, megaHexOpacity, megaHexLineWidth, megaHexOriginQ, megaHexOriginR, bridgesEnabled, bridgeStyle, bridgeLengthScale, bridgeTiers, bridgeOverrides, showElevationDebug, showElevationClassOverlay, mapStyle, labelOffsets, labelPresetId, labelOverrides, activeTool, blobEditMode, activeBlobEditId, blobHandleOverrides, blobMaskEdits, defaultTerrainBlobsMasked, draw])
 
   useEffect(() => { drawOsmHighlight() }, [osmHighlightTier, osmHighlightType, osmSpotlightMode, osmSpotlightTiers, osmRailHighlight, hoveredOsmRiverIdx, drawOsmHighlight])
 
@@ -2546,7 +2469,7 @@ terrainTextureFileRef.current = terrainTextureFile
       smoothedRailDataRef, setSelectedRailSegmentKeysRef, setSelectedRailHopKeyRef,
       riverChainsV2Ref, riverEditModeRef, setSelectedSegmentKeysRef, setSelectedHopKeyRef,
       roadEdgesRef,
-      blobComponentsRef, blobComponentsByTerrainRef, defaultTerrainBlobsRef, defaultWaterBlobsRef,
+      blobComponentsRef, blobComponentsByTerrainRef, defaultTerrainBlobsRef,
       edgeBlobPaintedRef, hexVertMapRef, randomizeBlobSeedRef, eraseEdgeBlobRef,
       bridgesEnabledRef, detectedBridgesRef, bridgeOverridesRef, bridgeTiersRef,
       setBridgeOverrideRef, clearBridgeOverrideRef,
@@ -2809,7 +2732,7 @@ terrainTextureFileRef.current = terrainTextureFile
     bgPaintHoldRef, blobComponentsByTerrainRef, blobComponentsRef, blobDragLiveRef, blobEditModeRef, blobHandleDataRef, blobHandleOverridesRef, blobMaskDrawingRef,
     blobMaskStrokeRef, bridgeOverridesRef, bridgeLengthScaleRef, bridgeStyleRef, bridgeTiersRef, bridgesEnabledRef, cachedRiverChainDataRef, cachedRiverTierChainDataRef, canvasRef,
     clipToHexGridRef, coastlineDebugRawRef, contourCanvasRef, contourDisabledElevClassesSetRef, contourDisabledTerrainsSetRef, customTerrainsRef, dataSourceRef, defaultBackgroundBlobsRef,
-    defaultElevationBlobsRef, defaultTerrainBlobsMaskedRef, defaultWaterBlobsRef, detectedBridgesRef, disabledHexKeysRef, dragLiveDensePosRef, dragLiveOverrideRef, draggingCpKeyRef,
+    defaultElevationBlobsRef, defaultTerrainBlobsMaskedRef, detectedBridgesRef, disabledHexKeysRef, dragLiveDensePosRef, dragLiveOverrideRef, draggingCpKeyRef,
     draggingCpKindRef, draggingDensePtRef, draggingLabelRef, drawOsmHighlightRef, drawPerfRef, edgeBlobOverridesRef, edgeBlobPaintedRef, edgeBlobWidthRef,
     editingLabelRef, elevationPaintBrushRef, elevationPaintModeRef, elevationTypeBlobStylesRef, excludedHexKeysRef, frameDimsRef, hexBorderColorRef, hexBorderDifferenceRef,
     hexBorderModeRef, hexBorderOpacityRef, hexBuildingGeoCacheRef, hexEdgeModeRef, hexIdxRef, hexNumberColorRef, hexNumberEdgeRef, hexNumberFontScaleRef,
@@ -2831,7 +2754,7 @@ terrainTextureFileRef.current = terrainTextureFile
     strokeTrailRef, terrainBackgroundPaintEnabledRef, terrainBlobBumpRef, terrainBlobEffectRef, terrainBlobLobeAmpRef, terrainBlobLobeDirectionRef, terrainBlobLobeFreqRef, terrainBlobLobeThresholdRef,
     terrainBlobOffsetRef, terrainBlobOutlineColorRef, terrainBlobOutlineEnabledRef, terrainBlobOutlineWidthRef, terrainBlobOverridesRef, terrainBlobSmoothRef, terrainBlobSweepFreqRef, terrainBlobTopoStyleRef, terrainBlobClusterSizeRef,
     terrainColorsRef, terrainPaintBrushRef, terrainPaintModeRef, terrainTextureBlendModesRef, terrainTextureEnabledRef, terrainTextureFileRef, terrainTextureOpacitiesRef, terrainTextureScalesRef,
-    terrainTextureTintColorsRef, terrainTextureTintOpacitiesRef, terrainTypeBlobStylesRef, textureCacheRef, urbanHexesRef, urbanStyleRef, waterOverridesRef, worldcoverImageElementRef,
+    terrainTextureTintColorsRef, terrainTextureTintOpacitiesRef, terrainTypeBlobStylesRef, textureCacheRef, urbanHexesRef, urbanStyleRef, worldcoverImageElementRef,
     zoomRef, getPaperRef, surroundColorRef,
     edgeDragRef,
     elevationHachureEnabledRef, elevationShadowEnabledRef, elevationShadowOxRef, elevationShadowOyRef, elevationShadowBlRef, elevationShadowOpRef, elevationShadowPsRef, elevationShadowColorRef, slopeEdgesRef, slopeStyleRef, slopeSmoothingRef, slopeTickSpacingRef, slopeTickLengthRef, slopeModeRef, slopeHoverTargetRef,

@@ -1,10 +1,10 @@
 import { useEffect, useState } from 'react'
-import { useMapStore, WATER_COLOR, type BlobOverride } from '../store/mapStore'
+import { useMapStore, type BlobOverride } from '../store/mapStore'
 import { useTheme } from '../context/ThemeContext'
 import { MiniSlider } from './v2/sidebar'
 
 interface Props {
-  type: 'terrain' | 'water' | 'edge'
+  type: 'terrain' | 'edge'
   canonicalKey: string
   terrain?: string
   x: number
@@ -19,7 +19,6 @@ export function BlobOverrideFlyout({ type, canonicalKey, terrain, x, y, onClose 
   const [tab, setTab] = useState<Tab>('simple')
   const {
     terrainBlobOverrides, setTerrainBlobOverride,
-    waterOverrides, setWaterOverride,
     edgeBlobOverrides, setEdgeBlobOverride,
     terrainColors,
     terrainBlobSmooth, terrainBlobOffset, terrainBlobBump,
@@ -30,9 +29,7 @@ export function BlobOverrideFlyout({ type, canonicalKey, terrain, x, y, onClose 
 
   const hasOverride = type === 'terrain'
     ? !!terrainBlobOverrides[canonicalKey]
-    : type === 'water'
-      ? !!waterOverrides[canonicalKey]
-      : !!edgeBlobOverrides[canonicalKey]
+    : !!edgeBlobOverrides[canonicalKey]
 
   useEffect(() => {
     const handler = (e: MouseEvent) => {
@@ -48,9 +45,7 @@ export function BlobOverrideFlyout({ type, canonicalKey, terrain, x, y, onClose 
 
   const override: BlobOverride = type === 'terrain'
     ? (terrainBlobOverrides[canonicalKey] ?? {})
-    : type === 'water'
-      ? (waterOverrides[canonicalKey] ?? {})
-      : (edgeBlobOverrides[canonicalKey] ?? {})
+    : (edgeBlobOverrides[canonicalKey] ?? {})
 
   const g = {
     smooth:        terrainBlobSmooth,
@@ -78,7 +73,6 @@ export function BlobOverrideFlyout({ type, canonicalKey, terrain, x, y, onClose 
 
   const setOverride = (patch: BlobOverride) => {
     if (type === 'terrain') setTerrainBlobOverride(canonicalKey, { terrain, ...patch })
-    else if (type === 'water') setWaterOverride(canonicalKey, patch)
     else setEdgeBlobOverride(canonicalKey, patch)
   }
 
@@ -95,22 +89,15 @@ export function BlobOverrideFlyout({ type, canonicalKey, terrain, x, y, onClose 
 
   const reset = () => {
     if (type === 'terrain') setTerrainBlobOverride(canonicalKey, null)
-    else if (type === 'water') setWaterOverride(canonicalKey, null)
     else setEdgeBlobOverride(canonicalKey, null)
     onClose()
   }
 
-  const accentColor = type === 'terrain'
-    ? (terrainColors[terrain!] ?? t.rust)
-    : type === 'water'
-      ? (terrainColors['water'] ?? WATER_COLOR)
-      : (terrainColors[terrain!] ?? t.rust)
+  const accentColor = terrainColors[terrain!] ?? t.rust
 
   const title = type === 'terrain'
     ? (terrain?.replace(/_/g, ' ') ?? 'blob')
-    : type === 'water'
-      ? 'water'
-      : `edge · ${terrain?.replace(/_/g, ' ') ?? 'blob'}`
+    : `edge · ${terrain?.replace(/_/g, ' ') ?? 'blob'}`
 
   const tabStyle = (active: boolean) => ({
     flex: 1,

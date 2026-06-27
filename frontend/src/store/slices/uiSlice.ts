@@ -479,11 +479,6 @@ export const createUiSlice = (set: Set, get: () => MapStore): UiSlice => ({
         blobSeeds: s.blobSeeds, blobHandleOverrides: s.blobHandleOverrides,
         fieldFreq: s.fieldFreq, fieldAmp: s.fieldAmp, fieldOctaves: s.fieldOctaves,
         fieldPersistence: s.fieldPersistence, fieldWildness: s.fieldWildness,
-        waterBlobSmooth: s.waterBlobSmooth, waterBlobOffset: s.waterBlobOffset,
-        waterBlobBump: s.waterBlobBump, waterBlobSweepFreq: s.waterBlobSweepFreq,
-        waterBlobLobeFreq: s.waterBlobLobeFreq, waterBlobLobeAmp: s.waterBlobLobeAmp,
-        waterBlobLobeThreshold: s.waterBlobLobeThreshold, waterBlobLobeDirection: s.waterBlobLobeDirection,
-        waterOverrides: s.waterOverrides,
         showPaperTexture: s.showPaperTexture, paperTextureOpacity: s.paperTextureOpacity,
         showPaperVignette: s.showPaperVignette,
         mapBgColor: s.mapBgColor, mapBorderEnabled: s.mapBorderEnabled,
@@ -1066,6 +1061,20 @@ if (fromVersion < 64) {
     if (s.elevationShadowBl === undefined) s.elevationShadowBl = 22
     if (s.elevationShadowOp === undefined) s.elevationShadowOp = 30
     if (s.elevationShadowPs === undefined) s.elevationShadowPs = 3
+  }
+  if (fromVersion < 97) {
+    const wo = s.waterOverrides as Record<string, unknown> | undefined
+    if (wo && Object.keys(wo).length > 0) {
+      if (!s.terrainBlobOverrides) s.terrainBlobOverrides = {}
+      const tbo = s.terrainBlobOverrides as Record<string, unknown>
+      for (const [k, v] of Object.entries(wo)) {
+        if (!(k in tbo)) tbo[k] = v
+      }
+    }
+    delete s.waterOverrides
+    delete s.waterBlobSmooth; delete s.waterBlobOffset; delete s.waterBlobBump
+    delete s.waterBlobSweepFreq; delete s.waterBlobLobeFreq; delete s.waterBlobLobeAmp
+    delete s.waterBlobLobeThreshold; delete s.waterBlobLobeDirection
   }
   if (fromVersion < 84) {
     const tiers = s.riverTierStyles as Array<Record<string, unknown>> | undefined

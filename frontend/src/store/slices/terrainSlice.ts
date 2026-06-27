@@ -108,7 +108,6 @@ export type TerrainSlice = {
   // Blank map
   blankMap: boolean
   setBlankMap: (v: boolean) => void
-  waterOverrides: Record<string, BlobOverride>
   // Actions
   resetToSetup: () => void
   generateMap: () => Promise<void>
@@ -176,7 +175,6 @@ export type TerrainSlice = {
   eraseEdgeBlob: (edgeKey: string) => void
   setEdgeBlobWidth: (v: number) => void
   setEdgeBlobOverride: (key: string, override: BlobOverride | null) => void
-  setWaterOverride: (key: string, override: BlobOverride | null) => void
   blobSeeds: Record<string, number>
   randomizeBlobSeed: (terrain: string) => void
   // Blob handle editing
@@ -298,8 +296,6 @@ export const createTerrainSlice = (set: Set, get: () => MapStore): TerrainSlice 
 
   setBlankMap: (v) => set({ blankMap: v }),
 
-  waterOverrides: {},
-
   blobSeeds: {},
   blobEditMode: false,
   activeBlobEditId: null,
@@ -377,7 +373,6 @@ export const createTerrainSlice = (set: Set, get: () => MapStore): TerrainSlice 
     elevationShadowPs: 3,
     elevationShadowColor: '#8a6840',
     terrainBlobOverrides: {},
-    waterOverrides: {},
     blobHandleOverrides: {},
     activeBlobEditId: null,
     blobEditMode: false,
@@ -492,7 +487,6 @@ export const createTerrainSlice = (set: Set, get: () => MapStore): TerrainSlice 
       edgeBlobPainted: {},
       edgeBlobOverrides: {},
       terrainBlobOverrides: {},
-      waterOverrides: {},
       blobHandleOverrides: {},
       activeBlobEditId: null,
       blobEditMode: false,
@@ -1141,20 +1135,6 @@ export const createTerrainSlice = (set: Set, get: () => MapStore): TerrainSlice 
       return { edgeBlobOverrides: rest }
     }
     return { edgeBlobOverrides: { ...s.edgeBlobOverrides, [key]: cleaned } }
-  }),
-
-  setWaterOverride: (key, override) => set((s) => {
-    if (override === null) {
-      const { [key]: _, ...rest } = s.waterOverrides
-      return { waterOverrides: rest }
-    }
-    const merged = { ...s.waterOverrides[key], ...override }
-    const cleaned = Object.fromEntries(Object.entries(merged).filter(([, v]) => v !== undefined)) as BlobOverride
-    if (Object.keys(cleaned).length === 0) {
-      const { [key]: _, ...rest } = s.waterOverrides
-      return { waterOverrides: rest }
-    }
-    return { waterOverrides: { ...s.waterOverrides, [key]: cleaned } }
   }),
 
   randomizeBlobSeed: (terrain) => set((s) => ({ blobSeeds: { ...s.blobSeeds, [terrain]: (Math.random() * 0x7fffffff) | 0 } })),

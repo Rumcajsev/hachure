@@ -24,7 +24,6 @@ export type CtxItem = {
 type SettlementRef = { name: string; hex_q: number; hex_r: number; included: boolean; tier?: number }
 type BridgeTierRef = { id: string; label: string; color: string }
 type DefaultBlobEntry = { terrain: string; polys: [number, number][][]; blobKeys: (string | null)[] }
-type DefaultWaterEntry = { terrain: string; polys: [number, number][][] }
 type SmoothedRailData = { chains: { id: string; chain: [number, number][]; hopKeys?: string[]; hopRanges?: [number, number][] }[] }
 type RiverChain = RiverChainV2
 
@@ -70,7 +69,6 @@ export interface ContextMenuRefs {
   blobComponentsRef: MutableRefObject<Map<string, string>>
   blobComponentsByTerrainRef: MutableRefObject<Map<string, Map<string, string>>>
   defaultTerrainBlobsRef: MutableRefObject<DefaultBlobEntry[]>
-  defaultWaterBlobsRef: MutableRefObject<DefaultWaterEntry[]>
   edgeBlobPaintedRef: MutableRefObject<Record<string, string | undefined>>
   hexVertMapRef: MutableRefObject<unknown>
   randomizeBlobSeedRef: MutableRefObject<(blobKey: string) => void>
@@ -438,19 +436,8 @@ export function attachContextMenuHandlers(el: HTMLElement, refs: ContextMenuRefs
       const blobLy = blobLogical ? blobLogical.ly - py2 : 0
       const blobToCanvas = (poly: [number, number][]) => poly.map(([x, y]) => [x + px2, y + py2] as [number, number])
 
-      if (hex.terrain === 'water') {
-        const canonicalKey = refs.blobComponentsRef.current.get(hexKey)
-        if (canonicalKey) {
-          const waterPolys = refs.defaultWaterBlobsRef.current.find(b => b.terrain === 'water')?.polys ?? []
-          const hitWaterPoly = blobLogical ? waterPolys.filter(p => pointInPolygon(blobLx, blobLy, p)).map(blobToCanvas) : []
-          items.push({ label: 'Terrain', action: () => {}, dim: true })
-          items.push({
-            label: 'Edit water…', icon: 'edit' as const, highlightPolys: hitWaterPoly,
-            action: () => refs.setBlobFlyout({ type: 'water', canonicalKey, x: e.clientX, y: e.clientY }),
-          })
-        }
-      } else if (storedHexForBlob) {
-        const editableLayers = hexTerrainLayers(storedHexForBlob).filter(t => t !== 'water')
+      if (storedHexForBlob) {
+        const editableLayers = hexTerrainLayers(storedHexForBlob)
         let addedHeader = false
         for (const t of editableLayers) {
           const componentMap = refs.blobComponentsByTerrainRef.current.get(t)

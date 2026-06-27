@@ -70,7 +70,6 @@ export interface MapRefs {
   defaultBackgroundBlobsRef: { current: any }
   defaultElevationBlobsRef: { current: any }
   defaultTerrainBlobsMaskedRef: { current: any }
-  defaultWaterBlobsRef: { current: any }
   detectedBridgesRef: { current: any }
   disabledHexKeysRef: { current: any }
   dragLiveDensePosRef: { current: any }
@@ -265,7 +264,6 @@ export interface MapRefs {
   textureCacheRef: { current: any }
   urbanHexesRef: { current: any }
   urbanStyleRef: { current: any }
-  waterOverridesRef: { current: any }
   worldcoverImageElementRef: { current: any }
   zoomRef: { current: any }
   getPaperRef: { current: any }
@@ -279,7 +277,7 @@ export function drawMap(refs: MapRefs, exportTarget?: ExportTarget): void {
     bgPaintHoldRef, blobComponentsByTerrainRef, blobComponentsRef, blobDragLiveRef, blobEditModeRef, blobHandleDataRef, blobHandleOverridesRef, blobMaskDrawingRef,
     blobMaskStrokeRef, bridgeOverridesRef, bridgeLengthScaleRef, bridgeStyleRef, bridgeTiersRef, bridgesEnabledRef, cachedRiverChainDataRef, cachedRiverTierChainDataRef, canvasRef,
     clipToHexGridRef, coastlineDebugRawRef, contourCanvasRef, contourDisabledElevClassesSetRef, contourDisabledTerrainsSetRef, customTerrainsRef, dataSourceRef, defaultBackgroundBlobsRef,
-    defaultElevationBlobsRef, defaultTerrainBlobsMaskedRef, defaultWaterBlobsRef, detectedBridgesRef, disabledHexKeysRef, dragLiveDensePosRef, dragLiveOverrideRef, draggingCpKeyRef,
+    defaultElevationBlobsRef, defaultTerrainBlobsMaskedRef, detectedBridgesRef, disabledHexKeysRef, dragLiveDensePosRef, dragLiveOverrideRef, draggingCpKeyRef,
     draggingCpKindRef, draggingDensePtRef, draggingLabelRef, drawOsmHighlightRef, drawPerfRef, edgeBlobOverridesRef, edgeBlobPaintedRef, edgeBlobWidthRef,
     editingLabelRef, elevationPaintBrushRef, elevationPaintModeRef, elevationTypeBlobStylesRef, excludedHexKeysRef, frameDimsRef, hexBorderColorRef, hexBorderDifferenceRef, elevationHachureEnabledRef, elevationShadowEnabledRef, elevationShadowOxRef, elevationShadowOyRef, elevationShadowBlRef, elevationShadowOpRef, elevationShadowPsRef, elevationShadowColorRef, slopeEdgesRef, slopeStyleRef, slopeSmoothingRef, slopeTickSpacingRef, slopeTickLengthRef, slopeModeRef, slopeHoverTargetRef,
     hexBorderModeRef, hexBorderOpacityRef, hexBuildingGeoCacheRef, hexEdgeModeRef, hexIdxRef, hexNumberColorRef, hexNumberEdgeRef, hexNumberFontScaleRef,
@@ -301,7 +299,7 @@ export function drawMap(refs: MapRefs, exportTarget?: ExportTarget): void {
     strokeTrailRef, terrainBackgroundPaintEnabledRef, terrainBlobBumpRef, terrainBlobEffectRef, terrainBlobLobeAmpRef, terrainBlobLobeDirectionRef, terrainBlobLobeFreqRef, terrainBlobLobeThresholdRef,
     terrainBlobOffsetRef, terrainBlobOutlineColorRef, terrainBlobOutlineEnabledRef, terrainBlobOutlineWidthRef, terrainBlobOverridesRef, terrainBlobSmoothRef, terrainBlobSweepFreqRef, terrainBlobTopoStyleRef, terrainBlobClusterSizeRef,
     terrainColorsRef, terrainPaintBrushRef, terrainPaintModeRef, terrainTextureBlendModesRef, terrainTextureEnabledRef, terrainTextureFileRef, terrainTextureOpacitiesRef, terrainTextureScalesRef,
-    terrainTextureTintColorsRef, terrainTextureTintOpacitiesRef, terrainTypeBlobStylesRef, textureCacheRef, urbanHexesRef, urbanStyleRef, waterOverridesRef, worldcoverImageElementRef,
+    terrainTextureTintColorsRef, terrainTextureTintOpacitiesRef, terrainTypeBlobStylesRef, textureCacheRef, urbanHexesRef, urbanStyleRef, worldcoverImageElementRef,
     zoomRef, getPaperRef, surroundColorRef,
     edgeDragRef,
   } = refs
@@ -447,9 +445,7 @@ export function drawMap(refs: MapRefs, exportTarget?: ExportTarget): void {
     px: 0, py: 0, pw, ph,
     backgroundTerrainBlobs: defaultBackgroundBlobsRef.current,
     defaultTerrainBlobs: defaultTerrainBlobsMaskedRef.current,
-    defaultWaterBlobs: defaultWaterBlobsRef.current,
     terrainBlobOverrides: terrainBlobOverridesRef.current,
-    waterOverrides: waterOverridesRef.current,
     blobComponents: blobComponentsRef.current,
     blobComponentsByTerrain: blobComponentsByTerrainRef.current,
     terrainBlobParams: {
@@ -526,14 +522,11 @@ export function drawMap(refs: MapRefs, exportTarget?: ExportTarget): void {
 
   // Pre-compute export terrain blobs and params (heavy, export-only)
   {
-    const { exportTerrainBlobs, exportWaterBlobs } = isExport
+    const exportTerrainBlobs = isExport
       ? buildExportTerrainBlobs({
           projected,
           terrainBlobOverrides: terrainBlobOverridesRef.current,
-          blobComponents: blobComponentsRef.current,
           blobComponentsByTerrain: blobComponentsByTerrainRef.current,
-          realisticCoastline: realisticCoastlineRef.current,
-          waterOverrides: waterOverridesRef.current,
           terrainTypeBlobStyles: terrainTypeBlobStylesRef.current,
           smooth: terrainBlobSmoothRef.current,
           offset: terrainBlobOffsetRef.current,
@@ -546,8 +539,8 @@ export function drawMap(refs: MapRefs, exportTarget?: ExportTarget): void {
           clusterSize: terrainBlobClusterSizeRef.current,
           R,
         })
-      : { exportTerrainBlobs: terrainParams.defaultTerrainBlobs, exportWaterBlobs: terrainParams.defaultWaterBlobs }
-    const exportTerrainParams = { ...terrainParams, backgroundTerrainBlobs: defaultBackgroundBlobsRef.current, defaultTerrainBlobs: exportTerrainBlobs, defaultWaterBlobs: exportWaterBlobs }
+      : terrainParams.defaultTerrainBlobs
+    const exportTerrainParams = { ...terrainParams, backgroundTerrainBlobs: defaultBackgroundBlobsRef.current, defaultTerrainBlobs: exportTerrainBlobs }
     const _b0 = performance.now()
     terrainController.draw(ctx, {
       pw, ph, dpr, offZoom, isExport, isPainting: isPaintingRef.current,

@@ -823,10 +823,7 @@ export function generateBlobSplats(
 export interface ExportBlobParams {
   projected: { hex: GeneratedHex; verts: [number, number][] }[]
   terrainBlobOverrides: Record<string, unknown>
-  blobComponents: Map<string, string>
   blobComponentsByTerrain: Map<string, Map<string, string>>
-  realisticCoastline: boolean
-  waterOverrides: Record<string, unknown>
   terrainTypeBlobStyles: Record<string, { enabled?: boolean; smooth?: number; offset?: number; bump?: number; sweepFreq?: number; lobeFreq?: number; lobeAmp?: number; lobeThreshold?: number; lobeDirection?: number; clusterSize?: number } | undefined>
   smooth: number; offset: number; bump: number; sweepFreq: number
   lobeFreq: number; lobeAmp: number; lobeThreshold: number; lobeDirection: number
@@ -834,33 +831,27 @@ export interface ExportBlobParams {
   R: number
 }
 
-export function buildExportTerrainBlobs(p: ExportBlobParams): {
-  exportTerrainBlobs: ReturnType<typeof buildTerrainBlobsV2>
-  exportWaterBlobs: ReturnType<typeof buildTerrainBlobsV2>
-} {
-  const { projected, terrainBlobOverrides, blobComponents, blobComponentsByTerrain,
-    realisticCoastline, waterOverrides, terrainTypeBlobStyles,
+export function buildExportTerrainBlobs(p: ExportBlobParams): ReturnType<typeof buildTerrainBlobsV2> {
+  const { projected, terrainBlobOverrides, blobComponentsByTerrain,
+    terrainTypeBlobStyles,
     smooth, offset, bump, sweepFreq, lobeFreq, lobeAmp, lobeThreshold, lobeDirection, clusterSize, R } = p
 
   const overriddenKeys = new Set(Object.keys(terrainBlobOverrides))
-  const isPureSea = (h: GeneratedHex) => h.terrain === 'water'
 
   const terrainTypeSet = new Set<string>()
   for (const { hex } of projected) {
     const h = hex as GeneratedHex
-    if (realisticCoastline && isPureSea(h)) continue
-    for (const t of coastalBlobTerrains(h, realisticCoastline)) {
-      if (t !== 'clear' && t !== 'water') terrainTypeSet.add(t)
+    for (const t of coastalBlobTerrains(h)) {
+      if (t !== 'clear') terrainTypeSet.add(t)
     }
   }
 
-  const exportTerrainBlobs = [...terrainTypeSet].flatMap(terrain => {
+  return [...terrainTypeSet].flatMap(terrain => {
     const componentMap = blobComponentsByTerrain.get(terrain) ?? new Map<string, string>()
     const terrainProjected = projected
       .filter(({ hex }) => {
         const h = hex as GeneratedHex
-        if (realisticCoastline && isPureSea(h)) return false
-        if (!coastalBlobTerrains(h, realisticCoastline).includes(terrain)) return false
+        if (!coastalBlobTerrains(h).includes(terrain)) return false
         if (overriddenKeys.size > 0) {
           const ck = componentMap.get(`${h.q},${h.r}`)
           if (ck && overriddenKeys.has(ck)) return false
@@ -878,19 +869,4 @@ export function buildExportTerrainBlobs(p: ExportBlobParams): {
       ts?.lobeDirection ?? lobeDirection, R, 0, ts?.clusterSize ?? clusterSize,
     )
   })
-
-  const waterOverriddenKeys = new Set(Object.keys(waterOverrides))
-  const defaultWaterProjected = projected
-    .filter(({ hex }) => {
-      if (hex.terrain !== 'water') return false
-      const ck = blobComponents.get(`${hex.q},${hex.r}`)
-      return !ck || !waterOverriddenKeys.has(ck)
-    })
-    .map(({ hex, verts }) => ({ hex: { ...hex, terrain: 'water' }, verts }))
-
-  const exportWaterBlobs = defaultWaterProjected.length > 0
-    ? buildTerrainBlobsV2(defaultWaterProjected, smooth, offset, bump, sweepFreq, lobeFreq, lobeAmp, lobeThreshold, lobeDirection, R)
-    : []
-
-  return { exportTerrainBlobs, exportWaterBlobs }
 }

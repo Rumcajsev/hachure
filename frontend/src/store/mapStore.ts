@@ -134,7 +134,6 @@ export type ActiveTool =
   | { type: 'select' }
   | { type: 'terrain'; brush: string }
   | { type: 'elevation'; brush: 'flat' | 'hills' | 'mountains' }
-  | { type: 'water' }
   | { type: 'road'; tier: 0 | 1 | 2; erasing: boolean }
   | { type: 'rail'; erasing: boolean }
   | { type: 'node-edit' }
@@ -973,15 +972,6 @@ export const useMapStore = create<MapStore>()(persist((set, get) => ({
     blobSeeds: s.blobSeeds,
     blobHandleOverrides: s.blobHandleOverrides,
     blobMaskEdits: s.blobMaskEdits,
-    waterBlobSmooth: s.waterBlobSmooth,
-    waterBlobOffset: s.waterBlobOffset,
-    waterBlobBump: s.waterBlobBump,
-    waterBlobSweepFreq: s.waterBlobSweepFreq,
-    waterBlobLobeFreq: s.waterBlobLobeFreq,
-    waterBlobLobeAmp: s.waterBlobLobeAmp,
-    waterBlobLobeThreshold: s.waterBlobLobeThreshold,
-    waterBlobLobeDirection: s.waterBlobLobeDirection,
-    waterOverrides: s.waterOverrides,
     highlights: s.highlights,
     highlightedHexes: s.highlightedHexes,
     highlightLines: s.highlightLines,
@@ -1025,7 +1015,7 @@ export const useMapStore = create<MapStore>()(persist((set, get) => ({
     labelPresetId: s.labelPresetId,
     labelOverrides: s.labelOverrides,
   }),
-  version: 96,
+  version: 97,
   migrate: migratePersisted,
   merge: (persisted, current) => rehydrateState({ ...current, ...(persisted as Partial<MapStore>) }),
 }))
