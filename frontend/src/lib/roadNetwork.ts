@@ -169,11 +169,11 @@ export class RoadNetwork {
     const existingTier = this.adj.get(k1)!.get(k2)
 
     if (existingTier !== undefined) {
-      // Replace semantics: same as store's addRoadEdge — swap the tier, don't min
+      if (tier === existingTier) return  // no-op: tier unchanged, rawEdges stays stable
+      // Replace semantics: swap the tier, don't min
       const pk = pairKey(k1, k2)
       this.rawEdges = this.rawEdges.filter(e => pairKey(`${e.q1},${e.r1}`, `${e.q2},${e.r2}`) !== pk)
       this.rawEdges.push({ q1, r1, q2, r2, tier })
-      if (tier === existingTier) return
       this.adj.get(k1)!.set(k2, tier)
       this.adj.get(k2)!.set(k1, tier)
       this.markEdgeSegmentDirty(k1, k2, tier)
