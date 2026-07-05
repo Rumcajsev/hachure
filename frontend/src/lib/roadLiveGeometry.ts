@@ -76,6 +76,41 @@ export interface DragLiveResult {
   liveRiverChainOverrides: Record<string, [number, number][]> | null
 }
 
+// Stable-reference cache for applyRailWiggle — avoids a new object every RAF frame
+// when nothing is dragging, which would bust the projection cache and force a roads rebuild.
+let _railWiggleCache: {
+  base: RailBaseData
+  wiggleAmp: number; wiggleFreq: number
+  segProps: any; hopProps: any
+  chaikinPasses: number
+  geomOverride: any
+  result: RailBaseData
+} | null = null
+
+function stableApplyRailWiggle(
+  base: RailBaseData,
+  wiggleAmp: number, wiggleFreq: number,
+  segProps: any, hopProps: any,
+  chaikinPasses: number,
+  geomOverride: any,
+): RailBaseData {
+  if (
+    _railWiggleCache &&
+    _railWiggleCache.base === base &&
+    _railWiggleCache.wiggleAmp === wiggleAmp &&
+    _railWiggleCache.wiggleFreq === wiggleFreq &&
+    _railWiggleCache.segProps === segProps &&
+    _railWiggleCache.hopProps === hopProps &&
+    _railWiggleCache.chaikinPasses === chaikinPasses &&
+    _railWiggleCache.geomOverride === geomOverride
+  ) {
+    return _railWiggleCache.result
+  }
+  const result = applyRailWiggle(base, wiggleAmp, wiggleFreq, segProps, hopProps, chaikinPasses, geomOverride ?? undefined)
+  _railWiggleCache = { base, wiggleAmp, wiggleFreq, segProps, hopProps, chaikinPasses, geomOverride, result }
+  return result
+}
+
 export function computeDragLiveData(p: DragLiveInput): DragLiveResult {
   const {
     dragLiveOverride, draggingDensePt, dragLiveDensePos, draggingCpKind,
@@ -162,7 +197,7 @@ export function computeDragLiveData(p: DragLiveInput): DragLiveResult {
         ),
         railWiggleAmp, railWiggleFreq, railSegmentProps, railHopProps, 0, liveRailGeomOverride,
       )
-    : applyRailWiggle(
+    : stableApplyRailWiggle(
         networkRailBase,
         railWiggleAmp, railWiggleFreq, railSegmentProps, railHopProps,
         railWiggleDragging ? 0 : 2, liveRailGeomOverride,
