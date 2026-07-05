@@ -15,6 +15,7 @@ import { computeDragLiveData, computeRoadProjections, computeLiveRiverChainData 
 
 import { drawRivers as _drawRivers } from '../lib/drawRivers'
 import { RoadNetwork } from '../lib/roadNetwork'
+import { RailNetwork } from '../lib/railNetwork'
 import { buildRailChains, applyRailWiggle } from '../lib/railChains'
 import type { RailBaseData } from '../lib/railChains'
 
@@ -51,6 +52,7 @@ import type { OsmOverlayRefs } from '../render/osmOverlay'
 import { attachTerrainPaintHandlers } from '../interaction/tools/terrainPaintTool'
 import type { PaintHoverTarget } from '../interaction/tools/terrainPaintTool'
 import { attachHexDisableHandlers } from '../interaction/tools/hexDisableTool'
+import { attachImageEyedropperHandlers } from '../interaction/tools/imageEyedropperTool'
 import { attachHexMaskHandlers } from '../interaction/tools/hexMaskTool'
 import { attachMegaHexHandlers } from '../interaction/tools/megaHexTool'
 import { attachRoadRailPaintHandlers } from '../interaction/tools/roadRailPaintTool'
@@ -77,6 +79,9 @@ import { _drawTerrainPaintOverlay, _drawElevationPaintOverlay } from '../lib/dra
 import { _drawBlobHandleOverlay, _drawBlobMaskPreview } from '../lib/drawBlobHandleOverlay'
 import { liveClassParamsRef, requestDraw } from '../lib/liveClassParamsRef'
 import { drawMapImageOverlay } from '../lib/drawMapImageOverlay'
+import { ensureMapImageData } from '../lib/decodedMapImage'
+import { buildColorPreviewMask } from '../lib/imageColorPreview'
+import { extractTieredLinesFromImage } from '../lib/imageLineExtract'
 import type { BridgePoint } from '../lib/detectBridges'
 import { drawRoadHandles as _drawRoadHandles, drawRailHandles as _drawRailHandles, drawRiverHandles as _drawRiverHandles } from '../lib/drawEditHandles'
 import { drawPaperBackground as _drawPaperBackground, drawPaperMargin as _drawPaperMargin } from '../lib/drawPaperChrome'
@@ -248,6 +253,7 @@ terrainColors, terrainTextureScales, terrainTextureBlendModes, terrainTextureOpa
     setSelectedSegmentKeys, toggleSegmentSelection,
     riverTierStyles, riverStyle,
     riverWidthScale,
+    riverTaperSegments,
     riverWiggleFreq, riverWiggleAmp, riverSmoothing, riverPathSmoothing,
     riverBlobCutEnabled, riverBlobCutWidth, riverBlobCutRoughness,
     terrainBlobOverrides, setTerrainBlobOverride,
@@ -260,7 +266,7 @@ terrainColors, terrainTextureScales, terrainTextureBlendModes, terrainTextureOpa
     terrainEdgePaintEnabled,
     terrainBackgroundPaintEnabled, overrideHexBackground,
     customTerrains,
-    edgeBlobWidth, edgeBlobOverrides, setEdgeBlobOverride,
+    edgeBlobWidth, edgeBlobBlend, edgeBlobOverrides, setEdgeBlobOverride,
     realisticCoastline, coastlineDebugRaw,
     beachStrip, beachColor, beachWidth,
     hillsColor, mountainsColor, reliefShadingOpacity,
@@ -307,6 +313,9 @@ terrainColors, terrainTextureScales, terrainTextureBlendModes, terrainTextureOpa
     megaHexEnabled, megaHexRadius, megaHexColor, megaHexOpacity, megaHexLineWidth,
     megaHexOriginQ, megaHexOriginR, setMegaHexOrigin,
     mapImageDataUrl, mapImageTransform, mapImageOpacity, setMapImageTransform,
+    addImageSwatch, addRoadImageSwatch, extractedRoadWays,
+    roadImageSwatches, roadImageExtractPreviewOpen,
+    roadImagePreviewSwatchId, roadImagePreviewPhase, setRoadImagePreview,
     dataSource,
     blobSeeds, randomizeBlobSeed,
     blobEditMode, setBlobEditMode, activeBlobEditId, setActiveBlobEditId,
@@ -367,6 +376,7 @@ terrainColors, terrainTextureScales, terrainTextureBlendModes, terrainTextureOpa
   const edgeBlobOverridesRef = useRef(edgeBlobOverrides)
   const customTerrainsRef = useRef(customTerrains)
   const edgeBlobWidthRef = useRef(edgeBlobWidth)
+  const edgeBlobBlendRef = useRef(edgeBlobBlend)
   const roadEdgesRef = useRef(roadEdges)
   const railEdgesRef = useRef(railEdges)
   const rawRoadWaysRef = useRef(rawRoadWays)
@@ -422,6 +432,7 @@ terrainColors, terrainTextureScales, terrainTextureBlendModes, terrainTextureOpa
   const batchAddRoadEdgesRef = useRef(batchAddRoadEdges)
   const batchRemoveRoadEdgesRef = useRef(batchRemoveRoadEdges)
   const roadNetworkRef = useRef(new RoadNetwork())
+  const railNetworkRef = useRef(new RailNetwork())
   const paintBufferedAdditionsRef = useRef<{ q1: number; r1: number; q2: number; r2: number; tier: 0 | 1 | 2 }[]>([])
   const paintBufferedRemovalsRef = useRef<{ q1: number; r1: number; q2: number; r2: number }[]>([])
   const railBufferedAdditionsRef = useRef<{ q1: number; r1: number; q2: number; r2: number }[]>([])
@@ -458,6 +469,7 @@ terrainColors, terrainTextureScales, terrainTextureBlendModes, terrainTextureOpa
   const deleteRailSnapBindingRef = useRef(deleteRailSnapBinding)
   const railWiggleAmpRef = useRef(railWiggleAmp)
   const railWiggleFreqRef = useRef(railWiggleFreq)
+  const railWiggleDraggingRef = useRef(railWiggleDragging)
   const railSmoothingRef = useRef(railSmoothing)
   const railPathSmoothingRef = useRef(railPathSmoothing)
   const railGeomOverrideRef = useRef(railGeomOverride)
@@ -507,6 +519,7 @@ terrainColors, terrainTextureScales, terrainTextureBlendModes, terrainTextureOpa
   const riverStyleRef = useRef(riverStyle)
   const computedRiverChainsRef = useRef<{ vertices: [number,number][]; segKey: string }[]>([])
   const riverWidthScaleRef = useRef(riverWidthScale)
+  const riverTaperSegmentsRef = useRef(riverTaperSegments)
   const riverHopPropsRef = useRef(riverHopProps)
   const selectedHopKeyRef = useRef(selectedHopKey)
   const setRiverHopPropRef = useRef(setRiverHopProp)
@@ -784,6 +797,7 @@ const terrainTextureFileRef = useRef(terrainTextureFile)
   riverTierStylesRef.current = riverTierStyles
   riverStyleRef.current = riverStyle
   riverWidthScaleRef.current = riverWidthScale
+  riverTaperSegmentsRef.current = riverTaperSegments
   riverHopPropsRef.current = riverHopProps
   selectedHopKeyRef.current = selectedHopKey
   setRiverHopPropRef.current = setRiverHopProp
@@ -813,6 +827,7 @@ const terrainTextureFileRef = useRef(terrainTextureFile)
   deleteRailSnapBindingRef.current = deleteRailSnapBinding
   railWiggleAmpRef.current = railWiggleAmp
   railWiggleFreqRef.current = railWiggleFreq
+  railWiggleDraggingRef.current = railWiggleDragging
   railSmoothingRef.current = railSmoothing
   railPathSmoothingRef.current = railPathSmoothing
   railGeomOverrideRef.current = railGeomOverride
@@ -942,6 +957,7 @@ terrainTextureFileRef.current = terrainTextureFile
   edgeBlobOverridesRef.current = edgeBlobOverrides
   customTerrainsRef.current = customTerrains
   edgeBlobWidthRef.current = edgeBlobWidth
+  edgeBlobBlendRef.current = edgeBlobBlend
   terrainRenderModeRef.current = terrainRenderMode
   // fieldFreqRef.current = fieldFreq; fieldAmpRef.current = fieldAmp
   // fieldOctavesRef.current = fieldOctaves; fieldPersistenceRef.current = fieldPersistence
@@ -1034,6 +1050,7 @@ terrainTextureFileRef.current = terrainTextureFile
       overrides: roadControlOverrides, chainOverrides: roadChainOverrides,
       snapBindings: roadSnapBindings, tierGeom: roadTierGeomMap,
     })
+    railNetworkRef.current.markDirty()  // road midpoints may have shifted
     roadsController.markDirty()
   }, [roadSmoothing, roadPathSmoothing, roadCenterPull, roadControlOverrides, roadChainOverrides, roadSnapBindings, roadTierGeomMap])
   // Rebuild network from store when edges change externally (undo, load, OSM generate)
@@ -1041,9 +1058,29 @@ terrainTextureFileRef.current = terrainTextureFile
   useEffect(() => {
     if (roadNetworkRef.current.isEdgesEqual(roadEdges)) return
     roadNetworkRef.current.rebuildAll(roadEdges)
+    railNetworkRef.current.markDirty()  // road midpoints may have shifted
     roadsController.markDirty()
     setRoadDataVersion(v => v + 1)
   }, [roadEdges]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Keep RailNetwork in sync with hex positions, geometry params, and store edges
+  useEffect(() => {
+    railNetworkRef.current.setHexIdx(hexCenterIdx)
+    roadsController.markDirty()
+  }, [hexCenterIdx])
+  useEffect(() => {
+    railNetworkRef.current.setParams({
+      smoothing: railGeomOverride?.smoothing ?? railSmoothing,
+      pathSmoothing: railGeomOverride?.pathSmoothing ?? railPathSmoothing,
+      overrides: railControlOverrides,
+    })
+    roadsController.markDirty()
+  }, [railSmoothing, railPathSmoothing, railControlOverrides, railGeomOverride])
+  useEffect(() => {
+    if (railNetworkRef.current.isEdgesEqual(railEdges)) return
+    railNetworkRef.current.rebuildAll(railEdges)
+    roadsController.markDirty()
+  }, [railEdges]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const railBaseData = useMemo(
     () => {
@@ -1196,6 +1233,18 @@ terrainTextureFileRef.current = terrainTextureFile
   mapImageTransformRef.current = mapImageTransform
   const mapImageOpacityRef = useRef(mapImageOpacity)
   mapImageOpacityRef.current = mapImageOpacity
+  const addImageSwatchRef = useRef(addImageSwatch)
+  addImageSwatchRef.current = addImageSwatch
+  const addRoadImageSwatchRef = useRef(addRoadImageSwatch)
+  addRoadImageSwatchRef.current = addRoadImageSwatch
+  const extractedRoadWaysRef = useRef(extractedRoadWays)
+  extractedRoadWaysRef.current = extractedRoadWays
+  const roadColorPreviewImageRef = useRef<ImageBitmap | null>(null)
+  const roadTraceLinesPreviewRef = useRef<{ lines: [number, number][][]; naturalW: number; naturalH: number } | null>(null)
+  const roadImageExtractPreviewOpenRef = useRef(roadImageExtractPreviewOpen)
+  roadImageExtractPreviewOpenRef.current = roadImageExtractPreviewOpen
+  const setRoadImagePreviewRef = useRef(setRoadImagePreview)
+  setRoadImagePreviewRef.current = setRoadImagePreview
   const setMapImageTransformRef = useRef(setMapImageTransform)
   setMapImageTransformRef.current = setMapImageTransform
   const dataSourceRef = useRef(dataSource)
@@ -1799,7 +1848,7 @@ terrainTextureFileRef.current = terrainTextureFile
   //   forestTextureVersion, frameDims, draw])
 
   // Mark terrain layer dirty when terrain-affecting data changes (fills + textures are one layer)
-  useEffect(() => { terrainController.markDirty() }, [defaultTerrainBlobsSplatted, defaultTerrainBlobsMasked, defaultTerrainBlobs, defaultElevationBlobs, terrainColors, terrainTextureBlendModes, terrainTextureScales, terrainTextureOpacities, terrainTextureTintColors, terrainTextureTintOpacities, terrainTextureFile, terrainTextureEnabled, terrainBlobOverrides, terrainTypeBlobStyles, terrainRenderMode, hexEdgeMode, generatedHexes, realisticCoastline, coastlineDebugRaw, smoothedCoastlineBoundary, rawCoastlineBoundary, beachStrip, beachColor, beachWidth, hillsColor, mountainsColor, reliefShadingOpacity, coastlineDPEpsilon, coastlineChaikinPasses, edgeBlobPainted, edgeBlobOverrides, edgeBlobWidth, mapStyle, historicalIconParams, elevationTypeBlobStyles, terrainBlobOutlineEnabled, terrainBlobOutlineColor, terrainBlobOutlineWidth, terrainBlobEffect, elevationOverridesTerrain, slopeEdges, slopeStyle, slopeSmoothing, slopeTickSpacing, slopeTickLength, elevationHachureEnabled, elevationShadowEnabled, elevationShadowOx, elevationShadowOy, elevationShadowBl, elevationShadowOp, elevationShadowPs, elevationShadowColor])
+  useEffect(() => { terrainController.markDirty() }, [defaultTerrainBlobsSplatted, defaultTerrainBlobsMasked, defaultTerrainBlobs, defaultElevationBlobs, terrainColors, terrainTextureBlendModes, terrainTextureScales, terrainTextureOpacities, terrainTextureTintColors, terrainTextureTintOpacities, terrainTextureFile, terrainTextureEnabled, terrainBlobOverrides, terrainTypeBlobStyles, terrainRenderMode, hexEdgeMode, generatedHexes, realisticCoastline, coastlineDebugRaw, smoothedCoastlineBoundary, rawCoastlineBoundary, beachStrip, beachColor, beachWidth, hillsColor, mountainsColor, reliefShadingOpacity, coastlineDPEpsilon, coastlineChaikinPasses, edgeBlobPainted, edgeBlobOverrides, edgeBlobWidth, edgeBlobBlend, mapStyle, historicalIconParams, elevationTypeBlobStyles, terrainBlobOutlineEnabled, terrainBlobOutlineColor, terrainBlobOutlineWidth, terrainBlobEffect, elevationOverridesTerrain, slopeEdges, slopeStyle, slopeSmoothing, slopeTickSpacing, slopeTickLength, elevationHachureEnabled, elevationShadowEnabled, elevationShadowOx, elevationShadowOy, elevationShadowBl, elevationShadowOp, elevationShadowPs, elevationShadowColor])
   useEffect(() => { terrainController.markDirty(); draw() }, [hillshadeDisabledTerrains, hillshadeDisabledElevClasses, contourDisabledTerrains, contourDisabledElevClasses]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // Decode heightmap PNG → ImageData when URL changes, then recompute derived canvases
@@ -1898,15 +1947,15 @@ terrainTextureFileRef.current = terrainTextureFile
   // (hexBorder, buildings, settlements, highlights, hexNumbers handled by startLayerDirtySync)
   useEffect(() => {
     cachedRiverTierChainDataRef.current = riverTierChainsRaw.map(chains =>
-      chains.map(c => ({ vertices: c.chain, segKey: c.segKey, hopKeys: c.hopKeys, hopRanges: c.hopRanges }))
+      chains.map(c => ({ vertices: c.chain, segKey: c.segKey, hopKeys: c.hopKeys, hopRanges: c.hopRanges, leafAtStart: c.leafAtStart, leafAtEnd: c.leafAtEnd }))
     ) as [ChainEntry[], ChainEntry[], ChainEntry[]]
     const rv2 = [...riverTierChainsRaw[0], ...riverTierChainsRaw[1], ...riverTierChainsRaw[2]]
     riverChainsV2Ref.current = rv2
-    cachedRiverChainDataRef.current = rv2.map(c => ({ vertices: c.chain, segKey: c.segKey, hopKeys: c.hopKeys, hopRanges: c.hopRanges }))
+    cachedRiverChainDataRef.current = rv2.map(c => ({ vertices: c.chain, segKey: c.segKey, hopKeys: c.hopKeys, hopRanges: c.hopRanges, leafAtStart: c.leafAtStart, leafAtEnd: c.leafAtEnd }))
     computedRiverChainsRef.current = cachedRiverChainDataRef.current
     riverChainCache.chains = cachedRiverChainDataRef.current
     riversController.markDirty()
-  }, [riverTierChainsRaw, riverWidthScale, showRiverLabels, riverLabelColor, riverSelectMode, selectedSegmentKeys, riverStyle, selectedHopKey, labelOffsets])
+  }, [riverTierChainsRaw, riverWidthScale, riverTaperSegments, showRiverLabels, riverLabelColor, riverSelectMode, selectedSegmentKeys, riverStyle, selectedHopKey, labelOffsets])
   useEffect(() => { roadsController.markDirty() }, [smoothedRailData, roadTierStyles, railStyle, roadSegmentProps, roadHopProps, selectedRoadSegmentKeys, selectedRoadHopKey, roadSelectMode, railSegmentProps, railHopProps, selectedRailSegmentKeys, selectedRailHopKey, railSelectMode])
   useEffect(() => {
     if (bridgesEnabled) {
@@ -1936,7 +1985,7 @@ terrainTextureFileRef.current = terrainTextureFile
   }, [activeTool.type])
 
   // Redraw when data changes
-  useEffect(() => { draw() }, [defaultElevationBlobs, generatedHexes, hexBorderMode, hexEdgeMode, hexBorderOpacity, hexBorderColor, hexBorderDifference, hexNumbersEnabled, hexNumberEdge, hexNumberColor, hexNumberFontScale, hexNumberStartCorner, hexNumberMap, roadDataVersion, smoothedRailData, showRawOsmRoads, roadNodeEditMode, riverNodeEditMode, riverChainOverrides, riverEdges, riverEditMode, riverWidthScale, riverWiggleFreq, riverWiggleAmp, riverSmoothing, riverPathSmoothing, showRiverLabels, riverLabelColor, riverSegmentProps, riverSelectMode, selectedSegmentKeys, riverTierStyles, riverStyle, riverHopProps, selectedHopKey, defaultTerrainBlobs, terrainColors, terrainTextureScales, terrainTextureBlendModes, terrainTextureOpacities, terrainTextureTintColors, terrainTextureTintOpacities, terrainTextureFile, terrainTextureEnabled, terrainBlobOverrides, terrainTypeBlobStyles, terrainRenderMode, settlements, settlementTierStyles, urbanHexes, urbanStyle, roadTierStyles, railStyle, highlights, highlightedHexes, highlightLines, highlightEdgePaths, iconOverlays, placedIcons, labelOverlays, placedLabels, realisticCoastline, coastlineDebugRaw, smoothedCoastlineBoundary, rawCoastlineBoundary, beachStrip, beachColor, beachWidth, coastlineDPEpsilon, coastlineChaikinPasses, edgeBlobPainted, edgeBlobOverrides, edgeBlobWidth, roadSegmentProps, roadHopProps, selectedRoadSegmentKeys, selectedRoadHopKey, roadSelectMode, railNodeEditMode, railControlOverrides, railSelectMode, railWiggleAmp, railWiggleFreq, railSmoothing, railSegmentProps, railHopProps, selectedRailSegmentKeys, selectedRailHopKey, mapBgColor, mapBorderEnabled, mapBorderColor, mapBorderWidth, clipToHexGrid, excludedHexKeys, disabledHexKeys, autoDisabledOceanHexKeys, megaHexEnabled, megaHexRadius, megaHexColor, megaHexOpacity, megaHexLineWidth, megaHexOriginQ, megaHexOriginR, bridgesEnabled, bridgeStyle, bridgeLengthScale, bridgeTiers, bridgeOverrides, showElevationDebug, showElevationClassOverlay, mapStyle, labelOffsets, labelPresetId, labelOverrides, activeTool, blobEditMode, activeBlobEditId, blobHandleOverrides, blobMaskEdits, defaultTerrainBlobsMasked, draw])
+  useEffect(() => { draw() }, [defaultElevationBlobs, generatedHexes, hexBorderMode, hexEdgeMode, hexBorderOpacity, hexBorderColor, hexBorderDifference, hexNumbersEnabled, hexNumberEdge, hexNumberColor, hexNumberFontScale, hexNumberStartCorner, hexNumberMap, roadDataVersion, smoothedRailData, showRawOsmRoads, extractedRoadWays, roadNodeEditMode, riverNodeEditMode, riverChainOverrides, riverEdges, riverEditMode, riverWidthScale, riverTaperSegments, riverWiggleFreq, riverWiggleAmp, riverSmoothing, riverPathSmoothing, showRiverLabels, riverLabelColor, riverSegmentProps, riverSelectMode, selectedSegmentKeys, riverTierStyles, riverStyle, riverHopProps, selectedHopKey, defaultTerrainBlobs, terrainColors, terrainTextureScales, terrainTextureBlendModes, terrainTextureOpacities, terrainTextureTintColors, terrainTextureTintOpacities, terrainTextureFile, terrainTextureEnabled, terrainBlobOverrides, terrainTypeBlobStyles, terrainRenderMode, settlements, settlementTierStyles, urbanHexes, urbanStyle, roadTierStyles, railStyle, highlights, highlightedHexes, highlightLines, highlightEdgePaths, iconOverlays, placedIcons, labelOverlays, placedLabels, realisticCoastline, coastlineDebugRaw, smoothedCoastlineBoundary, rawCoastlineBoundary, beachStrip, beachColor, beachWidth, coastlineDPEpsilon, coastlineChaikinPasses, edgeBlobPainted, edgeBlobOverrides, edgeBlobWidth, roadSegmentProps, roadHopProps, selectedRoadSegmentKeys, selectedRoadHopKey, roadSelectMode, railNodeEditMode, railControlOverrides, railSelectMode, railWiggleAmp, railWiggleFreq, railSmoothing, railSegmentProps, railHopProps, selectedRailSegmentKeys, selectedRailHopKey, mapBgColor, mapBorderEnabled, mapBorderColor, mapBorderWidth, clipToHexGrid, excludedHexKeys, disabledHexKeys, autoDisabledOceanHexKeys, megaHexEnabled, megaHexRadius, megaHexColor, megaHexOpacity, megaHexLineWidth, megaHexOriginQ, megaHexOriginR, bridgesEnabled, bridgeStyle, bridgeLengthScale, bridgeTiers, bridgeOverrides, showElevationDebug, showElevationClassOverlay, mapStyle, labelOffsets, labelPresetId, labelOverrides, activeTool, blobEditMode, activeBlobEditId, blobHandleOverrides, blobMaskEdits, defaultTerrainBlobsMasked, draw])
 
   useEffect(() => { drawOsmHighlight() }, [osmHighlightTier, osmHighlightType, osmSpotlightMode, osmSpotlightTiers, osmRailHighlight, hoveredOsmRiverIdx, drawOsmHighlight])
 
@@ -1948,6 +1997,42 @@ terrainTextureFileRef.current = terrainTextureFile
   }, [mapImageDataUrl, draw])
 
   useEffect(() => { draw() }, [mapImageTransform, mapImageOpacity, draw])
+
+  // Live road color/trace preview for whichever single swatch is currently being tuned
+  // (see roadsSlice's roadImagePreviewSwatchId/Phase): 'raw' = cheap per-pixel color match
+  // in bright red (live while dragging the tolerance slider, and left showing after release),
+  // 'traced' = the real skeletonize + trace + simplify pipeline scoped to just that swatch,
+  // run only when the user clicks that swatch's "Trace preview" button.
+  // Only ever previews one swatch at a time — see imageColorPreview.ts / imageLineExtract.ts.
+  useEffect(() => {
+    const clearPreview = () => {
+      roadColorPreviewImageRef.current = null
+      roadTraceLinesPreviewRef.current = null
+    }
+    if (!roadImageExtractPreviewOpen || !mapImageDataUrl || !roadImagePreviewPhase) { clearPreview(); draw(); return }
+    const swatch = roadImageSwatches.find(s => s.id === roadImagePreviewSwatchId)
+    if (!swatch || swatch.tier === null) { clearPreview(); draw(); return }
+    const tiered = [{ ...swatch, tier: swatch.tier }] as [{ id: number; color: string; tolerance: number; tier: 0 | 1 | 2 }]
+    let cancelled = false
+    ensureMapImageData(mapImageDataUrl).then(imgData => {
+      if (cancelled) return
+      if (roadImagePreviewPhase === 'raw') {
+        const mask = buildColorPreviewMask(imgData, tiered, ['#ff0000', '#ff0000', '#ff0000'])
+        return createImageBitmap(mask).then(bitmap => {
+          if (cancelled) return
+          roadTraceLinesPreviewRef.current = null
+          roadColorPreviewImageRef.current = bitmap
+          draw()
+        })
+      }
+      const traced = extractTieredLinesFromImage(imgData, tiered)
+      if (cancelled) return
+      roadColorPreviewImageRef.current = null
+      roadTraceLinesPreviewRef.current = { lines: traced.map(t => t.points), naturalW: imgData.width, naturalH: imgData.height }
+      draw()
+    })
+    return () => { cancelled = true }
+  }, [roadImageExtractPreviewOpen, roadImageSwatches, roadImagePreviewSwatchId, roadImagePreviewPhase, mapImageDataUrl, draw])
 
   useEffect(() => {
     if (!worldcoverImageUrl) {
@@ -2256,6 +2341,14 @@ terrainTextureFileRef.current = terrainTextureFile
     })
   }, [clientToLogical, getPaper])
 
+  useEffect(() => {
+    const el = containerRef.current
+    if (!el) return
+    return attachImageEyedropperHandlers(el, {
+      activeToolRef, mapImageDataUrlRef, mapImageTransformRef, addImageSwatchRef, addRoadImageSwatchRef, setRoadImagePreviewRef, clientToLogical, getPaper,
+    })
+  }, [clientToLogical, getPaper])
+
   // Recompute auto-disabled ocean hexes when coastline setting or hexes change
   useEffect(() => {
     if (autoDisabledOceanHexKeysRef.current.length === 0) return
@@ -2295,7 +2388,7 @@ terrainTextureFileRef.current = terrainTextureFile
       isPaintingRef, prevEdgeHexRef,
       paintBufferedAdditionsRef, paintBufferedRemovalsRef,
       railBufferedAdditionsRef, railBufferedRemovalsRef,
-      skipExpensiveLayersRef, roadNetworkRef,
+      skipExpensiveLayersRef, roadNetworkRef, railNetworkRef,
       batchAddRoadEdgesRef, batchRemoveRoadEdgesRef,
       addRoadEdgeRef, removeRoadEdgeAllTiersRef,
       batchAddRailEdgesRef, batchRemoveRailEdgesRef,
@@ -2727,7 +2820,7 @@ terrainTextureFileRef.current = terrainTextureFile
     blobMaskStrokeRef, bridgeOverridesRef, bridgeLengthScaleRef, bridgeStyleRef, bridgeTiersRef, bridgesEnabledRef, cachedRiverChainDataRef, cachedRiverTierChainDataRef, canvasRef,
     clipToHexGridRef, coastlineDebugRawRef, contourCanvasRef, contourDisabledElevClassesSetRef, contourDisabledTerrainsSetRef, customTerrainsRef, dataSourceRef, defaultBackgroundBlobsRef,
     defaultElevationBlobsRef, defaultTerrainBlobsMaskedRef, detectedBridgesRef, disabledHexKeysRef, dragLiveDensePosRef, dragLiveOverrideRef, draggingCpKeyRef,
-    draggingCpKindRef, draggingDensePtRef, draggingLabelRef, drawOsmHighlightRef, drawPerfRef, edgeBlobOverridesRef, edgeBlobPaintedRef, edgeBlobWidthRef,
+    draggingCpKindRef, draggingDensePtRef, draggingLabelRef, drawOsmHighlightRef, drawPerfRef, edgeBlobBlendRef, edgeBlobOverridesRef, edgeBlobPaintedRef, edgeBlobWidthRef,
     editingLabelRef, elevationPaintBrushRef, elevationPaintModeRef, elevationTypeBlobStylesRef, excludedHexKeysRef, frameDimsRef, hexBorderColorRef, hexBorderDifferenceRef,
     hexBorderModeRef, hexBorderOpacityRef, hexBuildingGeoCacheRef, hexEdgeModeRef, hexIdxRef, hexNumberColorRef, hexNumberEdgeRef, hexNumberFontScaleRef,
     hexNumberMapRef, hexNumbersEnabledRef, hexRadiusRef, hexVertMapRef, hexesRef, highlightEdgePathsRef, highlightLinesRef, highlightedHexesRef,
@@ -2736,15 +2829,16 @@ terrainTextureFileRef.current = terrainTextureFile
     iconPlaceModeRef, iconSnapRef, isPaintingRef, labelBBoxCacheRef, labelDragStateRef, labelOffsetsRef, labelOverlaysRef, labelSnapRef,
     lastBuildingCacheEpochRef, liveLabelOffsetRef, mapBgColorRef, mapBorderColorRef, mapBorderEnabledRef, mapBorderWidthRef, mapImageElementRef, mapImageOpacityRef,
     mapImageTransformRef, mapOverlayRef, mapStyleRef, megaHexColorRef, megaHexEnabledRef, megaHexLineWidthRef, megaHexOpacityRef, megaHexOriginQRef,
+    roadColorPreviewImageRef, roadImageExtractPreviewOpenRef, roadTraceLinesPreviewRef,
     megaHexOriginRRef, megaHexRadiusRef, metaRef, mountainsColorRef, osmRiverWaysRef, pageGridRef, paintHoverTargetRef,
     panRef, patternCacheRef, placedIconsRef, placedLabelsRef, projectedHexesRef, railBaseDataRef, railControlOverridesRef, railEdgesRef,
-    railGeomOverrideRef, railHopPropsRef, railNodeEditModeRef, railPathSmoothingRef, railSegmentPropsRef, railSmoothingRef, railStyleRef, railWiggleAmpRef,
-    railWiggleFreqRef, rawCoastlineBoundaryRef, rawRoadWaysRef, realisticCoastlineRef, reliefShadingOpacityRef, resolvedLabelSpecsRef, riverChainOverridesRef, riverChainsV2Ref,
-    riverEdgesRef, riverHopPropsRef, riverNodeEditModeRef, riverPathSmoothingRef, riverSegmentPropsRef, riverSmoothingRef, riverStyleRef, riverTierStylesRef,
+    railGeomOverrideRef, railHopPropsRef, railNetworkRef, railNodeEditModeRef, railPathSmoothingRef, railSegmentPropsRef, railSmoothingRef, railStyleRef, railWiggleAmpRef,
+    railWiggleDraggingRef, railWiggleFreqRef, rawCoastlineBoundaryRef, rawRoadWaysRef, realisticCoastlineRef, reliefShadingOpacityRef, resolvedLabelSpecsRef, riverChainOverridesRef, riverChainsV2Ref,
+    riverEdgesRef, riverHopPropsRef, riverNodeEditModeRef, riverPathSmoothingRef, riverSegmentPropsRef, riverSmoothingRef, riverTaperSegmentsRef, riverStyleRef, riverTierStylesRef,
     riverWiggleAmpRef, riverWiggleFreqRef, roadCenterPullRef, roadChainOverridesRef, roadControlOverridesRef, roadEdgesRef, roadHopPropsRef, roadNetworkRef,
     roadNodeEditModeRef, roadPathSmoothingRef, roadProjectionCacheRef, roadSegmentPropsRef, roadSmoothingRef, roadTierGeometryRef, roadTierStylesRef, roadWiggleAmpRef,
     roadWiggleFreqRef, roadsRebuildCountRef, screenPwRef, selectedHopKeyRef, selectedSegmentKeysRef, settlementTierStylesRef, settlementsRef, showElevationClassOverlayRef,
-    showElevationDebugRef, showRawOsmRoadsRef, showRiverLabelsRef, showWorldcoverOverlayRef, skipExpensiveLayersRef, smoothedCoastlineBoundaryRef, smoothedRailDataRef, snapPreviewRef,
+    showElevationDebugRef, showRawOsmRoadsRef, extractedRoadWaysRef, showRiverLabelsRef, showWorldcoverOverlayRef, skipExpensiveLayersRef, smoothedCoastlineBoundaryRef, smoothedRailDataRef, snapPreviewRef,
     strokeTrailRef, terrainBackgroundPaintEnabledRef, terrainBlobBumpRef, terrainBlobEffectRef, terrainBlobLobeAmpRef, terrainBlobLobeDirectionRef, terrainBlobLobeFreqRef, terrainBlobLobeThresholdRef,
     terrainBlobOffsetRef, terrainBlobOutlineColorRef, terrainBlobOutlineEnabledRef, terrainBlobOutlineWidthRef, terrainBlobOverridesRef, terrainBlobSmoothRef, terrainBlobSweepFreqRef, terrainBlobTopoStyleRef, terrainBlobClusterSizeRef,
     terrainColorsRef, terrainPaintBrushRef, terrainPaintModeRef, terrainTextureBlendModesRef, terrainTextureEnabledRef, terrainTextureFileRef, terrainTextureOpacitiesRef, terrainTextureScalesRef,

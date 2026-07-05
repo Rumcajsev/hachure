@@ -1,5 +1,6 @@
 import type { MapStore, GeneratedHex, GridMetadata } from '../mapStore'
-import { combinedDimsMm, mapResolutionMpx } from '../mapStore'
+import { combinedDimsMm, mapResolutionMpx, DEFAULT_TERRAIN_RULES } from '../mapStore'
+import { saveMapImageToStorage, clearMapImageFromStorage } from '../../lib/mapImageStorage'
 
 export type ImageTransform = {
   translateX: number  // fraction of paperWidth offset from paper center
@@ -16,6 +17,10 @@ export type MapImageSlice = {
   mapImageOpacity: number
 
   setMapImageDataUrl: (url: string, w: number, h: number) => void
+  /** Restores mapImageDataUrl from IndexedDB on load — same state update as
+   *  setMapImageDataUrl but skips re-writing storage (avoids a redundant write
+   *  right after the read that produced this value). */
+  restoreMapImageDataUrl: (url: string, w: number, h: number) => void
   setMapImageTransform: (t: Partial<ImageTransform>) => void
   setMapImageOpacity: (v: number) => void
   clearMapImage: () => void
@@ -34,10 +39,18 @@ export const createMapImageSlice = (set: Set, get: () => MapStore): MapImageSlic
   mapImageTransform: DEFAULT_TRANSFORM,
   mapImageOpacity: 0.6,
 
-  setMapImageDataUrl: (url, w, h) => set({
+  setMapImageDataUrl: (url, w, h) => {
+    set({
+      mapImageDataUrl: url,
+      mapImageNaturalSize: { w, h },
+      mapImageTransform: DEFAULT_TRANSFORM,
+    })
+    saveMapImageToStorage(url)
+  },
+
+  restoreMapImageDataUrl: (url, w, h) => set({
     mapImageDataUrl: url,
     mapImageNaturalSize: { w, h },
-    mapImageTransform: DEFAULT_TRANSFORM,
   }),
 
   setMapImageTransform: (t) => set((s) => ({
@@ -46,23 +59,31 @@ export const createMapImageSlice = (set: Set, get: () => MapStore): MapImageSlic
 
   setMapImageOpacity: (v) => set({ mapImageOpacity: v }),
 
-  clearMapImage: () => set((s) => ({
-    dataSource: 'osm',
-    mapImageDataUrl: null,
-    mapImageNaturalSize: null,
-    mapImageTransform: DEFAULT_TRANSFORM,
-    roadEdges: [],
-    riverEdges: [],
-    settlements: [],
-    roadsStatus: 'idle',
-    settlementsStatus: 'idle',
-    generatedHexes: s.generatedHexes.map(h => ({
-      ...h,
-      terrain: 'clear', terrains: [],
-      elevation_class: null,
-    })),
-    step: s.step === 'image-align' ? 'setup' : s.step,
-  })),
+  clearMapImage: () => {
+    clearMapImageFromStorage()
+    set((s) => ({
+      dataSource: 'osm',
+      mapImageDataUrl: null,
+      mapImageNaturalSize: null,
+      mapImageTransform: DEFAULT_TRANSFORM,
+      imageSwatches: [],
+      terrainRules: { ...DEFAULT_TERRAIN_RULES },
+      roadEdges: [],
+      roadImageSwatches: [],
+      extractedRoadWays: [],
+      roadImageExtractStatus: 'idle',
+      riverEdges: [],
+      settlements: [],
+      roadsStatus: 'idle',
+      settlementsStatus: 'idle',
+      generatedHexes: s.generatedHexes.map(h => ({
+        ...h,
+        terrain: 'clear', terrains: [],
+        elevation_class: null,
+      })),
+      step: s.step === 'image-align' ? 'setup' : s.step,
+    }))
+  },
 
   startImageImport: async () => {
     const { paperSize, orientation, pageGrid, hexSizeMm, hexOrientation, bearing, center, zoom, framePixelWidth, marginMm } = get()
@@ -109,6 +130,9 @@ export const createMapImageSlice = (set: Set, get: () => MapStore): MapImageSlic
         generateProgress: null,
         activeTool: { type: 'align-image' },
         // Clear all previous map content so a new map always starts clean
+        imageSwatches: [],
+        terrainRules: {},
+        realisticCoastline: false,
         settlements: [],
         settlementsStatus: 'idle',
         settlementsError: null,
@@ -121,6 +145,9 @@ export const createMapImageSlice = (set: Set, get: () => MapStore): MapImageSlic
         roadEdges: [],
         roadsStatus: 'idle',
         roadsError: null,
+        roadImageSwatches: [],
+        extractedRoadWays: [],
+        roadImageExtractStatus: 'idle',
         rawRailWays: [],
         railEdges: [],
         railsStatus: 'idle',

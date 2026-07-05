@@ -662,23 +662,24 @@ export function handleClick(e: MEShift, refs: MouseHandlerRefs): void {
         return
       }
     }
-    if (activePanelRef.current === 'features' && urbanPaintModeRef.current !== null) {
+    if (urbanPaintModeRef.current !== null) {
       toggleUrbanHexRef.current(hex.q, hex.r); return
     }
-    if (activePanelRef.current === 'features') {
+    {
       const moveIdx = settlementMoveIndexRef.current
+      const tier = settlementPlaceTierRef.current
       if (moveIdx !== null) {
         updateSettlementRef.current(moveIdx, { hex_q: hex.q, hex_r: hex.r })
         setSettlementMoveIndexRef.current(null)
-      } else {
-        const tier = settlementPlaceTierRef.current
-        if (!tier) return
+        return
+      }
+      if (tier !== null) {
         const existing = settlementsRef.current
         const existingIdx = existing.findIndex(s => s.hex_q === hex.q && s.hex_r === hex.r)
         if (existingIdx !== -1) updateSettlementRef.current(existingIdx, { tier })
         else placeSettlementAtHexRef.current(hex.q, hex.r, hex.vertices as [number, number][], hex.center as [number, number], tier)
+        return
       }
-      return
     }
   }
 }

@@ -267,6 +267,7 @@ export function drawPolygonShadow(
   op: number,   // 0–100
   ps: number,
   color: string,
+  clipPolys?: [number, number][][],
 ): void {
   if (polys.length === 0) return
   const off = new OffscreenCanvas(pw, ph)
@@ -286,11 +287,78 @@ export function drawPolygonShadow(
     const passBlur = bl * (0.6 + t * 0.4)
     const passOp   = opacity * (1 - t * 0.3)
     ctx.save()
+    if (clipPolys && clipPolys.length > 0) {
+      ctx.beginPath()
+      for (const cp of clipPolys) {
+        if (cp.length < 3) continue
+        ctx.moveTo(cp[0][0], cp[0][1])
+        for (let j = 1; j < cp.length; j++) ctx.lineTo(cp[j][0], cp[j][1])
+        ctx.closePath()
+      }
+      ctx.clip()
+    }
     ctx.filter = `blur(${passBlur.toFixed(1)}px)`
     ctx.globalAlpha = passOp
     ctx.drawImage(off, ox * (0.5 + t * 0.5), oy * (0.5 + t * 0.5))
     ctx.restore()
   }
+}
+
+// ── Edge shadow polygons ──────────────────────────────────────────────────────
+
+function buildChainShadowPolygons(chains: SlopeChain[], R: number, smooth = false): [number, number][][] {
+  const depth = R * 0.18
+  const SUBS = 4
+  const polys: [number, number][][] = []
+
+  for (const { pts: origPts, perpLows, isLoop } of chains) {
+    if (origPts.length < 2) continue
+
+    // Original arc lengths — used to map smoothed arc position → perpLow segment
+    const origArcs: number[] = [0]
+    for (let i = 1; i < origPts.length; i++)
+      origArcs.push(origArcs[i - 1] + Math.hypot(origPts[i][0] - origPts[i - 1][0], origPts[i][1] - origPts[i - 1][1]))
+    const origTotal = origArcs[origArcs.length - 1]
+    if (origTotal < 1) continue
+
+    const getPerpLow = (s: number): [number, number] => {
+      const target = Math.min(origTotal, s)
+      let si = 0
+      for (let i = 1; i < origArcs.length - 1; i++) { if (origArcs[i] <= target) si = i }
+      return perpLows[Math.min(si, perpLows.length - 1)]
+    }
+
+    const pts = smooth ? chaikin(origPts, 2, isLoop) : origPts
+
+    const arcLengths: number[] = [0]
+    for (let i = 1; i < pts.length; i++)
+      arcLengths.push(arcLengths[i - 1] + Math.hypot(pts[i][0] - pts[i - 1][0], pts[i][1] - pts[i - 1][1]))
+    const total = arcLengths[arcLengths.length - 1]
+    if (total < 1) continue
+
+    const nSegs = pts.length - 1
+    const poly: [number, number][] = pts.slice() as [number, number][]
+
+    for (let k = nSegs - 1; k >= 0; k--) {
+      const segArcStart = arcLengths[k]
+      const segLen = arcLengths[k + 1] - segArcStart
+      const jStart = k === nSegs - 1 ? SUBS : SUBS - 1
+      for (let j = jStart; j >= 0; j--) {
+        const t = j / SUBS
+        const s = segArcStart + t * segLen
+        const taper = Math.sin((s / total) * Math.PI)
+        const origS = smooth && total > 0 ? (s / total) * origTotal : s
+        const [px, py] = getPerpLow(origS)
+        const ex = pts[k][0] + t * (pts[k + 1][0] - pts[k][0])
+        const ey = pts[k][1] + t * (pts[k + 1][1] - pts[k][1])
+        poly.push([ex + px * depth * taper, ey + py * depth * taper])
+      }
+    }
+
+    polys.push(poly)
+  }
+
+  return polys
 }
 
 // ── Blob hachure (elevation types) ───────────────────────────────────────────
@@ -353,15 +421,17 @@ export function drawSlopes(
 ): void {
   if (style === 'shading') {
     const segs = buildSegments(slopeEdges, hexVertMap)
+    const chains = buildChains(segs)
+    const polys = buildChainShadowPolygons(chains, R, smooth)
     const seen = new Set<string>()
-    const polys: [number, number][][] = []
+    const clipPolys: [number, number][][] = []
     for (const seg of segs) {
       if (seen.has(seg.lowHexKey)) continue
       seen.add(seg.lowHexKey)
       const verts = hexVertMap.get(seg.lowHexKey)
-      if (verts && verts.length >= 3) polys.push(verts)
+      if (verts && verts.length >= 3) clipPolys.push(verts)
     }
-    drawPolygonShadow(ctx, polys, pw, ph, shadowOx, shadowOy, shadowBl, shadowOp, shadowPs, shadowColor)
+    drawPolygonShadow(ctx, polys, pw, ph, 0, 0, shadowBl, shadowOp, shadowPs, shadowColor, clipPolys)
     return
   }
 

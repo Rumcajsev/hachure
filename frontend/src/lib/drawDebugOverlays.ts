@@ -99,3 +99,50 @@ export function _drawRawOsmRoadsOverlay(p: RawOsmRoadsOverlayParams): void {
 
   ctx.restore()
 }
+
+// ---------------------------------------------------------------------------
+// Image-extracted road preview overlay (raw, unsnapped traced polylines)
+// ---------------------------------------------------------------------------
+
+type ExtractedRoadWay = { coords: [number, number][]; tier: 0 | 1 | 2 }
+
+export interface ExtractedRoadWaysOverlayParams {
+  ctx: CanvasRenderingContext2D
+  ways: ExtractedRoadWay[]
+  meta: GridMetadata
+  pw: number
+  ph: number
+}
+
+export function _drawExtractedRoadWaysOverlay(p: ExtractedRoadWaysOverlayParams): void {
+  const { ctx, ways, meta, pw, ph } = p
+  if (ways.length === 0) return
+
+  const proj = (lon: number, lat: number): [number, number] =>
+    projectToCanvas(lon, lat, meta, pw, ph, 0, 0)
+
+  const tierColor = ['rgba(60,160,220,0.95)', 'rgba(60,200,140,0.95)', 'rgba(220,60,220,0.9)']
+  const tierWidth = [2.5, 2, 1.5]
+
+  ctx.save()
+  ctx.beginPath()
+  ctx.rect(0, 0, pw, ph)
+  ctx.clip()
+  ctx.setLineDash([4, 3])
+
+  for (const way of ways) {
+    if (way.coords.length < 2) continue
+    ctx.beginPath()
+    ctx.strokeStyle = tierColor[way.tier]
+    ctx.lineWidth = tierWidth[way.tier]
+    const [x0, y0] = proj(way.coords[0][0], way.coords[0][1])
+    ctx.moveTo(x0, y0)
+    for (let i = 1; i < way.coords.length; i++) {
+      const [x, y] = proj(way.coords[i][0], way.coords[i][1])
+      ctx.lineTo(x, y)
+    }
+    ctx.stroke()
+  }
+
+  ctx.restore()
+}

@@ -6,7 +6,7 @@ import { buildTerrainTextures } from '../lib/terrainTextures'
 import { computeDragLiveData, computeRoadProjections, computeLiveRiverChainData } from '../lib/roadLiveGeometry'
 import { liveClassParamsRef } from '../lib/liveClassParamsRef'
 import { _drawHoveredEdgePreview } from '../lib/drawHighlights'
-import { _drawWorldcoverOverlay, _drawRawOsmRoadsOverlay } from '../lib/drawDebugOverlays'
+import { _drawWorldcoverOverlay, _drawRawOsmRoadsOverlay, _drawExtractedRoadWaysOverlay } from '../lib/drawDebugOverlays'
 import { _drawTerrainPaintOverlay, _drawElevationPaintOverlay, _drawSlopeOverlay } from '../lib/drawPaintOverlays'
 import { _drawBlobHandleOverlay, _drawBlobMaskPreview } from '../lib/drawBlobHandleOverlay'
 import { drawLabels as _drawLabels, _drawLabelDragHandles } from '../lib/drawLabels'
@@ -19,6 +19,8 @@ import { drawPaperBackground as _drawPaperBackground, drawPaperMargin as _drawPa
 import { drawRoadHandles as _drawRoadHandles, drawRailHandles as _drawRailHandles, drawRiverHandles as _drawRiverHandles } from '../lib/drawEditHandles'
 import { buildRailChains } from '../lib/railChains'
 import { drawMapImageOverlay } from '../lib/drawMapImageOverlay'
+import { drawRoadColorPreview } from '../lib/drawRoadColorPreview'
+import { drawRoadLineTracePreview } from '../lib/drawRoadLineTracePreview'
 import { finalizeDrawFrame } from '../lib/perfMonitor'
 import { terrainController } from './layers/terrainLayer'
 import { hexBorderController } from './layers/hexBorderLayer'
@@ -80,6 +82,7 @@ export interface MapRefs {
   draggingLabelRef: { current: any }
   drawOsmHighlightRef: { current: any }
   drawPerfRef: { current: any }
+  edgeBlobBlendRef: { current: any }
   edgeBlobOverridesRef: { current: any }
   edgeBlobPaintedRef: { current: any }
   edgeBlobWidthRef: { current: any }
@@ -155,6 +158,9 @@ export interface MapRefs {
   mapImageElementRef: { current: any }
   mapImageOpacityRef: { current: any }
   mapImageTransformRef: { current: any }
+  roadColorPreviewImageRef: { current: any }
+  roadImageExtractPreviewOpenRef: { current: any }
+  roadTraceLinesPreviewRef: { current: any }
   mapOverlayRef: { current: any }
   mapStyleRef: { current: any }
   megaHexColorRef: { current: any }
@@ -177,6 +183,8 @@ export interface MapRefs {
   railBaseDataRef: { current: any }
   railControlOverridesRef: { current: any }
   railEdgesRef: { current: any }
+  railNetworkRef: { current: any }
+  railWiggleDraggingRef: { current: any }
   railGeomOverrideRef: { current: any }
   railHopPropsRef: { current: any }
   railNodeEditModeRef: { current: any }
@@ -199,6 +207,7 @@ export interface MapRefs {
   riverPathSmoothingRef: { current: any }
   riverSegmentPropsRef: { current: any }
   riverSmoothingRef: { current: any }
+  riverTaperSegmentsRef: { current: any }
   riverStyleRef: { current: any }
   riverTierStylesRef: { current: any }
   riverWiggleAmpRef: { current: any }
@@ -227,6 +236,7 @@ export interface MapRefs {
   showElevationClassOverlayRef: { current: any }
   showElevationDebugRef: { current: any }
   showRawOsmRoadsRef: { current: any }
+  extractedRoadWaysRef: { current: any }
   showRiverLabelsRef: { current: any }
   showWorldcoverOverlayRef: { current: any }
   skipExpensiveLayersRef: { current: any }
@@ -278,7 +288,7 @@ export function drawMap(refs: MapRefs, exportTarget?: ExportTarget): void {
     blobMaskStrokeRef, bridgeOverridesRef, bridgeLengthScaleRef, bridgeStyleRef, bridgeTiersRef, bridgesEnabledRef, cachedRiverChainDataRef, cachedRiverTierChainDataRef, canvasRef,
     clipToHexGridRef, coastlineDebugRawRef, contourCanvasRef, contourDisabledElevClassesSetRef, contourDisabledTerrainsSetRef, customTerrainsRef, dataSourceRef, defaultBackgroundBlobsRef,
     defaultElevationBlobsRef, defaultTerrainBlobsMaskedRef, detectedBridgesRef, disabledHexKeysRef, dragLiveDensePosRef, dragLiveOverrideRef, draggingCpKeyRef,
-    draggingCpKindRef, draggingDensePtRef, draggingLabelRef, drawOsmHighlightRef, drawPerfRef, edgeBlobOverridesRef, edgeBlobPaintedRef, edgeBlobWidthRef,
+    draggingCpKindRef, draggingDensePtRef, draggingLabelRef, drawOsmHighlightRef, drawPerfRef, edgeBlobBlendRef, edgeBlobOverridesRef, edgeBlobPaintedRef, edgeBlobWidthRef,
     editingLabelRef, elevationPaintBrushRef, elevationPaintModeRef, elevationTypeBlobStylesRef, excludedHexKeysRef, frameDimsRef, hexBorderColorRef, hexBorderDifferenceRef, elevationHachureEnabledRef, elevationShadowEnabledRef, elevationShadowOxRef, elevationShadowOyRef, elevationShadowBlRef, elevationShadowOpRef, elevationShadowPsRef, elevationShadowColorRef, slopeEdgesRef, slopeStyleRef, slopeSmoothingRef, slopeTickSpacingRef, slopeTickLengthRef, slopeModeRef, slopeHoverTargetRef,
     hexBorderModeRef, hexBorderOpacityRef, hexBuildingGeoCacheRef, hexEdgeModeRef, hexIdxRef, hexNumberColorRef, hexNumberEdgeRef, hexNumberFontScaleRef,
     hexNumberMapRef, hexNumbersEnabledRef, hexRadiusRef, hexVertMapRef, hexesRef, highlightEdgePathsRef, highlightLinesRef, highlightedHexesRef,
@@ -287,15 +297,16 @@ export function drawMap(refs: MapRefs, exportTarget?: ExportTarget): void {
     iconPlaceModeRef, iconSnapRef, isPaintingRef, labelBBoxCacheRef, labelDragStateRef, labelOffsetsRef, labelOverlaysRef, labelSnapRef,
     lastBuildingCacheEpochRef, liveLabelOffsetRef, mapBgColorRef, mapBorderColorRef, mapBorderEnabledRef, mapBorderWidthRef, mapImageElementRef, mapImageOpacityRef,
     mapImageTransformRef, mapOverlayRef, mapStyleRef, megaHexColorRef, megaHexEnabledRef, megaHexLineWidthRef, megaHexOpacityRef, megaHexOriginQRef,
+    roadColorPreviewImageRef, roadImageExtractPreviewOpenRef, roadTraceLinesPreviewRef,
     megaHexOriginRRef, megaHexRadiusRef, metaRef, mountainsColorRef, osmRiverWaysRef, pageGridRef, paintHoverTargetRef,
     panRef, patternCacheRef, placedIconsRef, placedLabelsRef, projectedHexesRef, railBaseDataRef, railControlOverridesRef, railEdgesRef,
-    railGeomOverrideRef, railHopPropsRef, railNodeEditModeRef, railPathSmoothingRef, railSegmentPropsRef, railSmoothingRef, railStyleRef, railWiggleAmpRef,
-    railWiggleFreqRef, rawCoastlineBoundaryRef, rawRoadWaysRef, realisticCoastlineRef, reliefShadingOpacityRef, resolvedLabelSpecsRef, riverChainOverridesRef, riverChainsV2Ref,
-    riverEdgesRef, riverHopPropsRef, riverNodeEditModeRef, riverPathSmoothingRef, riverSegmentPropsRef, riverSmoothingRef, riverStyleRef, riverTierStylesRef,
+    railGeomOverrideRef, railHopPropsRef, railNetworkRef, railNodeEditModeRef, railPathSmoothingRef, railSegmentPropsRef, railSmoothingRef, railStyleRef, railWiggleAmpRef,
+    railWiggleDraggingRef, railWiggleFreqRef, rawCoastlineBoundaryRef, rawRoadWaysRef, realisticCoastlineRef, reliefShadingOpacityRef, resolvedLabelSpecsRef, riverChainOverridesRef, riverChainsV2Ref,
+    riverEdgesRef, riverHopPropsRef, riverNodeEditModeRef, riverPathSmoothingRef, riverSegmentPropsRef, riverSmoothingRef, riverTaperSegmentsRef, riverStyleRef, riverTierStylesRef,
     riverWiggleAmpRef, riverWiggleFreqRef, roadCenterPullRef, roadChainOverridesRef, roadControlOverridesRef, roadEdgesRef, roadHopPropsRef, roadNetworkRef,
     roadNodeEditModeRef, roadPathSmoothingRef, roadProjectionCacheRef, roadSegmentPropsRef, roadSmoothingRef, roadTierGeometryRef, roadTierStylesRef, roadWiggleAmpRef,
     roadWiggleFreqRef, roadsRebuildCountRef, screenPwRef, selectedHopKeyRef, selectedSegmentKeysRef, settlementTierStylesRef, settlementsRef, showElevationClassOverlayRef,
-    showElevationDebugRef, showRawOsmRoadsRef, showRiverLabelsRef, showWorldcoverOverlayRef, skipExpensiveLayersRef, smoothedCoastlineBoundaryRef, smoothedRailDataRef, snapPreviewRef,
+    showElevationDebugRef, showRawOsmRoadsRef, extractedRoadWaysRef, showRiverLabelsRef, showWorldcoverOverlayRef, skipExpensiveLayersRef, smoothedCoastlineBoundaryRef, smoothedRailDataRef, snapPreviewRef,
     strokeTrailRef, terrainBackgroundPaintEnabledRef, terrainBlobBumpRef, terrainBlobEffectRef, terrainBlobLobeAmpRef, terrainBlobLobeDirectionRef, terrainBlobLobeFreqRef, terrainBlobLobeThresholdRef,
     terrainBlobOffsetRef, terrainBlobOutlineColorRef, terrainBlobOutlineEnabledRef, terrainBlobOutlineWidthRef, terrainBlobOverridesRef, terrainBlobSmoothRef, terrainBlobSweepFreqRef, terrainBlobTopoStyleRef, terrainBlobClusterSizeRef,
     terrainColorsRef, terrainPaintBrushRef, terrainPaintModeRef, terrainTextureBlendModesRef, terrainTextureEnabledRef, terrainTextureFileRef, terrainTextureOpacitiesRef, terrainTextureScalesRef,
@@ -479,6 +490,7 @@ export function drawMap(refs: MapRefs, exportTarget?: ExportTarget): void {
     coastlineRawBoundaryRings: rawCoastlineBoundaryRef.current,
     edgeBlobPainted: edgeBlobPaintedRef.current,
     edgeBlobWidth: edgeBlobWidthRef.current,
+    edgeBlobBlend: edgeBlobBlendRef.current,
     terrainTypeBlobStyles: terrainTypeBlobStylesRef.current,
     edgeBlobOverrides: edgeBlobOverridesRef.current,
     hexVertMap: hexVertMapRef.current,
@@ -565,13 +577,32 @@ export function drawMap(refs: MapRefs, exportTarget?: ExportTarget): void {
   // Historical map image overlay — screen only, drawn after terrain so hex borders render on top
   if (!isExport && mapImageElementRef.current) {
     const alignMode = activeToolRef.current.type === 'align-image'
+    const eyedropperMode = activeToolRef.current.type === 'image-eyedropper'
     const peekMode = mapOverlayRef.current && dataSourceRef.current === 'map_image'
-    if (alignMode || peekMode) {
+    if (alignMode || eyedropperMode || peekMode) {
       drawMapImageOverlay({
         ctx,
         image: mapImageElementRef.current,
         transform: mapImageTransformRef.current,
-        opacity: peekMode ? 1.0 : mapImageOpacityRef.current,
+        opacity: (peekMode || eyedropperMode) ? 1.0 : mapImageOpacityRef.current,
+        px: 0, py: 0, pw, ph,
+      })
+    }
+    if (roadImageExtractPreviewOpenRef.current && roadColorPreviewImageRef.current) {
+      drawRoadColorPreview({
+        ctx,
+        bitmap: roadColorPreviewImageRef.current,
+        transform: mapImageTransformRef.current,
+        px: 0, py: 0, pw, ph,
+      })
+    }
+    if (roadImageExtractPreviewOpenRef.current && roadTraceLinesPreviewRef.current) {
+      drawRoadLineTracePreview({
+        ctx,
+        lines: roadTraceLinesPreviewRef.current.lines,
+        naturalW: roadTraceLinesPreviewRef.current.naturalW,
+        naturalH: roadTraceLinesPreviewRef.current.naturalH,
+        transform: mapImageTransformRef.current,
         px: 0, py: 0, pw, ph,
       })
     }
@@ -682,12 +713,12 @@ export function drawMap(refs: MapRefs, exportTarget?: ExportTarget): void {
     roadCenterPull: roadCenterPullRef.current,
     railEdges: railEdgesRef.current,
     railControlOverrides: railControlOverridesRef.current,
-    railBaseData: railBaseDataRef.current,
-    smoothedRailData: smoothedRailDataRef.current,
+    railNetwork: railNetworkRef.current,
     railSmoothing: railSmoothingRef.current,
     railPathSmoothing: railPathSmoothingRef.current,
     railWiggleAmp: railWiggleAmpRef.current,
     railWiggleFreq: railWiggleFreqRef.current,
+    railWiggleDragging: railWiggleDraggingRef.current,
     railSegmentProps: railSegmentPropsRef.current,
     railHopProps: railHopPropsRef.current,
     railGeomOverride: railGeomOverrideRef.current,
@@ -713,6 +744,7 @@ export function drawMap(refs: MapRefs, exportTarget?: ExportTarget): void {
     riverStyle: riverStyleRef.current,
     selectedRiverKeys: new Set(selectedSegmentKeysRef.current),
     riverBaseHW: 1.4 * lineScale,
+    riverTaperSegments: riverTaperSegmentsRef.current,
     lakeProjCenters,
     smoothPasses: 0,
     wobbleBroad: 0,
@@ -855,6 +887,9 @@ export function drawMap(refs: MapRefs, exportTarget?: ExportTarget): void {
 
     if (!isExport) {
       const hasRoads = liveRoadData.chains.length > 0 || liveRailData.chains.length > 0
+      if (process.env.NODE_ENV === 'development' && !hasRoads && roadEdgesRef.current.length > 0) {
+        console.warn('[roads-draw] hasRoads=FALSE but store has', roadEdgesRef.current.length, 'edges — chains skipped!')
+      }
       if (hasRoads) {
         const _proj = computeRoadProjections({
           liveRoadData, liveRailData,
@@ -909,6 +944,12 @@ export function drawMap(refs: MapRefs, exportTarget?: ExportTarget): void {
         ctx,
         show: showRawOsmRoadsRef.current,
         ways: rawRoadWaysRef.current,
+        meta,
+        pw, ph,
+      })
+      _drawExtractedRoadWaysOverlay({
+        ctx,
+        ways: extractedRoadWaysRef.current,
         meta,
         pw, ph,
       })

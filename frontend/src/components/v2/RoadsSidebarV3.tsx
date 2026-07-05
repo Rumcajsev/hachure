@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import {
   useMapStore,
   DEFAULT_ROAD_TIER_STYLES, DEFAULT_RAIL_STYLE, DEFAULT_ROAD_GEOM, DEFAULT_RAIL_GEOM,
@@ -32,7 +32,7 @@ const RAIL_DARK_GROUPS  = [{ label: 'Dark',  colors: [...PALETTE_RAIL_DARK]  }] 
 
 // ── Constants ──────────────────────────────────────────────────────────────────
 
-const ROAD_TIERS = [
+export const ROAD_TIERS = [
   { tier: 0 as const, label: 'Motorway', color: '#b07820' },
   { tier: 1 as const, label: 'Primary',  color: '#8a5c2a' },
   { tier: 2 as const, label: 'Secondary', color: '#606060' },
@@ -48,7 +48,7 @@ const IMPORT_ICON = (
 
 // ── FlyoutId ───────────────────────────────────────────────────────────────────
 
-type FlyoutId = 'road-style' | 'rail-style' | 'road-shape' | 'rail-shape' | 'road-import' | 'rail-import' | 'bridges' | 'segment' | null
+type FlyoutId = 'road-style' | 'rail-style' | 'road-shape' | 'rail-shape' | 'road-import' | 'road-image-extract' | 'rail-import' | 'bridges' | 'segment' | null
 
 
 // ── Flyout section label helper ────────────────────────────────────────────────
@@ -498,6 +498,309 @@ export function OsmRoadsFlyout({ onClose }: { onClose: () => void }) {
   )
 }
 
+// ── RoadImageSwatchChip ──────────────────────────────────────────────────────────
+
+function RoadImageSwatchChip({
+  id, color, tolerance, onDragStart, onToleranceChange, onRemove, onPreview, previewPhase,
+}: {
+  id: number
+  color: string
+  tolerance: number
+  onDragStart: (id: number) => void
+  onToleranceChange: (v: number) => void
+  onRemove: () => void
+  onPreview: (phase: 'raw' | 'traced') => void
+  previewPhase: 'raw' | 'traced' | null
+}) {
+  const t = useTheme()
+  const [localPct, setLocalPct] = useState(tolerance)
+  const draggingRef = useRef(false)
+  const localRef = useRef(tolerance)
+  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  const prevTolerance = useRef(tolerance)
+  if (prevTolerance.current !== tolerance && !draggingRef.current) {
+    prevTolerance.current = tolerance
+    localRef.current = tolerance
+    setLocalPct(tolerance)
+  }
+
+  return (
+    <div
+      draggable
+      onDragStart={() => onDragStart(id)}
+      style={{
+        padding: '4px 8px',
+        background: t.surface,
+        border: `1px solid ${t.line}`,
+        borderLeft: `3px solid ${color}`,
+        borderRadius: 3,
+        cursor: 'grab',
+        marginBottom: 4,
+        position: 'relative',
+      }}
+    >
+      <div style={{ display: 'flex', alignItems: 'center', gap: 6, paddingRight: 16, marginBottom: 4 }}>
+        <div style={{ width: 12, height: 12, background: color, flexShrink: 0, borderRadius: 2, border: `1px solid ${t.line}` }} />
+        <span style={{ fontSize: 10, fontFamily: t.mono, color: t.inkMute }}>{color}</span>
+      </div>
+      <MiniSlider
+        label="tolerance"
+        display={`${localPct}`}
+        value={localPct}
+        min={0} max={150} step={1}
+        accentColor={color}
+        onChange={v => {
+          localRef.current = v
+          setLocalPct(v)
+          if (debounceRef.current) clearTimeout(debounceRef.current)
+          debounceRef.current = setTimeout(() => {
+            debounceRef.current = null
+            onToleranceChange(localRef.current)
+          }, 150)
+        }}
+        onDragStart={() => { draggingRef.current = true; onPreview('raw') }}
+        onDragEnd={() => {
+          draggingRef.current = false
+          if (debounceRef.current) { clearTimeout(debounceRef.current); debounceRef.current = null }
+          onToleranceChange(localRef.current)
+        }}
+      />
+      <button
+        onClick={() => onPreview('traced')}
+        style={{
+          width: '100%', marginTop: 4, padding: '3px 0',
+          background: previewPhase === 'traced' ? tintBg(color, 0.25) : 'none',
+          border: `1px solid ${previewPhase === 'traced' ? color : t.line}`,
+          color: previewPhase === 'traced' ? color : t.inkMute,
+          borderRadius: 3, cursor: 'pointer',
+          fontFamily: t.mono, fontSize: 9, letterSpacing: 0.3,
+        }}
+      >
+        Trace preview →
+      </button>
+      <button
+        onClick={onRemove}
+        title="Remove"
+        style={{
+          position: 'absolute', top: 4, right: 4,
+          background: 'none', border: 'none', cursor: 'pointer',
+          color: t.inkMute, fontSize: 14, lineHeight: 1, padding: '0 2px',
+        }}
+      >×</button>
+    </div>
+  )
+}
+
+// ── RoadTierDropZone ─────────────────────────────────────────────────────────────
+
+function RoadTierDropZone({
+  tier, label, color, swatches, pickActive, onPickColor, onDragStart, onDrop, onToleranceChange, onRemove, onPreview,
+  previewSwatchId, previewPhase,
+}: {
+  tier: 0 | 1 | 2
+  label: string
+  color: string
+  swatches: { id: number; color: string; tolerance: number }[]
+  pickActive: boolean
+  onPickColor: () => void
+  onDragStart: (id: number) => void
+  onDrop: (tier: 0 | 1 | 2) => void
+  onToleranceChange: (id: number, v: number) => void
+  onRemove: (id: number) => void
+  onPreview: (id: number, phase: 'raw' | 'traced') => void
+  previewSwatchId: number | null
+  previewPhase: 'raw' | 'traced' | null
+}) {
+  const t = useTheme()
+  const [dragOver, setDragOver] = useState(false)
+
+  return (
+    <div
+      onDragOver={e => { e.preventDefault(); setDragOver(true) }}
+      onDragLeave={() => setDragOver(false)}
+      onDrop={e => { e.preventDefault(); setDragOver(false); onDrop(tier) }}
+      style={{
+        borderRadius: 4,
+        border: `1px solid ${dragOver ? color : t.line}`,
+        borderLeft: `3px solid ${color}`,
+        background: t.paper2,
+        marginBottom: 6,
+        overflow: 'hidden',
+        transition: 'border-color 0.1s',
+      }}
+    >
+      <div style={{
+        display: 'flex', alignItems: 'center', gap: 6,
+        padding: '5px 8px',
+        background: dragOver ? `${color}30` : `${color}18`,
+      }}>
+        <div style={{ width: 10, height: 10, background: color, flexShrink: 0, borderRadius: 1 }} />
+        <span style={{ fontSize: 11, fontFamily: t.mono, color: t.ink, flex: 1 }}>{label}</span>
+        <button
+          onClick={onPickColor}
+          title={`Pick a color for ${label}`}
+          style={{
+            padding: '2px 6px',
+            background: pickActive ? tintBg(color, 0.25) : 'none',
+            border: `1px solid ${pickActive ? color : t.line}`,
+            color: pickActive ? color : t.inkMute,
+            borderRadius: 3, cursor: 'pointer',
+            fontFamily: t.mono, fontSize: 9, letterSpacing: 0.3,
+          }}
+        >
+          {pickActive ? 'click map…' : 'pick'}
+        </button>
+      </div>
+      {swatches.length === 0 ? (
+        <div style={{ padding: '5px 8px' }}>
+          <span style={{ fontSize: 9, color: t.inkMute, fontFamily: t.mono }}>No color yet — click "pick" then click a {label.toLowerCase()} line on the map.</span>
+        </div>
+      ) : (
+        <div style={{ padding: '6px 8px' }}>
+          {swatches.map(s => (
+            <RoadImageSwatchChip
+              key={s.id}
+              id={s.id}
+              color={s.color}
+              tolerance={s.tolerance}
+              onDragStart={onDragStart}
+              onToleranceChange={v => onToleranceChange(s.id, v)}
+              onRemove={() => onRemove(s.id)}
+              onPreview={phase => onPreview(s.id, phase)}
+              previewPhase={previewSwatchId === s.id ? previewPhase : null}
+            />
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
+
+// ── RoadImageExtractFlyout ───────────────────────────────────────────────────────
+
+export function RoadImageExtractFlyout({ onClose }: { onClose: () => void }) {
+  const t = useTheme()
+  const {
+    mapImageDataUrl, activeTool, setActiveTool,
+    roadImageSwatches, updateRoadImageSwatchTolerance, removeRoadImageSwatch, setRoadImageSwatchTier,
+    extractedRoadWays, roadImageExtractStatus, extractRoadsFromImage, applyExtractedRoadTier, clearExtractedRoadImage,
+    setRoadImageExtractPreviewOpen, setRoadImagePreview, roadImagePreviewSwatchId, roadImagePreviewPhase,
+  } = useMapStore()
+  const draggingId = useRef<number | null>(null)
+
+  // Drives the live color-match/traced-line overlay on the canvas (see imageColorPreview.ts
+  // and drawRoadLineTracePreview.ts) — only worth computing while this flyout is open.
+  useEffect(() => {
+    setRoadImageExtractPreviewOpen(true)
+    return () => {
+      setRoadImageExtractPreviewOpen(false)
+      setRoadImagePreview(null, null)
+    }
+  }, [setRoadImageExtractPreviewOpen, setRoadImagePreview])
+
+  const anyTierAssigned = roadImageSwatches.some(s => s.tier !== null)
+  const extracting = roadImageExtractStatus === 'extracting'
+  const hasExtracted = extractedRoadWays.length > 0
+
+  const handleDrop = (tier: 0 | 1 | 2) => {
+    const id = draggingId.current
+    if (id === null) return
+    setRoadImageSwatchTier(id, tier)
+    draggingId.current = null
+  }
+
+  const handlePickColor = (tier: 0 | 1 | 2) => {
+    const alreadyPicking = activeTool.type === 'image-eyedropper' && activeTool.target === 'road' && activeTool.tier === tier
+    setActiveTool(alreadyPicking ? { type: 'none' } : { type: 'image-eyedropper', target: 'road', tier })
+  }
+
+  return (
+    <FlyoutShell title="Extract from image" subtitle="pick a color per tier, then confirm before snapping" onClose={onClose}>
+      <FSectionDivider />
+      <FSectionLabel label="Tiers" />
+      <div style={{ padding: '4px 12px' }}>
+        {ROAD_TIERS.map(({ tier, label, color }) => (
+          <RoadTierDropZone
+            key={tier}
+            tier={tier}
+            label={label}
+            color={color}
+            swatches={roadImageSwatches.filter(s => s.tier === tier)}
+            pickActive={activeTool.type === 'image-eyedropper' && activeTool.target === 'road' && activeTool.tier === tier}
+            onPickColor={() => handlePickColor(tier)}
+            onDragStart={id => { draggingId.current = id }}
+            onDrop={handleDrop}
+            onPreview={(id, phase) => setRoadImagePreview(id, phase)}
+            onToleranceChange={(id, v) => updateRoadImageSwatchTolerance(id, v)}
+            onRemove={id => removeRoadImageSwatch(id)}
+            previewSwatchId={roadImagePreviewSwatchId}
+            previewPhase={roadImagePreviewPhase}
+          />
+        ))}
+        {!mapImageDataUrl && (
+          <div style={{ fontSize: 9, fontFamily: t.mono, color: t.inkMute, lineHeight: 1.4 }}>
+            Align a historical map image first (see Terrain panel) before picking colors.
+          </div>
+        )}
+      </div>
+
+      <FSectionDivider />
+      <div style={{ padding: '4px 12px 8px' }}>
+        <button
+          onClick={extractRoadsFromImage}
+          disabled={!anyTierAssigned || extracting}
+          style={{
+            width: '100%', padding: '6px 0',
+            background: 'none',
+            border: `1px solid ${anyTierAssigned && !extracting ? t.rust : t.line}`,
+            color: anyTierAssigned && !extracting ? t.rust : t.inkFaint,
+            cursor: anyTierAssigned && !extracting ? 'pointer' : 'not-allowed',
+            fontFamily: t.mono, fontSize: 10, letterSpacing: 0.3,
+          }}
+        >
+          {extracting ? 'extracting…' : 'Extract'}
+        </button>
+      </div>
+
+      {hasExtracted && (
+        <>
+          <FSectionDivider />
+          <FSectionLabel label="Preview — confirm before snapping" />
+          {ROAD_TIERS.map(({ tier, label, color }) => {
+            const count = extractedRoadWays.filter(w => w.tier === tier).length
+            if (count === 0) return null
+            return (
+              <div key={tier} style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '3px 12px' }}>
+                <div style={{ width: 8, height: 8, background: color, borderRadius: 1, flexShrink: 0 }} />
+                <span style={{ fontFamily: t.mono, fontSize: 9, color: t.inkMute, flex: 1 }}>{label} — {count} traced</span>
+                <button
+                  onClick={() => applyExtractedRoadTier(tier)}
+                  style={{
+                    padding: '3px 8px', background: 'none',
+                    border: `1px solid ${t.rust}`, color: t.rust,
+                    cursor: 'pointer', fontFamily: t.mono, fontSize: 8.5, letterSpacing: 0.2,
+                  }}
+                >
+                  apply
+                </button>
+              </div>
+            )
+          })}
+          <div style={{ padding: '6px 12px 8px', textAlign: 'right' }}>
+            <button
+              onClick={clearExtractedRoadImage}
+              style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 0, fontFamily: t.mono, fontSize: 9, color: t.inkFaint }}
+            >
+              clear extracted
+            </button>
+          </div>
+        </>
+      )}
+    </FlyoutShell>
+  )
+}
+
 // ── OsmRailsFlyout ─────────────────────────────────────────────────────────────
 
 export function OsmRailsFlyout({ onClose }: { onClose: () => void }) {
@@ -852,6 +1155,9 @@ export function RoadsSidebarV3() {
         {dataSource === 'osm' && (
           <TriggerRow label="Fetch from OSM" active={flyout === 'road-import'} icon={IMPORT_ICON} onClick={() => toggleFlyout('road-import')} />
         )}
+        {dataSource === 'map_image' && (
+          <TriggerRow label="Extract from image" active={flyout === 'road-image-extract'} icon={IMPORT_ICON} onClick={() => toggleFlyout('road-image-extract')} />
+        )}
 
         <V2Divider label="Rails" />
         <BrushRow
@@ -898,6 +1204,7 @@ export function RoadsSidebarV3() {
       {flyout === 'road-terrain-cut' && <RoadTerrainCutFlyout onClose={() => setFlyout(null)} />}
       {flyout === 'rail-shape' && <RailShapeFlyout onClose={() => setFlyout(null)} />}
       {flyout === 'road-import' && <OsmRoadsFlyout onClose={() => setFlyout(null)} />}
+      {flyout === 'road-image-extract' && <RoadImageExtractFlyout onClose={() => setFlyout(null)} />}
       {flyout === 'rail-import' && <OsmRailsFlyout onClose={() => setFlyout(null)} />}
       {flyout === 'bridges' && <BridgesFlyout onClose={() => setFlyout(null)} />}
       {flyout === 'segment' && (

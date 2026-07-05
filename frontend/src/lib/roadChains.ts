@@ -527,7 +527,6 @@ export function buildRoadChains(
       const cpKey = spineSideCpKey(k, spineNk)
       if (emittedJuncCps.has(cpKey)) continue
       emittedJuncCps.add(cpKey)
-      junctionMap.set(cpKey, { pos: term, tier: minTier })
       controlPoints.push({ key: cpKey, pos: term })
     }
     for (const nk of adj.get(k) ?? []) {
@@ -537,7 +536,6 @@ export function buildRoadChains(
       if (emittedJuncCps.has(cpKey)) continue
       emittedJuncCps.add(cpKey)
       const pos = armToTerminal.get(`${k}|${nk}`) ?? hexIdx.get(k)?.center ?? [0, 0] as [number, number]
-      junctionMap.set(cpKey, { pos, tier: minTier })
       controlPoints.push({ key: cpKey, pos })
     }
   }

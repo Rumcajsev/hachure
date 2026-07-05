@@ -1,5 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react'
 import { WorldCoverClassificationPanel } from '../WorldCoverClassificationPanel'
+import { ImageClassificationPanel } from '../ImageClassificationPanel'
 import {
   useMapStore, TERRAIN_COLORS, TERRAIN_PRIORITY, MANUAL_ONLY_TERRAINS,
   DEFAULT_TERRAIN_BLOB,
@@ -108,6 +109,7 @@ function ShapeSettingsFlyout({ onClose, usedAs }: { onClose: () => void; usedAs:
     terrainBlobOutlineColor, setTerrainBlobOutlineColor,
     terrainBlobOutlineWidth, setTerrainBlobOutlineWidth,
     edgeBlobWidth, setEdgeBlobWidth,
+    edgeBlobBlend, setEdgeBlobBlend,
     applyTerrainBlobPreset,
   } = useMapStore()
 
@@ -185,6 +187,7 @@ function ShapeSettingsFlyout({ onClose, usedAs }: { onClose: () => void; usedAs:
         <span style={{ fontFamily: t.mono, fontSize: 9, letterSpacing: 0.8, color: t.inkFaint, textTransform: 'uppercase', fontWeight: 600 }}>Edge blob</span>
       </div>
       <MiniSlider label="Default width" display={`${Math.round(edgeBlobWidth * 100)}%`} value={Math.round(edgeBlobWidth * 100)} min={5} max={80} step={1} onChange={v => setEdgeBlobWidth(v / 100)} />
+      <MiniSlider label="Blend" display={`${edgeBlobBlend.toFixed(1)}×`} value={Math.round(edgeBlobBlend * 10)} min={10} max={40} step={1} onChange={v => setEdgeBlobBlend(v / 10)} />
       {isModified && (
         <div style={{ margin: '8px 12px 0', borderTop: `1px solid ${t.line2}`, paddingTop: 8 }}>
           <button
@@ -633,7 +636,7 @@ function TerrainCogFlyout({ terrain, onClose, usedAs }: { terrain: string; onClo
     terrainBlobLobeFreq, terrainBlobLobeAmp, terrainBlobLobeThreshold, terrainBlobLobeDirection,
     terrainBlobClusterSize,
     terrainBlobOutlineEnabled, terrainBlobOutlineColor, terrainBlobOutlineWidth,
-    edgeBlobWidth,
+    edgeBlobWidth, edgeBlobBlend,
     activeTool, setActiveTool,
     blobMaskEdits, clearBlobMaskEdits,
   } = useMapStore()
@@ -815,6 +818,13 @@ function TerrainCogFlyout({ terrain, onClose, usedAs }: { terrain: string; onClo
             value={Math.round((typeStyle?.width ?? edgeBlobWidth) * 100)}
             min={5} max={80} step={1}
             onChange={v => setTerrainTypeBlobStyle(terrain, { width: v / 100 })}
+          />
+          <MiniSlider
+            label="Blend"
+            display={typeStyle?.blend != null ? `${typeStyle.blend.toFixed(1)}×` : 'default'}
+            value={Math.round((typeStyle?.blend ?? edgeBlobBlend) * 10)}
+            min={5} max={40} step={1}
+            onChange={v => setTerrainTypeBlobStyle(terrain, { blend: v / 10 })}
           />
         </div>}
       </div>
@@ -1188,14 +1198,14 @@ function SlopeCogFlyout({ onClose, usedAs }: { onClose: () => void; usedAs: Reco
             onDragEnd={lengthSlider.onDragEnd}
           />
         </div>
-        <div style={{ borderTop: `1px solid ${tk.line2}` }}>
-          {sectionLabel('Chain smoothing')}
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '4px 12px 10px' }}>
-            <span style={{ fontFamily: tk.sans, fontSize: 11, color: tk.ink2 }}>Smooth connected edges</span>
-            <ToggleSwitch enabled={slopeSmoothing} onChange={setSlopeSmoothing} />
-          </div>
-        </div>
       </>}
+      <div style={{ borderTop: `1px solid ${tk.line2}` }}>
+        {sectionLabel('Chain smoothing')}
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '4px 12px 10px' }}>
+          <span style={{ fontFamily: tk.sans, fontSize: 11, color: tk.ink2 }}>Smooth connected edges</span>
+          <ToggleSwitch enabled={slopeSmoothing} onChange={setSlopeSmoothing} />
+        </div>
+      </div>
       {slopeStyle === 'shading' && <div style={{ borderTop: `1px solid ${tk.line2}` }}>
         {sectionLabel('Shadow')}
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '3px 14px' }}>
@@ -1233,6 +1243,7 @@ export function TerrainSidebarV3() {
     hillshadeEnabled,
     contoursEnabled,
     slopeStyle,
+    dataSource,
   } = useMapStore()
 
   const [flyout, setFlyout] = useState<FlyoutId>(null)
@@ -1351,7 +1362,7 @@ export function TerrainSidebarV3() {
         />
         <TGap />
         <TriggerRow label="Default shape" active={flyout === 't-shape'} onClick={() => toggleFlyout('t-shape')} />
-        <TriggerRow label="WorldCover rules" active={flyout === 't-import'} onClick={() => toggleFlyout('t-import')} icon={IMPORT_ICON} />
+        <TriggerRow label={dataSource === 'osm' ? 'WorldCover rules' : 'Image color rules'} active={flyout === 't-import'} onClick={() => toggleFlyout('t-import')} icon={IMPORT_ICON} />
         <TriggerRow label="Painting options" active={flyout === 't-opts'} onClick={() => toggleFlyout('t-opts')} />
 
         <V2Divider label="Elevation" />
@@ -1409,7 +1420,9 @@ export function TerrainSidebarV3() {
       </StripShell>
 
       {flyout === 't-shape'      && <ShapeSettingsFlyout      onClose={() => setFlyout(null)} usedAs={usedAs} />}
-      {flyout === 't-import'     && <WorldCoverClassificationPanel onClose={() => setFlyout(null)} />}
+      {flyout === 't-import'     && (dataSource === 'osm'
+        ? <WorldCoverClassificationPanel onClose={() => setFlyout(null)} />
+        : <ImageClassificationPanel onClose={() => setFlyout(null)} />)}
       {flyout === 't-opts'       && <PaintingOptionsFlyout onClose={() => setFlyout(null)} />}
       {flyout === 'e-import'     && <ElevationFlyout      onClose={() => setFlyout(null)} />}
       {flyout === 'e-hillshade'  && <HilshadeFlyout       onClose={() => setFlyout(null)} />}

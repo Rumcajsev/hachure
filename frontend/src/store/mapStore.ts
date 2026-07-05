@@ -1,6 +1,7 @@
 import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
 import { get as idbGet, set as idbSet, del as idbDel } from 'idb-keyval'
+import { loadMapImageFromStorage } from '../lib/mapImageStorage'
 
 // Debounce JSON.stringify + IDB writes, and skip the write entirely when the
 // persisted state hasn't changed (e.g. pure tool/panel switches).
@@ -94,6 +95,7 @@ export interface BlobOverride {
   clusterSize?: number
   enabled?: boolean
   width?: number
+  blend?: number
   // Legacy fields — kept for migration; use effect instead
   outlineEnabled?: boolean
   outlineColor?: string
@@ -156,6 +158,7 @@ export type ActiveTool =
   | { type: 'hex-disable'; mode: 'disable' | 'enable' }
   | { type: 'mega-hex-origin' }
   | { type: 'align-image' }
+  | { type: 'image-eyedropper'; target?: 'terrain' | 'road'; tier?: 0 | 1 | 2 }
   | { type: 'label-drag' }
   | { type: 'slope' }
   /** Label follows cursor until left-click confirms placement or Escape cancels.
@@ -403,6 +406,14 @@ export interface ClassRule {
   threshold: number
 }
 
+/** A user-picked reference color for classifying a historical map image, analogous
+ *  to a WorldCover class but built by the user via eyedropper instead of fixed. */
+export interface ImageSwatch {
+  id: number
+  color: string
+  tolerance: number
+}
+
 /** terrain → list of WorldCover class rules. A hex qualifies if ANY rule fires. */
 export type TerrainRules = Record<string, ClassRule[]>
 
@@ -644,6 +655,22 @@ export interface HexHighlight {
 
 export interface RawRoadWay {
   highway: string
+  coords: [number, number][]
+}
+
+/** A user-picked reference color for tracing roads out of a historical map image,
+ *  assigned to a tier once dragged onto a tier drop zone (null = unassigned). */
+export interface RoadImageSwatch {
+  id: number
+  color: string
+  tolerance: number
+  tier: 0 | 1 | 2 | null
+}
+
+/** Raw (unsnapped) polyline traced from the map image for one road tier — the
+ *  preview stage before hex-snapping, analogous to RawRoadWay for OSM fetches. */
+export interface ExtractedRoadWay {
+  tier: 0 | 1 | 2
   coords: [number, number][]
 }
 
@@ -919,6 +946,7 @@ export const useMapStore = create<MapStore>()(persist((set, get) => ({
     terrainEdgePaintEnabled: s.terrainEdgePaintEnabled,
     edgeBlobPainted: s.edgeBlobPainted,
     edgeBlobWidth: s.edgeBlobWidth,
+    edgeBlobBlend: s.edgeBlobBlend,
     edgeBlobOverrides: s.edgeBlobOverrides,
     slopeEdges: s.slopeEdges,
     slopeStyle: s.slopeStyle,
@@ -1010,12 +1038,27 @@ export const useMapStore = create<MapStore>()(persist((set, get) => ({
     dataSource: s.dataSource,
     mapImageTransform: s.mapImageTransform,
     mapImageOpacity: s.mapImageOpacity,
+    imageSwatches: s.imageSwatches,
     mapTitle: s.mapTitle,
     labelOffsets: s.labelOffsets,
     labelPresetId: s.labelPresetId,
     labelOverrides: s.labelOverrides,
   }),
-  version: 97,
+  version: 98,
   migrate: migratePersisted,
   merge: (persisted, current) => rehydrateState({ ...current, ...(persisted as Partial<MapStore>) }),
 }))
+
+if (import.meta.env.DEV) (window as unknown as { __debugStore: unknown }).__debugStore = useMapStore
+
+// The uploaded map image lives in its own IndexedDB entry (see mapImageStorage.ts),
+// not in the main persisted store payload — restore it once the store has hydrated.
+useMapStore.persist.onFinishHydration((state) => {
+  if (state.dataSource !== 'map_image' || state.mapImageDataUrl) return
+  loadMapImageFromStorage().then((dataUrl) => {
+    if (!dataUrl) return
+    const img = new Image()
+    img.onload = () => useMapStore.getState().restoreMapImageDataUrl(dataUrl, img.naturalWidth, img.naturalHeight)
+    img.src = dataUrl
+  })
+})

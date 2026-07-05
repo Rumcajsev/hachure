@@ -1,6 +1,7 @@
 import type {
   MapStore, GeneratedHex, GridMetadata, GenerateProgress, BlobOverride,
   ActiveTool, CustomTerrain, TerrainRules, ClassRule, StrokeEffect, BlobMaskEdit, SlopeStyle,
+  ImageSwatch,
 } from '../mapStore'
 import {
   DEFAULT_TERRAIN_RULES,
@@ -10,6 +11,8 @@ import {
 } from '../mapStore'
 import { type BlobPresetId, BLOB_PRESETS } from '../blobPresets'
 import { classifyHex, classifyHexLayers } from '../../lib/terrainClassify'
+import { computeAllHexImageCoverage } from '../../lib/imageCoverageSample'
+import { ensureMapImageData } from '../../lib/decodedMapImage'
 
 export type TerrainSlice = {
   generatedHexes: GeneratedHex[]
@@ -69,6 +72,7 @@ export type TerrainSlice = {
   // Edge blob paint + state
   edgeBlobPainted: Record<string, string>
   edgeBlobWidth: number
+  edgeBlobBlend: number
   edgeBlobOverrides: Record<string, BlobOverride>
   // Slope edges: edgeKey → 'q,r' of the uphill hex
   slopeEdges: Record<string, string>
@@ -174,6 +178,7 @@ export type TerrainSlice = {
   paintEdgeBlob: (edgeKey: string, terrain: string) => void
   eraseEdgeBlob: (edgeKey: string) => void
   setEdgeBlobWidth: (v: number) => void
+  setEdgeBlobBlend: (v: number) => void
   setEdgeBlobOverride: (key: string, override: BlobOverride | null) => void
   blobSeeds: Record<string, number>
   randomizeBlobSeed: (terrain: string) => void
@@ -194,6 +199,12 @@ export type TerrainSlice = {
   worldcoverImageUrl: string | null
   showWorldcoverOverlay: boolean
   setShowWorldcoverOverlay: (v: boolean) => void
+  // Historical map image color calibration
+  imageSwatches: ImageSwatch[]
+  addImageSwatch: (color: string, tolerance?: number) => number
+  updateImageSwatchTolerance: (id: number, tolerance: number) => void
+  removeImageSwatch: (id: number) => void
+  recomputeImageClassification: () => Promise<void>
 }
 
 import { TERRAIN_COLORS } from '../mapStore'
@@ -270,6 +281,7 @@ export const createTerrainSlice = (set: Set, get: () => MapStore): TerrainSlice 
 
   edgeBlobPainted: {},
   edgeBlobWidth: 0.25,
+  edgeBlobBlend: 1.0,
   edgeBlobOverrides: {},
   slopeEdges: {},
   slopeStyle: 'hachure' as SlopeStyle,
@@ -305,10 +317,56 @@ export const createTerrainSlice = (set: Set, get: () => MapStore): TerrainSlice 
   showWorldcoverOverlay: false,
   setShowWorldcoverOverlay: (v) => set({ showWorldcoverOverlay: v }),
 
+  imageSwatches: [],
+
+  addImageSwatch: (color, tolerance = 40) => {
+    const { imageSwatches } = get()
+    const id = imageSwatches.length ? Math.max(...imageSwatches.map(s => s.id)) + 1 : 0
+    set({ imageSwatches: [...imageSwatches, { id, color, tolerance }] })
+    get().recomputeImageClassification()
+    return id
+  },
+
+  updateImageSwatchTolerance: (id, tolerance) => {
+    set(s => ({ imageSwatches: s.imageSwatches.map(sw => sw.id === id ? { ...sw, tolerance } : sw) }))
+    get().recomputeImageClassification()
+  },
+
+  removeImageSwatch: (id) => {
+    const { imageSwatches, terrainRules } = get()
+    const nextRules: TerrainRules = {}
+    for (const [terrain, rules] of Object.entries(terrainRules)) {
+      nextRules[terrain] = rules.filter(r => r.classCode !== id)
+    }
+    set({ imageSwatches: imageSwatches.filter(s => s.id !== id), terrainRules: nextRules })
+    get().recomputeImageClassification()
+  },
+
+  recomputeImageClassification: async () => {
+    const {
+      mapImageDataUrl, mapImageTransform, imageSwatches, generatedHexes,
+      generatedMetadata, terrainRules, disabledTerrains,
+    } = get()
+    if (!mapImageDataUrl || !generatedMetadata || generatedHexes.length === 0) return
+    const imgData = await ensureMapImageData(mapImageDataUrl)
+    const coverageByHex = computeAllHexImageCoverage(
+      generatedHexes, generatedMetadata, imgData, mapImageTransform, imageSwatches,
+    )
+    const updated = get().generatedHexes.map((h) => {
+      const coverage = coverageByHex.get(`${h.q},${h.r}`) ?? {}
+      if (h.manual_override) return { ...h, coverage }
+      const terrain = classifyHex(coverage, terrainRules, disabledTerrains, false)
+      const { terrains, backgroundTerrain } = classifyWithBackground(terrain, classifyHexLayers(coverage, terrainRules, disabledTerrains, false))
+      return { ...h, coverage, terrain, terrains, backgroundTerrain }
+    })
+    set({ generatedHexes: updated })
+  },
+
   resetToSetup: () => set({
     step: 'setup',
     dataSource: 'osm',
     mapImageDataUrl: null,
+    imageSwatches: [],
     generatedHexes: [],
     generatedMetadata: null,
     generateStatus: 'idle',
@@ -1123,6 +1181,7 @@ export const createTerrainSlice = (set: Set, get: () => MapStore): TerrainSlice 
   setElevationShadowPs: (v) => set({ elevationShadowPs: v }),
   setElevationShadowColor: (v) => set({ elevationShadowColor: v }),
   setEdgeBlobWidth: (v) => set({ edgeBlobWidth: v }),
+  setEdgeBlobBlend: (v) => set({ edgeBlobBlend: v }),
   setEdgeBlobOverride: (key, override) => set((s) => {
     if (override === null) {
       const { [key]: _, ...rest } = s.edgeBlobOverrides

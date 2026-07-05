@@ -1,5 +1,10 @@
-import type { MapStore, RawRoadWay, RoadEdge, HexRoadPath, RoadTierStyle, RoadGeomOverride, ActiveTool } from '../mapStore'
+import type { MapStore, RawRoadWay, RoadEdge, HexRoadPath, RoadTierStyle, RoadGeomOverride, ActiveTool, RoadImageSwatch, ExtractedRoadWay } from '../mapStore'
 import { TIER_HIGHWAYS, HIGHWAY_TO_TIER, roadEdgeCanonicalKey, DEFAULT_ROAD_TIER_STYLES, DEFAULT_ROAD_GEOM } from '../mapStore'
+import { ensureMapImageData } from '../../lib/decodedMapImage'
+import { extractTieredLinesFromImage } from '../../lib/imageLineExtract'
+import { imagePixelToCanvasPoint, unitPaperRect } from '../../lib/imageCoverageSample'
+import { unprojectFromCanvas } from '../../lib/projection'
+import { snapWayToHexPath, hexPathToRoadEdges } from '../../lib/imageLineToHexEdges'
 
 export type RoadsSlice = {
   rawRoadWays: RawRoadWay[]
@@ -102,6 +107,26 @@ export type RoadsSlice = {
   setRoadBlobCutEnabled: (v: boolean) => void
   setRoadBlobCutWidth: (v: number) => void
   setRoadBlobCutRoughness: (v: number) => void
+
+  // ── Image-based road extraction (color-trace roads out of the aligned map image) ──
+  roadImageSwatches: RoadImageSwatch[]
+  extractedRoadWays: ExtractedRoadWay[]
+  roadImageExtractStatus: 'idle' | 'extracting' | 'done' | 'error'
+  roadImageExtractPreviewOpen: boolean
+  setRoadImageExtractPreviewOpen: (open: boolean) => void
+  /** Which swatch is currently being tuned and how to preview it: 'raw' = live
+   *  per-pixel color match (shown while dragging the tolerance slider), 'traced' =
+   *  the skeletonized/simplified candidate lines (shown once the slider is released). */
+  roadImagePreviewSwatchId: number | null
+  roadImagePreviewPhase: 'raw' | 'traced' | null
+  setRoadImagePreview: (swatchId: number | null, phase: 'raw' | 'traced' | null) => void
+  addRoadImageSwatch: (color: string, tolerance?: number, tier?: 0 | 1 | 2 | null) => number
+  updateRoadImageSwatchTolerance: (id: number, tolerance: number) => void
+  removeRoadImageSwatch: (id: number) => void
+  setRoadImageSwatchTier: (id: number, tier: 0 | 1 | 2 | null) => void
+  extractRoadsFromImage: () => Promise<void>
+  applyExtractedRoadTier: (tier: 0 | 1 | 2) => void
+  clearExtractedRoadImage: () => void
 }
 
 type Set = (partial: Partial<MapStore> | ((s: MapStore) => Partial<MapStore>)) => void
@@ -151,10 +176,21 @@ export const createRoadsSlice = (set: Set, get: () => MapStore): RoadsSlice => (
   roadBlobCutWidth: 0.3,
   roadBlobCutRoughness: 0.3,
 
+  roadImageSwatches: [],
+  extractedRoadWays: [],
+  roadImageExtractStatus: 'idle',
+  roadImageExtractPreviewOpen: false,
+  setRoadImageExtractPreviewOpen: (open) => set({ roadImageExtractPreviewOpen: open }),
+  roadImagePreviewSwatchId: null,
+  roadImagePreviewPhase: null,
+  setRoadImagePreview: (swatchId, phase) => set({ roadImagePreviewSwatchId: swatchId, roadImagePreviewPhase: phase }),
+
   clearRoads: () => set(s => ({
     rawRoadWays: [], osmHexPaths: [], roadTypeFetchStatus: {}, osmHighlightTier: null, osmSpotlightMode: false, osmSpotlightTiers: [true, true, true, true] as [boolean, boolean, boolean, boolean],
     roadEdges: [], roadsVisibleTiers: [true, true, true], roadsStatus: 'idle', roadsError: null,
     roadPaintMode: false, roadPaintEraser: false, roadNodeEditMode: false, roadSnapBindings: {},
+    roadImageSwatches: [], extractedRoadWays: [], roadImageExtractStatus: 'idle',
+    roadImagePreviewSwatchId: null, roadImagePreviewPhase: null,
     activeTool: (s.activeTool.type === 'road' || s.activeTool.type === 'node-edit') ? { type: 'none' } as ActiveTool : s.activeTool,
   })),
   clearManualRoads: () => { get().pushUndoSnapshot(); set((s) => ({ roadEdges: s.roadEdges.filter((e) => !e.manual) })) },
@@ -462,6 +498,77 @@ export const createRoadsSlice = (set: Set, get: () => MapStore): RoadsSlice => (
   setRoadBlobCutEnabled: (v) => set({ roadBlobCutEnabled: v }),
   setRoadBlobCutWidth: (v) => set({ roadBlobCutWidth: v }),
   setRoadBlobCutRoughness: (v) => set({ roadBlobCutRoughness: v }),
+
+  addRoadImageSwatch: (color, tolerance = 40, tier = null) => {
+    const { roadImageSwatches } = get()
+    const id = roadImageSwatches.length ? Math.max(...roadImageSwatches.map(s => s.id)) + 1 : 0
+    set({ roadImageSwatches: [...roadImageSwatches, { id, color, tolerance, tier }] })
+    return id
+  },
+  updateRoadImageSwatchTolerance: (id, tolerance) => set(s => ({
+    roadImageSwatches: s.roadImageSwatches.map(sw => sw.id === id ? { ...sw, tolerance } : sw),
+  })),
+  removeRoadImageSwatch: (id) => set(s => ({
+    roadImageSwatches: s.roadImageSwatches.filter(sw => sw.id !== id),
+    ...(s.roadImagePreviewSwatchId === id ? { roadImagePreviewSwatchId: null, roadImagePreviewPhase: null } : {}),
+  })),
+  setRoadImageSwatchTier: (id, tier) => set(s => ({
+    roadImageSwatches: s.roadImageSwatches.map(sw => sw.id === id ? { ...sw, tier } : sw),
+  })),
+
+  extractRoadsFromImage: async () => {
+    const { mapImageDataUrl, mapImageTransform, generatedMetadata, roadImageSwatches } = get()
+    if (!mapImageDataUrl || !generatedMetadata) return
+    const tiered = roadImageSwatches.filter((s): s is RoadImageSwatch & { tier: 0 | 1 | 2 } => s.tier !== null)
+    if (tiered.length === 0) return
+    set({ roadImageExtractStatus: 'extracting' })
+    try {
+      const imgData = await ensureMapImageData(mapImageDataUrl)
+      const traced = extractTieredLinesFromImage(imgData, tiered)
+      const rect = unitPaperRect(generatedMetadata)
+      const ways: ExtractedRoadWay[] = []
+      for (const line of traced) {
+        const coords: [number, number][] = []
+        for (const [u, v] of line.points) {
+          const pt = imagePixelToCanvasPoint(u, v, mapImageTransform, imgData.width, imgData.height, rect.px, rect.py, rect.pw, rect.ph)
+          if (!pt) continue
+          const [lon, lat] = unprojectFromCanvas(pt[0], pt[1], generatedMetadata, rect.pw, rect.ph, rect.px, rect.py)
+          coords.push([lon, lat])
+        }
+        if (coords.length >= 2) ways.push({ tier: line.tier, coords })
+      }
+      set({ extractedRoadWays: ways, roadImageExtractStatus: 'done' })
+    } catch (e) {
+      set({ roadImageExtractStatus: 'error' })
+    }
+  },
+
+  applyExtractedRoadTier: (tier) => {
+    const { extractedRoadWays, generatedMetadata, hexOrientation, roadEdges } = get()
+    if (!generatedMetadata) return
+    const ways = extractedRoadWays.filter(w => w.tier === tier)
+    if (ways.length === 0) return
+    get().pushUndoSnapshot()
+    const seen = new Set<string>()
+    const newEdges: RoadEdge[] = []
+    for (const way of ways) {
+      const hexPath = snapWayToHexPath(way.coords, generatedMetadata, hexOrientation)
+      const edges = hexPathToRoadEdges(hexPath, tier, [...roadEdges, ...newEdges])
+      for (const e of edges) {
+        const a = `${e.q1},${e.r1}`, b = `${e.q2},${e.r2}`
+        const key = a < b ? `${a}|${b}` : `${b}|${a}`
+        if (seen.has(key)) continue
+        seen.add(key)
+        newEdges.push(e)
+      }
+    }
+    if (newEdges.length > 0) set(s => ({ roadEdges: [...s.roadEdges, ...newEdges] }))
+  },
+
+  clearExtractedRoadImage: () => set({
+    roadImageSwatches: [], extractedRoadWays: [], roadImageExtractStatus: 'idle',
+    roadImagePreviewSwatchId: null, roadImagePreviewPhase: null,
+  }),
 
   fetchMotorwayHexes: async () => {
     const { generatedMetadata, hexOrientation, motorwayHexesFast } = get()

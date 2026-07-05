@@ -8,6 +8,7 @@ import { buildRoadChains } from './roadChains'
 import type { RoadBaseData, RoadTierGeomMap } from './roadChains'
 import { buildRailChains, applyRailWiggle } from './railChains'
 import type { RailBaseData } from './railChains'
+import type { RailNetwork } from './railNetwork'
 import { buildRiverChainsV2 } from './riverChains'
 
 // ---------------------------------------------------------------------------
@@ -43,12 +44,12 @@ export interface DragLiveInput {
 
   railEdges: { q1: number; r1: number; q2: number; r2: number }[]
   railControlOverrides: Record<string, [number, number]>
-  railBaseData: RailBaseData
-  smoothedRailData: RailBaseData
+  railNetwork: RailNetwork
   railSmoothing: number
   railPathSmoothing: number
   railWiggleAmp: number
   railWiggleFreq: number
+  railWiggleDragging: boolean
   railSegmentProps: any
   railHopProps: any
   railGeomOverride: { smoothing?: number; pathSmoothing?: number } | null
@@ -82,8 +83,8 @@ export function computeDragLiveData(p: DragLiveInput): DragLiveResult {
     roadControlOverrides, roadChainOverrides,
     roadWiggleAmp, roadWiggleFreq, roadSmoothing, roadPathSmoothing,
     roadSegmentProps, roadHopProps, roadTierGeometry, roadCenterPull,
-    railEdges, railControlOverrides, railBaseData, smoothedRailData,
-    railSmoothing, railPathSmoothing, railWiggleAmp, railWiggleFreq,
+    railEdges, railControlOverrides, railNetwork,
+    railSmoothing, railPathSmoothing, railWiggleAmp, railWiggleFreq, railWiggleDragging,
     railSegmentProps, railHopProps, railGeomOverride,
     riverEdges, hexes, riverChainOverrides,
     riverWiggleFreq, riverWiggleAmp, riverSmoothing,
@@ -141,16 +142,18 @@ export function computeDragLiveData(p: DragLiveInput): DragLiveResult {
       : stableRoadData
 
   const liveRailGeomOverride = railGeomOverride ?? undefined
+  const railRoadMidpoints = new Map(stableRoadData.controlPoints
+    .filter(cp => cp.key.startsWith('em|'))
+    .map(cp => [cp.key, cp.pos] as [string, [number, number]]))
+  const railRoadJunctions = new Map(stableRoadData.controlPoints
+    .filter(cp => cp.key.startsWith('ja|'))
+    .map(cp => [cp.key.slice(3), cp.pos] as [string, [number, number]]))
+  const networkRailBase = railNetwork.getBaseData(roadEdges, railRoadMidpoints, railRoadJunctions)
   const liveRailData: RailBaseData = isDraggingRailCP
     ? applyRailWiggle(
         buildRailChains(
           railEdges, roadEdges, hexIdx,
-          new Map(stableRoadData.controlPoints
-            .filter(cp => cp.key.startsWith('em|'))
-            .map(cp => [cp.key, cp.pos] as [string, [number, number]])),
-          new Map(stableRoadData.controlPoints
-            .filter(cp => cp.key.startsWith('ja|'))
-            .map(cp => [cp.key.slice(3), cp.pos] as [string, [number, number]])),
+          railRoadMidpoints, railRoadJunctions,
           { ...railControlOverrides, ...dragLiveOverride },
           0, 0,
           liveRailGeomOverride?.smoothing ?? railSmoothing,
@@ -159,7 +162,11 @@ export function computeDragLiveData(p: DragLiveInput): DragLiveResult {
         ),
         railWiggleAmp, railWiggleFreq, railSegmentProps, railHopProps, 0, liveRailGeomOverride,
       )
-    : smoothedRailData
+    : applyRailWiggle(
+        networkRailBase,
+        railWiggleAmp, railWiggleFreq, railSegmentProps, railHopProps,
+        railWiggleDragging ? 0 : 2, liveRailGeomOverride,
+      )
 
   const liveRiverChainOverrides: Record<string, [number, number][]> | null =
     isDraggingRiverDense && liveDenseDrag && liveDensePos

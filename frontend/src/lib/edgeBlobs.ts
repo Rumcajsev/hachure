@@ -16,6 +16,7 @@ export type EdgeBlobParams = {
   lobeThreshold: number
   lobeDirection: number
   width: number
+  blend: number
 }
 
 export interface EdgeBlobChain {
@@ -216,6 +217,7 @@ function buildOrderedPaths(
 }
 
 /**
+/**
  * Build the blob polygon for one polyline path.
  * Creates an offset ribbon around the path, then applies the full Perlin blob pipeline.
  * `leftHalfWidth` / `rightHalfWidth` override the default symmetric halfWidth per side
@@ -227,6 +229,8 @@ function buildRibbonBlob(
   R: number,
   leftHalfWidth?: number,
   rightHalfWidth?: number,
+  startFlare = false,
+  endFlare = false,
 ): [number, number][] {
   const { smooth, bump: bumpFraction, sweepFreq, lobeFreq, lobeAmp, lobeThreshold, lobeDirection, width } = params
   const halfWidth = width * R
@@ -234,18 +238,35 @@ function buildRibbonBlob(
   const lw = leftHalfWidth  ?? halfWidth
   const rw = rightHalfWidth ?? halfWidth
 
-  // Offset both sides to form a ribbon
   const left  = offsetPolyline(path,  lw)
   const right = offsetPolyline(path, -rw)
 
-  // Close the polygon with taper points at each end
+  // Close the polygon with taper points at each end.
+  // At terrain-connecting ends, replace the sharp taper vertex with a short fan
+  // spanning from the left offset endpoint to the right offset endpoint, so the
+  // ribbon arrives at the area blob already wide rather than as a needle tip.
   const startPt = path[0]
   const endPt   = path[path.length - 1]
 
+  const lerp2 = (a: [number, number], b: [number, number], t: number): [number, number] =>
+    [a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t]
+
+  const leftStart  = left.length  > 0 ? left[0]              : startPt
+  const rightStart = right.length > 0 ? right[0]             : startPt
+  const leftEnd    = left.length  > 0 ? left[left.length - 1]  : endPt
+  const rightEnd   = right.length > 0 ? right[right.length - 1] : endPt
+
+  const startCap: [number, number][] = startFlare
+    ? [lerp2(rightStart, leftStart, 1 / 3), lerp2(rightStart, leftStart, 2 / 3)]
+    : [startPt]
+  const endCap: [number, number][] = endFlare
+    ? [lerp2(leftEnd, rightEnd, 1 / 3), lerp2(leftEnd, rightEnd, 2 / 3)]
+    : [endPt]
+
   let poly: [number, number][] = [
-    startPt,
+    ...startCap,
     ...left,
-    endPt,
+    ...endCap,
     ...right.slice().reverse(),
   ]
 
@@ -271,11 +292,8 @@ function buildRibbonBlob(
   return poly
 }
 
-/** How far (in units of R) to extend the ribbon toward a matching-terrain hex. */
-const HEX_CONNECT_EXTEND = 1.2
-
 /** How far (in units of R) to push a chain endpoint into an adjacent matching-terrain area hex. */
-const ENDPOINT_EXTEND_FRACTION = 0.4
+const ENDPOINT_EXTEND_FRACTION = 0.8
 
 /**
  * If the chain endpoint vertex `pt` (from terminal edge `terminalEdgeKey`) sits adjacent
@@ -327,7 +345,9 @@ export function buildEdgeBlobPolys(
 ): [number, number][][] {
   const ordered = buildOrderedPaths(chain.edgeKeys, hexVertMap)
   const halfWidth = params.width * R
-  const bigWidth  = Math.max(halfWidth, HEX_CONNECT_EXTEND * R)
+  // Fixed terrain-side overlap depth — ribbon extends this far into the area blob.
+  const bigWidth = Math.max(halfWidth, 1.2 * R)
+  console.log('[edgeBlob] blend=', params.blend, 'halfWidth=', halfWidth, 'hexTerrainSet size=', hexTerrainSet?.size ?? 0)
 
   // Build vertex → hex list once for endpoint extension lookups.
   const vertToHexes = new Map<string, Array<{ q: number; r: number }>>()
@@ -341,6 +361,10 @@ export function buildEdgeBlobPolys(
       }
     }
   }
+
+  // clearWidth: the visible (clear-hex-facing) side width when adjacent to a terrain hex.
+  // blend=1 → same as normal ribbon width; blend=4 → 4× wider, creating a wider junction.
+  const clearWidth = halfWidth * Math.max(1, params.blend)
 
   const result: [number, number][][] = []
   for (const { path, orderedEdgeKeys } of ordered) {
@@ -356,42 +380,63 @@ export function buildEdgeBlobPolys(
         const c2 = hexCenter(q2, r2, hexVertMap)
         if (!c1 || !c2) continue
 
-        // Segment direction from path[i] to path[i+1]
         const dx = path[i + 1][0] - path[i][0]
         const dy = path[i + 1][1] - path[i][1]
 
-        // 2D cross product (dx,dy) × (c-path[i]) = dx*cy - dy*cx.
-        // In canvas coords (Y-down): cross > 0 → point is on the positive-offset side
-        // of the path, i.e. offsetPolyline(path, +w) extends toward it.
         const cross1 = dx * (c1[1] - path[i][1]) - dy * (c1[0] - path[i][0])
         const cross2 = dx * (c2[1] - path[i][1]) - dy * (c2[0] - path[i][0])
 
         const hex1Match = hexTerrainSet.has(`${q1},${r1}`)
         const hex2Match = hexTerrainSet.has(`${q2},${r2}`)
 
-        // cross > 0 → hex is on positive-offset side → extend leftHalfWidth (used with +offset)
-        // cross < 0 → hex is on negative-offset side → extend rightHalfWidth (used with -offset)
         if (hex1Match) { if (cross1 > 0) leftMatch++; else rightMatch++ }
         if (hex2Match) { if (cross2 > 0) leftMatch++; else rightMatch++ }
+
+        // Also check the two "flanking" hexes that share each vertex of this edge
+        // but are not themselves one of the two edge hexes. This handles the common
+        // case where the edge blob runs alongside a terrain hex (the third hex at the
+        // edge's vertices) rather than directly across the terrain boundary.
+        if (!hex1Match && !hex2Match) {
+          const edgeVerts = sharedEdgeVertices(q1, r1, q2, r2, hexVertMap)
+          if (edgeVerts) {
+            for (const vert of edgeVerts) {
+              for (const { q: fq, r: fr } of vertToHexes.get(vk(vert)) ?? []) {
+                if ((fq === q1 && fr === r1) || (fq === q2 && fr === r2)) continue
+                if (!hexTerrainSet.has(`${fq},${fr}`)) continue
+                const fc = hexCenter(fq, fr, hexVertMap)
+                if (!fc) continue
+                const crossF = dx * (fc[1] - path[i][1]) - dy * (fc[0] - path[i][0])
+                if (crossF > 0) leftMatch++; else rightMatch++
+              }
+            }
+          }
+        }
       }
 
-      if (leftMatch  > 0) leftHalfWidth  = bigWidth
-      if (rightMatch > 0) rightHalfWidth = bigWidth
+      // Terrain-facing side: extend deep into area blob for guaranteed overlap.
+      // Clear-facing side: widen by blend so the visible junction is wider.
+      if (leftMatch  > 0) { leftHalfWidth  = bigWidth; rightHalfWidth = clearWidth }
+      if (rightMatch > 0) { rightHalfWidth = bigWidth; leftHalfWidth  = clearWidth }
+      console.log('[edgeBlob match]', { leftMatch, rightMatch, leftHalfWidth: leftHalfWidth.toFixed(1), rightHalfWidth: rightHalfWidth.toFixed(1), clearWidth: clearWidth.toFixed(1), bigWidth: bigWidth.toFixed(1) })
     }
 
-    // Extend endpoints into adjacent matching-terrain area hexes.
+    // Extend endpoints into adjacent matching-terrain area hexes and record
+    // which ends were extended so we can emit a flared cap there instead of
+    // the default sharp taper tip.
     let workPath = path as [number, number][]
+    let startFlare = false
+    let endFlare   = false
     if (hexTerrainSet && hexTerrainSet.size > 0 && orderedEdgeKeys.length > 0) {
       const first = extendEndpointIntoAreaHex(path[0], orderedEdgeKeys[0], hexTerrainSet, vertToHexes, hexVertMap, R)
       const last  = extendEndpointIntoAreaHex(path[path.length - 1], orderedEdgeKeys[orderedEdgeKeys.length - 1], hexTerrainSet, vertToHexes, hexVertMap, R)
       if (first !== path[0] || last !== path[path.length - 1]) {
         workPath = [...path]
-        workPath[0] = first
-        workPath[workPath.length - 1] = last
+        if (first !== path[0])               { workPath[0] = first;                    startFlare = true }
+        if (last  !== path[path.length - 1]) { workPath[workPath.length - 1] = last;   endFlare   = true }
       }
     }
 
-    const poly = buildRibbonBlob(workPath, params, R, leftHalfWidth, rightHalfWidth)
+    const poly = buildRibbonBlob(workPath, params, R, leftHalfWidth, rightHalfWidth, startFlare, endFlare)
     if (poly.length >= 3) result.push(poly)
   }
   return result

@@ -171,6 +171,7 @@ export class RoadNetwork {
     if (existingTier !== undefined) {
       if (tier === existingTier) return  // no-op: tier unchanged, rawEdges stays stable
       // Replace semantics: swap the tier, don't min
+      console.warn('[roads-addEdge] replace', k1, '->', k2, 'tier', existingTier, '->', tier)
       const pk = pairKey(k1, k2)
       this.rawEdges = this.rawEdges.filter(e => pairKey(`${e.q1},${e.r1}`, `${e.q2},${e.r2}`) !== pk)
       this.rawEdges.push({ q1, r1, q2, r2, tier })
@@ -179,6 +180,7 @@ export class RoadNetwork {
       this.markEdgeSegmentDirty(k1, k2, tier)
       return
     }
+    console.warn('[roads-addEdge] NEW edge', k1, '->', k2, 'tier', tier)
 
     this.rawEdges.push({ q1, r1, q2, r2, tier })
 
@@ -284,11 +286,17 @@ export class RoadNetwork {
         && wiggleAmpFactor === this._cachedWiggleAmp
         && wiggleFreqFactor === this._cachedWiggleFreq
         && chaikinPasses === this._cachedChaikinPasses) {
+      console.warn('[getBaseData] cache HIT chains=', this._cachedBaseData.chains.length, 'tiers=', this._cachedBaseData.chains.map(c => c.tier).join(','))
       return this._cachedBaseData
     }
+    console.warn('[getBaseData] MISS stale=', this._baseDataStale, 'dirtySegs=', [...this.segments.values()].filter(s => s.dirty).length)
 
     for (const seg of this.segments.values()) {
-      if (seg.dirty) this.computeSegmentGeometry(seg)
+      if (seg.dirty) {
+        this.computeSegmentGeometry(seg)
+        if (process.env.NODE_ENV === 'development')
+          console.warn('[getBaseData] rebuilt seg=', seg.id, 'tier=', seg.tier, 'baseChain=', seg.baseChain?.length ?? 'null', 'hopTiers=', seg.hopTiers.join(','))
+      }
     }
 
     const chains: RoadChain[] = []
@@ -297,7 +305,11 @@ export class RoadNetwork {
     const emittedJuncCps = new Set<string>()
 
     for (const seg of this.segments.values()) {
-      if (!seg.baseChain || seg.baseChain.length < 2) continue
+      if (!seg.baseChain || seg.baseChain.length < 2) {
+        if (process.env.NODE_ENV === 'development')
+          console.warn('[getBaseData] SKIP seg=', seg.id, 'baseChain=', seg.baseChain?.length ?? 'null', 'dirty=', seg.dirty, 'hexPath=', seg.hexPath.length)
+        continue
+      }
 
       const { id, baseChain, hopKeys, hopRanges, hopTiers, tier } = seg
       const tg = this.params.tierGeom?.[tier]
@@ -318,9 +330,10 @@ export class RoadNetwork {
         hopKeys.some(k => hopProps[k]?.wiggleAmp !== undefined || hopProps[k]?.wiggleFreq !== undefined)) &&
         hopCount > 0
 
-      let chain: [number, number][]
+      // Build wiggled chain (pre-Chaikin). hopRanges indices are valid at this level.
+      let wiggled: [number, number][]
       if (!hasOverride) {
-        chain = wiggleChain(baseChain, chainAmp, chainFreq)
+        wiggled = wiggleChain(baseChain, chainAmp, chainFreq)
       } else {
         const dense = [...baseChain] as [number, number][]
         for (let h = 0; h < hopCount; h++) {
@@ -328,10 +341,10 @@ export class RoadNetwork {
           const hp = hopProps[hopKeys[h]]
           const amp = (hp?.wiggleAmp ?? sp?.wiggleAmp ?? effAmpFactor) * this.interHexDist
           const freq = this.interHexDist > 0 ? (hp?.wiggleFreq ?? sp?.wiggleFreq ?? effFreqFactor) / this.interHexDist : 0
-          const wiggled = wiggleChain(baseChain.slice(s, e + 1), amp, freq)
-          for (let i = 0; i < wiggled.length; i++) dense[s + i] = wiggled[i]
+          const w = wiggleChain(baseChain.slice(s, e + 1), amp, freq)
+          for (let i = 0; i < w.length; i++) dense[s + i] = w[i]
         }
-        chain = dense
+        wiggled = dense
       }
 
       const effAmp = hasOverride
@@ -340,12 +353,13 @@ export class RoadNetwork {
             return (hp?.wiggleAmp ?? sp?.wiggleAmp ?? effAmpFactor) * this.interHexDist
           }))
         : chainAmp
-      if (effAmp > 0 && chaikinPasses > 0) chain = chaikin(chain, chaikinPasses, false)
+      const applyChaikin = effAmp > 0 && chaikinPasses > 0
 
       const isLoop = seg.hexPath[0] === seg.hexPath[seg.hexPath.length - 1]
 
       // Emit chains, splitting at tier-change boundaries
       if (hopCount === 0) {
+        const chain = applyChaikin ? chaikin(wiggled, chaikinPasses, false) : wiggled
         chains.push({ tier, chain, baseChain, id, hopKeys: [], hopRanges: [], hopTiers: [], isLoop })
         continue
       }
@@ -361,16 +375,22 @@ export class RoadNetwork {
       tierRuns.push({ tier: (hopTiers[runStart] ?? 2) as 0 | 1 | 2, hopStart: runStart, hopEnd: hopCount })
 
       if (tierRuns.length === 1) {
+        const chain = applyChaikin ? chaikin(wiggled, chaikinPasses, false) : wiggled
         chains.push({ tier: tierRuns[0].tier, chain, baseChain, id, hopKeys, hopRanges, hopTiers, isLoop })
       } else {
+        // Slice using pre-Chaikin hopRanges indices, then apply Chaikin per sub-chain.
+        // Applying Chaikin to the full chain and then slicing would use wrong indices
+        // (Chaikin expands the point count ~4× per 2 passes, invalidating hopRanges offsets).
         for (let ri = 0; ri < tierRuns.length; ri++) {
           const { tier: runTier, hopStart, hopEnd } = tierRuns[ri]
           const subId = ri === 0 ? id : `${id}|t${ri}`
           const ptStart = hopRanges[hopStart][0]
           const ptEnd = hopRanges[hopEnd - 1][1]
+          const subWiggled = wiggled.slice(ptStart, ptEnd + 1)
+          const chain = applyChaikin ? chaikin(subWiggled, chaikinPasses, false) : subWiggled
           chains.push({
             tier: runTier,
-            chain: chain.slice(ptStart, ptEnd + 1),
+            chain,
             baseChain: baseChain.slice(ptStart, ptEnd + 1),
             id: subId,
             hopKeys: hopKeys.slice(hopStart, hopEnd),
@@ -395,8 +415,6 @@ export class RoadNetwork {
           const cpKey = spineSideCpKey(k, spineNk)
           if (emittedJuncCps.has(cpKey)) continue
           emittedJuncCps.add(cpKey)
-          const minTier = jd.tier
-          junctionsList.push({ pos: term, tier: minTier })
           controlPoints.push({ key: cpKey, pos: term })
         }
         for (const nk of (this.adj.get(k)?.keys() ?? [])) {
@@ -406,7 +424,6 @@ export class RoadNetwork {
           if (emittedJuncCps.has(cpKey)) continue
           emittedJuncCps.add(cpKey)
           const pos = jd.armTerminals.get(`${k}|${nk}`) ?? jd.pos
-          junctionsList.push({ pos, tier: jd.tier })
           controlPoints.push({ key: cpKey, pos })
         }
 
@@ -476,14 +493,22 @@ export class RoadNetwork {
 
   /** True if the given edge list is identical to what this network was last built from. */
   isEdgesEqual(edges: { q1: number; r1: number; q2: number; r2: number; tier: 0 | 1 | 2 }[]): boolean {
-    if (edges.length !== this.rawEdges.length) return false
+    if (edges.length !== this.rawEdges.length) {
+      console.warn('[roads-eq] FALSE: count mismatch raw=', this.rawEdges.length, 'store=', edges.length)
+      return false
+    }
     const toKey = (e: typeof edges[0]) => {
       const k1 = `${e.q1},${e.r1}`, k2 = `${e.q2},${e.r2}`
       const [a, b] = k1 < k2 ? [k1, k2] : [k2, k1]
       return `${a}||${b}||${e.tier}`
     }
     const mine = new Set(this.rawEdges.map(toKey))
-    return edges.every(e => mine.has(toKey(e)))
+    const missing = edges.filter(e => !mine.has(toKey(e)))
+    if (missing.length > 0) {
+      console.warn('[roads-eq] FALSE: missing in rawEdges:', missing.slice(0, 3).map(toKey))
+      return false
+    }
+    return true
   }
 
   // ── Private helpers ──────────────────────────────────────────────────────────
@@ -851,7 +876,11 @@ export class RoadNetwork {
       }
     }
 
-    if (pts.length < 2) { seg.dirty = false; return }
+    if (pts.length < 2) {
+      if (process.env.NODE_ENV === 'development')
+        console.warn('[seg-geo] EARLY RETURN pts<2 id=', id, 'hexPath=', hexPath.length, 'boundaryStart=', this.boundaryNodes.has(startK), 'boundaryEnd=', this.boundaryNodes.has(endK), 'hexIdxHasStart=', this.hexIdx.has(startK), 'hexIdxHasEnd=', this.hexIdx.has(endK))
+      seg.dirty = false; return
+    }
 
     // Path relaxation
     const relaxed = pts.slice() as [number, number][]

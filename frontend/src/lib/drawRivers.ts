@@ -8,14 +8,16 @@ import type { LabelSpec } from './labelPresets'
 import { specToFont } from './labelPresets'
 
 type Ctx = CanvasRenderingContext2D | OffscreenCanvasRenderingContext2D
-type SegProps = Record<string, { width?: number; taper?: number; taperRange?: [number, number] }>
-type HopProps = { wiggleAmp?: number; wiggleFreq?: number; width?: number; taper?: number }
+type SegProps = Record<string, { width?: number }>
+type HopProps = { wiggleAmp?: number; wiggleFreq?: number; width?: number }
 
 export type ChainEntry = {
   vertices: [number, number][]
   segKey: string
   hopKeys?: string[]
   hopRanges?: [number, number][]
+  leafAtStart?: boolean
+  leafAtEnd?: boolean
 }
 
 export type RiverLabelEntry = { name: string; coords: [number, number][] }
@@ -24,6 +26,7 @@ export type DrawRiversParams = {
   riverTierChainData: [ChainEntry[], ChainEntry[], ChainEntry[]]
   riverHopProps?: Record<string, HopProps>
   selectedHopKey?: string | null
+  riverTaperSegments?: number
   riverSegProps: SegProps
   riverTierStyles: [RiverTierStyle, RiverTierStyle, RiverTierStyle]
   riverStyle?: RiverStyleConfig   // legacy fallback
@@ -44,16 +47,9 @@ export type DrawRiversParams = {
   excludeLabelId?: string
 }
 
-function makeSegHalfWidths(segProps: SegProps, baseHW: number) {
-  const fixedHW = 1.4
-  return (segKey: string): [number, number] => {
-    const p = segProps[segKey]
-    const taper = p?.taper ?? 0
-    const [t0, t1] = p?.taperRange ?? [0, 1]
-    const hwFull = p?.width !== undefined ? fixedHW * p.width : baseHW
-    const hwNarrow = hwFull * (1 - taper * 0.85)
-    return [hwNarrow + (hwFull - hwNarrow) * t0, hwNarrow + (hwFull - hwNarrow) * t1]
-  }
+function segHalfWidth(segProps: SegProps, baseHW: number, segKey: string): number {
+  const p = segProps[segKey]
+  return p?.width !== undefined ? 1.4 * p.width : baseHW
 }
 
 function buildWidthMultipliers(
@@ -61,24 +57,37 @@ function buildWidthMultipliers(
   hopKeys: string[] | undefined,
   hopRanges: [number, number][] | undefined,
   hopProps: Record<string, HopProps> | undefined,
+  leafAtStart: boolean,
+  leafAtEnd: boolean,
+  taperLen: number,
 ): number[] | undefined {
-  if (!hopKeys || !hopRanges || !hopProps) return undefined
-  const hasWidth = hopKeys.some(k => hopProps[k]?.width !== undefined || hopProps[k]?.taper !== undefined)
-  if (!hasWidth) return undefined
+  const hasTaper = taperLen > 0 && leafAtStart
+  const hasHopWidth = hopKeys && hopRanges && hopProps &&
+    hopKeys.some(k => hopProps[k]?.width !== undefined)
+  if (!hasTaper && !hasHopWidth) return undefined
+
+  const dist = [0]
+  for (let i = 1; i < pts.length; i++)
+    dist.push(dist[i - 1] + Math.hypot(pts[i][0] - pts[i - 1][0], pts[i][1] - pts[i - 1][1]))
+  const totalLen = dist[dist.length - 1]
+
   const mults = new Array(pts.length).fill(1)
-  for (let h = 0; h < hopKeys.length; h++) {
-    const hp = hopProps[hopKeys[h]]
-    if (!hp?.width && !hp?.taper) continue
-    const [s, e] = hopRanges[h]
-    const w = hp.width ?? 1
-    const taper = hp.taper ?? 0
-    const len = e - s
-    for (let i = s; i <= e; i++) {
-      const t = len > 0 ? (i - s) / len : 0.5
-      const taperFactor = 1 - taper * Math.sin(t * Math.PI) * 0.85
-      mults[i] = w * taperFactor
+
+  if (hasTaper) {
+    for (let i = 0; i < pts.length; i++) {
+      mults[i] = leafAtStart ? Math.max(0, Math.min(1, dist[i] / taperLen)) : 1
     }
   }
+
+  if (hasHopWidth && hopKeys && hopRanges && hopProps) {
+    for (let h = 0; h < hopKeys.length; h++) {
+      const hp = hopProps[hopKeys[h]]
+      if (!hp?.width) continue
+      const [s, e] = hopRanges[h]
+      for (let i = s; i <= e; i++) mults[i] *= hp.width
+    }
+  }
+
   return mults
 }
 
@@ -97,18 +106,18 @@ function drawRiverLayer(
   wobbleBroad: number,
   wobbleDetail: number,
   hopProps: Record<string, HopProps> | undefined,
+  taperLen: number,
   project: (lon: number, lat: number) => [number, number],
 ) {
-  const segHalfWidths = makeSegHalfWidths(segProps, baseHW)
-
   const projected = chainData
     .filter(({ vertices }) => vertices.length >= 2)
-    .map(({ vertices, segKey, hopKeys, hopRanges }) => {
+    .map(({ vertices, segKey, hopKeys, hopRanges, leafAtStart = false, leafAtEnd = false }) => {
       let pts = vertices.map(([lon, lat]) => project(lon, lat)) as [number, number][]
       if (smoothPasses > 0) pts = riverSmooth(pts, smoothPasses)
       if (wobbleBroad > 0 || wobbleDetail > 0) pts = applyWobble(pts, wobbleBroad, wobbleDetail, R, segKey)
-      const widthMults = buildWidthMultipliers(pts, hopKeys, hopRanges, hopProps)
-      return { pts, segKey, hw: segHalfWidths(segKey), hopKeys, hopRanges, widthMults }
+      const hw = segHalfWidth(segProps, baseHW, segKey)
+      const widthMults = buildWidthMultipliers(pts, hopKeys, hopRanges, hopProps, leafAtStart, leafAtEnd, taperLen)
+      return { pts, segKey, hw, hopKeys, hopRanges, widthMults }
     })
 
   const effect = style.effect ?? DEFAULT_STROKE_EFFECT
@@ -119,8 +128,8 @@ function drawRiverLayer(
       if (selectedKeys.has(segKey)) continue
       const ow = effect.outlineWidth
       rCtx.save()
-      rCtx.setLineDash(dashArray(effect.outlineDash, hw[0] + ow))
-      drawVariableWidthStroke(rCtx, pts, hw[0] + ow, hw[1] + ow, effect.outlineColor, widthMults)
+      rCtx.setLineDash(dashArray(effect.outlineDash, hw + ow))
+      drawVariableWidthStroke(rCtx, pts, hw + ow, hw + ow, effect.outlineColor, widthMults)
       rCtx.setLineDash([])
       rCtx.restore()
     }
@@ -130,8 +139,8 @@ function drawRiverLayer(
   for (const { pts, segKey, hw, widthMults } of projected) {
     if (selectedKeys.has(segKey)) continue
     rCtx.save()
-    rCtx.setLineDash(dashArray(effect.fillDash, hw[0]))
-    drawVariableWidthStroke(rCtx, pts, hw[0], hw[1], style.color, widthMults)
+    rCtx.setLineDash(dashArray(effect.fillDash, hw))
+    drawVariableWidthStroke(rCtx, pts, hw, hw, style.color, widthMults)
     rCtx.setLineDash([])
     rCtx.restore()
   }
@@ -141,11 +150,11 @@ function drawRiverLayer(
     if (!selectedKeys.has(segKey)) continue
     if (effect.outlineEnabled) {
       const ow = effect.outlineWidth
-      drawVariableWidthStroke(rCtx, pts, hw[0] + ow, hw[1] + ow, effect.outlineColor, widthMults)
+      drawVariableWidthStroke(rCtx, pts, hw + ow, hw + ow, effect.outlineColor, widthMults)
     }
-    drawVariableWidthStroke(rCtx, pts, hw[0], hw[1], style.color, widthMults)
-    drawVariableWidthStroke(rCtx, pts, hw[0] + 3, hw[1] + 3, 'rgba(100,180,255,0.35)', widthMults)
-    drawVariableWidthStroke(rCtx, pts, hw[0], hw[1], style.color, widthMults)
+    drawVariableWidthStroke(rCtx, pts, hw, hw, style.color, widthMults)
+    drawVariableWidthStroke(rCtx, pts, hw + 3, hw + 3, 'rgba(100,180,255,0.35)', widthMults)
+    drawVariableWidthStroke(rCtx, pts, hw, hw, style.color, widthMults)
 
     // Highlight selected hop within this chain
     if (selectedHopKey && hopKeys && hopRanges) {
@@ -159,14 +168,14 @@ function drawRiverLayer(
         rCtx.save()
         rCtx.globalAlpha = 0.55
         if (s > 0)
-          drawVariableWidthStroke(rCtx, pts.slice(0, s + 1), hw[0], hw[1], '#08101a', widthMults?.slice(0, s + 1))
+          drawVariableWidthStroke(rCtx, pts.slice(0, s + 1), hw, hw, '#08101a', widthMults?.slice(0, s + 1))
         if (e < pts.length - 1)
-          drawVariableWidthStroke(rCtx, pts.slice(e), hw[0], hw[1], '#08101a', widthMults?.slice(e))
+          drawVariableWidthStroke(rCtx, pts.slice(e), hw, hw, '#08101a', widthMults?.slice(e))
         rCtx.restore()
 
         // Thin amber border, then hop fill — both use hopMults so they reflect current edits
-        drawVariableWidthStroke(rCtx, hopPts, hw[0] + 1.5, hw[1] + 1.5, 'rgba(255,200,50,0.9)', hopMults)
-        drawVariableWidthStroke(rCtx, hopPts, hw[0], hw[1], style.color, hopMults)
+        drawVariableWidthStroke(rCtx, hopPts, hw + 1.5, hw + 1.5, 'rgba(255,200,50,0.9)', hopMults)
+        drawVariableWidthStroke(rCtx, hopPts, hw, hw, style.color, hopMults)
 
         // Boundary dots at hop endpoints
         rCtx.save()
@@ -313,12 +322,15 @@ export function drawRivers(rCtx: Ctx, params: DrawRiversParams) {
     riverTierStyles, riverStyle,
     selectedRiverKeys,
     riverBaseHW,
+    riverTaperSegments,
     lakeProjCenters, smoothPasses, wobbleBroad, wobbleDetail, R,
     riverHopProps, selectedHopKey,
     project,
     showRiverLabels, riverLabelData, waterLabelSpec,
     labelOffsets, liveLabelOffset, labelBBoxOut, excludeLabelId,
   } = params
+
+  const taperLen = (riverTaperSegments ?? 0) * R
 
   // Draw river tiers back-to-front: stream (2) → river (1) → major (0)
   for (const tier of [2, 1, 0] as const) {
@@ -327,7 +339,7 @@ export function drawRivers(rCtx: Ctx, params: DrawRiversParams) {
     const tierBaseHW = riverBaseHW * ((tierStyle as RiverTierStyle).widthScale ?? 1)
 
     drawRiverLayer(rCtx, riverTierChainData[tier], riverSegProps, tierStyle, selectedRiverKeys,
-      selectedHopKey, tierBaseHW, tier === 0, lakeProjCenters, R, smoothPasses, wobbleBroad, wobbleDetail, riverHopProps, project)
+      selectedHopKey, tierBaseHW, tier === 0, lakeProjCenters, R, smoothPasses, wobbleBroad, wobbleDetail, riverHopProps, taperLen, project)
   }
 
   if (showRiverLabels && riverLabelData && riverLabelData.length > 0 && waterLabelSpec) {

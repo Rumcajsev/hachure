@@ -52,9 +52,13 @@ export const roadsController: LayerController<RoadsInput> = {
     // Static: offscreen cache
     const vpad = 50
     const paperViewport: BBox = { minX: -vpad, maxX: pw + vpad, minY: -vpad, maxY: ph + vpad }
-    if (forceMarkDirty) cache.markDirty()
+    if (forceMarkDirty) {
+      console.warn('[roads-layer] forceMarkDirty → marking dirty')
+      cache.markDirty()
+    }
     const { ctx: oCtx, rebuilt } = cache.prepare(pw, ph, dpr)
     if (rebuilt) {
+      console.warn('[roads-layer] REBUILD chains=', roadChains.length, 'tiers=', roadChains.map(c => c.tier).join(','))
       oCtx.scale(dpr * offZoom, dpr * offZoom)
       oCtx.save()
       oCtx.beginPath()

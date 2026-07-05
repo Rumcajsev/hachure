@@ -1,9 +1,9 @@
 /** Shared river-chain utilities.
  *
  *  `riverChainCache` is a mutable singleton written by TerrainViewCanvas
- *  after each drawRivers pass and read by RiversSidebar when computing
- *  group-taper arc-length fractions.  It is intentionally NOT React state —
- *  no re-renders, just a plain reference to the last computed chain data.
+ *  after each drawRivers pass and read by RiversSidebar.
+ *  It is intentionally NOT React state — no re-renders, just a plain reference
+ *  to the last computed chain data.
  */
 
 import { makePermutation, perlinNoise2D, hashStr, wiggleChain } from './noise'
@@ -35,66 +35,6 @@ export function arcLength(vertices: [number, number][]): number {
   return len
 }
 
-// ---------------------------------------------------------------------------
-// Order a subset of chains into a continuous path (best-effort).
-// Returns chains in walk order with a `reversed` flag so the caller knows
-// which end of each chain is the "upstream" end.
-// ---------------------------------------------------------------------------
-export interface OrderedChain extends RiverChain {
-  reversed: boolean
-}
-
-export function orderChains(selectedKeys: string[], allChains: RiverChain[]): OrderedChain[] {
-  const keySet = new Set(selectedKeys)
-  const chains = allChains.filter(c => keySet.has(c.segKey))
-  if (chains.length === 0) return []
-  if (chains.length === 1) return [{ ...chains[0], reversed: false }]
-
-  // Per-chain endpoint vertex keys
-  const infos = chains.map(c => ({
-    chain: c,
-    startVk: vKey(c.vertices[0]),
-    endVk: vKey(c.vertices[c.vertices.length - 1]),
-  }))
-
-  // Build vKey → chain list (each endpoint maps to the chains touching it)
-  const vkToChains = new Map<string, typeof infos>()
-  for (const info of infos) {
-    for (const vk of [info.startVk, info.endVk]) {
-      if (!vkToChains.has(vk)) vkToChains.set(vk, [])
-      vkToChains.get(vk)!.push(info)
-    }
-  }
-
-  // Find a degree-1 endpoint to start from (only one chain touches it)
-  let startVk: string | null = null
-  for (const [vk, cs] of vkToChains)
-    if (cs.length === 1) { startVk = vk; break }
-  // Fall back to any vertex if the selection forms a closed loop
-  if (!startVk) startVk = infos[0].startVk
-
-  // Walk through chains following shared endpoints
-  const result: OrderedChain[] = []
-  const visited = new Set<string>()
-  let curVk = startVk
-
-  while (result.length < chains.length) {
-    const touching = vkToChains.get(curVk) ?? []
-    const next = touching.find(i => !visited.has(i.chain.segKey))
-    if (!next) break
-    visited.add(next.chain.segKey)
-    const reversed = next.endVk === curVk   // we entered from the end → chain is reversed
-    result.push({ ...next.chain, reversed })
-    curVk = reversed ? next.startVk : next.endVk
-  }
-
-  // If some chains weren't reachable (disconnected selection) append them unordered
-  for (const info of infos)
-    if (!visited.has(info.chain.segKey))
-      result.push({ ...info.chain, reversed: false })
-
-  return result
-}
 
 // ---------------------------------------------------------------------------
 // River path smoothing and organic wobble
@@ -206,31 +146,6 @@ export function drawVariableWidthStroke(
   }
 }
 
-// ---------------------------------------------------------------------------
-// Compute taperRange [t0, t1] for each segment in a group.
-// t=0 is the narrow end; t=1 is the wide end of the combined ribbon.
-// ---------------------------------------------------------------------------
-export function computeTaperRanges(
-  selectedKeys: string[],
-  allChains: RiverChain[],
-): Record<string, [number, number]> {
-  const ordered = orderChains(selectedKeys, allChains)
-  if (ordered.length === 0) return {}
-
-  const lengths = ordered.map(c => arcLength(c.vertices))
-  const total = lengths.reduce((a, b) => a + b, 0)
-
-  const ranges: Record<string, [number, number]> = {}
-  let cum = 0
-  for (let i = 0; i < ordered.length; i++) {
-    const t0 = total > 0 ? cum / total : 0
-    const t1 = total > 0 ? (cum + lengths[i]) / total : 1
-    // If the chain is reversed in the walk, its start is the wide end
-    ranges[ordered[i].segKey] = ordered[i].reversed ? [t1, t0] : [t0, t1]
-    cum += lengths[i]
-  }
-  return ranges
-}
 
 // ---------------------------------------------------------------------------
 // Chain topology building from hex edges
@@ -257,6 +172,8 @@ export interface RiverChainV2 {
   baseChain: [number, number][]
   hopKeys: string[]
   hopRanges: [number, number][]  // [startIdx, endIdx] in chain for each hop
+  leafAtStart: boolean
+  leafAtEnd: boolean
 }
 
 export function hopKey(v0: [number, number], v1: [number, number]): string {
@@ -264,7 +181,7 @@ export function hopKey(v0: [number, number], v1: [number, number]): string {
   return k0 < k1 ? `${k0}||${k1}` : `${k1}||${k0}`
 }
 
-type HopProps = { wiggleAmp?: number; wiggleFreq?: number; width?: number; taper?: number }
+type HopProps = { wiggleAmp?: number; wiggleFreq?: number; width?: number }
 
 type SegWiggleProps = Record<string, { wiggleAmp?: number; wiggleFreq?: number; pathSmoothing?: number }>
 
@@ -280,6 +197,7 @@ interface RiverTopology {
   rawSparse: { pts: [number, number][]; segKey: string }[]
   interDist: number
   cosLat: number
+  leafVkeys: Set<string>
 }
 
 function buildRiverTopology(
@@ -364,7 +282,10 @@ function buildRiverTopology(
     : 0
   const cosLat = Math.cos(avgLat * Math.PI / 180)
 
-  return { rawSparse, interDist, cosLat }
+  const leafVkeys = new Set<string>()
+  for (const [k, d] of degree) if (d === 1) leafVkeys.add(k)
+
+  return { rawSparse, interDist, cosLat, leafVkeys }
 }
 
 // ---------------------------------------------------------------------------
@@ -383,7 +304,7 @@ function buildChainsFromTopology(
   pathSmoothing: number,
   cache: RiverChainCache | null,
 ): RiverChainV2[] {
-  const { rawSparse, interDist, cosLat } = topo
+  const { rawSparse, interDist, cosLat, leafVkeys } = topo
   const steps = Math.max(2, Math.round(smoothing))
   const globalAmp = wiggleAmpFactor * interDist
   const globalFreq = wiggleFreqFactor / interDist
@@ -443,7 +364,9 @@ function buildChainsFromTopology(
       chain = dense
     }
 
-    const result: RiverChainV2 = { segKey, chain, baseChain, hopKeys: hopKeysList, hopRanges }
+    const leafAtStart = leafVkeys.has(vKey(ctrlPts[0]))
+    const leafAtEnd = leafVkeys.has(vKey(ctrlPts[ctrlPts.length - 1]))
+    const result: RiverChainV2 = { segKey, chain, baseChain, hopKeys: hopKeysList, hopRanges, leafAtStart, leafAtEnd }
     if (cache) cache.set(segKey, { ptsKey, paramKey: chainParamKey, chain: result })
     return result
   })

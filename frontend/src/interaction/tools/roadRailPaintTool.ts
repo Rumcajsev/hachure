@@ -4,6 +4,7 @@ import { hexAdjacent, pointInPolygon } from '../../lib/geometry'
 import { projectToCanvas } from '../../lib/projection'
 import { roadsController } from '../../render/layers/roadsLayer'
 import type { RoadNetwork } from '../../lib/roadNetwork'
+import type { RailNetwork } from '../../lib/railNetwork'
 
 type LogicalFn = (clientX: number, clientY: number) => { lx: number; ly: number; cssW: number; cssH: number } | null
 type GetPaperFn = (cssW: number, cssH: number) => { pw: number; ph: number; px: number; py: number }
@@ -25,6 +26,7 @@ export interface RoadRailPaintRefs {
   railBufferedRemovalsRef: MutableRefObject<{ q1: number; r1: number; q2: number; r2: number }[]>
   skipExpensiveLayersRef: MutableRefObject<boolean>
   roadNetworkRef: MutableRefObject<RoadNetwork>
+  railNetworkRef: MutableRefObject<RailNetwork>
   batchAddRoadEdgesRef: MutableRefObject<(edges: { q1: number; r1: number; q2: number; r2: number; tier: 0 | 1 | 2 }[]) => void>
   batchRemoveRoadEdgesRef: MutableRefObject<(edges: { q1: number; r1: number; q2: number; r2: number }[]) => void>
   addRoadEdgeRef: MutableRefObject<(q1: number, r1: number, q2: number, r2: number, tier: 0 | 1 | 2) => void>
@@ -43,7 +45,7 @@ function paintAtClient(clientX: number, clientY: number, refs: RoadRailPaintRefs
   const { metaRef, hexesRef, hexEdgeModeRef, roadPaintModeRef, railPaintModeRef,
     roadPaintBrushRef, roadPaintEraserRef, railPaintEraserRef, prevEdgeHexRef,
     paintBufferedAdditionsRef, paintBufferedRemovalsRef, railBufferedAdditionsRef, railBufferedRemovalsRef,
-    roadNetworkRef,
+    roadNetworkRef, railNetworkRef,
     clientToLogical, getPaper, drawRef } = refs
 
   const meta = metaRef.current
@@ -86,8 +88,13 @@ function paintAtClient(clientX: number, clientY: number, refs: RoadRailPaintRefs
       const eraser = railPaintEraserRef.current
       const prev = prevEdgeHexRef.current
       if (prev && (prev.q !== hex.q || prev.r !== hex.r) && hexAdjacent(prev.q, prev.r, hex.q, hex.r)) {
-        if (eraser) railBufferedRemovalsRef.current.push({ q1: prev.q, r1: prev.r, q2: hex.q, r2: hex.r })
-        else railBufferedAdditionsRef.current.push({ q1: prev.q, r1: prev.r, q2: hex.q, r2: hex.r })
+        if (eraser) {
+          railNetworkRef.current.removeEdge(prev.q, prev.r, hex.q, hex.r)
+          railBufferedRemovalsRef.current.push({ q1: prev.q, r1: prev.r, q2: hex.q, r2: hex.r })
+        } else {
+          railNetworkRef.current.addEdge(prev.q, prev.r, hex.q, hex.r)
+          railBufferedAdditionsRef.current.push({ q1: prev.q, r1: prev.r, q2: hex.q, r2: hex.r })
+        }
         roadsController.markDirty()
         drawRef.current()
       }

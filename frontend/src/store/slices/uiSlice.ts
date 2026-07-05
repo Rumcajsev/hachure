@@ -1076,6 +1076,9 @@ if (fromVersion < 64) {
     delete s.waterBlobSweepFreq; delete s.waterBlobLobeFreq; delete s.waterBlobLobeAmp
     delete s.waterBlobLobeThreshold; delete s.waterBlobLobeDirection
   }
+  if (fromVersion < 98) {
+    if (!s.imageSwatches) s.imageSwatches = []
+  }
   if (fromVersion < 84) {
     const tiers = s.riverTierStyles as Array<Record<string, unknown>> | undefined
     if (tiers) {

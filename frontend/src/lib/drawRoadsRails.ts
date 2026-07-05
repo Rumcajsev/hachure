@@ -49,9 +49,15 @@ export function drawRoadsAndRails(rCtx: Ctx, {
   if (roadChains.length > 0) {
     const chainsByTier: { pts: [number,number][]; isLoop: boolean }[][] = [[], [], []]
     for (const { tier, chain, bbox, isLoop } of roadChains) {
-      if (viewport && !bboxVisible(bbox, viewport)) continue
+      if (viewport && !bboxVisible(bbox, viewport)) {
+        if (process.env.NODE_ENV === 'development')
+          console.warn('[drawRoads] CULLED tier=', tier, 'pts=', chain.length, 'bbox=', bbox ? `${bbox.minX.toFixed(0)},${bbox.minY.toFixed(0)}-${bbox.maxX.toFixed(0)},${bbox.maxY.toFixed(0)}` : 'none', 'vp=', viewport ? `${viewport.minX.toFixed(0)}-${viewport.maxX.toFixed(0)}` : 'none')
+        continue
+      }
       chainsByTier[tier].push({ pts: chain, isLoop: isLoop ?? false })
     }
+    if (process.env.NODE_ENV === 'development')
+      console.warn('[drawRoads] drawing tier0=', chainsByTier[0].map(c=>c.pts.length).join(','), 'tier1=', chainsByTier[1].map(c=>c.pts.length).join(','), 'tier2=', chainsByTier[2].map(c=>c.pts.length).join(','))
 
     // Pass 1: casing (outline) — skipped if effect.outlineEnabled is explicitly false
     rCtx.lineJoin = 'round'
@@ -153,25 +159,6 @@ export function drawRoadsAndRails(rCtx: Ctx, {
       }
     }
 
-    // Collect junction positions (chain endpoints that are shared by multiple chains)
-    const endpointCount = new Map<string, number>()
-    for (const { chain, isLoop } of railChains) {
-      if (isLoop || chain.length < 2) continue
-      const sk = geoKey(chain[0])
-      const ek = geoKey(chain[chain.length - 1])
-      endpointCount.set(sk, (endpointCount.get(sk) ?? 0) + 1)
-      endpointCount.set(ek, (endpointCount.get(ek) ?? 0) + 1)
-    }
-    const junctionPts: [number, number][] = []
-    for (const { chain, isLoop } of railChains) {
-      if (isLoop || chain.length < 2) continue
-      for (const endPt of [chain[0], chain[chain.length - 1]] as [number, number][]) {
-        if ((endpointCount.get(geoKey(endPt)) ?? 0) >= 2) {
-          junctionPts.push(endPt)
-        }
-      }
-    }
-
     for (const { chain, isShared, isLoop, bbox } of railChains) {
       if (viewport && !bboxVisible(bbox, viewport)) continue
       let pts = [...chain] as [number, number][]
@@ -186,20 +173,6 @@ export function drawRoadsAndRails(rCtx: Ctx, {
         }
       }
       drawRailPts(pts, isLoop)
-    }
-
-    // Draw junction caps so branches meet cleanly
-    if (junctionPts.length > 0) {
-      const r = rs.thickness * 0.7
-      for (const [x, y] of junctionPts) {
-        rCtx.beginPath(); rCtx.arc(x, y, r, 0, Math.PI * 2)
-        rCtx.fillStyle = rs.outerColor; rCtx.fill()
-      }
-      const ri = r * 0.5
-      for (const [x, y] of junctionPts) {
-        rCtx.beginPath(); rCtx.arc(x, y, ri, 0, Math.PI * 2)
-        rCtx.fillStyle = rs.innerColor; rCtx.fill()
-      }
     }
   }
   rCtx.restore()

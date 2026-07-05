@@ -14,7 +14,8 @@ export type RiversSlice = {
   riverEdges: RiverEdge[]
   showRiverLabels: boolean
   riverLabelColor: string
-  riverSegmentProps: Record<string, { width?: number; taper?: number; taperRange?: [number, number]; wiggleAmp?: number; wiggleFreq?: number; pathSmoothing?: number }>
+  riverTaperSegments: number
+  riverSegmentProps: Record<string, { width?: number; wiggleAmp?: number; wiggleFreq?: number; pathSmoothing?: number }>
   riverSelectMode: boolean
   selectedSegmentKeys: string[]
   riverTierStyles: [RiverTierStyle, RiverTierStyle, RiverTierStyle]
@@ -28,12 +29,13 @@ export type RiversSlice = {
   riverPathSmoothing: number
   riverNodeEditMode: boolean
   riverChainOverrides: Record<string, [number, number][]>
-  riverHopProps: Record<string, { wiggleAmp?: number; wiggleFreq?: number; width?: number; taper?: number }>
+  riverHopProps: Record<string, { wiggleAmp?: number; wiggleFreq?: number; width?: number }>
   selectedHopKey: string | null
   setRiverChainOverride: (segKey: string, pts: [number, number][]) => void
   deleteRiverChainOverride: (segKey: string) => void
   clearRiverChainOverrides: () => void
-  setRiverHopProp: (hopKey: string, prop: { wiggleAmp?: number; wiggleFreq?: number; width?: number; taper?: number }) => void
+  setRiverTaperSegments: (v: number) => void
+  setRiverHopProp: (hopKey: string, prop: { wiggleAmp?: number; wiggleFreq?: number; width?: number }) => void
   clearRiverHopProp: (hopKey: string) => void
   setSelectedHopKey: (key: string | null) => void
   setShowRiverLabels: (v: boolean) => void
@@ -44,8 +46,8 @@ export type RiversSlice = {
   setRiverSelectMode: (v: boolean) => void
   setSelectedSegmentKeys: (keys: string[]) => void
   toggleSegmentSelection: (key: string) => void
-  setRiverSegmentProp: (key: string, prop: { width?: number; taper?: number; taperRange?: [number, number]; wiggleAmp?: number; wiggleFreq?: number }) => void
-  setRiverSegmentPropMany: (keys: string[], prop: { width?: number; taper?: number; taperRange?: [number, number]; wiggleAmp?: number; wiggleFreq?: number }) => void
+  setRiverSegmentProp: (key: string, prop: { width?: number; wiggleAmp?: number; wiggleFreq?: number }) => void
+  setRiverSegmentPropMany: (keys: string[], prop: { width?: number; wiggleAmp?: number; wiggleFreq?: number }) => void
   clearRiverSegmentProp: (key: string) => void
   clearRiverSegmentPropMany: (keys: string[]) => void
   setRiverTierStyle: (tier: RiverTier, s: Partial<RiverTierStyle>) => void
@@ -65,7 +67,7 @@ export type RiversSlice = {
 
 type Set = (partial: Partial<MapStore> | ((s: MapStore) => Partial<MapStore>)) => void
 
-type SegProp = { width?: number; taper?: number; taperRange?: [number, number]; wiggleAmp?: number; wiggleFreq?: number; pathSmoothing?: number }
+type SegProp = { width?: number; wiggleAmp?: number; wiggleFreq?: number; pathSmoothing?: number }
 
 const edgeKey = (q1: number, r1: number, q2: number, r2: number) => {
   const s1 = `${q1},${r1}`, s2 = `${q2},${r2}`
@@ -127,6 +129,7 @@ export const createRiversSlice = (set: Set, get: () => MapStore): RiversSlice =>
     riverLabelColor: '#2a5a8a',
     riverEditMode: false,
     riverPaintTier: 1 as RiverTier,
+    riverTaperSegments: 0,
     riverSegmentProps: {},
     riverSelectMode: false,
     selectedSegmentKeys: [],
@@ -265,6 +268,7 @@ export const createRiversSlice = (set: Set, get: () => MapStore): RiversSlice =>
     setRiverEdges: (edges) => set({ riverEdges: edges }),
 
     setRiverWidthScale: (v) => set({ riverWidthScale: v }),
+    setRiverTaperSegments: (v) => set({ riverTaperSegments: v }),
     setRiverWiggleFreq: (v) => set({ riverWiggleFreq: v }),
     setRiverWiggleAmp: (v) => set({ riverWiggleAmp: v }),
     setRiverSmoothing: (v) => set({ riverSmoothing: v }),

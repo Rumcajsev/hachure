@@ -4,7 +4,7 @@ import {
   DEFAULT_RIVER_TIER_STYLES, TERRAIN_COLORS,
 } from '../../store/mapStore'
 import type { RiverTier } from '../../store/mapStore'
-import { riverChainCache, computeTaperRanges } from '../../lib/riverChains'
+import { riverChainCache } from '../../lib/riverChains'
 import {
   PALETTE_RIVER, PALETTE_RIVER_OUTLINE,
 } from '../../palettes'
@@ -87,17 +87,20 @@ export function GlobalShapeFlyout({ onClose }: { onClose: () => void }) {
     riverWiggleFreq, setRiverWiggleFreq,
     riverSmoothing, setRiverSmoothing,
     riverPathSmoothing, setRiverPathSmoothing,
+    riverTaperSegments, setRiverTaperSegments,
   } = useMapStore()
   const ampSlider    = useDeferredSlider(Math.round(riverWiggleAmp * 100), v => setRiverWiggleAmp(v / 100))
   const freqSlider   = useDeferredSlider(Math.round(riverWiggleFreq * 10), v => setRiverWiggleFreq(v / 10))
   const smoothSlider = useDeferredSlider(riverSmoothing, setRiverSmoothing)
   const pathSlider   = useDeferredSlider(riverPathSmoothing, setRiverPathSmoothing)
+  const taperSlider  = useDeferredSlider(Math.round(riverTaperSegments * 10), v => setRiverTaperSegments(v / 10))
   return (
     <FlyoutShell title="Shape defaults" subtitle="applied to all tiers unless overridden" onClose={onClose}>
       <MiniSlider label="Wiggle amp"  display={(ampSlider.value / 100).toFixed(2)}  value={ampSlider.value}    min={0} max={100} step={1} onChange={ampSlider.onChange}    onDragEnd={ampSlider.onDragEnd} />
       <MiniSlider label="Wiggle freq" display={(freqSlider.value / 10).toFixed(1)}  value={freqSlider.value}   min={1} max={50} step={1} onChange={freqSlider.onChange}   onDragEnd={freqSlider.onDragEnd} />
       <MiniSlider label="Line smooth" display={String(smoothSlider.value)}           value={smoothSlider.value} min={2} max={30}  step={1} onChange={smoothSlider.onChange} onDragEnd={smoothSlider.onDragEnd} />
       <MiniSlider label="Path smooth" display={String(pathSlider.value)}             value={pathSlider.value}   min={0} max={50}  step={1} onChange={pathSlider.onChange}   onDragEnd={pathSlider.onDragEnd} />
+      <MiniSlider label="Taper hops"  display={(taperSlider.value / 10).toFixed(1)} value={taperSlider.value}  min={0} max={50}  step={1} onChange={taperSlider.onChange}  onDragEnd={taperSlider.onDragEnd} />
     </FlyoutShell>
   )
 }
@@ -323,9 +326,6 @@ export function RiverSegmentFlyout({ onClose }: { onClose: () => void }) {
   const n             = selectedKeys.length
   const firstProps    = segmentProps[selectedKeys[0]]
   const widthVal      = firstProps?.width       ?? baseWidth
-  const taperVal      = firstProps?.taper       ?? 0
-  const taperRange    = (firstProps?.taperRange ?? [0, 1]) as [number, number]
-  const taperFlipped  = taperRange[0] > taperRange[1]
   const wiggleAmp     = firstProps?.wiggleAmp   ?? riverWiggleAmp
   const wiggleFreq    = firstProps?.wiggleFreq  ?? riverWiggleFreq
   const pathSmooth    = (firstProps as { pathSmoothing?: number } | undefined)?.pathSmoothing ?? 0
@@ -360,41 +360,6 @@ export function RiverSegmentFlyout({ onClose }: { onClose: () => void }) {
         onChange={v => setPropMany(selectedKeys, { width: v / 100 })}
       />
 
-      <div style={{ borderTop: `1px solid ${t.line2}` }}>
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '6px 14px 2px' }}>
-          <span style={{ fontFamily: t.mono, fontSize: 9, letterSpacing: 0.8, color: t.inkFaint, textTransform: 'uppercase', fontWeight: 600 }}>Taper</span>
-          <button
-            onClick={() => {
-              for (const key of selectedKeys) {
-                const tr = (segmentProps[key]?.taperRange ?? [0, 1]) as [number, number]
-                setProp(key, { taperRange: [tr[1], tr[0]] })
-              }
-            }}
-            style={{ background: 'none', border: `1px solid ${t.line}`, color: t.inkMute, cursor: 'pointer', fontFamily: t.mono, fontSize: 10, padding: '1px 6px', lineHeight: 1.4 }}
-          >
-            ⇄ flip
-          </button>
-        </div>
-        <MiniSlider
-          label={taperFlipped ? 'Wide → narrow' : 'Narrow → wide'}
-          display={`${Math.round(taperVal * 100)}%${firstProps?.taper !== undefined ? ' ●' : ''}`}
-          value={Math.round(taperVal * 100)}
-          min={0} max={100} step={5}
-          onChange={v => {
-            const taper = v / 100
-            if (selectedKeys.length === 1) {
-              setProp(selectedKeys[0], { taper, taperRange: taperFlipped ? [1, 0] : [0, 1] })
-            } else {
-              const ranges = computeTaperRanges(selectedKeys, riverChainCache.chains)
-              for (const key of selectedKeys) {
-                const tr = (ranges[key] ?? [0, 1]) as [number, number]
-                setProp(key, { taper, taperRange: taperFlipped ? [tr[1], tr[0]] : tr })
-              }
-            }
-          }}
-        />
-      </div>
-
       {isRiver && (
         <div style={{ borderTop: `1px solid ${t.line2}` }}>
           <SubLabel label="Wiggle" />
@@ -408,7 +373,6 @@ export function RiverSegmentFlyout({ onClose }: { onClose: () => void }) {
         const ampVal  = hp?.wiggleAmp  ?? wiggleAmp
         const freqVal = hp?.wiggleFreq ?? wiggleFreq
         const hopW    = hp?.width ?? 1
-        const hopT    = hp?.taper ?? 0
         return (
           <div style={{ borderTop: `1px solid ${t.line2}` }}>
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '6px 14px 2px' }}>
@@ -425,7 +389,6 @@ export function RiverSegmentFlyout({ onClose }: { onClose: () => void }) {
               )}
             </div>
             <MiniSlider label="Width"       display={`${Math.round(hopW * 100)}%`}        value={Math.round(hopW * 100)}   min={25} max={400} step={5} onChange={v => setRiverHopProp(selectedHopKey, { width: v / 100 })} />
-            <MiniSlider label="Taper"       display={`${Math.round(hopT * 100)}%`}         value={Math.round(hopT * 100)}   min={0}  max={100} step={5} onChange={v => setRiverHopProp(selectedHopKey, { taper: v / 100 })} />
             <MiniSlider label="Wiggle amp"  display={`${Math.round(ampVal * 100)}%`}       value={Math.round(ampVal * 100)} min={0}  max={100} step={1} onChange={v => setRiverHopProp(selectedHopKey, { wiggleAmp: v / 100 })} />
             <MiniSlider label="Wiggle freq" display={freqVal.toFixed(1)}                   value={Math.round(freqVal * 10)} min={1}  max={50} step={1} onChange={v => setRiverHopProp(selectedHopKey, { wiggleFreq: v / 10 })} />
           </div>

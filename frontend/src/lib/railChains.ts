@@ -2,7 +2,7 @@
 
 import { catmullRom, chaikin } from './geometry'
 import { seededRandom, wiggleChain } from './noise'
-import { edgeCpKey, juncCpKey } from './roadChains'
+import { edgeCpKey, juncCpKey, roadHopKey } from './roadChains'
 
 export type RailBaseData = {
   chains: {
