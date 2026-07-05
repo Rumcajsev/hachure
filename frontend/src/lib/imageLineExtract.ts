@@ -22,13 +22,15 @@ export interface TracedLine {
 interface Bbox { x0: number; y0: number; x1: number; y1: number }
 
 /** Nearest-swatch-wins classification across ALL swatches (not per-tier), so
- *  overlapping tier colors compete fairly — matches the terrain coverage rule. */
-export function classifyPixels(imgData: ImageData, swatches: TieredLineSwatch[]): Int16Array {
+ *  overlapping tier colors compete fairly — matches the terrain coverage rule.
+ *  Pixels covered by `eraseMask` are forced to no-match regardless of color. */
+export function classifyPixels(imgData: ImageData, swatches: TieredLineSwatch[], eraseMask?: Uint8Array | null): Int16Array {
   const { width, height, data } = imgData
   const result = new Int16Array(width * height).fill(-1)
   if (swatches.length === 0) return result
   const rgbSwatches = swatches.map(s => ({ tier: s.tier, tolerance: s.tolerance, rgb: hexToRgb(s.color) }))
   for (let i = 0; i < width * height; i++) {
+    if (eraseMask && eraseMask[i]) continue
     const idx = i * 4
     const r = data[idx], g = data[idx + 1], b = data[idx + 2]
     let best = Infinity
@@ -283,12 +285,13 @@ function traceSkeleton(skeleton: Uint8Array, width: number, height: number, bbox
 }
 
 /** End-to-end: classify -> per-tier mask -> skeletonize -> trace -> simplify.
- *  Returns pixel-space polylines grouped by tier, ready for reprojection. */
-export function extractTieredLinesFromImage(imgData: ImageData, swatches: TieredLineSwatch[]): TracedLine[] {
+ *  Returns pixel-space polylines grouped by tier, ready for reprojection.
+ *  `eraseMask` excludes user-erased hex areas from classification regardless of color. */
+export function extractTieredLinesFromImage(imgData: ImageData, swatches: TieredLineSwatch[], eraseMask?: Uint8Array | null): TracedLine[] {
   const { width, height } = imgData
   const result: TracedLine[] = []
   if (swatches.length === 0) return result
-  const classified = classifyPixels(imgData, swatches)
+  const classified = classifyPixels(imgData, swatches, eraseMask)
 
   for (const tier of [0, 1, 2] as const) {
     if (!swatches.some(s => s.tier === tier)) continue

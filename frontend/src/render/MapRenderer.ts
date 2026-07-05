@@ -1,13 +1,14 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { hexTerrainLayers } from '../store/mapStore'
 import { computeWorldcoverBbox, projectToCanvas } from '../lib/projection'
-import { buildExportTerrainBlobs } from '../lib/terrainBlobs'
+import { buildExportTerrainBlobs, perturbCorridorsForTerrain, cutRawPolysWithCorridors } from '../lib/terrainBlobs'
 import { buildTerrainTextures } from '../lib/terrainTextures'
 import { computeDragLiveData, computeRoadProjections, computeLiveRiverChainData } from '../lib/roadLiveGeometry'
 import { liveClassParamsRef } from '../lib/liveClassParamsRef'
 import { _drawHoveredEdgePreview } from '../lib/drawHighlights'
 import { _drawWorldcoverOverlay, _drawRawOsmRoadsOverlay, _drawExtractedRoadWaysOverlay } from '../lib/drawDebugOverlays'
 import { _drawTerrainPaintOverlay, _drawElevationPaintOverlay, _drawSlopeOverlay } from '../lib/drawPaintOverlays'
+import { drawImageEraserOverlay as _drawImageEraserOverlay } from '../lib/drawEraserOverlay'
 import { _drawBlobHandleOverlay, _drawBlobMaskPreview } from '../lib/drawBlobHandleOverlay'
 import { drawLabels as _drawLabels, _drawLabelDragHandles } from '../lib/drawLabels'
 import { drawIcons as _drawIcons } from '../lib/drawIcons'
@@ -161,6 +162,8 @@ export interface MapRefs {
   roadColorPreviewImageRef: { current: any }
   roadImageExtractPreviewOpenRef: { current: any }
   roadTraceLinesPreviewRef: { current: any }
+  roadImageEraseHexKeysRef: { current: any }
+  eraserHoverTargetRef: { current: any }
   mapOverlayRef: { current: any }
   mapStyleRef: { current: any }
   megaHexColorRef: { current: any }
@@ -279,6 +282,12 @@ export interface MapRefs {
   getPaperRef: { current: any }
   surroundColorRef: { current: any }
   edgeDragRef: { current: { mode: 'add' | 'remove'; painted: Set<string>; pendingRiverToggles: Array<[number, number, number, number]> } | null }
+  riverAutoCorridorsRef: { current: [number, number][][] }
+  roadAutoCorridorsRef: { current: [number, number][][] }
+  riverBlobCutRoughnessRef: { current: number }
+  riverBlobCutWidthRef: { current: number }
+  roadBlobCutRoughnessRef: { current: number }
+  roadBlobCutWidthRef: { current: number }
 }
 
 export function drawMap(refs: MapRefs, exportTarget?: ExportTarget): void {
@@ -298,6 +307,7 @@ export function drawMap(refs: MapRefs, exportTarget?: ExportTarget): void {
     lastBuildingCacheEpochRef, liveLabelOffsetRef, mapBgColorRef, mapBorderColorRef, mapBorderEnabledRef, mapBorderWidthRef, mapImageElementRef, mapImageOpacityRef,
     mapImageTransformRef, mapOverlayRef, mapStyleRef, megaHexColorRef, megaHexEnabledRef, megaHexLineWidthRef, megaHexOpacityRef, megaHexOriginQRef,
     roadColorPreviewImageRef, roadImageExtractPreviewOpenRef, roadTraceLinesPreviewRef,
+    roadImageEraseHexKeysRef, eraserHoverTargetRef,
     megaHexOriginRRef, megaHexRadiusRef, metaRef, mountainsColorRef, osmRiverWaysRef, pageGridRef, paintHoverTargetRef,
     panRef, patternCacheRef, placedIconsRef, placedLabelsRef, projectedHexesRef, railBaseDataRef, railControlOverridesRef, railEdgesRef,
     railGeomOverrideRef, railHopPropsRef, railNetworkRef, railNodeEditModeRef, railPathSmoothingRef, railSegmentPropsRef, railSmoothingRef, railStyleRef, railWiggleAmpRef,
@@ -313,6 +323,9 @@ export function drawMap(refs: MapRefs, exportTarget?: ExportTarget): void {
     terrainTextureTintColorsRef, terrainTextureTintOpacitiesRef, terrainTypeBlobStylesRef, textureCacheRef, urbanHexesRef, urbanStyleRef, worldcoverImageElementRef,
     zoomRef, getPaperRef, surroundColorRef,
     edgeDragRef,
+    riverAutoCorridorsRef, roadAutoCorridorsRef,
+    riverBlobCutRoughnessRef, riverBlobCutWidthRef,
+    roadBlobCutRoughnessRef, roadBlobCutWidthRef,
   } = refs
   const getPaper = getPaperRef.current
   const surroundColor = surroundColorRef.current
@@ -493,7 +506,9 @@ export function drawMap(refs: MapRefs, exportTarget?: ExportTarget): void {
     edgeBlobBlend: edgeBlobBlendRef.current,
     terrainTypeBlobStyles: terrainTypeBlobStylesRef.current,
     edgeBlobOverrides: edgeBlobOverridesRef.current,
-    hexVertMap: hexVertMapRef.current,
+    hexVertMap: isExport
+      ? new Map(projected.map(({ hex, verts }) => [`${(hex as any).q},${(hex as any).r}`, verts]))
+      : hexVertMapRef.current,
     mapStyle: mapStyleRef.current,
     historicalIconSets: historicalIconSetsRef.current,
     historicalIconParams: historicalIconParamsRef.current,
@@ -534,7 +549,7 @@ export function drawMap(refs: MapRefs, exportTarget?: ExportTarget): void {
 
   // Pre-compute export terrain blobs and params (heavy, export-only)
   {
-    const exportTerrainBlobs = isExport
+    let exportTerrainBlobs = isExport
       ? buildExportTerrainBlobs({
           projected,
           terrainBlobOverrides: terrainBlobOverridesRef.current,
@@ -552,6 +567,38 @@ export function drawMap(refs: MapRefs, exportTarget?: ExportTarget): void {
           R,
         })
       : terrainParams.defaultTerrainBlobs
+
+    // Apply river/road corridor cuts to export blobs (same logic as the interactive path in TVC).
+    // Screen-space corridors are scaled to export-space via lineScale.
+    if (isExport) {
+      const riverCorridors = riverAutoCorridorsRef.current
+      const roadCorridors = roadAutoCorridorsRef.current
+      const hasCorridors = riverCorridors.length > 0 || roadCorridors.length > 0
+      if (hasCorridors) {
+        const scale = lineScale
+        const scaleCorridors = (corridors: [number, number][][]) =>
+          corridors.map(c => c.map(([x, y]) => [x * scale, y * scale] as [number, number]))
+        const scaledRiver = scaleCorridors(riverCorridors)
+        const scaledRoad = scaleCorridors(roadCorridors)
+        const sweepFreq = terrainBlobSweepFreqRef.current
+        exportTerrainBlobs = exportTerrainBlobs.map(entry => {
+          const terrain = entry.terrain
+          const terrainSeed = terrain.split('').reduce((a: number, c: string) => (a * 31 + c.charCodeAt(0)) | 0, 0)
+          const perturbedRiver = scaledRiver.length === 0 ? scaledRiver
+            : perturbCorridorsForTerrain(scaledRiver, riverBlobCutRoughnessRef.current, 1 + riverBlobCutRoughnessRef.current, sweepFreq, R, R * riverBlobCutWidthRef.current, terrainSeed)
+          const perturbedRoad = scaledRoad.length === 0 ? scaledRoad
+            : perturbCorridorsForTerrain(scaledRoad, roadBlobCutRoughnessRef.current, 1 + roadBlobCutRoughnessRef.current, sweepFreq, R, R * roadBlobCutWidthRef.current, terrainSeed + 1)
+          const allCorridors = [...perturbedRiver, ...perturbedRoad]
+          if (allCorridors.length === 0) return entry
+          const cutPolys: [number, number][][] = []
+          for (const poly of entry.polys) {
+            for (const piece of cutRawPolysWithCorridors([poly], allCorridors)) cutPolys.push(piece)
+          }
+          return { ...entry, polys: cutPolys }
+        })
+      }
+    }
+
     const exportTerrainParams = { ...terrainParams, backgroundTerrainBlobs: defaultBackgroundBlobsRef.current, defaultTerrainBlobs: exportTerrainBlobs }
     const _b0 = performance.now()
     terrainController.draw(ctx, {
@@ -1168,6 +1215,11 @@ export function drawMap(refs: MapRefs, exportTarget?: ExportTarget): void {
       R,
     })
     _drawSlopeOverlay(ctx, slopeModeRef.current, slopeHoverTargetRef.current, R)
+    if (roadImageExtractPreviewOpenRef.current) {
+      const eraseKeys: Set<string> = new Set(roadImageEraseHexKeysRef.current)
+      const hoverTarget = activeToolRef.current.type === 'image-eraser' ? eraserHoverTargetRef.current : null
+      _drawImageEraserOverlay(ctx, projected, eraseKeys, hoverTarget)
+    }
   }
 
 

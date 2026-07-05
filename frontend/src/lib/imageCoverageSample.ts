@@ -29,11 +29,14 @@ export function colorDistance(r1: number, g1: number, b1: number, r2: number, g2
 }
 
 /** Inverse of drawMapImageOverlay's forward transform (translate -> rotate -> scale,
- *  image-pixel to paper-space). Returns null if the point falls outside the image. */
+ *  image-pixel to paper-space). Returns null if the point falls outside the image,
+ *  unless `allowOutOfBounds` is set (needed when rasterizing a hex polygon that
+ *  straddles the image edge — the polygon fill itself clips to the canvas). */
 export function canvasPointToImagePixel(
   X: number, Y: number,
   transform: ImageTransform, naturalW: number, naturalH: number,
   px: number, py: number, pw: number, ph: number,
+  allowOutOfBounds = false,
 ): { u: number; v: number } | null {
   if (transform.scaleFrac <= 0) return null
   const canvasScale = (transform.scaleFrac * pw) / naturalW
@@ -47,7 +50,7 @@ export function canvasPointToImagePixel(
   const ly = -dx * sin + dy * cos
   const u = lx / canvasScale + naturalW / 2
   const v = ly / canvasScale + naturalH / 2
-  if (u < 0 || u >= naturalW || v < 0 || v >= naturalH) return null
+  if (!allowOutOfBounds && (u < 0 || u >= naturalW || v < 0 || v >= naturalH)) return null
   return { u, v }
 }
 
@@ -94,6 +97,43 @@ export function sampleAveragedPixel(imgData: ImageData, u: number, v: number): [
  *  so hex projection and image-transform inversion agree regardless of live canvas size. */
 export function unitPaperRect(meta: GridMetadata): { px: number; py: number; pw: number; ph: number } {
   return { px: 0, py: 0, pw: 1, ph: meta.paper_mm[1] / meta.paper_mm[0] }
+}
+
+/** Rasterizes the given hexes (the user-erased set) into an image-pixel boolean
+ *  mask by projecting each hex polygon into image-pixel space and filling it —
+ *  used to exclude erased hex areas from road/rail color classification
+ *  regardless of tolerance. Returns null when nothing is erased. */
+export function buildHexEraseMask(
+  hexes: GeneratedHex[], meta: GridMetadata, transform: ImageTransform,
+  eraseKeys: Set<string>, imgWidth: number, imgHeight: number,
+): Uint8Array | null {
+  if (eraseKeys.size === 0) return null
+  const rect = unitPaperRect(meta)
+  const canvas = new OffscreenCanvas(imgWidth, imgHeight)
+  const ctx = canvas.getContext('2d')
+  if (!ctx) return null
+  ctx.fillStyle = '#fff'
+  let any = false
+  for (const hex of hexes) {
+    if (!eraseKeys.has(`${hex.q},${hex.r}`)) continue
+    const imgVerts: [number, number][] = hex.vertices.map(([lon, lat]) => {
+      const [x, y] = projectToCanvas(lon, lat, meta, rect.pw, rect.ph, rect.px, rect.py)
+      const pt = canvasPointToImagePixel(x, y, transform, imgWidth, imgHeight, rect.px, rect.py, rect.pw, rect.ph, true)
+      return pt ? [pt.u, pt.v] : null
+    }).filter((v): v is [number, number] => v !== null)
+    if (imgVerts.length < 3) continue
+    any = true
+    ctx.beginPath()
+    ctx.moveTo(imgVerts[0][0], imgVerts[0][1])
+    for (let i = 1; i < imgVerts.length; i++) ctx.lineTo(imgVerts[i][0], imgVerts[i][1])
+    ctx.closePath()
+    ctx.fill()
+  }
+  if (!any) return null
+  const filled = ctx.getImageData(0, 0, imgWidth, imgHeight)
+  const mask = new Uint8Array(imgWidth * imgHeight)
+  for (let i = 0; i < mask.length; i++) mask[i] = filled.data[i * 4 + 3] > 0 ? 1 : 0
+  return mask
 }
 
 const NEAREST_MATCH_NONE = -1

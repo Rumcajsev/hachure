@@ -12,7 +12,7 @@ export interface ImageEyedropperRefs {
   mapImageTransformRef: MutableRefObject<ImageTransform>
   addImageSwatchRef: MutableRefObject<(color: string, tolerance?: number) => number>
   addRoadImageSwatchRef: MutableRefObject<(color: string, tolerance?: number, tier?: 0 | 1 | 2 | null) => number>
-  setRoadImagePreviewRef: MutableRefObject<(swatchId: number | null, phase: 'raw' | 'traced' | null) => void>
+  setRoadImagePreviewRef: MutableRefObject<(swatchId: number | null, phase: 'raw' | null) => void>
   clientToLogical: LogicalFn
   getPaper: GetPaperFn
 }

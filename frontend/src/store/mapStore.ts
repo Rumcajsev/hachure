@@ -159,6 +159,7 @@ export type ActiveTool =
   | { type: 'mega-hex-origin' }
   | { type: 'align-image' }
   | { type: 'image-eyedropper'; target?: 'terrain' | 'road'; tier?: 0 | 1 | 2 }
+  | { type: 'image-eraser'; target?: 'road' }
   | { type: 'label-drag' }
   | { type: 'slope' }
   /** Label follows cursor until left-click confirms placement or Escape cancels.

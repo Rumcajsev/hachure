@@ -22,11 +22,12 @@ export function buildColorPreviewMask(
   imgData: ImageData,
   swatches: TieredLineSwatch[],
   tierColors: [string, string, string],
+  eraseMask?: Uint8Array | null,
 ): ImageData {
   const { width, height } = imgData
   const out = new ImageData(width, height)
   if (swatches.length === 0) return out
-  const classified = classifyPixels(imgData, swatches)
+  const classified = classifyPixels(imgData, swatches, eraseMask)
   const rgbByTier = tierColors.map(hexToRgbTuple)
   for (let i = 0; i < classified.length; i++) {
     const tier = classified[i]
