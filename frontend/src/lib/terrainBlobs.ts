@@ -670,6 +670,21 @@ export function perturbCorridorsForTerrain(
   })
 }
 
+type BBox2 = { minX: number; maxX: number; minY: number; maxY: number }
+
+function polyBBox(poly: [number, number][]): BBox2 {
+  let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity
+  for (const [x, y] of poly) {
+    if (x < minX) minX = x; if (x > maxX) maxX = x
+    if (y < minY) minY = y; if (y > maxY) maxY = y
+  }
+  return { minX, maxX, minY, maxY }
+}
+
+function bboxOverlaps(a: BBox2, b: BBox2): boolean {
+  return a.maxX >= b.minX && a.minX <= b.maxX && a.maxY >= b.minY && a.minY <= b.maxY
+}
+
 /** Cut shaped blob polygons with river corridor polygons.
  *  Call this after shapeTerrainBlobs so the cut edge is clean and not
  *  distorted by resizeToHexAnchors. Use perturbCorridorsForTerrain first
@@ -679,9 +694,17 @@ export function cutRawPolysWithCorridors(
   corridors: [number, number][][],
 ): [number, number][][] {
   if (corridors.length === 0) return rawPolys
+
+  // Pre-compute corridor bboxes so we can skip blobs that don't touch any corridor.
+  // polygon-clipping.difference() is expensive (O(n log n) sweep line) — on a large
+  // map most blobs are far from rivers, so this bbox guard cuts ~90% of the work.
+  const corridorBBoxes = corridors.map(polyBBox)
   const cutMultiPoly: polygonClipping.MultiPolygon = corridors.map(c => [c as polygonClipping.Ring])
+
   return rawPolys.flatMap(poly => {
     if (poly.length < 3) return [poly]
+    const polyBb = polyBBox(poly)
+    if (!corridorBBoxes.some(cb => bboxOverlaps(polyBb, cb))) return [poly]
     const subject: polygonClipping.MultiPolygon = [[poly as polygonClipping.Ring]]
     try {
       const result = polygonClipping.difference(subject, cutMultiPoly)
