@@ -89,7 +89,7 @@ import { drawRoadHandles as _drawRoadHandles, drawRailHandles as _drawRailHandle
 import { drawPaperBackground as _drawPaperBackground, drawPaperMargin as _drawPaperMargin } from '../lib/drawPaperChrome'
 import { shouldSuppressShortcut } from '../lib/keyboard'
 import { resolveLabels } from '../lib/labelPresets'
-import { finalizeDrawFrame, getStoreSetRate, getLayerRebuildRate } from '../lib/perfMonitor'
+import { finalizeDrawFrame, getStoreSetRate, getLayerRebuildRate, getRecentFreezes } from '../lib/perfMonitor'
 import { drawMap, type MapRefs, type ExportTarget } from '../render/MapRenderer'
 
 const OSM_OVERLAY_STYLE: maplibregl.StyleSpecification = {
@@ -2507,6 +2507,11 @@ terrainTextureFileRef.current = terrainTextureFile
       const b = last.blitMs
       const totalBlit = b.terrain + b.hexBorder + b.highlights + b.rivers + b.buildings + b.roads + b.settlements
       const storeRate = getStoreSetRate()
+      const recentFreezes = getRecentFreezes(5)
+      const lastFreeze = recentFreezes[recentFreezes.length - 1]
+      const freezeLine = lastFreeze
+        ? `<span style="color:${lastFreeze.ms > 500 ? '#f55' : '#fa0'}">${lastFreeze.ms.toFixed(0)}ms freeze</span> (${recentFreezes.length} recent)`
+        : '<span style="color:#8f8">none</span>'
       const layerNames = ['terrain','hexBorder','highlights','rivers','buildings','roads','settlements','hexNumbers'] as const
       const rebuildRates = Object.fromEntries(layerNames.map(n => [n, getLayerRebuildRate(n)]))
       const anyFastRebuild = layerNames.some(n => rebuildRates[n] > 2)
@@ -2526,7 +2531,7 @@ terrainTextureFileRef.current = terrainTextureFile
 
       el.innerHTML =
         `<b>${avgMs.toFixed(0)}ms avg &nbsp; ${fps}fps</b>\n` +
-        `store set/s: ${storeHot ? `<span style="color:#f55">${storeRate}</span>` : storeRate}\n` +
+        `store set/s: ${storeHot ? `<span style="color:#f55">${storeRate}</span>` : storeRate}  freeze: ${freezeLine}\n` +
         `─────────────────\n` +
         `rebuilds/s: ${rebuildLine}\n` +
         `─────────────────\n` +

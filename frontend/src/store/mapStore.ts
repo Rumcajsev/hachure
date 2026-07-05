@@ -2,7 +2,7 @@ import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
 import { get as idbGet, set as idbSet, del as idbDel } from 'idb-keyval'
 import { loadMapImageFromStorage } from '../lib/mapImageStorage'
-import { recordStoreSet } from '../lib/perfMonitor'
+import { recordStoreSet, recordStoreSetWithFreezeDetection } from '../lib/perfMonitor'
 
 // Debounce JSON.stringify + IDB writes, and skip the write entirely when the
 // persisted state hasn't changed (e.g. pure tool/panel switches).
@@ -800,7 +800,7 @@ export type MapStore =
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 function wrapSet(set: any): any {
   if (!import.meta.env.DEV) return set
-  return (fn: unknown, replace?: unknown) => { recordStoreSet(); return set(fn, replace) }
+  return (fn: unknown, replace?: unknown) => { recordStoreSetWithFreezeDetection(); return set(fn, replace) }
 }
 
 export const useMapStore = create<MapStore>()(persist((set, get) => {

@@ -69,6 +69,59 @@ export function recordStoreSet(): void {
 
 export function getStoreSetRate(): number { return storeSetWindow.length }
 
+// --- Store-induced freeze detection ---
+// Measures wall-clock time from a store set() call to the next RAF frame.
+// A gap > 50ms means the main thread was blocked (re-renders, useMemo, JSON.stringify, etc).
+let _pendingSetT0: number | null = null
+let _pendingRafHandle: number | null = null
+
+export interface FreezeRecord {
+  t: number        // when set() was called
+  ms: number       // time until next RAF frame
+  setRate: number  // store set/s at the time
+}
+
+const FREEZE_RING_SIZE = 50
+const freezeRing: (FreezeRecord | undefined)[] = new Array(FREEZE_RING_SIZE).fill(undefined)
+let freezeHead = 0
+
+function _onFreezeRaf() {
+  _pendingRafHandle = null
+  if (_pendingSetT0 === null) return
+  const ms = performance.now() - _pendingSetT0
+  _pendingSetT0 = null
+  if (ms < 50) return
+  const record: FreezeRecord = { t: performance.now(), ms, setRate: storeSetWindow.length }
+  freezeRing[freezeHead % FREEZE_RING_SIZE] = record
+  freezeHead++
+  console.warn(
+    `[ig2:perf] store freeze ${ms.toFixed(0)}ms — main thread blocked after set()` +
+    `\n  Likely cause: expensive useMemo/useEffect or large JSON.stringify in persist.` +
+    `\n  Use window.__ig2perf.freezes() to see history.`
+  )
+}
+
+export function recordStoreSetWithFreezeDetection(): void {
+  recordStoreSet()
+  // Schedule a RAF to measure how long until the browser can paint again.
+  // Only one pending measurement at a time — if another set() fires before RAF,
+  // update the start time so we capture the full blocked duration.
+  _pendingSetT0 = performance.now()
+  if (_pendingRafHandle === null) {
+    _pendingRafHandle = requestAnimationFrame(_onFreezeRaf)
+  }
+}
+
+export function getRecentFreezes(n = FREEZE_RING_SIZE): FreezeRecord[] {
+  const count = Math.min(n, freezeHead)
+  const out: FreezeRecord[] = []
+  for (let i = freezeHead - count; i < freezeHead; i++) {
+    const r = freezeRing[i % FREEZE_RING_SIZE]
+    if (r !== undefined) out.push(r)
+  }
+  return out
+}
+
 // --- Per-layer rebuild rate tracking ---
 const rebuildWindows: Record<string, number[]> = {}
 
@@ -233,6 +286,10 @@ if (typeof window !== 'undefined') {
     get allRebuildRates() {
       return Object.fromEntries(Object.entries(rebuildWindows).map(([k, w]) => [k, w.length]))
     },
+    /** Recent store-induced freezes (gaps > 50ms between set() and next RAF). */
+    freezes: (n?: number) => getRecentFreezes(n),
+    /** Most recent freeze record, or null. */
+    get lastFreeze() { return freezeHead > 0 ? freezeRing[(freezeHead - 1) % FREEZE_RING_SIZE] ?? null : null },
     /** Most recent frame record. */
     get lastFrame() { return head > 0 ? ring[(head - 1) % RING_SIZE] : null },
     /** Per-layer rebuild frequency + average frame time over the last N frames. */
