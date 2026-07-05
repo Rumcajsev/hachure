@@ -13,6 +13,7 @@ export interface HighlightsInput extends HighlightsParams {
 }
 
 const cache = new LayerCache()
+cache.name = 'highlights'
 
 export const highlightsDeps = (s: MapStore) => [
   s.highlights, s.highlightedHexes, s.highlightLines, s.highlightEdgePaths,

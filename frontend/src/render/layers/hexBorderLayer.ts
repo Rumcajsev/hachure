@@ -21,6 +21,7 @@ export interface HexBorderInput {
 }
 
 const cache = new LayerCache()
+cache.name = 'hexBorder'
 
 export const hexBorderDeps = (s: MapStore) => [
   s.hexBorderMode, s.hexEdgeMode, s.hexBorderOpacity, s.hexBorderColor, s.hexBorderDifference,

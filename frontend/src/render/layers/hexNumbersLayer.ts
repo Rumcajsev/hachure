@@ -13,6 +13,7 @@ export type HexNumbersInput = Omit<HexNumberParams, 'ctx'> & {
 }
 
 const cache = new LayerCache()
+cache.name = 'hexNumbers'
 
 // hexNumberMap is a TVC memo of (hexNumbersEnabled, generatedHexes, hexOrientation, hexNumberStartCorner)
 // — we depend on those source props directly rather than the computed memo.

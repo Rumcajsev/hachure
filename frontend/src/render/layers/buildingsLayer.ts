@@ -18,6 +18,7 @@ export interface BuildingsInput extends DrawBuildingsParams {
 }
 
 const cache = new LayerCache()
+cache.name = 'buildings'
 
 export const buildingsDeps = (s: MapStore) => [s.urbanHexes, s.urbanStyle]
 

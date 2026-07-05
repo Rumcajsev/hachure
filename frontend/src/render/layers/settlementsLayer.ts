@@ -17,6 +17,7 @@ export interface SettlementsInput extends DrawSettlementsParams {
 }
 
 const cache = new LayerCache()
+cache.name = 'settlements'
 
 export const settlementsDeps = (s: MapStore) => [
   s.settlements, s.settlementTierStyles, s.labelPresetId,

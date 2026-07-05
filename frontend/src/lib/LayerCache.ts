@@ -1,3 +1,5 @@
+import { recordLayerRebuild } from './perfMonitor'
+
 export class LayerCache {
   private canvas: OffscreenCanvas | null = null
   private bitmap: ImageBitmap | null = null
@@ -5,6 +7,8 @@ export class LayerCache {
   private dirty = true
   /** True if the most recent prepare() call triggered a rebuild (false = cache hit). */
   lastRebuilt = false
+  /** Identifies this cache in perf tooling — set once after construction. */
+  name = 'unknown'
 
   markDirty(): void {
     this.dirty = true
@@ -44,6 +48,7 @@ export class LayerCache {
 
     this.dirty = false
     this.lastRebuilt = true
+    if (import.meta.env.DEV) recordLayerRebuild(this.name)
     return { ctx, rebuilt: true }
   }
 

@@ -21,6 +21,7 @@ export interface RoadsInput extends DrawRoadsRailsParams {
 }
 
 const cache = new LayerCache()
+cache.name = 'roads'
 
 export const roadsController: LayerController<RoadsInput> = {
   markDirty(): void { cache.markDirty() },

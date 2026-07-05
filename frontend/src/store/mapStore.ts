@@ -2,6 +2,7 @@ import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
 import { get as idbGet, set as idbSet, del as idbDel } from 'idb-keyval'
 import { loadMapImageFromStorage } from '../lib/mapImageStorage'
+import { recordStoreSet } from '../lib/perfMonitor'
 
 // Debounce JSON.stringify + IDB writes, and skip the write entirely when the
 // persisted state hasn't changed (e.g. pure tool/panel switches).
@@ -795,25 +796,35 @@ export type MapStore =
   MapImageSlice &
   LabelOffsetsSlice
 
-export const useMapStore = create<MapStore>()(persist((set, get) => ({
-  ...createSetupSlice(set, get),
-  ...createTerrainSlice(set, get),
-  ...createElevationSlice(set, get),
-  ...createSettlementsSlice(set, get),
-  ...createRoadsSlice(set, get),
-  ...createRailsSlice(set, get),
-  ...createRiversSlice(set, get),
-  ...createHighlightsSlice(set, get),
-  ...createIconsSlice(set, get),
-  ...createLabelsSlice(set, get),
-  ...createUndoSlice(set, get),
-  ...createUiSlice(set, get),
-  ...createBridgesSlice(set, get),
-  ...createMegaHexSlice(set),
-  ...createPresetsSlice(set, get),
-  ...createMapImageSlice(set, get),
-  ...createLabelOffsetsSlice(set),
-}), {
+// Thin wrapper so dev perf tooling can count store set() calls.
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function wrapSet(set: any): any {
+  if (!import.meta.env.DEV) return set
+  return (fn: unknown, replace?: unknown) => { recordStoreSet(); return set(fn, replace) }
+}
+
+export const useMapStore = create<MapStore>()(persist((set, get) => {
+  const s = wrapSet(set) as typeof set
+  return {
+  ...createSetupSlice(s, get),
+  ...createTerrainSlice(s, get),
+  ...createElevationSlice(s, get),
+  ...createSettlementsSlice(s, get),
+  ...createRoadsSlice(s, get),
+  ...createRailsSlice(s, get),
+  ...createRiversSlice(s, get),
+  ...createHighlightsSlice(s, get),
+  ...createIconsSlice(s, get),
+  ...createLabelsSlice(s, get),
+  ...createUndoSlice(s, get),
+  ...createUiSlice(s, get),
+  ...createBridgesSlice(s, get),
+  ...createMegaHexSlice(s),
+  ...createPresetsSlice(s, get),
+  ...createMapImageSlice(s, get),
+  ...createLabelOffsetsSlice(s),
+  }
+}, {
   name: 'ig2-map-store',
   storage: _debouncedIdbStorage,
   partialize: (s) => ({

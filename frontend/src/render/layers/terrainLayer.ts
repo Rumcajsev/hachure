@@ -22,6 +22,7 @@ export interface TerrainInput {
 }
 
 const cache = new LayerCache()
+cache.name = 'terrain'
 
 export const terrainController: LayerController<TerrainInput> = {
   markDirty(): void { cache.markDirty() },

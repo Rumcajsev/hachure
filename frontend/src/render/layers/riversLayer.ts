@@ -15,6 +15,7 @@ export interface RiversInput {
 }
 
 const cache = new LayerCache()
+cache.name = 'rivers'
 
 export const riversController: LayerController<RiversInput> = {
   markDirty(): void { cache.markDirty() },

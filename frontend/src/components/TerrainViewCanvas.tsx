@@ -89,7 +89,7 @@ import { drawRoadHandles as _drawRoadHandles, drawRailHandles as _drawRailHandle
 import { drawPaperBackground as _drawPaperBackground, drawPaperMargin as _drawPaperMargin } from '../lib/drawPaperChrome'
 import { shouldSuppressShortcut } from '../lib/keyboard'
 import { resolveLabels } from '../lib/labelPresets'
-import { finalizeDrawFrame } from '../lib/perfMonitor'
+import { finalizeDrawFrame, getStoreSetRate, getLayerRebuildRate } from '../lib/perfMonitor'
 import { drawMap, type MapRefs, type ExportTarget } from '../render/MapRenderer'
 
 const OSM_OVERLAY_STYLE: maplibregl.StyleSpecification = {
@@ -2506,11 +2506,30 @@ terrainTextureFileRef.current = terrainTextureFile
       const { terrain, rivers, roads, settlements } = last.sectionMs
       const b = last.blitMs
       const totalBlit = b.terrain + b.hexBorder + b.highlights + b.rivers + b.buildings + b.roads + b.settlements
-      el.style.borderColor = slow ? '#f55' : '#0f0'
-      el.style.color = slow ? '#f88' : '#8f8'
+      const storeRate = getStoreSetRate()
+      const layerNames = ['terrain','hexBorder','highlights','rivers','buildings','roads','settlements','hexNumbers'] as const
+      const rebuildRates = Object.fromEntries(layerNames.map(n => [n, getLayerRebuildRate(n)]))
+      const anyFastRebuild = layerNames.some(n => rebuildRates[n] > 2)
+      const storeHot = storeRate > 10
+      const isAlarming = slow || anyFastRebuild || storeHot
+      el.style.borderColor = isAlarming ? '#f55' : '#0f0'
+      el.style.color = isAlarming ? '#f88' : '#8f8'
+
+      const rebuildLine = layerNames
+        .filter(n => rebuildRates[n] > 0)
+        .map(n => {
+          const r = rebuildRates[n]
+          const hot = r > 2
+          return hot ? `<span style="color:#f55">${n}:${r}/s</span>` : `${n}:${r}/s`
+        })
+        .join('  ') || '<span style="color:#8f8">none</span>'
+
       el.innerHTML =
         `<b>${avgMs.toFixed(0)}ms avg &nbsp; ${fps}fps</b>\n` +
-        `rebuilt: ${last.rebuiltLayers.join(',') || 'none'}\n` +
+        `store set/s: ${storeHot ? `<span style="color:#f55">${storeRate}</span>` : storeRate}\n` +
+        `─────────────────\n` +
+        `rebuilds/s: ${rebuildLine}\n` +
+        `─────────────────\n` +
         `terrain  ${terrain.toFixed(0)}ms\n` +
         `rivers   ${rivers.toFixed(0)}ms\n` +
         `roads    ${roads.toFixed(0)}ms\n` +

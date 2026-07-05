@@ -40,6 +40,52 @@ const RATE_WINDOW_MS = 1000
 const RATE_ALARM_THRESHOLD = 120
 let rateAlarmed = false
 
+// --- Store set() call tracking ---
+const storeSetWindow: number[] = []
+let storeSetTotal = 0
+let storeSetAlarmFrame = 0  // head value when last burst alarm fired
+
+export function recordStoreSet(): void {
+  const now = performance.now()
+  storeSetTotal++
+  let lo = 0
+  while (lo < storeSetWindow.length && now - storeSetWindow[lo] > RATE_WINDOW_MS) lo++
+  if (lo > 0) storeSetWindow.splice(0, lo)
+  storeSetWindow.push(now)
+
+  // Warn when store gets hit in a burst (>5 in the same ~16ms frame window)
+  if (storeSetWindow.length >= 5) {
+    const recentWindow = now - storeSetWindow[storeSetWindow.length - 5]
+    if (recentWindow < 20 && head !== storeSetAlarmFrame) {
+      storeSetAlarmFrame = head
+      console.warn(
+        `[ig2:perf] store burst: ${storeSetWindow.length} set() calls in last ${RATE_WINDOW_MS}ms` +
+        ` (${storeSetWindow.length >= 5 ? recentWindow.toFixed(0) + 'ms for last 5' : ''})` +
+        ' — check for batch violations (multiple set() calls in a loop).'
+      )
+    }
+  }
+}
+
+export function getStoreSetRate(): number { return storeSetWindow.length }
+
+// --- Per-layer rebuild rate tracking ---
+const rebuildWindows: Record<string, number[]> = {}
+
+export function recordLayerRebuild(layerName: string): void {
+  const now = performance.now()
+  if (!rebuildWindows[layerName]) rebuildWindows[layerName] = []
+  const w = rebuildWindows[layerName]
+  let lo = 0
+  while (lo < w.length && now - w[lo] > RATE_WINDOW_MS) lo++
+  if (lo > 0) w.splice(0, lo)
+  w.push(now)
+}
+
+export function getLayerRebuildRate(layerName: string): number {
+  return rebuildWindows[layerName]?.length ?? 0
+}
+
 function fmtBlit(b: DrawFrameRecord['blitMs']): string {
   const pairs = [
     ['T', b.terrain], ['HB', b.hexBorder], ['HL', b.highlights],
@@ -177,6 +223,16 @@ if (typeof window !== 'undefined') {
     dump: (n?: number) => getRecent(n),
     /** Draws observed in the last second. */
     get callsPerSec() { return callWindow.length },
+    /** Store set() calls observed in the last second. */
+    get storeSetPerSec() { return storeSetWindow.length },
+    /** Total store set() calls since page load. */
+    get storeSetTotal() { return storeSetTotal },
+    /** Rebuilds/sec for a named layer (e.g. 'terrain', 'roads'). */
+    layerRebuildRate: getLayerRebuildRate,
+    /** Rebuild rates for all tracked layers. */
+    get allRebuildRates() {
+      return Object.fromEntries(Object.entries(rebuildWindows).map(([k, w]) => [k, w.length]))
+    },
     /** Most recent frame record. */
     get lastFrame() { return head > 0 ? ring[(head - 1) % RING_SIZE] : null },
     /** Per-layer rebuild frequency + average frame time over the last N frames. */
