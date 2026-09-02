@@ -58,6 +58,13 @@ No re-fetching required. The hex map stays intact underneath — these are views
 
 ---
 
+## Settlements
+
+**Settlement generation overhaul**
+Current town and village rendering looks poor and has performance issues. Rewrite the generation so settlements feel grounded in the map — buildings and layout orient toward nearby roads and rivers rather than being placed arbitrarily. Larger settlements should read differently from small villages. Performance fix is a prerequisite: generation should not re-run unless the settlement data actually changes.
+
+---
+
 ## Editing
 
 **Map Peek — fix shortcut reliability**
