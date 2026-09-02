@@ -517,11 +517,11 @@ export const DEFAULT_RIVER_GEOM = {
 }
 
 export const DEFAULT_ROAD_GEOM = {
-  wiggleAmp: 0.20,
-  wiggleFreq: 0.9,
+  wiggleAmp: 0.10,
+  wiggleFreq: 1.0,
   pathSmoothing: 0,
   smoothing: 10,
-  centerPull: 0,
+  centerPull: 0.30,
 }
 
 export const DEFAULT_RAIL_GEOM = {
