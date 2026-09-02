@@ -23,3 +23,23 @@ Rivers already cache per-chain geometry (catmullRom + wobble) by `segKey+ptsKey+
 `TerrainViewCanvas.tsx` is ~3300 lines, subscribes to nearly the entire store. Split domain subscriptions into per-domain hooks (`useRiverChains`, `useRoadData`, `useTerrainBlobs`, …) each with fine-grained selectors. River chain hook is the suggested proof-of-concept start — most self-contained. Main risk: the RAF loop and draw() rely on refs currently all set inside TVC.
 
 ---
+
+## Map Setup
+
+**Tidy up all entry flows**
+Every journey from app launch to the editing stage should feel clean and intentional — no rough edges, jarring transitions, or inconsistent steps across the setup sequence.
+
+**Reference image overlay**
+Not a separate starting point — the user should be able to add a reference image freely on top of any map loaded from OSM data, at any time. The image sits as a semi-transparent overlay so the user can trace or align to it while editing. Think of it as an always-available layer, not an onboarding option.
+
+**Better info on grid selection**
+In the hex/paper setup step the dimension values (paper size, hex size, hex count, scale) are cluttered and scattered around the UI. Needs a clean, consolidated layout so all the relevant numbers are readable at a glance.
+
+---
+
+## Editing
+
+**Map Peek — fix shortcut reliability**
+Bottom-corner button that toggles a semi-transparent OSM map overlay on top of the generated hex map. Shortcut was `Space`, now meant to be `M`. Currently `Space` always works, `M` works only sometimes — likely a focus issue where the key listener only fires when the canvas has focus. Fix: register the `M` listener at the `window`/`document` level (same as `Space`) so it fires regardless of what element has focus. Remove `Space` as a trigger once `M` is reliable.
+
+---
