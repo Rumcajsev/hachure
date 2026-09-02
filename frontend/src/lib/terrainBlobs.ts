@@ -699,13 +699,14 @@ export function cutRawPolysWithCorridors(
   // polygon-clipping.difference() is expensive (O(n log n) sweep line) — on a large
   // map most blobs are far from rivers, so this bbox guard cuts ~90% of the work.
   const corridorBBoxes = corridors.map(polyBBox)
-  const cutMultiPoly: polygonClipping.MultiPolygon = corridors.map(c => [c as polygonClipping.Ring])
 
   return rawPolys.flatMap(poly => {
     if (poly.length < 3) return [poly]
     const polyBb = polyBBox(poly)
-    if (!corridorBBoxes.some(cb => bboxOverlaps(polyBb, cb))) return [poly]
+    const overlapping = corridors.filter((_, i) => bboxOverlaps(polyBb, corridorBBoxes[i]))
+    if (overlapping.length === 0) return [poly]
     const subject: polygonClipping.MultiPolygon = [[poly as polygonClipping.Ring]]
+    const cutMultiPoly: polygonClipping.MultiPolygon = overlapping.map(c => [c as polygonClipping.Ring])
     try {
       const result = polygonClipping.difference(subject, cutMultiPoly)
       return result.map(p => p[0] as [number, number][]).filter(p => p?.length >= 3)

@@ -1384,7 +1384,7 @@ terrainTextureFileRef.current = terrainTextureFile
   }, [roadBlobCutEnabled, roadBlobCutWidth, roadDataVersion, hexRadius, generatedMetadata, paperDims, roadWiggleAmp, roadWiggleFreq, roadSegmentProps, roadHopProps])
 
   const prevTerrainBlobsRef = useRef<{ terrain: string; polys: [number, number][][]; blobKeys: string[] }[]>([])
-  type TerrainBlobCacheEntry = { hexKey: string; rawPolys: [number, number][][]; hexCenters: [number, number][]; clusterCenters?: [number, number][][]; styleKey: string; blobs: { terrain: string; polys: [number, number][][]; blobKeys: string[] }[]; handleGroups?: Map<string, { edgeKey: string; cx: number; cy: number }[]>; simplifiedPolyGroups?: Map<string, [number, number][][]> }
+  type TerrainBlobCacheEntry = { hexKey: string; rawPolys: [number, number][][]; hexCenters: [number, number][]; clusterCenters?: [number, number][][]; shapeKey: string; shaped: { terrain: string; polys: [number, number][][]; blobKeys: string[] }[]; styleKey: string; blobs: { terrain: string; polys: [number, number][][]; blobKeys: string[] }[]; handleGroups?: Map<string, { edgeKey: string; cx: number; cy: number }[]>; simplifiedPolyGroups?: Map<string, [number, number][][]> }
   const perTerrainBlobCache = useRef(new Map<string, TerrainBlobCacheEntry>())
   const defaultTerrainBlobs = useMemo(() => {
     const _tMemo0 = performance.now()
@@ -1402,6 +1402,7 @@ terrainTextureFileRef.current = terrainTextureFile
     blobHandleDataRef.current.clear()
     // Each terrain type is computed independently so cross-terrain blob coupling is impossible.
     const result = terrainTypes.flatMap(terrain => {
+      const _tT0 = performance.now()
       const componentMap = blobComponentsByTerrain.get(terrain) ?? new Map<string, string>()
       const terrainProjected = projectedHexes.filter(p => {
         const h = p.hex as GeneratedHex
@@ -1441,7 +1442,10 @@ terrainTextureFileRef.current = terrainTextureFile
         ])
       }
 
+      const _tHexKey0 = performance.now()
       const hexKey = `eot:${elevationOverridesTerrain}|cs:${clusterSize}|` + terrainProjected.map(p => `${(p.hex as GeneratedHex).q},${(p.hex as GeneratedHex).r}`).join('|')
+      const _tHexKeyMs = performance.now() - _tHexKey0
+
       const canonicalKeySet = new Set([...componentMap.values()])
       const handleKey = [...canonicalKeySet].sort().map(ck => {
         const h = blobHandleOverrides[ck]
@@ -1466,35 +1470,45 @@ terrainTextureFileRef.current = terrainTextureFile
       const terrainSeed = terrain.split('').reduce((a, c) => (a * 31 + c.charCodeAt(0)) | 0, 0)
       const relevantRiverCorridors = riverAutoCorridors.filter(overlapsBbox)
       const relevantRoadCorridors  = roadAutoCorridors.filter(overlapsBbox)
+
+      const _tPerturb0 = performance.now()
       const perturbedRiverCorridors = relevantRiverCorridors.length === 0 ? relevantRiverCorridors
         : perturbCorridorsForTerrain(relevantRiverCorridors, riverBlobCutRoughness, 1 + riverBlobCutRoughness, sweepFreq, hexRadius, hexRadius * riverBlobCutWidth, terrainSeed)
       const perturbedRoadCorridors  = relevantRoadCorridors.length === 0 ? relevantRoadCorridors
         : perturbCorridorsForTerrain(relevantRoadCorridors, roadBlobCutRoughness, 1 + roadBlobCutRoughness, sweepFreq, hexRadius, hexRadius * roadBlobCutWidth, terrainSeed + 1)
+      const _tPerturbMs = performance.now() - _tPerturb0
+
       const relevantCorridors = perturbedRiverCorridors.length === 0 && perturbedRoadCorridors.length === 0
         ? EMPTY_CORRIDORS : [...perturbedRiverCorridors, ...perturbedRoadCorridors]
       const corridorKey = `r${relevantRiverCorridors.map(c => `${c.length}:${c[0]?.[0].toFixed(0)},${c[0]?.[1].toFixed(0)}`).join('|')}` +
         `|d${relevantRoadCorridors.map(c => `${c.length}:${c[0]?.[0].toFixed(0)},${c[0]?.[1].toFixed(0)}`).join('|')}`
-      const styleKey = `${smooth}|${offset}|${bump}|${sweepFreq}|${lobeFreq}|${lobeAmp}|${lobeThreshold}|${lobeDirection}|${terrainBlobTopoStyle}|${hexRadius}|${JSON.stringify(blobSeeds)}|${handleKey}|${corridorKey}|${riverBlobCutRoughness}|${roadBlobCutRoughness}`
+      const shapeKey = `${smooth}|${offset}|${bump}|${sweepFreq}|${lobeFreq}|${lobeAmp}|${lobeThreshold}|${lobeDirection}|${terrainBlobTopoStyle}|${hexRadius}|${JSON.stringify(blobSeeds)}|${handleKey}`
+      const styleKey = `${shapeKey}|${corridorKey}|${riverBlobCutRoughness}|${roadBlobCutRoughness}`
       const cached = perTerrainBlobCache.current.get(terrain)
 
       // Compute rawPolys (topology cache)
       let rawPolys: [number, number][][]
       let topoClusterCenters: [number, number][][] | undefined
+      let _tTopoMs = 0
       if (cached?.hexKey === hexKey) {
         rawPolys = cached.rawPolys
         topoClusterCenters = cached.clusterCenters
       } else {
+        const _tTopo0 = performance.now()
         const topo = buildTerrainBlobTopology(terrainProjected, hexRadius, clusterSize)
+        _tTopoMs = performance.now() - _tTopo0
         const topoEntry = topo.find(e => e.terrain === terrain)
         rawPolys = topoEntry?.rawPolys ?? []
         topoClusterCenters = topoEntry?.clusterCenters
       }
 
       // Simplified polys — what handles are generated from and what the dashed overlay shows
+      const _tSimplify0 = performance.now()
       const simplifiedPolys = rawPolys.map(p => {
         const seed = Math.abs(Math.round(p[0][0] * 73 + p[0][1] * 97))
         return shapeInputPolygon(p, terrainBlobTopoStyle, hexRadius, seed)
       })
+      const _tSimplifyMs = performance.now() - _tSimplify0
 
       // Build vertex handles from simplified poly corners — each vertex is one handle
       const ESNAP = Math.max(2, hexRadius * 0.015)
@@ -1505,6 +1519,7 @@ terrainTextureFileRef.current = terrainTextureFile
       // Stable seeds computed from the pre-displacement first vertex so dragging any handle
       // never changes which noise pattern is applied to the blob.
       const stableSeeds: number[] = []
+      const _tHandles0 = performance.now()
       for (const poly of simplifiedPolys) {
         if (poly.length < 3) continue
         const [fvx, fvy] = poly[0]
@@ -1530,6 +1545,7 @@ terrainTextureFileRef.current = terrainTextureFile
         displacedPolys.push(displaced)
         stableSeeds.push(Math.abs(Math.round(fvx * 73 + fvy * 97)))
       }
+      const _tHandlesMs = performance.now() - _tHandles0
       for (const [ck, handles] of newHandleGroups) {
         blobHandleDataRef.current.set(ck, { terrain, handles, simplifiedPolys: newSimplifiedPolys.get(ck) ?? [] })
       }
@@ -1538,15 +1554,25 @@ terrainTextureFileRef.current = terrainTextureFile
         for (const [ck, handles] of cached.handleGroups ?? []) {
           blobHandleDataRef.current.set(ck, { terrain, handles, simplifiedPolys: cached.simplifiedPolyGroups?.get(ck) ?? [] })
         }
+        console.log(`[blob:${terrain}] FULL HIT ${(performance.now()-_tT0).toFixed(1)}ms | hexKey=${_tHexKeyMs.toFixed(1)} perturb=${_tPerturbMs.toFixed(1)} simplify=${_tSimplifyMs.toFixed(1)} handles=${_tHandlesMs.toFixed(1)} polys=${rawPolys.length} rivers=${relevantRiverCorridors.length}`)
         return cached.blobs
       }
 
       const hexCenters = [...hexOrigCenterByKey.values()]
-      const _tBlob0 = performance.now()
-      const shaped = shapeTerrainBlobs([{ terrain, rawPolys: displacedPolys, hexCenters, clusterCenters: topoClusterCenters }], smooth, offset, bump, sweepFreq, lobeFreq, lobeAmp, lobeThreshold, lobeDirection, hexRadius, blobSeeds, stableSeeds)
-      console.log(`[blobUseMemo] shapeTerrainBlobs terrain=${terrain} polys=${displacedPolys.length} took ${(performance.now()-_tBlob0).toFixed(1)}ms`)
+
+      // Mid-level cache hit: shape params unchanged, only corridors changed — skip shapeTerrainBlobs()
+      let shaped: { terrain: string; polys: [number, number][][]; blobKeys: string[] }[]
+      let _tShapeMs = 0
+      if (cached?.hexKey === hexKey && cached?.shapeKey === shapeKey && cached.shaped) {
+        shaped = cached.shaped
+      } else {
+        const _tShape0 = performance.now()
+        shaped = shapeTerrainBlobs([{ terrain, rawPolys: displacedPolys, hexCenters, clusterCenters: topoClusterCenters }], smooth, offset, bump, sweepFreq, lobeFreq, lobeAmp, lobeThreshold, lobeDirection, hexRadius, blobSeeds, stableSeeds)
+        _tShapeMs = performance.now() - _tShape0
+      }
 
       // Cut shaped blobs with the already-perturbed corridors (perturbation happened above).
+      const _tCut0 = performance.now()
       const blobs = relevantCorridors.length === 0 ? shaped : shaped.map(entry => {
         const cutPolys: [number, number][][] = []
         const cutKeys: string[] = []
@@ -1556,15 +1582,20 @@ terrainTextureFileRef.current = terrainTextureFile
         }
         return { ...entry, polys: cutPolys, blobKeys: cutKeys }
       })
+      const _tCutMs = performance.now() - _tCut0
 
-      perTerrainBlobCache.current.set(terrain, { hexKey, rawPolys, hexCenters, clusterCenters: topoClusterCenters, styleKey, blobs, handleGroups: newHandleGroups, simplifiedPolyGroups: newSimplifiedPolys })
+      const _tTotalMs = performance.now() - _tT0
+      const cacheLevel = cached?.hexKey !== hexKey ? 'MISS' : cached?.shapeKey !== shapeKey ? 'MID-HIT' : 'STYLE-MISS'
+      console.log(`[blob:${terrain}] ${cacheLevel} ${_tTotalMs.toFixed(1)}ms | hexKey=${_tHexKeyMs.toFixed(1)} topo=${_tTopoMs.toFixed(1)} perturb=${_tPerturbMs.toFixed(1)} simplify=${_tSimplifyMs.toFixed(1)} handles=${_tHandlesMs.toFixed(1)} shape=${_tShapeMs.toFixed(1)} cut=${_tCutMs.toFixed(1)} | polys=${rawPolys.length} shapedPolys=${shaped.flatMap(e=>e.polys).length} rivers=${relevantRiverCorridors.length} corridors=${relevantCorridors.length}`)
+
+      perTerrainBlobCache.current.set(terrain, { hexKey, rawPolys, hexCenters, clusterCenters: topoClusterCenters, shapeKey, shaped, styleKey, blobs, handleGroups: newHandleGroups, simplifiedPolyGroups: newSimplifiedPolys })
       return blobs
     })
     for (const t of perTerrainBlobCache.current.keys()) {
       if (!terrainTypeSet.has(t)) perTerrainBlobCache.current.delete(t)
     }
     prevTerrainBlobsRef.current = result
-    console.log(`[blobUseMemo] total ${(performance.now()-_tMemo0).toFixed(1)}ms`)
+    console.log(`[blobUseMemo] total ${(performance.now()-_tMemo0).toFixed(1)}ms terrainTypes=${terrainTypes.length}`)
     return result
   }, [isTerrainPainting, projectedHexes, blobComponentsByTerrain, terrainBlobOverrides, terrainTypeBlobStyles, terrainBlobSmooth, terrainBlobOffset, terrainBlobBump, terrainBlobSweepFreq, terrainBlobLobeFreq, terrainBlobLobeAmp, terrainBlobLobeThreshold, terrainBlobLobeDirection, terrainBlobTopoStyle, terrainBlobClusterSize, hexRadius, blobSeeds, elevationOverridesTerrain, blobHandleOverrides, riverAutoCorridors, roadAutoCorridors, riverBlobCutRoughness, roadBlobCutRoughness])
   const defaultTerrainBlobsRef = useRef(defaultTerrainBlobs)
