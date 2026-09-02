@@ -3,11 +3,15 @@
   "private": true,
   "version": "0.0.0",
   "type": "module",
+  "main": "electron/main.js",
   "scripts": {
     "dev": "vite",
     "build": "tsc -b && vite build",
     "lint": "eslint .",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "electron:start": "wait-on http://localhost:5173 && electron .",
+    "electron:dev": "concurrently -k \"npm run dev\" \"npm run electron:start\"",
+    "electron:build": "vite build && electron-builder"
   },
   "dependencies": {
     "idb-keyval": "^6.2.4",
@@ -30,6 +34,39 @@
     "globals": "^17.5.0",
     "typescript": "~6.0.2",
     "typescript-eslint": "^8.58.2",
-    "vite": "^8.0.10"
+    "vite": "^8.0.10",
+    "concurrently": "^9.0.0",
+    "electron": "^36.0.0",
+    "electron-builder": "^25.0.0",
+    "wait-on": "^8.0.0"
+  },
+  "build": {
+    "appId": "com.ig2.hexmap",
+    "productName": "IG2 Hex Map",
+    "directories": {
+      "output": "../release"
+    },
+    "files": [
+      "electron/**"
+    ],
+    "extraResources": [
+      {
+        "from": "../backend/dist/sidecar",
+        "to": "sidecar",
+        "filter": ["**/*"]
+      },
+      {
+        "from": "dist",
+        "to": "frontend-dist",
+        "filter": ["**/*"]
+      }
+    ],
+    "mac": {
+      "category": "public.app-category.productivity",
+      "target": [{ "target": "dmg", "arch": ["arm64"] }]
+    },
+    "win": {
+      "target": [{ "target": "nsis", "arch": ["x64"] }]
+    }
   }
 }

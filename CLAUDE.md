@@ -194,6 +194,62 @@ Terrain generation and elevation use SSE streaming (`/terrain-stream`, `/elevati
 
 ---
 
+## Electron desktop app
+
+The app ships as a macOS `.app` (and Windows `.exe`) via Electron. The Python backend runs as a frozen PyInstaller binary (the "sidecar") that Electron spawns on startup.
+
+### Development workflow
+
+During active development, never build the DMG. Use two terminals:
+
+```bash
+# Terminal 1 — Python backend (auto-reloads on file save)
+cd backend && .venv/bin/uvicorn main:app --reload
+
+# Terminal 2 — Electron window with Vite HMR
+cd frontend && npm run electron:dev
+```
+
+The Electron window loads from Vite's dev server (`localhost:5173`). Frontend changes appear instantly via HMR. Backend changes reload automatically via uvicorn. This is identical to browser-based dev, just in a window.
+
+### Building a distributable DMG
+
+Run these three steps in order from `backend/`:
+
+```bash
+# 1. Freeze the Python sidecar
+cd backend && .venv/bin/pyinstaller sidecar.spec --noconfirm
+
+# 2. Build frontend + package into DMG (from frontend/)
+cd frontend && npm run electron:build
+```
+
+Output: `release/IG2 Hex Map-<version>-arm64.dmg`
+
+On first install, macOS will block the app (unsigned). Bypass once with:
+```bash
+xattr -d com.apple.quarantine "/Applications/IG2 Hex Map.app"
+```
+
+### How the sidecar works
+
+- `backend/main.py` accepts `--port PORT` and `--dist-dir PATH` as CLI args
+- On startup it prints `IG2_READY:<port>` to stdout; Electron reads this to know when to open the window
+- In production, FastAPI serves the built frontend from `--dist-dir` as static files
+- `backend/sidecar.spec` is the PyInstaller spec — edit it when adding new backend dependencies
+- The frozen binary goes into `release/<platform>/IG2 Hex Map.app/Contents/Resources/sidecar/`
+- The built frontend goes into `…/Resources/frontend-dist/`
+
+### API routes
+
+All backend routes use `/api/` prefix (e.g. `/api/generate/terrain-stream`). In dev, Vite proxies `/api/...` to `localhost:8000` without rewriting the path. In production the sidecar serves `/api/...` directly. Do not strip the `/api` prefix in the Vite proxy config.
+
+### Adding new textures
+
+Texture files must live in `frontend/public/textures/` (not `frontend/textures/`) so Vite copies them into `dist/textures/` and the sidecar can serve them. The `frontend/textures/` directory is the legacy location — use `public/textures/` as the single source of truth.
+
+---
+
 ## Working style
 
 - **Commit after every logical change.** Each self-contained fix, feature, or refactor gets its own commit before moving on. This makes reverting any single step a simple `git reset --hard <sha>` without losing unrelated work.

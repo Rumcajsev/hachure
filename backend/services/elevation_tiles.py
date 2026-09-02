@@ -9,7 +9,6 @@ from typing import AsyncGenerator
 import httpx
 import numpy as np
 from PIL import Image
-from rasterio.io import MemoryFile
 
 from .geometry import compute_bbox, make_lonlat_to_hex
 
@@ -47,13 +46,8 @@ def bbox_to_tiles(
 
 def _decode_terrarium(png_bytes: bytes) -> np.ndarray:
     """Return (256, 256) float32 array of elevation in metres."""
-    with MemoryFile(png_bytes) as mf:
-        with mf.open() as ds:
-            data = ds.read()
-    r = data[0].astype(np.float32)
-    g = data[1].astype(np.float32)
-    b = data[2].astype(np.float32)
-    return r * 256 + g + b / 256 - 32768
+    img = np.array(Image.open(BytesIO(png_bytes)).convert("RGB"), dtype=np.float32)
+    return img[:, :, 0] * 256 + img[:, :, 1] + img[:, :, 2] / 256 - 32768
 
 
 async def _fetch_tile(client: httpx.AsyncClient, z: int, tx: int, ty: int) -> bytes | None:
