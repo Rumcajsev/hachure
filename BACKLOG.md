@@ -61,6 +61,13 @@ No re-fetching required. The hex map stays intact underneath — these are views
 
 ---
 
+## Elevation
+
+**Elevation system UX overhaul**
+The underlying elevation data and rendering works well. What needs rethinking is the whole editing flow around it — what's enabled by default on a fresh map, what the initial look is, how the user discovers and adjusts elevation settings, and what the interaction model feels like. The data pipeline stays; the defaults, controls, and flow get a proper design pass.
+
+---
+
 ## Settlements
 
 **Settlement generation overhaul**
