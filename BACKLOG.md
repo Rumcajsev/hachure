@@ -42,6 +42,9 @@ In the hex/paper setup step the dimension values (paper size, hex size, hex coun
 **In-app step-by-step tutorials**
 Guided walkthroughs for the core flows (first map setup, terrain editing, export, etc.). Should be contextual — triggered at the right moment, not just a help page — and skippable for returning users. Goal is that someone can pick up the app cold and get to a usable map without reading documentation.
 
+**Better OSM data loading experience**
+The loading process when fetching OSM data is functional but not informative. It should clearly show what's being fetched and at what stage, with progress that feels responsive rather than opaque. Visually it should look polished — not just a spinner or raw status text. Users shouldn't feel like something has frozen or gone wrong when a fetch is just taking a moment.
+
 **Bug reporting**
 In-app mechanism to submit bug reports — ideally with automatic context attached (app version, current map state snapshot, browser/OS). Keeps feedback low-friction so issues actually get reported.
 
