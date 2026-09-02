@@ -37,6 +37,16 @@ In the hex/paper setup step the dimension values (paper size, hex size, hex coun
 
 ---
 
+## UX
+
+**In-app step-by-step tutorials**
+Guided walkthroughs for the core flows (first map setup, terrain editing, export, etc.). Should be contextual — triggered at the right moment, not just a help page — and skippable for returning users. Goal is that someone can pick up the app cold and get to a usable map without reading documentation.
+
+**Bug reporting**
+In-app mechanism to submit bug reports — ideally with automatic context attached (app version, current map state snapshot, browser/OS). Keeps feedback low-friction so issues actually get reported.
+
+---
+
 ## Map Types
 
 **Alternative map types: point-to-point and area maps**
