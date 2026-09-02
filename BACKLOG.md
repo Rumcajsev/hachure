@@ -37,6 +37,17 @@ In the hex/paper setup step the dimension values (paper size, hex size, hex coun
 
 ---
 
+## Map Types
+
+**Alternative map types: point-to-point and area maps**
+The hex map is the primary editing environment and data source. Once a hex map is built, the user can switch into two additional modes — each auto-derived from the hex data, then refined:
+- **Point-to-point** — settlements and key terrain features become nodes; roads and natural corridors become connections. The user merges, splits, or repositions nodes and redraws connections on top of the terrain art.
+- **Area maps** — contiguous hex groups of similar terrain are clustered into irregular named zones. The user adjusts boundaries, merges or splits areas, and names them.
+
+No re-fetching required. The hex map stays intact underneath — these are views into the same data, not separate maps.
+
+---
+
 ## Editing
 
 **Map Peek — fix shortcut reliability**
