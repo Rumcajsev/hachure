@@ -77,6 +77,9 @@ Current town and village rendering looks poor and has performance issues. Rewrit
 
 ## Editing
 
+**River editing flow overhaul**
+Currently rivers are added from OSM data and then styled globally after the fact. The flow should support per-river inline editing — when adding or selecting a river you can immediately set its properties (width, character, etc.) without having to apply changes across all rivers later. Quick-add stays quick, but individual control is available at the point of interaction rather than as a separate post-process step.
+
 **Map Peek — fix shortcut reliability**
 Bottom-corner button that toggles a semi-transparent OSM map overlay on top of the generated hex map. Shortcut was `Space`, now meant to be `M`. Currently `Space` always works, `M` works only sometimes — likely a focus issue where the key listener only fires when the canvas has focus. Fix: register the `M` listener at the `window`/`document` level (same as `Space`) so it fires regardless of what element has focus. Remove `Space` as a trigger once `M` is reliable.
 
