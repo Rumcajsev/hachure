@@ -472,13 +472,13 @@ function PaperAreaStep({ onBack, onGenerate, showMap = true, generateLabel, t }:
 
             <div style={{ marginTop: 10, display: 'flex', flexDirection: 'column', gap: 5 }}>
               <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                <span style={{ fontFamily: t.mono, fontSize: 11, color: t.inkFaint }}>Paper</span>
-                <span style={{ fontFamily: t.mono, fontSize: 11, color: t.ink }}>{paperW} × {paperH} mm</span>
+                <span style={{ fontFamily: t.mono, fontSize: 9, color: t.inkFaint, letterSpacing: 1.2, textTransform: 'uppercase' }}>Sheet</span>
+                <span style={{ fontFamily: t.mono, fontSize: 10, color: t.ink }}>{paperW} × {paperH} mm</span>
               </div>
               {terrainWidthKm !== null && terrainHeightKm !== null && (
                 <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                  <span style={{ fontFamily: t.mono, fontSize: 11, color: t.inkFaint }}>Map</span>
-                  <span style={{ fontFamily: t.mono, fontSize: 11, color: t.inkMute }}>{terrainWidthKm.toFixed(0)} × {terrainHeightKm.toFixed(0)} km</span>
+                  <span style={{ fontFamily: t.mono, fontSize: 9, color: t.inkFaint, letterSpacing: 1.2, textTransform: 'uppercase' }}>Map</span>
+                  <span style={{ fontFamily: t.mono, fontSize: 10, color: t.inkMute }}>{terrainWidthKm.toFixed(0)} × {terrainHeightKm.toFixed(0)} km</span>
                 </div>
               )}
             </div>
@@ -499,13 +499,13 @@ function PaperAreaStep({ onBack, onGenerate, showMap = true, generateLabel, t }:
 
             <div style={{ marginTop: 10 }}>
               <FieldLabel t={t}>HEX SIZE</FieldLabel>
-              <div style={{ display: 'flex', alignItems: 'baseline', gap: 12, marginBottom: 8 }}>
-                <span style={{ fontFamily: t.sans, fontSize: 22, fontWeight: 500, color: t.ink, lineHeight: 1 }}>
-                  {hexSizeMm} <span style={{ fontSize: 13, fontWeight: 400, color: t.inkMute }}>mm</span>
+              <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, marginBottom: 8 }}>
+                <span style={{ fontFamily: t.serif, fontSize: 28, fontWeight: 400, color: t.ink, lineHeight: 1 }}>
+                  {hexSizeMm}
                 </span>
-                {hexKm !== null && (
-                  <span style={{ fontFamily: t.mono, fontSize: 13, color: t.inkMute }}>≈ {hexKm.toFixed(1)} km</span>
-                )}
+                <span style={{ fontFamily: t.mono, fontSize: 11, color: t.inkMute }}>
+                  mm{hexKm !== null ? ` · ≈ ${hexKm.toFixed(1)} km` : ''}
+                </span>
               </div>
               <SetupSliderTrack value={hexSizeMm} min={5} max={50} step={1} t={t} onChange={setHexSizeMm} />
             </div>
@@ -595,8 +595,8 @@ function SetupSliderRow({ label, display, value, min, max, step, t, onChange }: 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}>
-        <span style={{ fontFamily: t.sans, fontSize: 11, color: t.ink2 }}>{label}</span>
-        <span style={{ fontFamily: t.mono, fontSize: 10.5, color: t.inkMute }}>{display}</span>
+        <span style={{ fontFamily: t.mono, fontSize: 9, color: t.inkFaint, letterSpacing: 1.2, textTransform: 'uppercase' }}>{label}</span>
+        <span style={{ fontFamily: t.mono, fontSize: 10, color: t.inkMute }}>{display}</span>
       </div>
       <div
         onPointerDown={e => { e.currentTarget.setPointerCapture(e.pointerId); compute(e.clientX) }}
@@ -625,8 +625,8 @@ function PanelSection({ label, children, t }: { label?: string; children: React.
     <div style={{ padding: '16px 20px', borderBottom: `1px solid ${t.line2}` }}>
       {label && (
         <div style={{
-          fontFamily: t.sans, fontSize: 13, color: t.ink,
-          fontWeight: 600, letterSpacing: 0.3,
+          fontFamily: t.mono, fontSize: 10, color: t.ink,
+          fontWeight: 700, letterSpacing: 1.5, textTransform: 'uppercase',
           marginBottom: 14,
         }}>
           {label}
