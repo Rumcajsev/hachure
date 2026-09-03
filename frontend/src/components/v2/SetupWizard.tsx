@@ -18,7 +18,7 @@ export function SetupWizard({ onCancel, onDone, isDark = false }: {
 }) {
   const [step, setStep] = useState<WizardStep>('source')
   const [source, setSource] = useState<SourceMode>('osm')
-  const { setBlankMap, generateMap } = useMapStore()
+  const { setBlankMap, generateMap, setActiveTool } = useMapStore()
   const t = isDark ? TK_DARK : TK
 
   function handleContinue() {
@@ -29,6 +29,7 @@ export function SetupWizard({ onCancel, onDone, isDark = false }: {
   }
 
   function handleStartBlank() {
+    setActiveTool({ type: 'none' })
     onDone()
   }
 

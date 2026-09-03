@@ -2227,6 +2227,14 @@ terrainTextureFileRef.current = terrainTextureFile
     if (!el) return
     const onWheel = (e: WheelEvent) => {
       e.preventDefault()
+      if (activeToolRef.current.type === 'align-image') {
+        const factor = e.deltaY < 0 ? 1.06 : 1 / 1.06
+        const cur = mapImageTransformRef.current
+        const next = Math.max(0.05, Math.min(10, cur.scaleFrac * factor))
+        setMapImageTransformRef.current({ scaleFrac: next })
+        if (rafRef.current === null) rafRef.current = requestAnimationFrame(() => { rafRef.current = null; draw() })
+        return
+      }
       const rect = el.getBoundingClientRect()
       const cx = e.clientX - rect.left - rect.width / 2
       const cy = e.clientY - rect.top - rect.height / 2

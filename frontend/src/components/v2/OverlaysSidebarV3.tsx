@@ -301,58 +301,9 @@ function ShapePreview({ shape }: { shape: IconOverlay['shape'] }) {
   return <svg width="28" height="28" viewBox="0 0 28 28"><polygon points={pts} {...p} /></svg>
 }
 
-// ── Reference image ────────────────────────────────────────────────────────────
-
-function ImageSwatch() {
-  const t = useTheme()
-  return (
-    <svg width="18" height="18" viewBox="0 0 18 18" fill="none" style={{ flexShrink: 0 }}>
-      <rect x="1.5" y="1.5" width="15" height="15" rx="1" stroke={t.inkMute} strokeWidth="1.2" fill={t.paper2} />
-      <path d="M1.5 12.5l3.5-3.5 3 3 3-4 5 4.5" stroke={t.inkMute} strokeWidth="1" strokeLinejoin="round" />
-    </svg>
-  )
-}
-
-function ReferenceImageFlyout({ onClose }: { onClose: () => void }) {
-  const t = useTheme()
-  const { mapImageTransform, mapImageOpacity, setMapImageTransform, setMapImageOpacity } = useMapStore()
-  return (
-    <FlyoutShell title="Reference Image" subtitle="overlay" onClose={onClose}>
-      <FSectionLabel label="Opacity" />
-      <MiniSlider
-        label="Opacity"
-        display={`${Math.round(mapImageOpacity * 100)}%`}
-        value={Math.round(mapImageOpacity * 100)}
-        min={10} max={100} step={5}
-        onChange={v => setMapImageOpacity(v / 100)}
-      />
-      <FSectionDivider />
-      <FSectionLabel label="Transform" />
-      <MiniSlider
-        label="Scale"
-        display={`${Math.round(mapImageTransform.scaleFrac * 100)}%`}
-        value={Math.round(mapImageTransform.scaleFrac * 100)}
-        min={5} max={500} step={5}
-        onChange={v => setMapImageTransform({ scaleFrac: v / 100 })}
-      />
-      <MiniSlider
-        label="Rotation"
-        display={`${Math.round(mapImageTransform.rotation)}°`}
-        value={Math.round(mapImageTransform.rotation)}
-        min={-180} max={180} step={1}
-        onChange={v => setMapImageTransform({ rotation: v })}
-      />
-      <FSectionDivider />
-      <div style={{ padding: '4px 12px 6px', fontFamily: t.sans, fontSize: 10, color: t.inkFaint, lineHeight: 1.5 }}>
-        Click row to activate drag-to-position tool
-      </div>
-    </FlyoutShell>
-  )
-}
-
 // ── Flyout state type ──────────────────────────────────────────────────────────
 
-type FlyoutState = { kind: 'highlight' | 'icon' | 'label' | 'reference'; id: string } | null
+type FlyoutState = { kind: 'highlight' | 'icon' | 'label'; id: string } | null
 
 // ── HighlightFlyout ────────────────────────────────────────────────────────────
 
@@ -557,26 +508,9 @@ export function OverlaysSidebarV3() {
     labelOverlays, placedLabels, addLabelOverlay, deleteLabelOverlay,
     activeLabelOverlayId, activeTool,
     setActiveTool,
-    mapImageDataUrl, mapImageOpacity,
-    setMapImageDataUrl, removeReferenceImage,
   } = useMapStore()
 
   const [flyout, setFlyout] = useState<FlyoutState>(null)
-  const imgInputRef = useRef<HTMLInputElement>(null)
-
-  function handleLoadImage(file: File) {
-    const reader = new FileReader()
-    reader.onload = () => {
-      const dataUrl = reader.result as string
-      const img = new Image()
-      img.onload = () => {
-        setMapImageDataUrl(dataUrl, img.naturalWidth, img.naturalHeight)
-        setActiveTool({ type: 'align-image' })
-      }
-      img.src = dataUrl
-    }
-    reader.readAsDataURL(file)
-  }
 
   const openFlyout = (kind: NonNullable<FlyoutState>['kind'], id: string) =>
     setFlyout(prev => prev?.kind === kind && prev?.id === id ? null : { kind, id })
@@ -734,31 +668,6 @@ export function OverlaysSidebarV3() {
         ))}
         <DashedAddBtn label="Add label" onClick={handleAddLabel} />
 
-        {/* Reference Image */}
-        <V2Divider label="Reference Image" />
-        {mapImageDataUrl ? (
-          <StripOverlayRow
-            swatch={<ImageSwatch />}
-            label="Reference image"
-            sub={`${Math.round(mapImageOpacity * 100)}% opacity`}
-            active={activeTool.type === 'align-image'}
-            cogOpen={flyout?.kind === 'reference'}
-            onSelect={() => {
-              if (activeTool.type === 'align-image') setActiveTool({ type: 'none' })
-              else setActiveTool({ type: 'align-image' })
-            }}
-            onCog={() => setFlyout(prev => prev?.kind === 'reference' ? null : { kind: 'reference', id: 'ref' })}
-            onDelete={() => { removeReferenceImage(); setFlyout(null) }}
-          />
-        ) : (
-          <DashedAddBtn label="Add reference image" onClick={() => imgInputRef.current?.click()} />
-        )}
-        <input
-          ref={imgInputRef} type="file" accept="image/*"
-          style={{ display: 'none' }}
-          onChange={e => { const f = e.target.files?.[0]; if (f) handleLoadImage(f) }}
-        />
-
         <TGap />
         <div style={{ height: 8 }} />
       </StripShell>
@@ -766,7 +675,6 @@ export function OverlaysSidebarV3() {
       {flyout?.kind === 'highlight' && <HighlightFlyout id={flyout.id} onClose={() => setFlyout(null)} />}
       {flyout?.kind === 'icon'      && <IconFlyout      id={flyout.id} onClose={() => setFlyout(null)} />}
       {flyout?.kind === 'label'     && <LabelFlyout     id={flyout.id} onClose={() => setFlyout(null)} />}
-      {flyout?.kind === 'reference' && <ReferenceImageFlyout onClose={() => setFlyout(null)} />}
     </div>
   )
 }

@@ -3,6 +3,7 @@ import { useMapStore } from '../../store/mapStore'
 import { useTheme } from '../../context/ThemeContext'
 import { PresetsDropdown } from '../PresetsPanel'
 import { BUILTIN_PRESET_MAP, isPresetEdited } from '../../lib/stylePreset'
+import { RefImagePopover } from './RefImagePopover'
 
 export function EditorTopBar({ onExportPDF, onGoHome }: { onExportPDF: (mode: 'sheets' | 'combined') => Promise<void>; onGoHome: () => void }) {
   const t = useTheme()
@@ -17,9 +18,12 @@ export function EditorTopBar({ onExportPDF, onGoHome }: { onExportPDF: (mode: 's
 
   const isMultiSheet = pageGrid.colWidths.length > 1 || pageGrid.rowHeights.length > 1
 
+  const mapImageDataUrl = useMapStore(s => s.mapImageDataUrl)
+
   const [exporting, setExporting] = useState(false)
   const [printMenuOpen, setPrintMenuOpen] = useState(false)
   const [projectMenuOpen, setProjectMenuOpen] = useState(false)
+  const [refImageOpen, setRefImageOpen] = useState(false)
   const [editingTitle, setEditingTitle] = useState(false)
   const [titleDraft, setTitleDraft] = useState('')
   const [presetsOpen, setPresetsOpen] = useState(false)
@@ -27,6 +31,7 @@ export function EditorTopBar({ onExportPDF, onGoHome }: { onExportPDF: (mode: 's
   const presetsBtnRef = useRef<HTMLButtonElement>(null)
   const printBtnRef = useRef<HTMLButtonElement>(null)
   const projectBtnRef = useRef<HTMLButtonElement>(null)
+  const refImageBtnRef = useRef<HTMLButtonElement>(null)
   const projectMenuRef = useRef<HTMLDivElement>(null)
   const titleInputRef = useRef<HTMLInputElement>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
@@ -277,6 +282,40 @@ export function EditorTopBar({ onExportPDF, onGoHome }: { onExportPDF: (mode: 's
           <span style={{ color: t.inkFaint, fontSize: 10 }}>▾</span>
         </button>
       </div>
+
+        {/* Reference image */}
+        <button
+          ref={refImageBtnRef}
+          onClick={() => setRefImageOpen(v => !v)}
+          title="Reference image"
+          style={{
+            height: '100%',
+            padding: '0 11px',
+            background: refImageOpen ? t.paper2 : 'none',
+            border: 'none',
+            borderRight: `1px solid ${t.line}`,
+            cursor: 'pointer',
+            display: 'flex',
+            alignItems: 'center',
+            gap: 5,
+            flexShrink: 0,
+            color: mapImageDataUrl ? t.rust : t.inkMute,
+          }}
+          onMouseEnter={e => { if (!refImageOpen) e.currentTarget.style.background = t.paper2 }}
+          onMouseLeave={e => { if (!refImageOpen) e.currentTarget.style.background = 'none' }}
+        >
+          <svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round">
+            <rect x="1" y="2" width="12" height="10" rx="1" />
+            <path d="M1 9.5l3-3 2.5 2.5 2-2.5 3.5 3.5" />
+          </svg>
+          {mapImageDataUrl && (
+            <span style={{ fontFamily: t.mono, fontSize: 9, letterSpacing: 0.5 }}>REF</span>
+          )}
+        </button>
+
+      {refImageOpen && (
+        <RefImagePopover anchorRef={refImageBtnRef} onClose={() => setRefImageOpen(false)} />
+      )}
 
       {/* Center spacer */}
       <div style={{ flex: 1 }} />

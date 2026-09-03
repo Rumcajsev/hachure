@@ -623,18 +623,15 @@ export function drawMap(refs: MapRefs, exportTarget?: ExportTarget): void {
 
   // Historical map image overlay — screen only, drawn after terrain so hex borders render on top
   if (!isExport && mapImageElementRef.current) {
-    const alignMode = activeToolRef.current.type === 'align-image'
     const eyedropperMode = activeToolRef.current.type === 'image-eyedropper'
     const peekMode = mapOverlayRef.current && dataSourceRef.current === 'map_image'
-    if (alignMode || eyedropperMode || peekMode) {
-      drawMapImageOverlay({
-        ctx,
-        image: mapImageElementRef.current,
-        transform: mapImageTransformRef.current,
-        opacity: (peekMode || eyedropperMode) ? 1.0 : mapImageOpacityRef.current,
-        px: 0, py: 0, pw, ph,
-      })
-    }
+    drawMapImageOverlay({
+      ctx,
+      image: mapImageElementRef.current,
+      transform: mapImageTransformRef.current,
+      opacity: (peekMode || eyedropperMode) ? 1.0 : mapImageOpacityRef.current,
+      px: 0, py: 0, pw, ph,
+    })
     if (roadImageExtractPreviewOpenRef.current && roadColorPreviewImageRef.current) {
       drawRoadColorPreview({
         ctx,
