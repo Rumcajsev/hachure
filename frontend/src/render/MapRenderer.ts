@@ -165,6 +165,7 @@ export interface MapRefs {
   roadImageEraseHexKeysRef: { current: any }
   eraserHoverTargetRef: { current: any }
   mapOverlayRef: { current: any }
+  refImagePeekRef: { current: any }
   mapStyleRef: { current: any }
   megaHexColorRef: { current: any }
   megaHexEnabledRef: { current: any }
@@ -305,7 +306,7 @@ export function drawMap(refs: MapRefs, exportTarget?: ExportTarget): void {
     hoveredBlobCkRef, hoveredChainRef, hoveredEdgeHandleRef, hoveredEdgeRef, hoveredHandleIdxRef, hoveredLabelIdRef, hoveredVertexHandleRef, iconOverlaysRef,
     iconPlaceModeRef, iconSnapRef, isPaintingRef, labelBBoxCacheRef, labelDragStateRef, labelOffsetsRef, labelOverlaysRef, labelSnapRef,
     lastBuildingCacheEpochRef, liveLabelOffsetRef, mapBgColorRef, mapBorderColorRef, mapBorderEnabledRef, mapBorderWidthRef, mapImageElementRef, mapImageOpacityRef,
-    mapImageTransformRef, mapOverlayRef, mapStyleRef, megaHexColorRef, megaHexEnabledRef, megaHexLineWidthRef, megaHexOpacityRef, megaHexOriginQRef,
+    mapImageTransformRef, mapOverlayRef, refImagePeekRef, mapStyleRef, megaHexColorRef, megaHexEnabledRef, megaHexLineWidthRef, megaHexOpacityRef, megaHexOriginQRef,
     roadColorPreviewImageRef, roadImageExtractPreviewOpenRef, roadTraceLinesPreviewRef,
     roadImageEraseHexKeysRef, eraserHoverTargetRef,
     megaHexOriginRRef, megaHexRadiusRef, metaRef, mountainsColorRef, osmRiverWaysRef, pageGridRef, paintHoverTargetRef,
@@ -625,11 +626,12 @@ export function drawMap(refs: MapRefs, exportTarget?: ExportTarget): void {
   if (!isExport && mapImageElementRef.current) {
     const eyedropperMode = activeToolRef.current.type === 'image-eyedropper'
     const peekMode = mapOverlayRef.current && dataSourceRef.current === 'map_image'
+    const refImagePeek = refImagePeekRef.current
     drawMapImageOverlay({
       ctx,
       image: mapImageElementRef.current,
       transform: mapImageTransformRef.current,
-      opacity: (peekMode || eyedropperMode) ? 1.0 : mapImageOpacityRef.current,
+      opacity: (peekMode || eyedropperMode || refImagePeek) ? 1.0 : mapImageOpacityRef.current,
       px: 0, py: 0, pw, ph,
     })
     if (roadImageExtractPreviewOpenRef.current && roadColorPreviewImageRef.current) {

@@ -193,6 +193,7 @@ export const TerrainViewCanvas = forwardRef<TerrainViewCanvasHandle, { surroundC
   const [mapOverlay, setMapOverlay] = useState(false)
   const mapOverlayRef = useRef(false)
   mapOverlayRef.current = mapOverlay
+  const refImagePeekRef = useRef(false)
   const [overlayRect, setOverlayRect] = useState<{ left: number; top: number; width: number; height: number } | null>(null)
   // Screen-space paper rect for expand mode overlay (accounts for zoom/pan)
   const [expandPaperRect, setExpandPaperRect] = useState<{ px: number; py: number; pw: number; ph: number } | null>(null)
@@ -1844,6 +1845,28 @@ terrainTextureFileRef.current = terrainTextureFile
     return () => { window.removeEventListener('keydown', onDown); window.removeEventListener('keyup', onUp) }
   }, [snapOverlay])
 
+  // N: hold to peek reference image at full opacity
+  useEffect(() => {
+    let held = false
+    const onDown = (e: KeyboardEvent) => {
+      if (e.code !== 'KeyN' || held) return
+      if (shouldSuppressShortcut(e)) return
+      e.preventDefault()
+      held = true
+      refImagePeekRef.current = true
+      if (rafRef.current === null) rafRef.current = requestAnimationFrame(() => { rafRef.current = null; draw() })
+    }
+    const onUp = (e: KeyboardEvent) => {
+      if (e.code !== 'KeyN') return
+      held = false
+      refImagePeekRef.current = false
+      if (rafRef.current === null) rafRef.current = requestAnimationFrame(() => { rafRef.current = null; draw() })
+    }
+    window.addEventListener('keydown', onDown)
+    window.addEventListener('keyup', onUp)
+    return () => { window.removeEventListener('keydown', onDown); window.removeEventListener('keyup', onUp) }
+  }, [draw])
+
   const paintHoverTargetRef = useRef<PaintHoverTarget>(null)
   const strokeTrailRef = useRef<Map<string, NonNullable<PaintHoverTarget>>>(new Map())
   const strokeTypeRef = useRef<'hex' | 'edge' | null>(null)
@@ -2935,7 +2958,7 @@ terrainTextureFileRef.current = terrainTextureFile
     hoveredBlobCkRef, hoveredChainRef, hoveredEdgeHandleRef, hoveredEdgeRef, hoveredHandleIdxRef, hoveredLabelIdRef, hoveredVertexHandleRef, iconOverlaysRef,
     iconPlaceModeRef, iconSnapRef, isPaintingRef, labelBBoxCacheRef, labelDragStateRef, labelOffsetsRef, labelOverlaysRef, labelSnapRef,
     lastBuildingCacheEpochRef, liveLabelOffsetRef, mapBgColorRef, mapBorderColorRef, mapBorderEnabledRef, mapBorderWidthRef, mapImageElementRef, mapImageOpacityRef,
-    mapImageTransformRef, mapOverlayRef, mapStyleRef, megaHexColorRef, megaHexEnabledRef, megaHexLineWidthRef, megaHexOpacityRef, megaHexOriginQRef,
+    mapImageTransformRef, mapOverlayRef, refImagePeekRef, mapStyleRef, megaHexColorRef, megaHexEnabledRef, megaHexLineWidthRef, megaHexOpacityRef, megaHexOriginQRef,
     roadColorPreviewImageRef, roadImageExtractPreviewOpenRef, roadTraceLinesPreviewRef,
     roadImageEraseHexKeysRef, eraserHoverTargetRef,
     megaHexOriginRRef, megaHexRadiusRef, metaRef, mountainsColorRef, osmRiverWaysRef, pageGridRef, paintHoverTargetRef,
