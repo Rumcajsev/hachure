@@ -2,7 +2,6 @@ import { useRef, useCallback, useState, useEffect } from 'react'
 import { set as idbSet } from 'idb-keyval'
 import { useMapStore } from './store/mapStore'
 import { TerrainViewCanvas, type TerrainViewCanvasHandle } from './components/TerrainViewCanvas'
-import { ImageAlignView } from './components/ImageAlignView'
 import { TK, TK_DARK } from './theme'
 import { ThemeContext } from './context/ThemeContext'
 import { EditorTopBar } from './components/v2/EditorTopBar'
@@ -129,8 +128,6 @@ function AppV2Inner({ screen, setScreen, isDark, setIsDark }: {
       />
     )
   }
-
-  if (step === 'image-align') return <ImageAlignView />
 
   const t = isDark ? TK_DARK : TK
   const surroundColor = isDark ? '#2a2420' : '#B7B0A6'

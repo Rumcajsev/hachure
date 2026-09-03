@@ -23,6 +23,8 @@ export type MapImageSlice = {
   restoreMapImageDataUrl: (url: string, w: number, h: number) => void
   setMapImageTransform: (t: Partial<ImageTransform>) => void
   setMapImageOpacity: (v: number) => void
+  /** Removes the reference image overlay without resetting map terrain data. */
+  removeReferenceImage: () => void
   clearMapImage: () => void
   startImageImport: () => Promise<void>
   confirmImageAlign: () => void
@@ -58,6 +60,17 @@ export const createMapImageSlice = (set: Set, get: () => MapStore): MapImageSlic
   })),
 
   setMapImageOpacity: (v) => set({ mapImageOpacity: v }),
+
+  removeReferenceImage: () => {
+    clearMapImageFromStorage()
+    set((s) => ({
+      mapImageDataUrl: null,
+      mapImageNaturalSize: null,
+      mapImageTransform: DEFAULT_TRANSFORM,
+      mapImageOpacity: 0.6,
+      activeTool: s.activeTool.type === 'align-image' ? { type: 'none' as const } : s.activeTool,
+    }))
+  },
 
   clearMapImage: () => {
     clearMapImageFromStorage()

@@ -8,8 +8,8 @@ import { generateMapTitle, nominatimZoomForWidth } from '../../lib/generateMapTi
 import type { NominatimResult } from '../../lib/generateMapTitle'
 
 type Theme = typeof TK
-type WizardStep = 'source' | 'paper-blank' | 'paper-area' | 'paper-reference' | 'generating'
-type SourceMode = 'osm' | 'blank' | 'reference'
+type WizardStep = 'source' | 'paper-blank' | 'paper-area' | 'generating'
+type SourceMode = 'osm' | 'blank'
 
 export function SetupWizard({ onCancel, onDone, isDark = false }: {
   onCancel: () => void
@@ -18,24 +18,18 @@ export function SetupWizard({ onCancel, onDone, isDark = false }: {
 }) {
   const [step, setStep] = useState<WizardStep>('source')
   const [source, setSource] = useState<SourceMode>('osm')
-  const { setBlankMap, generateMap, startImageImport } = useMapStore()
+  const { setBlankMap, generateMap } = useMapStore()
   const t = isDark ? TK_DARK : TK
 
   function handleContinue() {
     if (step === 'source') {
       if (source === 'blank') setStep('paper-blank')
-      else if (source === 'reference') setStep('paper-reference')
       else setStep('paper-area')
     }
   }
 
   function handleStartBlank() {
     onDone()
-  }
-
-  async function handleStartReference() {
-    await startImageImport()
-    if (useMapStore.getState().generateStatus !== 'error') onDone()
   }
 
   function handleGenerate() {
@@ -69,10 +63,6 @@ export function SetupWizard({ onCancel, onDone, isDark = false }: {
 
       {step === 'paper-area' && (
         <PaperAreaStep onBack={() => setStep('source')} onGenerate={handleGenerate} t={t} />
-      )}
-
-      {step === 'paper-reference' && (
-        <PaperAreaStep showMap={false} onBack={() => setStep('source')} onGenerate={handleStartReference} generateLabel="UPLOAD IMAGE →" t={t} />
       )}
 
       {step === 'generating' && (
@@ -152,7 +142,7 @@ function SourcePickerStep({ selected, onSelect, onBack, onContinue, t }: {
             fontFamily: t.mono, fontSize: 10, letterSpacing: 2,
             color: t.rust, textTransform: 'uppercase', marginBottom: 12,
           }}>
-            Step 01 of 03
+            Step 01 of 02
           </div>
           <h2 style={{
             fontFamily: t.serif, fontSize: 52, fontWeight: 400,
@@ -191,16 +181,6 @@ function SourcePickerStep({ selected, onSelect, onBack, onContinue, t }: {
             illustration={<BlankIllustration t={t} />}
             t={t}
           />
-          <SourceCard
-            num="03" category="REFERENCE"
-            title="Reference image"
-            desc="Drop a scanned or historical map. Hexes overlay on top — trace terrain by hand without auto-generation."
-            footer="UPLOAD IMAGE IN NEXT STEP"
-            selected={selected === 'reference'}
-            onClick={() => onSelect('reference')}
-            illustration={<ReferenceIllustration t={t} />}
-            t={t}
-          />
         </div>
       </div>
 
@@ -211,7 +191,7 @@ function SourcePickerStep({ selected, onSelect, onBack, onContinue, t }: {
         right={
           <div style={{ display: 'flex', alignItems: 'center', gap: 20 }}>
             <span style={{ fontFamily: t.mono, fontSize: 10, color: t.inkMute, letterSpacing: 0.5 }}>
-              STEP 1 / 3
+              STEP 1 / 2
             </span>
             <NavButton onClick={onContinue} t={t}>CONTINUE →</NavButton>
           </div>
@@ -311,7 +291,26 @@ function PaperAreaStep({ onBack, onGenerate, showMap = true, generateLabel, t }:
     setPaperSize, setOrientation, setPageGrid,
     setHexSizeMm, setHexOrientation, setMarginMm, setHexEdgeMode,
     flyTo, setBlankMap, generateMap,
+    mapImageDataUrl, mapImageOpacity, mapImageTransform,
+    setMapImageDataUrl, setMapImageOpacity, setMapImageTransform,
+    setActiveTool, removeReferenceImage,
   } = useMapStore()
+
+  const imgInputRef = useRef<HTMLInputElement>(null)
+
+  function handleLoadRefImage(file: File) {
+    const reader = new FileReader()
+    reader.onload = () => {
+      const dataUrl = reader.result as string
+      const img = new Image()
+      img.onload = () => {
+        setMapImageDataUrl(dataUrl, img.naturalWidth, img.naturalHeight)
+        setActiveTool({ type: 'align-image' })
+      }
+      img.src = dataUrl
+    }
+    reader.readAsDataURL(file)
+  }
 
   const [searchQuery, setSearchQuery] = useState('')
   const [isCustom, setIsCustom] = useState(false)
@@ -518,6 +517,75 @@ function PaperAreaStep({ onBack, onGenerate, showMap = true, generateLabel, t }:
               </ToggleGroup>
             </div>
           </PanelSection>
+
+          {/* REFERENCE IMAGE — blank map only */}
+          {!showMap && (
+            <PanelSection label="REFERENCE IMAGE" t={t}>
+              {mapImageDataUrl ? (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                    <span style={{ fontFamily: t.sans, fontSize: 11, color: t.inkMute }}>Image loaded</span>
+                    <div style={{ display: 'flex', gap: 10 }}>
+                      <button
+                        onClick={() => imgInputRef.current?.click()}
+                        style={{ background: 'none', border: 'none', cursor: 'pointer', fontFamily: t.sans, fontSize: 11, color: t.inkFaint, padding: 0 }}
+                        onMouseEnter={e => { e.currentTarget.style.color = t.ink }}
+                        onMouseLeave={e => { e.currentTarget.style.color = t.inkFaint }}
+                      >Change</button>
+                      <button
+                        onClick={() => { removeReferenceImage() }}
+                        style={{ background: 'none', border: 'none', cursor: 'pointer', fontFamily: t.sans, fontSize: 11, color: t.inkFaint, padding: 0 }}
+                        onMouseEnter={e => { e.currentTarget.style.color = t.rust }}
+                        onMouseLeave={e => { e.currentTarget.style.color = t.inkFaint }}
+                      >Remove</button>
+                    </div>
+                  </div>
+                  <SetupSliderRow
+                    label="Opacity"
+                    display={`${Math.round(mapImageOpacity * 100)}%`}
+                    value={mapImageOpacity * 100}
+                    min={10} max={100} step={5}
+                    t={t}
+                    onChange={v => setMapImageOpacity(v / 100)}
+                  />
+                  <SetupSliderRow
+                    label="Scale"
+                    display={`${Math.round(mapImageTransform.scaleFrac * 100)}%`}
+                    value={mapImageTransform.scaleFrac * 100}
+                    min={5} max={500} step={5}
+                    t={t}
+                    onChange={v => setMapImageTransform({ scaleFrac: v / 100 })}
+                  />
+                  <div style={{ fontFamily: t.sans, fontSize: 10, color: t.inkFaint, lineHeight: 1.5 }}>
+                    Drag on the canvas to position
+                  </div>
+                </div>
+              ) : (
+                <>
+                  <button
+                    onClick={() => imgInputRef.current?.click()}
+                    style={{
+                      width: '100%', padding: '14px 0', textAlign: 'center',
+                      background: 'none', border: `1px dashed ${t.line}`,
+                      color: t.inkFaint, cursor: 'pointer', fontFamily: t.sans, fontSize: 11,
+                    }}
+                    onMouseEnter={e => { e.currentTarget.style.borderColor = t.inkMute; e.currentTarget.style.color = t.ink }}
+                    onMouseLeave={e => { e.currentTarget.style.borderColor = t.line; e.currentTarget.style.color = t.inkFaint }}
+                  >
+                    + Add reference image
+                  </button>
+                  <div style={{ fontFamily: t.sans, fontSize: 10, color: t.inkFaint, marginTop: 6, lineHeight: 1.5 }}>
+                    Overlay an image to size your grid against it
+                  </div>
+                </>
+              )}
+              <input
+                ref={imgInputRef} type="file" accept="image/*"
+                style={{ display: 'none' }}
+                onChange={e => { const f = e.target.files?.[0]; if (f) handleLoadRefImage(f) }}
+              />
+            </PanelSection>
+          )}
         </div>
 
         {/* ── Right: map or blank canvas preview ── */}
@@ -785,24 +853,6 @@ function BlankIllustration({ t }: { t: Theme }) {
         EMPTY
       </span>
     </div>
-  )
-}
-
-function ReferenceIllustration({ t }: { t: Theme }) {
-  return (
-    <svg width="280" height="140" style={{ display: 'block' }} viewBox="0 0 280 140">
-      <rect width="280" height="140" fill={t.paper2} />
-      {/* Road/river curves */}
-      <path d="M 20 100 C 80 80, 140 90, 200 60 S 260 30, 270 20"
-        stroke={t.inkFaint} strokeWidth="1.5" fill="none" />
-      <path d="M 30 140 C 90 120, 160 115, 220 100 S 265 90, 270 80"
-        stroke={t.line} strokeWidth="1" fill="none" />
-      {/* Settlement dots */}
-      <circle cx="148" cy="82" r="3" fill={t.ink} />
-      <text x="154" y="79" fontFamily="Geist, sans-serif" fontSize="10" fill={t.ink} fontStyle="italic">Bruck</text>
-      <circle cx="218" cy="60" r="3" fill={t.ink} />
-      <text x="224" y="57" fontFamily="Geist, sans-serif" fontSize="10" fill={t.ink} fontStyle="italic">Aldorf</text>
-    </svg>
   )
 }
 

@@ -112,8 +112,8 @@ export function SetupLandingPage({
           lineHeight: 1.65,
           margin: '0 0 36px 0',
         }}>
-          Build printable hex maps from real geodata, blank
-          grids, or traced references. Exports a print-ready PDF.
+          Build printable hex maps from real geodata or blank
+          grids. Add reference images any time. Exports a print-ready PDF.
         </p>
 
         {/* Resume — standalone, only when there's saved work */}
@@ -263,7 +263,7 @@ export function SetupLandingPage({
         </span>
         <div style={{ marginLeft: 'auto', display: 'flex', gap: 28 }}>
           <FooterStat label="PAPER" value="A1–A6" t={t} />
-          <FooterStat label="SOURCES" value="OSM · Blank · Ref" t={t} />
+          <FooterStat label="SOURCES" value="OSM · Blank" t={t} />
           <FooterStat label="OUTPUT" value="PDF · print scale" t={t} />
         </div>
       </div>
