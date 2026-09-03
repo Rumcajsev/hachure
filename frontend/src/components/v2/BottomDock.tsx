@@ -71,9 +71,10 @@ function DockDivider() {
 export function BottomDock({ canvasRef }: { canvasRef: React.RefObject<TerrainViewCanvasHandle | null> }) {
   const t = useTheme()
   const generatedHexes = useMapStore(s => s.generatedHexes)
+  const blankMap = useMapStore(s => s.blankMap)
   const mapImageDataUrl = useMapStore(s => s.mapImageDataUrl)
 
-  const hasMap = generatedHexes.length > 0
+  const hasMap = generatedHexes.length > 0 && !blankMap
   const hasRefImage = !!mapImageDataUrl
 
   const [mapPeekOn, setMapPeekOn] = useState(false)

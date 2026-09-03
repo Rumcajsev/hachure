@@ -1048,6 +1048,7 @@ export const useMapStore = create<MapStore>()(persist((set, get) => {
     megaHexOriginQ: s.megaHexOriginQ,
     megaHexOriginR: s.megaHexOriginR,
     dataSource: s.dataSource,
+    blankMap: s.blankMap,
     mapImageTransform: s.mapImageTransform,
     mapImageOpacity: s.mapImageOpacity,
     imageSwatches: s.imageSwatches,
@@ -1065,8 +1066,7 @@ if (import.meta.env.DEV) (window as unknown as { __debugStore: unknown }).__debu
 
 // The uploaded map image lives in its own IndexedDB entry (see mapImageStorage.ts),
 // not in the main persisted store payload — restore it once the store has hydrated.
-useMapStore.persist.onFinishHydration((state) => {
-  if (state.dataSource !== 'map_image' || state.mapImageDataUrl) return
+useMapStore.persist.onFinishHydration(() => {
   loadMapImageFromStorage().then((dataUrl) => {
     if (!dataUrl) return
     const img = new Image()
