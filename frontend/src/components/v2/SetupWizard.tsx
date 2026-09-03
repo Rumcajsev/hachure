@@ -487,17 +487,6 @@ function PaperAreaStep({ onBack, onGenerate, showMap = true, generateLabel, t }:
           {/* HEX */}
           <PanelSection label="HEX" t={t}>
             <div>
-              <FieldLabel t={t}>ORIENTATION</FieldLabel>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                <ToggleGroup>
-                  <ToggleBtn active={hexOrientation === 'pointy'} onClick={() => setHexOrientation('pointy' as HexOrientation)} t={t}>Pointy</ToggleBtn>
-                  <ToggleBtn active={hexOrientation === 'flat'}   onClick={() => setHexOrientation('flat'   as HexOrientation)} t={t}>Flat</ToggleBtn>
-                </ToggleGroup>
-                <HexOrientIcon orientation={hexOrientation} t={t} />
-              </div>
-            </div>
-
-            <div style={{ marginTop: 10 }}>
               <FieldLabel t={t}>HEX SIZE</FieldLabel>
               <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, marginBottom: 8 }}>
                 <span style={{ fontFamily: t.serif, fontSize: 28, fontWeight: 400, color: t.ink, lineHeight: 1 }}>
@@ -508,6 +497,17 @@ function PaperAreaStep({ onBack, onGenerate, showMap = true, generateLabel, t }:
                 </span>
               </div>
               <SetupSliderTrack value={hexSizeMm} min={5} max={50} step={1} t={t} onChange={setHexSizeMm} />
+            </div>
+
+            <div style={{ marginTop: 10 }}>
+              <FieldLabel t={t}>ORIENTATION</FieldLabel>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                <ToggleGroup>
+                  <ToggleBtn active={hexOrientation === 'pointy'} onClick={() => setHexOrientation('pointy' as HexOrientation)} t={t}>Pointy</ToggleBtn>
+                  <ToggleBtn active={hexOrientation === 'flat'}   onClick={() => setHexOrientation('flat'   as HexOrientation)} t={t}>Flat</ToggleBtn>
+                </ToggleGroup>
+                <HexOrientIcon orientation={hexOrientation} t={t} />
+              </div>
             </div>
 
             <div style={{ marginTop: 10 }}>
