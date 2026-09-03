@@ -1845,7 +1845,7 @@ terrainTextureFileRef.current = terrainTextureFile
     return () => { window.removeEventListener('keydown', onDown); window.removeEventListener('keyup', onUp) }
   }, [snapOverlay])
 
-  // N: hold to peek reference image at full opacity
+  // N: hold to peek reference image at full opacity (drawRef avoids TDZ — draw is declared below)
   useEffect(() => {
     let held = false
     const onDown = (e: KeyboardEvent) => {
@@ -1854,18 +1854,18 @@ terrainTextureFileRef.current = terrainTextureFile
       e.preventDefault()
       held = true
       refImagePeekRef.current = true
-      if (rafRef.current === null) rafRef.current = requestAnimationFrame(() => { rafRef.current = null; draw() })
+      if (rafRef.current === null) rafRef.current = requestAnimationFrame(() => { rafRef.current = null; drawRef.current() })
     }
     const onUp = (e: KeyboardEvent) => {
       if (e.code !== 'KeyN') return
       held = false
       refImagePeekRef.current = false
-      if (rafRef.current === null) rafRef.current = requestAnimationFrame(() => { rafRef.current = null; draw() })
+      if (rafRef.current === null) rafRef.current = requestAnimationFrame(() => { rafRef.current = null; drawRef.current() })
     }
     window.addEventListener('keydown', onDown)
     window.addEventListener('keyup', onUp)
     return () => { window.removeEventListener('keydown', onDown); window.removeEventListener('keyup', onUp) }
-  }, [draw])
+  }, [])
 
   const paintHoverTargetRef = useRef<PaintHoverTarget>(null)
   const strokeTrailRef = useRef<Map<string, NonNullable<PaintHoverTarget>>>(new Map())
