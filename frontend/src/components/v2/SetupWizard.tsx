@@ -470,15 +470,15 @@ function PaperAreaStep({ onBack, onGenerate, showMap = true, generateLabel, t }:
               />
             </div>
 
-            <div style={{ marginTop: 8, display: 'flex', flexDirection: 'column', gap: 4 }}>
+            <div style={{ marginTop: 10, display: 'flex', flexDirection: 'column', gap: 5 }}>
               <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                <span style={{ fontFamily: t.mono, fontSize: 10, color: t.inkFaint, letterSpacing: 0.3 }}>Paper</span>
-                <span style={{ fontFamily: t.mono, fontSize: 10, color: t.ink }}>{paperW} × {paperH} mm</span>
+                <span style={{ fontFamily: t.mono, fontSize: 11, color: t.inkFaint }}>Paper</span>
+                <span style={{ fontFamily: t.mono, fontSize: 11, color: t.ink }}>{paperW} × {paperH} mm</span>
               </div>
               {terrainWidthKm !== null && terrainHeightKm !== null && (
                 <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                  <span style={{ fontFamily: t.mono, fontSize: 10, color: t.inkFaint, letterSpacing: 0.3 }}>Map</span>
-                  <span style={{ fontFamily: t.mono, fontSize: 10, color: t.inkMute }}>{terrainWidthKm.toFixed(0)} × {terrainHeightKm.toFixed(0)} km</span>
+                  <span style={{ fontFamily: t.mono, fontSize: 11, color: t.inkFaint }}>Map</span>
+                  <span style={{ fontFamily: t.mono, fontSize: 11, color: t.inkMute }}>{terrainWidthKm.toFixed(0)} × {terrainHeightKm.toFixed(0)} km</span>
                 </div>
               )}
             </div>
@@ -498,13 +498,16 @@ function PaperAreaStep({ onBack, onGenerate, showMap = true, generateLabel, t }:
             </div>
 
             <div style={{ marginTop: 10 }}>
-              <SetupSliderRow
-                label="Hex size"
-                display={hexDisplay}
-                value={hexSizeMm} min={5} max={50} step={1}
-                t={t}
-                onChange={setHexSizeMm}
-              />
+              <FieldLabel t={t}>HEX SIZE</FieldLabel>
+              <div style={{ display: 'flex', alignItems: 'baseline', gap: 12, marginBottom: 8 }}>
+                <span style={{ fontFamily: t.sans, fontSize: 22, fontWeight: 500, color: t.ink, lineHeight: 1 }}>
+                  {hexSizeMm} <span style={{ fontSize: 13, fontWeight: 400, color: t.inkMute }}>mm</span>
+                </span>
+                {hexKm !== null && (
+                  <span style={{ fontFamily: t.mono, fontSize: 13, color: t.inkMute }}>≈ {hexKm.toFixed(1)} km</span>
+                )}
+              </div>
+              <SetupSliderTrack value={hexSizeMm} min={5} max={50} step={1} t={t} onChange={setHexSizeMm} />
             </div>
 
             <div style={{ marginTop: 10 }}>
@@ -538,6 +541,36 @@ function PaperAreaStep({ onBack, onGenerate, showMap = true, generateLabel, t }:
         <NavButton onClick={onGenerate} disabled={isDisabled} t={t}>
           {generateLabel ?? (showMap ? 'GENERATE →' : 'START EDITING →')}
         </NavButton>
+      </div>
+    </div>
+  )
+}
+
+function SetupSliderTrack({ value, min, max, step, t, onChange }: {
+  value: number; min: number; max: number; step: number; t: Theme; onChange: (v: number) => void
+}) {
+  const trackRef = useRef<HTMLDivElement>(null)
+  const pct = (value - min) / (max - min)
+  function compute(clientX: number) {
+    const el = trackRef.current
+    if (!el) return
+    const rect = el.getBoundingClientRect()
+    const frac = Math.max(0, Math.min(1, (clientX - rect.left) / rect.width))
+    onChange(Math.max(min, Math.min(max, Math.round((min + frac * (max - min)) / step) * step)))
+  }
+  return (
+    <div
+      onPointerDown={e => { e.currentTarget.setPointerCapture(e.pointerId); compute(e.clientX) }}
+      onPointerMove={e => { if (e.buttons === 0) return; compute(e.clientX) }}
+      style={{ padding: '6px 0', cursor: 'ew-resize', userSelect: 'none', touchAction: 'none' }}
+    >
+      <div ref={trackRef} style={{ position: 'relative', height: 2, background: t.line }}>
+        <div style={{ position: 'absolute', top: 0, left: 0, height: '100%', width: `${pct * 100}%`, background: t.rust }} />
+        <div style={{
+          position: 'absolute', top: '50%', left: `${pct * 100}%`,
+          transform: 'translate(-50%, -50%)',
+          width: 12, height: 12, background: t.surface, border: `1.5px solid ${t.rust}`,
+        }} />
       </div>
     </div>
   )
@@ -592,10 +625,9 @@ function PanelSection({ label, children, t }: { label?: string; children: React.
     <div style={{ padding: '16px 20px', borderBottom: `1px solid ${t.line2}` }}>
       {label && (
         <div style={{
-          fontFamily: t.mono, fontSize: 11, color: t.inkMute,
-          letterSpacing: 1, textTransform: 'uppercase',
-          paddingBottom: 10, marginBottom: 12,
-          borderBottom: `1px solid ${t.line2}`,
+          fontFamily: t.sans, fontSize: 13, color: t.ink,
+          fontWeight: 600, letterSpacing: 0.3,
+          marginBottom: 14,
         }}>
           {label}
         </div>
