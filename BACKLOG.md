@@ -45,8 +45,8 @@ Not a separate starting point — the user should be able to add a reference ima
 **Multi-sheet preview and setup**
 When the map spans multiple sheets, the setup experience is undiscoverable and the preview doesn't clearly communicate it. Two things to fix: (a) make multi-sheet configuration more intuitive to find and understand during setup, and (b) have the preview explicitly show sheet borders and how the hex grid splits across them. The PDF export already handles multi-sheet correctly — the problem is purely in how it's surfaced and previewed during setup.
 
-**Better info on grid selection**
-In the hex/paper setup step the dimension values (paper size, hex size, hex count, scale) are cluttered and scattered around the UI. Needs a clean, consolidated layout so all the relevant numbers are readable at a glance.
+~~**Better info on grid selection**~~
+~~In the hex/paper setup step the dimension values (paper size, hex size, hex count, scale) are cluttered and scattered around the UI. Needs a clean, consolidated layout so all the relevant numbers are readable at a glance.~~ ✓ Done
 
 ---
 
