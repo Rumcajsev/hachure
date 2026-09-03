@@ -308,13 +308,15 @@ function PaperAreaStep({ onBack, onGenerate, showMap = true, generateLabel, t }:
     paperSize, orientation, pageGrid,
     hexSizeMm, hexOrientation, marginMm, hexEdgeMode,
     zoom, framePixelWidth, center,
-    setPaperSize, setOrientation,
+    setPaperSize, setOrientation, setPageGrid,
     setHexSizeMm, setHexOrientation, setMarginMm, setHexEdgeMode,
     flyTo, setBlankMap, generateMap,
   } = useMapStore()
 
-  const [advancedOpen, setAdvancedOpen] = useState(false)
   const [searchQuery, setSearchQuery] = useState('')
+  const [isCustom, setIsCustom] = useState(false)
+  const [customW, setCustomW] = useState(420)
+  const [customH, setCustomH] = useState(297)
 
   useEffect(() => {
     if (showMap) return
@@ -340,14 +342,31 @@ function PaperAreaStep({ onBack, onGenerate, showMap = true, generateLabel, t }:
     if (data[0]) flyTo([parseFloat(data[0].lon), parseFloat(data[0].lat)], 12)
   }
 
-  const [cwMm, chMm] = pageGridTotalMm(pageGrid)
-  const [paperW, paperH] = paperDimsMm(paperSize, orientation)
+  function handleSetSize(s: PaperSize) {
+    setIsCustom(false)
+    setPaperSize(s)
+  }
+
+  function handleCustom() {
+    const [w, h] = pageGridTotalMm(pageGrid)
+    setCustomW(w)
+    setCustomH(h)
+    setIsCustom(true)
+  }
+
+  function handleCustomDim(w: number, h: number) {
+    setCustomW(w)
+    setCustomH(h)
+    if (w > 0 && h > 0) setPageGrid({ colWidths: [w], rowHeights: [h] })
+  }
+
+  const [paperW, paperH] = pageGridTotalMm(pageGrid)
   const terrainWidthKm = framePixelWidth > 0
     ? (framePixelWidth * mapResolutionMpx(center[1], zoom)) / 1000
     : null
-  const terrainHeightKm = terrainWidthKm !== null ? terrainWidthKm * (chMm / cwMm) : null
+  const terrainHeightKm = terrainWidthKm !== null ? terrainWidthKm * (paperH / paperW) : null
   const hexKm = terrainWidthKm !== null
-    ? (hexSizeMm / cwMm) * (terrainWidthKm * 1000) / 1000
+    ? (hexSizeMm / paperW) * (terrainWidthKm * 1000) / 1000
     : null
 
   const hexDisplay = hexKm !== null
@@ -397,18 +416,49 @@ function PaperAreaStep({ onBack, onGenerate, showMap = true, generateLabel, t }:
               <FieldLabel t={t}>SIZE</FieldLabel>
               <ToggleGroup>
                 {(['A4','A3','A2','A1'] as PaperSize[]).map(s => (
-                  <ToggleBtn key={s} active={paperSize === s} onClick={() => setPaperSize(s)} t={t}>{s}</ToggleBtn>
+                  <ToggleBtn key={s} active={!isCustom && paperSize === s} onClick={() => handleSetSize(s)} t={t}>{s}</ToggleBtn>
                 ))}
+                <ToggleBtn active={isCustom} onClick={handleCustom} t={t}>Custom</ToggleBtn>
               </ToggleGroup>
             </div>
 
-            <div style={{ marginTop: 10 }}>
-              <FieldLabel t={t}>ORIENTATION</FieldLabel>
-              <ToggleGroup>
-                <ToggleBtn active={orientation === 'landscape'} onClick={() => setOrientation('landscape' as Orientation)} t={t}>Landscape</ToggleBtn>
-                <ToggleBtn active={orientation === 'portrait'}  onClick={() => setOrientation('portrait'  as Orientation)} t={t}>Portrait</ToggleBtn>
-              </ToggleGroup>
-            </div>
+            {isCustom ? (
+              <div style={{ marginTop: 10 }}>
+                <FieldLabel t={t}>DIMENSIONS</FieldLabel>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <input
+                    type="number" min={50} max={2000} value={customW}
+                    onChange={e => handleCustomDim(Number(e.target.value), customH)}
+                    style={{
+                      width: 64, padding: '6px 8px',
+                      fontFamily: t.mono, fontSize: 12, color: t.ink,
+                      background: t.paper, border: `1px solid ${t.line}`,
+                      outline: 'none', textAlign: 'center',
+                    }}
+                  />
+                  <span style={{ fontFamily: t.mono, fontSize: 11, color: t.inkFaint }}>×</span>
+                  <input
+                    type="number" min={50} max={2000} value={customH}
+                    onChange={e => handleCustomDim(customW, Number(e.target.value))}
+                    style={{
+                      width: 64, padding: '6px 8px',
+                      fontFamily: t.mono, fontSize: 12, color: t.ink,
+                      background: t.paper, border: `1px solid ${t.line}`,
+                      outline: 'none', textAlign: 'center',
+                    }}
+                  />
+                  <span style={{ fontFamily: t.mono, fontSize: 11, color: t.inkFaint }}>mm</span>
+                </div>
+              </div>
+            ) : (
+              <div style={{ marginTop: 10 }}>
+                <FieldLabel t={t}>ORIENTATION</FieldLabel>
+                <ToggleGroup>
+                  <ToggleBtn active={orientation === 'landscape'} onClick={() => setOrientation('landscape' as Orientation)} t={t}>Landscape</ToggleBtn>
+                  <ToggleBtn active={orientation === 'portrait'}  onClick={() => setOrientation('portrait'  as Orientation)} t={t}>Portrait</ToggleBtn>
+                </ToggleGroup>
+              </div>
+            )}
 
             <div style={{ marginTop: 10 }}>
               <SetupSliderRow
@@ -420,17 +470,16 @@ function PaperAreaStep({ onBack, onGenerate, showMap = true, generateLabel, t }:
               />
             </div>
 
-            <div style={{
-              marginTop: 6,
-              fontFamily: t.mono, fontSize: 10,
-              display: 'flex', alignItems: 'center', gap: 8,
-            }}>
-              <span style={{ color: t.ink2 }}>{paperW} × {paperH} mm</span>
+            <div style={{ marginTop: 8, display: 'flex', flexDirection: 'column', gap: 4 }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                <span style={{ fontFamily: t.mono, fontSize: 10, color: t.inkFaint, letterSpacing: 0.3 }}>Paper</span>
+                <span style={{ fontFamily: t.mono, fontSize: 10, color: t.ink }}>{paperW} × {paperH} mm</span>
+              </div>
               {terrainWidthKm !== null && terrainHeightKm !== null && (
-                <>
-                  <span style={{ color: t.line }}>·</span>
-                  <span style={{ color: t.inkMute }}>{terrainWidthKm.toFixed(0)} × {terrainHeightKm.toFixed(0)} km</span>
-                </>
+                <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                  <span style={{ fontFamily: t.mono, fontSize: 10, color: t.inkFaint, letterSpacing: 0.3 }}>Map</span>
+                  <span style={{ fontFamily: t.mono, fontSize: 10, color: t.inkMute }}>{terrainWidthKm.toFixed(0)} × {terrainHeightKm.toFixed(0)} km</span>
+                </div>
               )}
             </div>
           </PanelSection>
@@ -457,33 +506,14 @@ function PaperAreaStep({ onBack, onGenerate, showMap = true, generateLabel, t }:
                 onChange={setHexSizeMm}
               />
             </div>
-          </PanelSection>
 
-          {/* ADVANCED — edge hexes only */}
-          <PanelSection t={t}>
-            <button
-              onClick={() => setAdvancedOpen(v => !v)}
-              style={{
-                background: 'none', border: 'none', cursor: 'pointer', padding: 0,
-                display: 'flex', alignItems: 'center', gap: 8,
-                fontFamily: t.mono, fontSize: 10, color: t.inkMute,
-                letterSpacing: 1, textTransform: 'uppercase',
-              }}
-            >
-              <span style={{ transform: advancedOpen ? 'rotate(90deg)' : 'none', display: 'inline-block', transition: 'transform 0.15s', fontSize: 8 }}>▶</span>
-              ADVANCED
-              <span style={{ color: t.inkFaint }}>{advancedOpen ? '' : '· SHOW'}</span>
-            </button>
-
-            {advancedOpen && (
-              <div style={{ marginTop: 14 }}>
-                <FieldLabel t={t}>EDGE HEXES</FieldLabel>
-                <ToggleGroup>
-                  <ToggleBtn active={hexEdgeMode === 'whole'} onClick={() => setHexEdgeMode('whole')} t={t}>Full only</ToggleBtn>
-                  <ToggleBtn active={hexEdgeMode === 'half'}  onClick={() => setHexEdgeMode('half')} t={t}>Partial</ToggleBtn>
-                </ToggleGroup>
-              </div>
-            )}
+            <div style={{ marginTop: 10 }}>
+              <FieldLabel t={t}>EDGE HEXES</FieldLabel>
+              <ToggleGroup>
+                <ToggleBtn active={hexEdgeMode === 'whole'} onClick={() => setHexEdgeMode('whole')} t={t}>Full only</ToggleBtn>
+                <ToggleBtn active={hexEdgeMode === 'half'}  onClick={() => setHexEdgeMode('half')} t={t}>Partial</ToggleBtn>
+              </ToggleGroup>
+            </div>
           </PanelSection>
         </div>
 
@@ -559,9 +589,14 @@ function SetupSliderRow({ label, display, value, min, max, step, t, onChange }: 
 
 function PanelSection({ label, children, t }: { label?: string; children: React.ReactNode; t: Theme }) {
   return (
-    <div style={{ padding: '18px 20px', borderBottom: `1px solid ${t.line2}` }}>
+    <div style={{ padding: '16px 20px', borderBottom: `1px solid ${t.line2}` }}>
       {label && (
-        <div style={{ fontFamily: t.mono, fontSize: 9, color: t.inkFaint, letterSpacing: 1.5, textTransform: 'uppercase', marginBottom: 12 }}>
+        <div style={{
+          fontFamily: t.mono, fontSize: 11, color: t.inkMute,
+          letterSpacing: 1, textTransform: 'uppercase',
+          paddingBottom: 10, marginBottom: 12,
+          borderBottom: `1px solid ${t.line2}`,
+        }}>
           {label}
         </div>
       )}
