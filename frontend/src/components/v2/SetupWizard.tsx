@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react'
 import { TK, TK_DARK } from '../../theme'
-import { useMapStore, mapResolutionMpx, pageGridTotalMm } from '../../store/mapStore'
+import { useMapStore, mapResolutionMpx, pageGridTotalMm, paperDimsMm } from '../../store/mapStore'
 import type { PaperSize, Orientation, HexOrientation } from '../../store/mapStore'
 import { MapView } from '../MapView'
 import { TerrainViewCanvas } from '../TerrainViewCanvas'
@@ -316,7 +316,6 @@ function PaperAreaStep({ onBack, onGenerate, showMap = true, generateLabel, t }:
   const [advancedOpen, setAdvancedOpen] = useState(false)
   const [searchQuery, setSearchQuery] = useState('')
 
-  // For blank mode: generate immediately on mount, then debounce on settings changes
   useEffect(() => {
     if (showMap) return
     setBlankMap(true)
@@ -341,9 +340,8 @@ function PaperAreaStep({ onBack, onGenerate, showMap = true, generateLabel, t }:
     if (data[0]) flyTo([parseFloat(data[0].lon), parseFloat(data[0].lat)], 12)
   }
 
-  const zoomDisplay = `Z${Math.round(zoom)}`
-
   const [cwMm, chMm] = pageGridTotalMm(pageGrid)
+  const [paperW, paperH] = paperDimsMm(paperSize, orientation)
   const terrainWidthKm = framePixelWidth > 0
     ? (framePixelWidth * mapResolutionMpx(center[1], zoom)) / 1000
     : null
@@ -351,6 +349,10 @@ function PaperAreaStep({ onBack, onGenerate, showMap = true, generateLabel, t }:
   const hexKm = terrainWidthKm !== null
     ? (hexSizeMm / cwMm) * (terrainWidthKm * 1000) / 1000
     : null
+
+  const hexDisplay = hexKm !== null
+    ? `${hexSizeMm} mm · ${hexKm.toFixed(1)} km`
+    : `${hexSizeMm} mm`
 
   return (
     <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
@@ -365,58 +367,99 @@ function PaperAreaStep({ onBack, onGenerate, showMap = true, generateLabel, t }:
           background: t.surface,
         }}>
 
+          {/* AREA — OSM only, at top */}
+          {showMap && (
+            <PanelSection label="AREA" t={t}>
+              <div style={{
+                display: 'flex', alignItems: 'center',
+                border: `1px solid ${t.line}`,
+                background: t.paper,
+              }}>
+                <span style={{ padding: '0 10px', color: t.inkFaint, fontSize: 13 }}>⌕</span>
+                <input
+                  value={searchQuery}
+                  onChange={e => setSearchQuery(e.target.value)}
+                  onKeyDown={e => e.key === 'Enter' && handleSearch()}
+                  placeholder="Search location…"
+                  style={{
+                    flex: 1, border: 'none', background: 'transparent',
+                    fontFamily: t.sans, fontSize: 12, color: t.ink,
+                    padding: '8px 0', outline: 'none',
+                  }}
+                />
+              </div>
+            </PanelSection>
+          )}
+
           {/* PAPER */}
           <PanelSection label="PAPER" t={t}>
-            <FieldLabel t={t}>SIZE</FieldLabel>
-            <ToggleGroup>
-              {(['A4','A3','A2','A1'] as PaperSize[]).map(s => (
-                <ToggleBtn key={s} active={paperSize === s} onClick={() => setPaperSize(s)} t={t}>{s}</ToggleBtn>
-              ))}
-            </ToggleGroup>
-
-            <FieldLabel style={{ marginTop: 14 }} t={t}>ORIENTATION</FieldLabel>
-            <ToggleGroup>
-              <ToggleBtn active={orientation === 'landscape'} onClick={() => setOrientation('landscape' as Orientation)} t={t}>Landscape</ToggleBtn>
-              <ToggleBtn active={orientation === 'portrait'}  onClick={() => setOrientation('portrait'  as Orientation)} t={t}>Portrait</ToggleBtn>
-            </ToggleGroup>
-          </PanelSection>
-
-          {/* HEX SIZE + STYLE */}
-          <PanelSection t={t}>
-            <div style={{ display: 'flex', alignItems: 'flex-end', gap: 16, marginBottom: 8 }}>
-              <div>
-                <FieldLabel t={t}>HEX SIZE</FieldLabel>
-                <div style={{ display: 'flex', alignItems: 'baseline', gap: 4 }}>
-                  <span style={{ fontFamily: t.serif, fontSize: 40, lineHeight: 1, color: t.ink }}>{hexSizeMm}</span>
-                  <span style={{ fontFamily: t.mono, fontSize: 11, color: t.inkMute }}>mm</span>
-                </div>
-                {hexKm !== null && (
-                  <div style={{ fontFamily: t.mono, fontSize: 10, color: t.inkFaint, marginTop: 2 }}>
-                    ≈ {hexKm.toFixed(1)} km
-                  </div>
-                )}
-              </div>
-              <div style={{ flex: 1, marginBottom: 6 }}>
-                <span style={{ fontFamily: t.mono, fontSize: 9, color: t.inkFaint }}>5–50 mm</span>
-              </div>
-            </div>
-            <input
-              type="range" min={5} max={50} step={1} value={hexSizeMm}
-              onChange={e => setHexSizeMm(Number(e.target.value))}
-              style={{ width: '100%', accentColor: t.rust, marginBottom: 14 }}
-            />
-
-            <FieldLabel t={t}>STYLE</FieldLabel>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+            <div>
+              <FieldLabel t={t}>SIZE</FieldLabel>
               <ToggleGroup>
-                <ToggleBtn active={hexOrientation === 'pointy'} onClick={() => setHexOrientation('pointy' as HexOrientation)} t={t}>Pointy</ToggleBtn>
-                <ToggleBtn active={hexOrientation === 'flat'}   onClick={() => setHexOrientation('flat'   as HexOrientation)} t={t}>Flat</ToggleBtn>
+                {(['A4','A3','A2','A1'] as PaperSize[]).map(s => (
+                  <ToggleBtn key={s} active={paperSize === s} onClick={() => setPaperSize(s)} t={t}>{s}</ToggleBtn>
+                ))}
               </ToggleGroup>
-              <HexOrientIcon orientation={hexOrientation} t={t} />
+            </div>
+
+            <div style={{ marginTop: 10 }}>
+              <FieldLabel t={t}>ORIENTATION</FieldLabel>
+              <ToggleGroup>
+                <ToggleBtn active={orientation === 'landscape'} onClick={() => setOrientation('landscape' as Orientation)} t={t}>Landscape</ToggleBtn>
+                <ToggleBtn active={orientation === 'portrait'}  onClick={() => setOrientation('portrait'  as Orientation)} t={t}>Portrait</ToggleBtn>
+              </ToggleGroup>
+            </div>
+
+            <div style={{ marginTop: 10 }}>
+              <SetupSliderRow
+                label="Print margin"
+                display={`${marginMm} mm`}
+                value={marginMm} min={0} max={25} step={1}
+                t={t}
+                onChange={setMarginMm}
+              />
+            </div>
+
+            <div style={{
+              marginTop: 6,
+              fontFamily: t.mono, fontSize: 10,
+              display: 'flex', alignItems: 'center', gap: 8,
+            }}>
+              <span style={{ color: t.ink2 }}>{paperW} × {paperH} mm</span>
+              {terrainWidthKm !== null && terrainHeightKm !== null && (
+                <>
+                  <span style={{ color: t.line }}>·</span>
+                  <span style={{ color: t.inkMute }}>{terrainWidthKm.toFixed(0)} × {terrainHeightKm.toFixed(0)} km</span>
+                </>
+              )}
             </div>
           </PanelSection>
 
-          {/* ADVANCED */}
+          {/* HEX */}
+          <PanelSection label="HEX" t={t}>
+            <div>
+              <FieldLabel t={t}>ORIENTATION</FieldLabel>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                <ToggleGroup>
+                  <ToggleBtn active={hexOrientation === 'pointy'} onClick={() => setHexOrientation('pointy' as HexOrientation)} t={t}>Pointy</ToggleBtn>
+                  <ToggleBtn active={hexOrientation === 'flat'}   onClick={() => setHexOrientation('flat'   as HexOrientation)} t={t}>Flat</ToggleBtn>
+                </ToggleGroup>
+                <HexOrientIcon orientation={hexOrientation} t={t} />
+              </div>
+            </div>
+
+            <div style={{ marginTop: 10 }}>
+              <SetupSliderRow
+                label="Hex size"
+                display={hexDisplay}
+                value={hexSizeMm} min={5} max={50} step={1}
+                t={t}
+                onChange={setHexSizeMm}
+              />
+            </div>
+          </PanelSection>
+
+          {/* ADVANCED — edge hexes only */}
           <PanelSection t={t}>
             <button
               onClick={() => setAdvancedOpen(v => !v)}
@@ -433,57 +476,15 @@ function PaperAreaStep({ onBack, onGenerate, showMap = true, generateLabel, t }:
             </button>
 
             {advancedOpen && (
-              <div style={{ marginTop: 14, display: 'flex', flexDirection: 'column', gap: 12 }}>
-                <div>
-                  <FieldLabel t={t}>PRINT MARGIN — {marginMm}mm</FieldLabel>
-                  <input type="range" min={0} max={25} step={1} value={marginMm}
-                    onChange={e => setMarginMm(Number(e.target.value))}
-                    style={{ width: '100%', accentColor: t.rust }} />
-                </div>
-                <div>
-                  <FieldLabel t={t}>EDGE HEXES</FieldLabel>
-                  <ToggleGroup>
-                    <ToggleBtn active={hexEdgeMode === 'whole'} onClick={() => setHexEdgeMode('whole')} t={t}>Full only</ToggleBtn>
-                    <ToggleBtn active={hexEdgeMode === 'half'}  onClick={() => setHexEdgeMode('half')} t={t}>Partial</ToggleBtn>
-                  </ToggleGroup>
-                </div>
+              <div style={{ marginTop: 14 }}>
+                <FieldLabel t={t}>EDGE HEXES</FieldLabel>
+                <ToggleGroup>
+                  <ToggleBtn active={hexEdgeMode === 'whole'} onClick={() => setHexEdgeMode('whole')} t={t}>Full only</ToggleBtn>
+                  <ToggleBtn active={hexEdgeMode === 'half'}  onClick={() => setHexEdgeMode('half')} t={t}>Partial</ToggleBtn>
+                </ToggleGroup>
               </div>
             )}
           </PanelSection>
-
-          {/* AREA — OSM only */}
-          {showMap && (
-            <PanelSection label="AREA" t={t}>
-              <div style={{
-                display: 'flex', alignItems: 'center',
-                border: `1px solid ${t.line}`,
-                background: t.paper,
-                marginBottom: 10,
-              }}>
-                <span style={{ padding: '0 10px', color: t.inkFaint, fontSize: 13 }}>⌕</span>
-                <input
-                  value={searchQuery}
-                  onChange={e => setSearchQuery(e.target.value)}
-                  onKeyDown={e => e.key === 'Enter' && handleSearch()}
-                  placeholder="Search location…"
-                  style={{
-                    flex: 1, border: 'none', background: 'transparent',
-                    fontFamily: t.sans, fontSize: 12, color: t.ink,
-                    padding: '8px 0', outline: 'none',
-                  }}
-                />
-                <span style={{
-                  padding: '0 10px',
-                  fontFamily: t.mono, fontSize: 9, color: t.inkFaint,
-                  letterSpacing: 0.5,
-                }}>
-                  {terrainWidthKm !== null && terrainHeightKm !== null
-                    ? `${terrainWidthKm.toFixed(0)} × ${terrainHeightKm.toFixed(0)} km`
-                    : zoomDisplay}
-                </span>
-              </div>
-            </PanelSection>
-          )}
         </div>
 
         {/* ── Right: map or blank canvas preview ── */}
@@ -507,6 +508,48 @@ function PaperAreaStep({ onBack, onGenerate, showMap = true, generateLabel, t }:
         <NavButton onClick={onGenerate} disabled={isDisabled} t={t}>
           {generateLabel ?? (showMap ? 'GENERATE →' : 'START EDITING →')}
         </NavButton>
+      </div>
+    </div>
+  )
+}
+
+function SetupSliderRow({ label, display, value, min, max, step, t, onChange }: {
+  label: string; display: string; value: number; min: number; max: number; step: number;
+  t: Theme; onChange: (v: number) => void
+}) {
+  const trackRef = useRef<HTMLDivElement>(null)
+  const pct = (value - min) / (max - min)
+
+  function compute(clientX: number) {
+    const el = trackRef.current
+    if (!el) return
+    const rect = el.getBoundingClientRect()
+    const frac = Math.max(0, Math.min(1, (clientX - rect.left) / rect.width))
+    const raw = min + frac * (max - min)
+    onChange(Math.max(min, Math.min(max, Math.round(raw / step) * step)))
+  }
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}>
+        <span style={{ fontFamily: t.sans, fontSize: 11, color: t.ink2 }}>{label}</span>
+        <span style={{ fontFamily: t.mono, fontSize: 10.5, color: t.inkMute }}>{display}</span>
+      </div>
+      <div
+        onPointerDown={e => { e.currentTarget.setPointerCapture(e.pointerId); compute(e.clientX) }}
+        onPointerMove={e => { if (e.buttons === 0) return; compute(e.clientX) }}
+        style={{ padding: '6px 0', cursor: 'ew-resize', userSelect: 'none', touchAction: 'none' }}
+      >
+        <div ref={trackRef} style={{ position: 'relative', height: 2, background: t.line }}>
+          <div style={{ position: 'absolute', top: 0, left: 0, height: '100%', width: `${pct * 100}%`, background: t.rust }} />
+          <div style={{
+            position: 'absolute', top: '50%', left: `${pct * 100}%`,
+            transform: 'translate(-50%, -50%)',
+            width: 12, height: 12,
+            background: t.surface,
+            border: `1.5px solid ${t.rust}`,
+          }} />
+        </div>
       </div>
     </div>
   )
