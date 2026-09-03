@@ -139,6 +139,8 @@ export type TerrainViewCanvasHandle = {
   getPaperRect: () => { pw: number; ph: number; px: number; py: number } | null
   peekStart: () => void
   peekEnd: () => void
+  refImagePeekStart: () => void
+  refImagePeekEnd: () => void
   zoomToPhysical: () => void
   captureThumb: () => string | null
 }
@@ -2854,6 +2856,8 @@ terrainTextureFileRef.current = terrainTextureFile
     },
     peekStart: () => { snapOverlay(); setMapOverlay(true) },
     peekEnd: () => setMapOverlay(false),
+    refImagePeekStart: () => { refImagePeekRef.current = true; drawRef.current() },
+    refImagePeekEnd: () => { refImagePeekRef.current = false; drawRef.current() },
     zoomToPhysical,
     captureThumb: () => {
       const meta = metaRef.current

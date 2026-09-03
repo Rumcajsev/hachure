@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react'
 import { useTheme } from '../../context/ThemeContext'
+import { useMapStore } from '../../store/mapStore'
 import type { TerrainViewCanvasHandle } from '../TerrainViewCanvas'
 import { shouldSuppressShortcut } from '../../lib/keyboard'
 
@@ -40,6 +41,26 @@ function DockBtn({
   )
 }
 
+function KbdChip({ label, active }: { label: string; active: boolean }) {
+  const t = useTheme()
+  return (
+    <span style={{
+      fontFamily: t.mono,
+      fontSize: 9.5,
+      color: active ? t.ink2 : t.inkFaint,
+      padding: '1px 5px',
+      borderTop: `1px solid ${active ? 'rgba(0,0,0,0.15)' : t.line}`,
+      borderLeft: `1px solid ${active ? 'rgba(0,0,0,0.15)' : t.line}`,
+      borderRight: `1px solid ${active ? 'rgba(0,0,0,0.15)' : t.line}`,
+      borderBottom: `2px solid ${active ? 'rgba(0,0,0,0.25)' : 'rgba(0,0,0,0.18)'}`,
+      background: t.paper,
+      letterSpacing: 0,
+    }}>
+      {label}
+    </span>
+  )
+}
+
 function DockDivider() {
   const t = useTheme()
   return <div style={{ width: 1, height: 20, background: t.line, flexShrink: 0, margin: '0 2px' }} />
@@ -49,24 +70,52 @@ function DockDivider() {
 
 export function BottomDock({ canvasRef }: { canvasRef: React.RefObject<TerrainViewCanvasHandle | null> }) {
   const t = useTheme()
-  const [overlayOn, setOverlayOn] = useState(false)
+  const generatedHexes = useMapStore(s => s.generatedHexes)
+  const mapImageDataUrl = useMapStore(s => s.mapImageDataUrl)
 
-  const peekStart = () => { canvasRef.current?.peekStart(); setOverlayOn(true) }
-  const peekEnd = () => { canvasRef.current?.peekEnd(); setOverlayOn(false) }
+  const hasMap = generatedHexes.length > 0
+  const hasRefImage = !!mapImageDataUrl
 
-  // Keep active state in sync with M key (canvas handles the actual peek)
+  const [mapPeekOn, setMapPeekOn] = useState(false)
+  const [refPeekOn, setRefPeekOn] = useState(false)
+
+  const mapPeekStart = () => { canvasRef.current?.peekStart(); setMapPeekOn(true) }
+  const mapPeekEnd = () => { canvasRef.current?.peekEnd(); setMapPeekOn(false) }
+  const refPeekStart = () => { canvasRef.current?.refImagePeekStart(); setRefPeekOn(true) }
+  const refPeekEnd = () => { canvasRef.current?.refImagePeekEnd(); setRefPeekOn(false) }
+
+  // Sync M key visual state
   useEffect(() => {
     let held = false
     const onDown = (e: KeyboardEvent) => {
       if (e.code !== 'KeyM' || held) return
       if (shouldSuppressShortcut(e)) return
       held = true
-      setOverlayOn(true)
+      setMapPeekOn(true)
     }
     const onUp = (e: KeyboardEvent) => {
       if (e.code !== 'KeyM') return
       held = false
-      setOverlayOn(false)
+      setMapPeekOn(false)
+    }
+    window.addEventListener('keydown', onDown)
+    window.addEventListener('keyup', onUp)
+    return () => { window.removeEventListener('keydown', onDown); window.removeEventListener('keyup', onUp) }
+  }, [])
+
+  // Sync N key visual state
+  useEffect(() => {
+    let held = false
+    const onDown = (e: KeyboardEvent) => {
+      if (e.code !== 'KeyN' || held) return
+      if (shouldSuppressShortcut(e)) return
+      held = true
+      setRefPeekOn(true)
+    }
+    const onUp = (e: KeyboardEvent) => {
+      if (e.code !== 'KeyN') return
+      held = false
+      setRefPeekOn(false)
     }
     window.addEventListener('keydown', onDown)
     window.addEventListener('keyup', onUp)
@@ -76,6 +125,8 @@ export function BottomDock({ canvasRef }: { canvasRef: React.RefObject<TerrainVi
   const handleZoomPhysical = () => {
     canvasRef.current?.zoomToPhysical()
   }
+
+  const showDivider = hasMap || hasRefImage
 
   return (
     <div style={{
@@ -90,28 +141,27 @@ export function BottomDock({ canvasRef }: { canvasRef: React.RefObject<TerrainVi
       boxShadow: t.shadowFlyout,
       pointerEvents: 'auto',
     }}>
-      <DockBtn onMouseDown={peekStart} onMouseUp={peekEnd} onMouseLeave={peekEnd} active={overlayOn} label="Map peek">
-        <svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round">
-          <path d="M1 7s2.5-4.5 6-4.5S13 7 13 7s-2.5 4.5-6 4.5S1 7 1 7z" />
-          <circle cx="7" cy="7" r="1.8" />
-        </svg>
-        <span style={{
-          fontFamily: t.mono,
-          fontSize: 9.5,
-          color: overlayOn ? t.ink2 : t.inkFaint,
-          padding: '1px 5px',
-          borderTop: `1px solid ${overlayOn ? 'rgba(0,0,0,0.15)' : t.line}`,
-          borderLeft: `1px solid ${overlayOn ? 'rgba(0,0,0,0.15)' : t.line}`,
-          borderRight: `1px solid ${overlayOn ? 'rgba(0,0,0,0.15)' : t.line}`,
-          borderBottom: `2px solid ${overlayOn ? 'rgba(0,0,0,0.25)' : 'rgba(0,0,0,0.18)'}`,
-          background: t.paper,
-          letterSpacing: 0,
-        }}>
-          M
-        </span>
-      </DockBtn>
+      {hasMap && (
+        <DockBtn onMouseDown={mapPeekStart} onMouseUp={mapPeekEnd} onMouseLeave={mapPeekEnd} active={mapPeekOn} label="Map peek">
+          <svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M1 7s2.5-4.5 6-4.5S13 7 13 7s-2.5 4.5-6 4.5S1 7 1 7z" />
+            <circle cx="7" cy="7" r="1.8" />
+          </svg>
+          <KbdChip label="M" active={mapPeekOn} />
+        </DockBtn>
+      )}
 
-      <DockDivider />
+      {hasRefImage && (
+        <DockBtn onMouseDown={refPeekStart} onMouseUp={refPeekEnd} onMouseLeave={refPeekEnd} active={refPeekOn} label="Ref image">
+          <svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round">
+            <rect x="1" y="2" width="12" height="10" rx="1" />
+            <path d="M1 9.5l3-3 2.5 2.5 2-2.5 3.5 3.5" />
+          </svg>
+          <KbdChip label="N" active={refPeekOn} />
+        </DockBtn>
+      )}
+
+      {showDivider && <DockDivider />}
 
       <DockBtn onClick={handleZoomPhysical} label="1:1">
         <svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round">
