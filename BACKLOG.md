@@ -26,6 +26,9 @@ Rivers already cache per-chain geometry (catmullRom + wobble) by `segKey+ptsKey+
 
 ## Desktop App
 
+**Incorporate new app icon throughout the UI**
+Use the new icon consistently across the app — loading screens, about/settings, any spot that currently shows a placeholder or nothing.
+
 **Top bar navigation and tools overhaul**
 The top bar was designed for a browser context. Now that the app runs as an Electron desktop app, it needs a rethink — what controls belong there, how it sits alongside native OS window chrome (title bar, traffic lights on Mac), and whether any functionality should move to native menus. Goal is a top bar that feels at home as a desktop app, not a browser tab.
 
