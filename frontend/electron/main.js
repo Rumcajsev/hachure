@@ -11,7 +11,20 @@ let sidecar = null
 
 // ── Port helper ───────────────────────────────────────────────────────────────
 
-function getFreePort() {
+const PREFERRED_PORT = 48765
+
+function isPortFree(port) {
+  return new Promise((resolve) => {
+    const srv = createServer()
+    srv.once('error', () => resolve(false))
+    srv.once('listening', () => { srv.close(); resolve(true) })
+    srv.listen(port, '127.0.0.1')
+  })
+}
+
+async function getPort() {
+  if (await isPortFree(PREFERRED_PORT)) return PREFERRED_PORT
+  // Fallback: let OS pick — localStorage won't persist this session but app still works
   return new Promise((resolve) => {
     const srv = createServer()
     srv.listen(0, '127.0.0.1', () => {
@@ -59,7 +72,7 @@ function createWindow(url) {
     height: 1000,
     minWidth: 900,
     minHeight: 600,
-    title: 'IG2 Hex Map Generator',
+    title: 'Hachure',
     webPreferences: {
       nodeIntegration: false,
       contextIsolation: true,
@@ -84,7 +97,7 @@ app.whenReady().then(async () => {
   if (isDev) {
     url = 'http://localhost:5173'
   } else {
-    const port = await getFreePort()
+    const port = await getPort()
     await startSidecar(port)
     url = `http://127.0.0.1:${port}`
   }

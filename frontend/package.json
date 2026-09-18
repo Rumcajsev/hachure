@@ -41,8 +41,8 @@
     "wait-on": "^8.0.0"
   },
   "build": {
-    "appId": "com.ig2.hexmap",
-    "productName": "IG2 Hex Map",
+    "appId": "com.hachure.hexmap",
+    "productName": "Hachure",
     "directories": {
       "output": "../release"
     },
@@ -63,9 +63,11 @@
     ],
     "mac": {
       "category": "public.app-category.productivity",
+      "icon": "build/icon.png",
       "target": [{ "target": "dmg", "arch": ["arm64"] }]
     },
     "win": {
+      "icon": "build/icon.png",
       "target": [{ "target": "nsis", "arch": ["x64"] }]
     }
   }
