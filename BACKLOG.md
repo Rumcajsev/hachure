@@ -72,6 +72,22 @@ In-app mechanism to submit bug reports — ideally with automatic context attach
 
 ---
 
+## Data Fetching
+
+**Scale-aware OSM data fetching**
+The current fetch pipeline uses the same OSM queries regardless of map scale. At small scales (a city district, a battlefield — hexes covering 1–5 km), minor streams, footpaths, and local roads are meaningful and should be included. At large scales (a country or continent — hexes covering 50–200 km), those same queries return enormous noise and miss the point: only major rivers, motorways, and large settlements matter.
+
+This needs a proper design pass covering:
+- What the meaningful scale thresholds are and how to detect them from hex size + paper dimensions
+- Which OSM tags/filters to apply at each tier (e.g. `waterway=river` only vs. including `waterway=stream`; `highway=motorway|trunk` only vs. including secondary roads)
+- Whether Overpass queries should change, or whether the backend fetches everything and filters server-side, or both
+- How elevation resolution should scale (lower-res DEM at large scales is both sufficient and faster)
+- Edge cases: a medium-scale map where some features are relevant and others aren't
+
+Goal is a robust, principled system — not ad-hoc thresholds bolted on later. Worth reviewing what OSM and similar tools do at each zoom level as reference.
+
+---
+
 ## Source Data
 
 **Source data preview**
