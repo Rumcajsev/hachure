@@ -52,6 +52,9 @@ When the map spans multiple sheets, the setup experience is undiscoverable and t
 
 ## UX
 
+**First-launch landing animation**
+When the app opens for the first time (no saved map), show an animated landing experience rather than a blank editing canvas. Should communicate the app's purpose, feel polished, and transition naturally into the setup flow. Consider what happens on subsequent launches — returning users shouldn't see the full animation every time, but the transition into the app should still feel intentional.
+
 **In-app step-by-step tutorials**
 Guided walkthroughs for the core flows (first map setup, terrain editing, export, etc.). Should be contextual — triggered at the right moment, not just a help page — and skippable for returning users. Goal is that someone can pick up the app cold and get to a usable map without reading documentation.
 
@@ -63,6 +66,35 @@ The loading process when fetching OSM data is functional but not informative. It
 
 **Bug reporting**
 In-app mechanism to submit bug reports — ideally with automatic context attached (app version, current map state snapshot, browser/OS). Keeps feedback low-friction so issues actually get reported.
+
+---
+
+## Source Data
+
+**Source data preview**
+A uniform way to inspect or visualise the raw OSM/elevation data that each map element was derived from — before hex-fitting, before user edits. Rough scope:
+- Per-hex: what terrain type the source data originally classified it as (not what the user painted), potentially as a full heatmap overlay across the grid
+- Per-river: the original OSM polyline geometry before it was snapped to hex edges
+- Per-road: the original OSM geometry and its original classification (motorway, primary, secondary, etc.) before any user overrides
+
+Could be a visual toggle/overlay mode, a click-to-inspect panel, or both — left open for design exploration. Main value: understanding why a feature was classified or routed a particular way, and debugging unexpected hex assignments.
+
+**Vector (non-hexified) rendering of rivers and roads**
+Instead of snapping rivers and roads to the hex grid, render them directly as geographic vector lines — the raw OSM polylines projected onto the canvas, styled but not hex-aligned. The hex map stays intact underneath; these features simply draw over it as smooth curves.
+
+This gives the user a hybrid option: some features hexified, others rendered precisely. Shares the same underlying mechanism as the overlay mode in *Import and display political or regional borders* (see Borders section) — both are geographic polylines drawn without hex-fitting. Implementation likely converges on a shared vector overlay layer.
+
+---
+
+## Borders / Boundary Import
+
+**Import and display political or regional borders**
+Let the user import GeoJSON (or similar) files containing country, regional, or custom boundary lines — e.g. from Natural Earth or national open-data sources. Two display modes:
+
+- **Overlay mode** — the border geometry is projected and drawn as-is on top of the map, the same way an SVG outline would be. Useful when the user wants precise geographic accuracy and doesn't care about hex alignment.
+- **Hex-fit mode** — the border polyline is snapped to hex edges, producing a crisp border that follows the grid (analogous to how rivers are built from hex edge sequences). The result becomes a first-class map element the user can style.
+
+**UI placement is unresolved.** Options: (a) a new **Borders** panel in the left sidebar alongside Rivers, Highlights, etc., (b) a broader **Overlays** section that also absorbs the reference image overlay, or (c) folded into Highlights since highlights already represent user-drawn geometry. Hex-fit borders would need their own layer controller in `render/layers/`; overlay-mode borders could reuse or extend the existing OSM overlay mechanism.
 
 ---
 
