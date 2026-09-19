@@ -64,6 +64,9 @@ When loading a saved map the app shows a blank dark background while it processe
 **Better OSM data loading experience**
 The loading process when fetching OSM data is functional but not informative. It should clearly show what's being fetched and at what stage, with progress that feels responsive rather than opaque. Visually it should look polished — not just a spinner or raw status text. Users shouldn't feel like something has frozen or gone wrong when a fetch is just taking a moment.
 
+**Progressive layer loading — edit while fetching**
+When generating a map, unlock editing as soon as base terrain is ready instead of blocking the whole UI until every layer finishes. Settlements, coastline, roads, rivers etc. fetch in parallel and appear as they arrive. Each sidebar panel shows a small loader indicator while its data is still in flight, disappearing once that layer is loaded. Goal: the user can start editing terrain immediately after generation without waiting for the slower OSM queries.
+
 **Bug reporting**
 In-app mechanism to submit bug reports — ideally with automatic context attached (app version, current map state snapshot, browser/OS). Keeps feedback low-friction so issues actually get reported.
 

@@ -18,7 +18,7 @@ _dist: Path | None = None  # overridden by --dist-dir arg
 async def lifespan(app: FastAPI):
     if _dist and _dist.exists():
         app.mount("/", StaticFiles(directory=_dist, html=True), name="static")
-    print(f"IG2_READY:{_port}", flush=True)
+    print(f"HACHURE_READY:{_port}", flush=True)
     yield
 
 
