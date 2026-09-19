@@ -1,4 +1,4 @@
-import { app, BrowserWindow, shell } from 'electron'
+import { app, BrowserWindow, shell, session } from 'electron'
 import { spawn } from 'child_process'
 import { createServer } from 'net'
 import path from 'path'
@@ -92,6 +92,8 @@ function createWindow(url) {
 // ── Lifecycle ─────────────────────────────────────────────────────────────────
 
 app.whenReady().then(async () => {
+  await session.defaultSession.clearCache()
+
   let url
 
   if (isDev) {
