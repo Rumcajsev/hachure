@@ -14,7 +14,7 @@ import { liveClassParamsRef, requestDraw } from '../../lib/liveClassParamsRef'
 import {
   BrushRow, ElevBrushRow, ToggleRow, ToggleSwitch, DashedAddBtn, MiniSlider, ColorChip, ColorPickerHost, tintBg,
   STRIP_W, FLYOUT_W, StripShell, FlyoutShell, V2Divider, TriggerRow, TGap,
-  useDeferredSlider, SegmentedControl,
+  useDeferredSlider, SegmentedControl, DataStatusBadge,
 } from './sidebar'
 import { TEXTURE_OPTIONS, TEXTURE_PATHS, DEFAULT_TERRAIN_TEXTURES } from '../../lib/terrainTextures'
 
@@ -269,6 +269,32 @@ function PaintingOptionsFlyout({ onClose }: { onClose: () => void }) {
 
 // ── Flyout content: elevation import / classify ────────────────────────────
 
+function ClassifyInfoTooltip() {
+  const t = useTheme()
+  const [visible, setVisible] = useState(false)
+  return (
+    <div style={{ position: 'relative', display: 'inline-flex' }}>
+      <span
+        onMouseEnter={() => setVisible(true)}
+        onMouseLeave={() => setVisible(false)}
+        style={{ fontFamily: t.mono, fontSize: 10, color: t.inkFaint, cursor: 'default', userSelect: 'none' }}
+      >
+        ⓘ
+      </span>
+      {visible && (
+        <div style={{
+          position: 'absolute', bottom: '100%', left: 0, marginBottom: 4,
+          width: 190, background: t.paper2, border: `1px solid ${t.line}`,
+          padding: '6px 8px', zIndex: 100,
+          fontFamily: t.mono, fontSize: 9, color: t.inkMute, lineHeight: 1.5,
+        }}>
+          Each hex is classified by two signals. <b style={{ color: t.ink }}>Range</b> is the elevation difference within the hex — large range means rugged ground. <b style={{ color: t.ink }}>Altitude</b> is the median elevation — high altitude means high ground even if gentle. The higher-ranking result wins.
+        </div>
+      )}
+    </div>
+  )
+}
+
 function ElevationFlyout({ onClose }: { onClose: () => void }) {
   const t = useTheme()
   const {
@@ -282,7 +308,6 @@ function ElevationFlyout({ onClose }: { onClose: () => void }) {
     setShowElevationClassOverlay,
   } = useMapStore()
 
-  // Local state for sliders — updated live during drag, committed to store on mouseup
   const [localParams, setLocalParams] = useState(classificationParams)
   const localParamsRef = useRef(localParams)
   useEffect(() => {
@@ -308,10 +333,8 @@ function ElevationFlyout({ onClose }: { onClose: () => void }) {
     liveClassParamsRef.current = localParamsRef.current
     setShowElevationClassOverlay(true)
   }
-  const hideOverlay = () => setShowElevationClassOverlay(false)
 
   const hasData = generatedHexes.some(h => h.elevation_avg_m != null)
-  const fetchedCount = generatedHexes.filter(h => h.elevation_avg_m != null).length
   const isLoading = elevationStatus === 'loading'
   const noHexes = generatedHexes.length === 0
 
@@ -319,73 +342,110 @@ function ElevationFlyout({ onClose }: { onClose: () => void }) {
   const hillsCount     = hasData ? generatedHexes.filter(h => h.elevation_class === 'hills').length     : 0
   const mountainsCount = hasData ? generatedHexes.filter(h => h.elevation_class === 'mountains').length : 0
 
+  const hexesWithData = generatedHexes.filter(h => h.elevation_avg_m != null)
+  const avgAltitude = hexesWithData.length > 0
+    ? Math.round(hexesWithData.reduce((sum, h) => sum + (h.elevation_avg_m ?? 0), 0) / hexesWithData.length)
+    : 0
+  const total = flatCount + hillsCount + mountainsCount
+  const terrainCharacter = total === 0 ? '' :
+    mountainsCount / total > 0.3 ? 'mountainous' :
+    mountainsCount / total > 0.15 ? 'hilly to mountainous' :
+    hillsCount / total > 0.4 ? 'mostly hilly' :
+    flatCount / total > 0.6 ? 'mostly flat' :
+    'mixed terrain'
+  const badgeSummary = avgAltitude > 0
+    ? `avg ${avgAltitude} m${terrainCharacter ? ` · ${terrainCharacter}` : ''}`
+    : ''
+
   return (
-    <FlyoutShell title="Elevation" subtitle={hasData ? `${fetchedCount} hexes fetched` : undefined} onClose={onClose}>
-      {dataSource === 'osm' && (
+    <FlyoutShell title="Elevation" onClose={onClose}>
+      {/* Fetch / loading / error */}
+      {dataSource === 'osm' && !hasData && !isLoading && (
         <div style={{ padding: '4px 12px 8px' }}>
-          <div style={{ fontFamily: t.mono, fontSize: 9, letterSpacing: 0.8, color: t.inkFaint, textTransform: 'uppercase', fontWeight: 600, marginBottom: 6 }}>
-            Step 1 — Fetch data
-          </div>
           <button
             onClick={() => fetchElevation()}
-            disabled={isLoading || noHexes}
+            disabled={noHexes}
             style={{
               width: '100%', padding: '5px 0', background: 'none',
-              border: `1px solid ${isLoading ? t.line : t.rust}`,
-              color: isLoading ? t.inkFaint : t.rust,
-              cursor: isLoading || noHexes ? 'not-allowed' : 'pointer',
+              border: `1px solid ${t.rust}`, color: t.rust,
+              cursor: noHexes ? 'not-allowed' : 'pointer',
               fontFamily: t.mono, fontSize: 10,
-              display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
             }}
           >
-            {isLoading ? 'Fetching…' : hasData ? '✓ Elevation fetched' : 'Fetch elevation data'}
+            Fetch elevation data
           </button>
-          {isLoading && elevationProgress && (
-            <div style={{ marginTop: 6 }}>
-              <div style={{ height: 2, background: t.line2, marginBottom: 3 }}>
-                <div style={{ height: '100%', background: t.rust, width: `${elevationProgress.progress}%`, transition: 'width 0.2s' }} />
-              </div>
-              <div style={{ fontFamily: t.mono, fontSize: 10, color: t.inkMute }}>{elevationProgress.message}</div>
-            </div>
-          )}
-          {elevationStatus === 'error' && elevationError && (
-            <div style={{ fontFamily: t.mono, fontSize: 10, color: '#9e5a5a', marginTop: 4 }}>{elevationError}</div>
-          )}
         </div>
       )}
 
-      {hasData && (
-        <div style={{ borderTop: `1px solid ${t.line2}`, paddingTop: 4 }}>
-          <div style={{ padding: '4px 12px 2px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-            <div style={{ fontFamily: t.mono, fontSize: 9, letterSpacing: 0.8, color: t.inkFaint, textTransform: 'uppercase', fontWeight: 600 }}>
-              Step 2 — Classify
-            </div>
-            <ToggleSwitch enabled={elevationImportEnabled} onChange={setElevationImportEnabled} />
+      {isLoading && elevationProgress && (
+        <div style={{ padding: '4px 12px 8px' }}>
+          <div style={{ height: 2, background: t.line2, marginBottom: 3 }}>
+            <div style={{ height: '100%', background: t.rust, width: `${elevationProgress.progress}%`, transition: 'width 0.2s' }} />
           </div>
-          <MiniSlider label="Hills Δ ≥" display={`${localParams.rangeHillsM}m`} value={localParams.rangeHillsM} min={10} max={500} step={10} onChange={v => handleParamChange('rangeHillsM', v)} accentColor='#9a8a5a' onDragStart={showOverlay} onDragEnd={() => commitParam('rangeHillsM')} />
-          <MiniSlider label="Hills alt ≥" display={`${localParams.medianHillsM}m`} value={localParams.medianHillsM} min={0} max={2000} step={50} onChange={v => handleParamChange('medianHillsM', v)} accentColor='#9a8a5a' onDragStart={showOverlay} onDragEnd={() => commitParam('medianHillsM')} />
-          <MiniSlider label="Mtns Δ ≥" display={`${localParams.rangeMountainsM}m`} value={localParams.rangeMountainsM} min={50} max={1000} step={25} onChange={v => handleParamChange('rangeMountainsM', v)} accentColor='#7a6a5a' onDragStart={showOverlay} onDragEnd={() => commitParam('rangeMountainsM')} />
-          <MiniSlider label="Mtns alt ≥" display={`${localParams.medianMountainsM}m`} value={localParams.medianMountainsM} min={100} max={4000} step={50} onChange={v => handleParamChange('medianMountainsM', v)} accentColor='#7a6a5a' onDragStart={showOverlay} onDragEnd={() => commitParam('medianMountainsM')} />
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 4, padding: '6px 12px 2px' }}>
-            {[
-              { label: 'Flat',  count: flatCount,      color: '#5a7a5a' },
-              { label: 'Hills', count: hillsCount,     color: '#7a8a5a' },
-              { label: 'Mtns',  count: mountainsCount, color: '#8a6a3a' },
-            ].map(({ label, count, color }) => (
-              <div key={label} style={{ background: t.paper2, padding: '4px 2px', textAlign: 'center' }}>
-                <div style={{ fontFamily: t.mono, fontSize: 9, color, marginBottom: 1 }}>{label}</div>
-                <div style={{ fontFamily: t.mono, fontSize: 9, color: t.inkMute }}>{count}</div>
-              </div>
-            ))}
-          </div>
+          <div style={{ fontFamily: t.mono, fontSize: 10, color: t.inkMute }}>{elevationProgress.message}</div>
         </div>
       )}
 
+      {elevationStatus === 'error' && elevationError && (
+        <div style={{ padding: '0 12px 8px', fontFamily: t.mono, fontSize: 10, color: '#9e5a5a' }}>{elevationError}</div>
+      )}
+
+      {/* Downloaded data badge */}
       {hasData && (
-        <div style={{ borderTop: `1px solid ${t.line2}`, padding: '6px 12px 0' }}>
-          <ToggleRow label="Elevation overrides terrain" checked={elevationOverridesTerrain} onChange={setElevationOverridesTerrain} />
-          <ToggleRow label="Show avg / max per hex" checked={showElevationDebug} onChange={setShowElevationDebug} />
-        </div>
+        <DataStatusBadge
+          label="Elevation data downloaded"
+          summary={badgeSummary}
+          onRefetch={fetchElevation}
+        />
+      )}
+
+      {hasData && (
+        <>
+          {/* Preview */}
+          <div style={{ borderTop: `1px solid ${t.line2}` }}>
+            <ToggleRow label="Preview elevation" checked={showElevationDebug} onChange={setShowElevationDebug} />
+          </div>
+
+          {/* Auto-classify */}
+          <div style={{ borderTop: `1px solid ${t.line2}`, paddingTop: 4 }}>
+            <div style={{ padding: '3px 12px 4px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                <span style={{ fontFamily: t.mono, fontSize: 10, color: t.inkMute, fontWeight: 500 }}>Auto-classify</span>
+                <ClassifyInfoTooltip />
+              </div>
+              <ToggleSwitch enabled={elevationImportEnabled} onChange={setElevationImportEnabled} />
+            </div>
+
+            {elevationImportEnabled && (
+              <>
+                <div style={{ padding: '2px 12px 1px', fontFamily: t.mono, fontSize: 9, letterSpacing: 0.6, color: t.inkFaint, textTransform: 'uppercase' }}>Hills</div>
+                <MiniSlider label="Range ≥" display={`${localParams.rangeHillsM}m`} value={localParams.rangeHillsM} min={10} max={500} step={10} onChange={v => handleParamChange('rangeHillsM', v)} accentColor='#9a8a5a' onDragStart={showOverlay} onDragEnd={() => commitParam('rangeHillsM')} />
+                <MiniSlider label="Altitude ≥" display={`${localParams.medianHillsM}m`} value={localParams.medianHillsM} min={0} max={2000} step={50} onChange={v => handleParamChange('medianHillsM', v)} accentColor='#9a8a5a' onDragStart={showOverlay} onDragEnd={() => commitParam('medianHillsM')} />
+
+                <div style={{ padding: '4px 12px 1px', fontFamily: t.mono, fontSize: 9, letterSpacing: 0.6, color: t.inkFaint, textTransform: 'uppercase' }}>Mountains</div>
+                <MiniSlider label="Range ≥" display={`${localParams.rangeMountainsM}m`} value={localParams.rangeMountainsM} min={50} max={1000} step={25} onChange={v => handleParamChange('rangeMountainsM', v)} accentColor='#7a6a5a' onDragStart={showOverlay} onDragEnd={() => commitParam('rangeMountainsM')} />
+                <MiniSlider label="Altitude ≥" display={`${localParams.medianMountainsM}m`} value={localParams.medianMountainsM} min={100} max={4000} step={50} onChange={v => handleParamChange('medianMountainsM', v)} accentColor='#7a6a5a' onDragStart={showOverlay} onDragEnd={() => commitParam('medianMountainsM')} />
+
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 4, padding: '6px 12px 4px' }}>
+                  {[
+                    { label: 'Flat',  count: flatCount,      color: '#5a7a5a' },
+                    { label: 'Hills', count: hillsCount,     color: '#7a8a5a' },
+                    { label: 'Mtns',  count: mountainsCount, color: '#8a6a3a' },
+                  ].map(({ label, count, color }) => (
+                    <div key={label} style={{ background: t.paper2, padding: '4px 2px', textAlign: 'center' }}>
+                      <div style={{ fontFamily: t.mono, fontSize: 9, color, marginBottom: 1 }}>{label}</div>
+                      <div style={{ fontFamily: t.mono, fontSize: 9, color: t.inkMute }}>{count}</div>
+                    </div>
+                  ))}
+                </div>
+              </>
+            )}
+          </div>
+
+          <div style={{ borderTop: `1px solid ${t.line2}`, padding: '6px 12px 0' }}>
+            <ToggleRow label="Elevation overrides terrain" checked={elevationOverridesTerrain} onChange={setElevationOverridesTerrain} />
+          </div>
+        </>
       )}
     </FlyoutShell>
   )

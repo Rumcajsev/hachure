@@ -1318,3 +1318,49 @@ export function SegmentedControl<T extends string>({
     </div>
   )
 }
+
+// ── DataStatusBadge ───────────────────────────────────────────────────────────
+
+export function DataStatusBadge({
+  label,
+  summary,
+  onRefetch,
+}: {
+  label: string
+  summary: string
+  onRefetch: () => void
+}) {
+  const t = useTheme()
+  return (
+    <div style={{
+      borderLeft: '2px solid #0f6e56',
+      margin: '7px 9px',
+      padding: '5px 8px',
+      background: 'rgba(15,110,86,0.1)',
+      borderRadius: '0 3px 3px 0',
+      display: 'flex',
+      alignItems: 'flex-start',
+      justifyContent: 'space-between',
+      gap: 6,
+    }}>
+      <div>
+        <div style={{ fontFamily: t.mono, fontSize: 10, color: '#5dcaa5', fontWeight: 500, marginBottom: 2 }}>
+          {label}
+        </div>
+        <div style={{ fontFamily: t.mono, fontSize: 10, color: t.inkMute }}>
+          {summary}
+        </div>
+      </div>
+      <button
+        onClick={onRefetch}
+        style={{
+          background: 'none', border: 'none', padding: 0, cursor: 'pointer',
+          fontFamily: t.mono, fontSize: 9, color: t.inkFaint,
+          textDecoration: 'underline', whiteSpace: 'nowrap', flexShrink: 0, marginTop: 1,
+        }}
+      >
+        re-fetch
+      </button>
+    </div>
+  )
+}
