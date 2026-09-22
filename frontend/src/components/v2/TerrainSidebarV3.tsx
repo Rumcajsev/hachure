@@ -283,7 +283,7 @@ function ClassifyInfoTooltip() {
       </span>
       {visible && (
         <div style={{
-          position: 'absolute', bottom: '100%', left: 0, marginBottom: 4,
+          position: 'absolute', top: '100%', left: 0, marginTop: 4,
           width: 190, background: t.paper2, border: `1px solid ${t.line}`,
           padding: '6px 8px', zIndex: 100,
           fontFamily: t.mono, fontSize: 9, color: t.inkMute, lineHeight: 1.5,
