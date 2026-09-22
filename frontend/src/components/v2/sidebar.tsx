@@ -1340,11 +1340,8 @@ export function DataStatusBadge({
       alignItems: 'center',
       gap: 7,
     }}>
-      <svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="#1d9e75" strokeWidth="1.2" strokeLinecap="round" style={{ flexShrink: 0 }}>
-        <ellipse cx="6" cy="3" rx="4" ry="1.5" />
-        <line x1="2" y1="3" x2="2" y2="9" />
-        <line x1="10" y1="3" x2="10" y2="9" />
-        <ellipse cx="6" cy="9" rx="4" ry="1.5" />
+      <svg width="8" height="8" viewBox="0 0 8 8" fill="none" stroke="#1d9e75" strokeWidth="1.4" strokeLinecap="round" style={{ flexShrink: 0 }}>
+        <path d="M1.5 3l2.5 2.5L6.5 3" />
       </svg>
       <div>
         <div style={{ fontFamily: t.mono, fontSize: 10, color: '#5dcaa5', fontWeight: 500, marginBottom: 2 }}>
