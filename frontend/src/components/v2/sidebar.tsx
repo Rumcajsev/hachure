@@ -1324,11 +1324,9 @@ export function SegmentedControl<T extends string>({
 export function DataStatusBadge({
   label,
   summary,
-  onRefetch,
 }: {
   label: string
   summary: string
-  onRefetch: () => void
 }) {
   const t = useTheme()
   return (
@@ -1339,10 +1337,15 @@ export function DataStatusBadge({
       background: 'rgba(15,110,86,0.1)',
       borderRadius: '0 3px 3px 0',
       display: 'flex',
-      alignItems: 'flex-start',
-      justifyContent: 'space-between',
-      gap: 6,
+      alignItems: 'center',
+      gap: 7,
     }}>
+      <svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="#1d9e75" strokeWidth="1.2" strokeLinecap="round" style={{ flexShrink: 0 }}>
+        <ellipse cx="6" cy="3" rx="4" ry="1.5" />
+        <line x1="2" y1="3" x2="2" y2="9" />
+        <line x1="10" y1="3" x2="10" y2="9" />
+        <ellipse cx="6" cy="9" rx="4" ry="1.5" />
+      </svg>
       <div>
         <div style={{ fontFamily: t.mono, fontSize: 10, color: '#5dcaa5', fontWeight: 500, marginBottom: 2 }}>
           {label}
@@ -1351,16 +1354,6 @@ export function DataStatusBadge({
           {summary}
         </div>
       </div>
-      <button
-        onClick={onRefetch}
-        style={{
-          background: 'none', border: 'none', padding: 0, cursor: 'pointer',
-          fontFamily: t.mono, fontSize: 9, color: t.inkFaint,
-          textDecoration: 'underline', whiteSpace: 'nowrap', flexShrink: 0, marginTop: 1,
-        }}
-      >
-        re-fetch
-      </button>
     </div>
   )
 }

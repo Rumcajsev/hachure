@@ -367,12 +367,13 @@ function ElevationFlyout({ onClose }: { onClose: () => void }) {
             disabled={noHexes}
             style={{
               width: '100%', padding: '5px 0', background: 'none',
-              border: `1px solid ${t.rust}`, color: t.rust,
+              border: `1px solid ${elevationStatus === 'error' ? '#9e5a5a' : t.rust}`,
+              color: elevationStatus === 'error' ? '#9e5a5a' : t.rust,
               cursor: noHexes ? 'not-allowed' : 'pointer',
               fontFamily: t.mono, fontSize: 10,
             }}
           >
-            Fetch elevation data
+            {elevationStatus === 'error' ? 'Retry fetch' : 'Fetch elevation data'}
           </button>
         </div>
       )}
@@ -395,7 +396,6 @@ function ElevationFlyout({ onClose }: { onClose: () => void }) {
         <DataStatusBadge
           label="Elevation data downloaded"
           summary={badgeSummary}
-          onRefetch={fetchElevation}
         />
       )}
 
