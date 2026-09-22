@@ -269,34 +269,9 @@ function PaintingOptionsFlyout({ onClose }: { onClose: () => void }) {
 
 // ── Flyout content: elevation import / classify ────────────────────────────
 
-function ClassifyInfoTooltip() {
-  const t = useTheme()
-  const [visible, setVisible] = useState(false)
-  return (
-    <div style={{ position: 'relative', display: 'inline-flex' }}>
-      <span
-        onMouseEnter={() => setVisible(true)}
-        onMouseLeave={() => setVisible(false)}
-        style={{ fontFamily: t.mono, fontSize: 10, color: t.inkFaint, cursor: 'default', userSelect: 'none' }}
-      >
-        ⓘ
-      </span>
-      {visible && (
-        <div style={{
-          position: 'absolute', top: '100%', left: 0, marginTop: 4,
-          width: 190, background: t.paper2, border: `1px solid ${t.line}`,
-          padding: '6px 8px', zIndex: 100,
-          fontFamily: t.mono, fontSize: 9, color: t.inkMute, lineHeight: 1.5,
-        }}>
-          Each hex is classified by two signals. <b style={{ color: t.ink }}>Range</b> is the elevation difference within the hex — large range means rugged ground. <b style={{ color: t.ink }}>Altitude</b> is the median elevation — high altitude means high ground even if gentle. The higher-ranking result wins.
-        </div>
-      )}
-    </div>
-  )
-}
-
 function ElevationFlyout({ onClose }: { onClose: () => void }) {
   const t = useTheme()
+  const [classifyTooltip, setClassifyTooltip] = useState(false)
   const {
     generatedHexes,
     elevationStatus, elevationError, elevationProgress,
@@ -408,12 +383,26 @@ function ElevationFlyout({ onClose }: { onClose: () => void }) {
 
           {/* Auto-classify */}
           <div style={{ borderTop: `1px solid ${t.line2}`, paddingTop: 4 }}>
-            <div style={{ padding: '3px 12px 4px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+            <div style={{ padding: '3px 12px 4px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', position: 'relative' }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
                 <span style={{ fontFamily: t.mono, fontSize: 10, color: t.inkMute, fontWeight: 500 }}>Auto-classify</span>
-                <ClassifyInfoTooltip />
+                <span
+                  onMouseEnter={() => setClassifyTooltip(true)}
+                  onMouseLeave={() => setClassifyTooltip(false)}
+                  style={{ fontFamily: t.mono, fontSize: 10, color: t.inkFaint, cursor: 'default', userSelect: 'none' }}
+                >ⓘ</span>
               </div>
               <ToggleSwitch enabled={elevationImportEnabled} onChange={setElevationImportEnabled} />
+              {classifyTooltip && (
+                <div style={{
+                  position: 'absolute', top: '100%', left: 0, right: 0, marginTop: 2,
+                  background: t.paper2, border: `1px solid ${t.line}`,
+                  padding: '6px 8px', zIndex: 100,
+                  fontFamily: t.mono, fontSize: 9, color: t.inkMute, lineHeight: 1.5,
+                }}>
+                  Each hex is classified by two signals. <b style={{ color: t.ink }}>Range</b> is the elevation difference within the hex — large range means rugged ground. <b style={{ color: t.ink }}>Altitude</b> is the median elevation — high altitude means high ground even if gentle. The higher-ranking result wins.
+                </div>
+              )}
             </div>
 
             {elevationImportEnabled && (
