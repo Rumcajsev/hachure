@@ -152,7 +152,7 @@ function AppV2Inner({ screen, setScreen, isDark, setIsDark }: {
 
           {/* Left rail + flyout float over the canvas */}
           <div style={{ position: 'absolute', top: 16, left: 16, bottom: 16, zIndex: 10, pointerEvents: 'none' }}>
-            <div style={{ pointerEvents: 'auto', height: '100%', boxShadow: t.shadowFlyout, zoom: uiScale }}>
+            <div style={{ pointerEvents: 'auto', height: '100%', zoom: uiScale }}>
               <LeftRail />
             </div>
           </div>

@@ -8,6 +8,11 @@ import {
   DashedAddBtn, MiniSlider, SegmentedControl, ToggleRow, tintBg,
   StripShell, FlyoutShell, V2Divider, TGap,
 } from './sidebar'
+import {
+  ICON_GLYPH_FIT, ICON_GLYPH_FIT_BARE, ICON_GLYPH_STROKE, ICON_GLYPH_SUBPATHS, SHAPE_SUBPATHS,
+  PICTORIAL_ICON_SHAPES, BACKGROUND_SHAPES, isPictorialIconShape, isBaseShape,
+  type PictorialIconShape, type BaseShape, type BackgroundShape,
+} from '../../lib/iconGlyphs'
 
 // ── Compact colour palette ─────────────────────────────────────────────────────
 
@@ -81,8 +86,8 @@ function CompactColorPalette({ value, onChange }: { value: string; onChange: (c:
             }}
           >
             {!isCustom && (
-              <svg width="10" height="10" viewBox="0 0 10 10" fill="none" stroke={t.inkFaint} strokeWidth="1.4" strokeLinecap="round">
-                <path d="M5 1v8M1 5h8" />
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke={t.inkFaint} strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M5 12h14" /><path d="M12 5v14" />
               </svg>
             )}
           </button>
@@ -158,17 +163,71 @@ function HighlightSwatch({ h }: { h: HexHighlight }) {
   )
 }
 
-function IconShapeSwatch({ shape, fillColor, strokeColor, strokeWidth }: Pick<IconOverlay, 'shape' | 'fillColor' | 'strokeColor' | 'strokeWidth'>) {
-  const cx = 9, cy = 9, r = 6
+/** One of the plain Lucide shape outlines (circle/square/triangle/diamond/star), filled solid. */
+function ShapeFillSvg({ shape, cx, cy, r, fillColor, strokeColor, strokeWidth }: {
+  shape: BaseShape
+  cx: number; cy: number; r: number
+  fillColor: string; strokeColor: string; strokeWidth: number
+}) {
+  const s = r / 12
+  return (
+    <g transform={`translate(${cx} ${cy}) scale(${s}) translate(-12 -12)`}>
+      {SHAPE_SUBPATHS[shape].map((d, i) => (
+        <path key={i} d={d} fill={fillColor} stroke={strokeWidth > 0 ? strokeColor : 'none'} strokeWidth={strokeWidth / s} />
+      ))}
+    </g>
+  )
+}
+
+/** A pictorial symbol's outline, stroked — `fit` controls how large it sits within radius `r`. */
+function GlyphOutlineSvg({ shape, cx, cy, r, strokeColor, fit }: {
+  shape: PictorialIconShape
+  cx: number; cy: number; r: number; strokeColor: string; fit: number
+}) {
+  const glyphScale = (r * fit) / 12
+  return (
+    <g
+      transform={`translate(${cx} ${cy}) scale(${glyphScale}) translate(-12 -12)`}
+      fill="none" stroke={strokeColor} strokeWidth={ICON_GLYPH_STROKE} strokeLinecap="round" strokeLinejoin="round"
+    >
+      {ICON_GLYPH_SUBPATHS[shape].map((d, i) => <path key={i} d={d} />)}
+    </g>
+  )
+}
+
+/** Full marker: a base shape filled solid, or a symbol glyph on its optional filled backdrop. */
+function IconMarker({ shape, background, cx, cy, r, fillColor, strokeColor, strokeWidth }: {
+  shape: IconOverlay['shape']; background: BackgroundShape
+  cx: number; cy: number; r: number
+  fillColor: string; strokeColor: string; strokeWidth: number
+}) {
+  if (isBaseShape(shape)) return <ShapeFillSvg shape={shape} cx={cx} cy={cy} r={r} fillColor={fillColor} strokeColor={strokeColor} strokeWidth={strokeWidth} />
+  const hasBackground = background !== 'none'
+  return (
+    <>
+      {hasBackground && <ShapeFillSvg shape={background} cx={cx} cy={cy} r={r} fillColor={fillColor} strokeColor={strokeColor} strokeWidth={strokeWidth} />}
+      <GlyphOutlineSvg shape={shape} cx={cx} cy={cy} r={r} strokeColor={strokeColor} fit={hasBackground ? ICON_GLYPH_FIT : ICON_GLYPH_FIT_BARE} />
+    </>
+  )
+}
+
+/** Small "no backdrop" glyph — a dashed ring with a slash — for the Background picker's 'none' option. */
+function NoBackgroundPreview({ cx, cy, r, color }: { cx: number; cy: number; r: number; color: string }) {
+  return (
+    <>
+      <circle cx={cx} cy={cy} r={r} fill="none" stroke={color} strokeWidth={1} strokeDasharray="2 2" />
+      <line x1={cx - r * 0.7} y1={cy + r * 0.7} x2={cx + r * 0.7} y2={cy - r * 0.7} stroke={color} strokeWidth={1} />
+    </>
+  )
+}
+
+function IconShapeSwatch({ shape, background, fillColor, strokeColor, strokeWidth }: Pick<IconOverlay, 'shape' | 'background' | 'fillColor' | 'strokeColor' | 'strokeWidth'>) {
   const sw = Math.min(strokeWidth * 0.55, 2)
-  const p = { fill: fillColor, stroke: strokeWidth > 0 ? strokeColor : 'none', strokeWidth: sw }
-  if (shape === 'circle')   return <svg width="18" height="18" viewBox="0 0 18 18" style={{ flexShrink: 0 }}><circle cx={cx} cy={cy} r={r} {...p} /></svg>
-  if (shape === 'square')   return <svg width="18" height="18" viewBox="0 0 18 18" style={{ flexShrink: 0 }}><rect x={cx - r} y={cy - r} width={r * 2} height={r * 2} {...p} /></svg>
-  if (shape === 'triangle') { const s60 = r * Math.sin(Math.PI / 3); return <svg width="18" height="18" viewBox="0 0 18 18" style={{ flexShrink: 0 }}><polygon points={`${cx},${cy - r} ${cx - s60},${cy + r * 0.5} ${cx + s60},${cy + r * 0.5}`} {...p} /></svg> }
-  if (shape === 'diamond')  return <svg width="18" height="18" viewBox="0 0 18 18" style={{ flexShrink: 0 }}><polygon points={`${cx},${cy - r} ${cx + r},${cy} ${cx},${cy + r} ${cx - r},${cy}`} {...p} /></svg>
-  const outerR = r, innerR = r * 0.38
-  const pts = Array.from({ length: 10 }, (_, i) => { const a = (i * Math.PI) / 5 - Math.PI / 2; const rad = i % 2 === 0 ? outerR : innerR; return `${cx + rad * Math.cos(a)},${cy + rad * Math.sin(a)}` }).join(' ')
-  return <svg width="18" height="18" viewBox="0 0 18 18" style={{ flexShrink: 0 }}><polygon points={pts} {...p} /></svg>
+  return (
+    <svg width="18" height="18" viewBox="0 0 18 18" style={{ flexShrink: 0 }}>
+      <IconMarker shape={shape} background={background ?? 'circle'} cx={9} cy={9} r={6} fillColor={fillColor} strokeColor={strokeColor} strokeWidth={sw} />
+    </svg>
+  )
 }
 
 function LabelSwatch({ textColor, bgColor, strokeColor }: Pick<LabelOverlay, 'textColor' | 'bgColor' | 'strokeColor'>) {
@@ -218,8 +277,9 @@ function StripOverlayRow({
         onClick={e => { e.stopPropagation(); onCog() }}
         style={{ width: 18, height: 18, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'none', border: 'none', cursor: 'pointer', color: cogOpen ? t.rust : t.inkFaint, opacity: active || cogOpen || hovered ? 1 : 0, padding: 0 }}
       >
-        <svg width="10" height="10" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.3">
-          <circle cx="6" cy="6" r="1.8" /><path d="M6 0v2M6 10v2M0 6h2M10 6h2M2 2l1.4 1.4M8.6 8.6L10 10M2 10l1.4-1.4M8.6 3.4L10 2" />
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round">
+          <path d="M9.671 4.136a2.34 2.34 0 0 1 4.659 0 2.34 2.34 0 0 0 3.319 1.915 2.34 2.34 0 0 1 2.33 4.033 2.34 2.34 0 0 0 0 3.831 2.34 2.34 0 0 1-2.33 4.033 2.34 2.34 0 0 0-3.319 1.915 2.34 2.34 0 0 1-4.659 0 2.34 2.34 0 0 0-3.32-1.915 2.34 2.34 0 0 1-2.33-4.033 2.34 2.34 0 0 0 0-3.831A2.34 2.34 0 0 1 6.35 6.051a2.34 2.34 0 0 0 3.319-1.915" />
+          <circle cx="12" cy="12" r="3" />
         </svg>
       </button>
       <button
@@ -290,15 +350,21 @@ function LinePatternBtn({ pattern, active, onClick }: { pattern: LinePattern; ac
 
 function ShapePreview({ shape }: { shape: IconOverlay['shape'] }) {
   const t = useTheme()
-  const cx = 14, cy = 14, r = 8
-  const p = { fill: t.inkMute, stroke: t.line, strokeWidth: 1 }
-  if (shape === 'circle')   return <svg width="28" height="28" viewBox="0 0 28 28"><circle cx={cx} cy={cy} r={r} {...p} /></svg>
-  if (shape === 'square')   return <svg width="28" height="28" viewBox="0 0 28 28"><rect x={cx - r} y={cy - r} width={r * 2} height={r * 2} {...p} /></svg>
-  if (shape === 'triangle') { const s60 = r * Math.sin(Math.PI / 3); return <svg width="28" height="28" viewBox="0 0 28 28"><polygon points={`${cx},${cy - r} ${cx - s60},${cy + r * 0.5} ${cx + s60},${cy + r * 0.5}`} {...p} /></svg> }
-  if (shape === 'diamond')  return <svg width="28" height="28" viewBox="0 0 28 28"><polygon points={`${cx},${cy - r} ${cx + r},${cy} ${cx},${cy + r} ${cx - r},${cy}`} {...p} /></svg>
-  const outerR = r, innerR = r * 0.38
-  const pts = Array.from({ length: 10 }, (_, i) => { const a = (i * Math.PI) / 5 - Math.PI / 2; const rad = i % 2 === 0 ? outerR : innerR; return `${cx + rad * Math.cos(a)},${cy + rad * Math.sin(a)}` }).join(' ')
-  return <svg width="28" height="28" viewBox="0 0 28 28"><polygon points={pts} {...p} /></svg>
+  return (
+    <svg width="28" height="28" viewBox="0 0 28 28">
+      <IconMarker shape={shape} background="circle" cx={14} cy={14} r={8} fillColor={t.inkMute} strokeColor={t.surface} strokeWidth={1} />
+    </svg>
+  )
+}
+
+function BackgroundPreview({ bg }: { bg: BackgroundShape }) {
+  const t = useTheme()
+  if (bg === 'none') return <svg width="28" height="28" viewBox="0 0 28 28"><NoBackgroundPreview cx={14} cy={14} r={8} color={t.inkMute} /></svg>
+  return (
+    <svg width="28" height="28" viewBox="0 0 28 28">
+      <ShapeFillSvg shape={bg} cx={14} cy={14} r={8} fillColor={t.inkMute} strokeColor={t.line} strokeWidth={1} />
+    </svg>
+  )
 }
 
 // ── Flyout state type ──────────────────────────────────────────────────────────
@@ -411,7 +477,7 @@ function IconFlyout({ id, onClose }: { id: string; onClose: () => void }) {
     <FlyoutShell title={o.name} subtitle="icon overlay" onClose={onClose} onTitleChange={name => upd({ name })}>
       {/* Shape */}
       <FSectionLabel label="Shape" />
-      <div style={{ display: 'flex', gap: 4, padding: '4px 12px' }}>
+      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4, padding: '4px 12px' }}>
         {(['circle', 'square', 'triangle', 'diamond', 'star'] as const).map(shape => (
           <button key={shape} onClick={() => upd({ shape })} title={shape.charAt(0).toUpperCase() + shape.slice(1)} style={{
             width: 32, height: 32, display: 'flex', alignItems: 'center', justifyContent: 'center',
@@ -423,6 +489,43 @@ function IconFlyout({ id, onClose }: { id: string; onClose: () => void }) {
           </button>
         ))}
       </div>
+
+      {/* Symbols */}
+      <FSectionLabel label="Symbols" />
+      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4, padding: '4px 12px' }}>
+        {PICTORIAL_ICON_SHAPES.map(shape => (
+          <button key={shape} onClick={() => upd({ shape })} title={shape.replace('-', ' ').replace(/^./, c => c.toUpperCase())} style={{
+            width: 32, height: 32, display: 'flex', alignItems: 'center', justifyContent: 'center',
+            background: o.shape === shape ? tintBg(t.rust, 0.1) : 'transparent',
+            border: `1px solid ${o.shape === shape ? t.rust : t.line}`,
+            cursor: 'pointer', padding: 0, flexShrink: 0,
+          }}>
+            <ShapePreview shape={shape} />
+          </button>
+        ))}
+      </div>
+
+      {/* Background — only meaningful for a pictorial symbol glyph */}
+      {isPictorialIconShape(o.shape) && (
+        <>
+          <FSectionLabel label="Background" />
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4, padding: '4px 12px' }}>
+            {BACKGROUND_SHAPES.map(bg => {
+              const active = (o.background ?? 'circle') === bg
+              return (
+                <button key={bg} onClick={() => upd({ background: bg })} title={bg.charAt(0).toUpperCase() + bg.slice(1)} style={{
+                  width: 32, height: 32, display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  background: active ? tintBg(t.rust, 0.1) : 'transparent',
+                  border: `1px solid ${active ? t.rust : t.line}`,
+                  cursor: 'pointer', padding: 0, flexShrink: 0,
+                }}>
+                  <BackgroundPreview bg={bg} />
+                </button>
+              )
+            })}
+          </div>
+        </>
+      )}
 
       {/* Fill */}
       <FSectionDivider />
@@ -550,7 +653,7 @@ export function OverlaysSidebarV3() {
   const handleAddArea  = () => addHighlight({ name: `Area ${areaOverlays.length + 1}`,  color: '#ffcc00', mode: 'area', ...OVERLAY_DEFAULTS })
   const handleAddEdge  = () => addHighlight({ name: `Edge ${edgeOverlays.length + 1}`,  color: '#44aaff', mode: 'edge', ...OVERLAY_DEFAULTS, fillEnabled: false })
   const handleAddLine  = () => addHighlight({ name: `Line ${lineOverlays.length + 1}`,  color: '#ff6644', mode: 'line', ...OVERLAY_DEFAULTS, fillEnabled: false })
-  const handleAddIcon  = () => addIconOverlay({ name: `Icon ${iconOverlays.length + 1}`, shape: 'circle', fillColor: '#e05050', strokeColor: '#1a1b2e', strokeWidth: 1.5, size: 0.35 })
+  const handleAddIcon  = () => addIconOverlay({ name: `Icon ${iconOverlays.length + 1}`, shape: 'circle', background: 'circle', fillColor: '#e05050', strokeColor: '#1a1b2e', strokeWidth: 1.5, size: 0.35 })
   const handleAddLabel = () => addLabelOverlay({ name: `Label ${labelOverlays.length + 1}`, textColor: '#ffffff', bgColor: '#aa1111', strokeColor: '#000000', strokeWidth: 1, textSize: 14, opacity: 1 })
 
   const highlightSub = (h: HexHighlight) => {
@@ -576,10 +679,11 @@ export function OverlaysSidebarV3() {
             cursor: 'pointer',
           }}
         >
-          <svg width="16" height="16" viewBox="0 0 16 16" fill="none"
-            stroke={isErasing ? t.rust : t.inkMute} strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round"
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none"
+            stroke={isErasing ? t.rust : t.inkMute} strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round"
           >
-            <path d="M2 14h12M10 2L14 6 6 14 2 10 10 2z" />
+            <path d="M21 21H8a2 2 0 0 1-1.42-.587l-3.994-3.999a2 2 0 0 1 0-2.828l10-10a2 2 0 0 1 2.829 0l5.999 6a2 2 0 0 1 0 2.828L12.834 21" />
+            <path d="m5.082 11.09 8.828 8.828" />
           </svg>
           <span style={{ fontFamily: t.sans, fontSize: 11, fontWeight: isErasing ? 600 : 500, color: isErasing ? t.rust : t.ink }}>
             Eraser
@@ -639,7 +743,7 @@ export function OverlaysSidebarV3() {
         {iconOverlays.map(o => (
           <StripOverlayRow
             key={o.id}
-            swatch={<IconShapeSwatch shape={o.shape} fillColor={o.fillColor} strokeColor={o.strokeColor} strokeWidth={o.strokeWidth} />}
+            swatch={<IconShapeSwatch shape={o.shape} background={o.background} fillColor={o.fillColor} strokeColor={o.strokeColor} strokeWidth={o.strokeWidth} />}
             label={o.name}
             sub={(placedIcons[o.id]?.length ?? 0) > 0 ? `${placedIcons[o.id].length} placed` : undefined}
             active={activeIconOverlayId === o.id && iconPlaceMode}

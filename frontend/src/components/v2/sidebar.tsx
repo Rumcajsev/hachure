@@ -18,6 +18,7 @@ export function StripShell({ children }: { children: React.ReactNode }) {
       overflowX: 'hidden',
       background: t.surface,
       borderRight: `1px solid ${t.line}`,
+      boxShadow: t.shadowFlyout,
       display: 'flex',
       flexDirection: 'column',
       flexShrink: 0,
@@ -91,8 +92,8 @@ export function FlyoutShell({
           onClick={onClose}
           style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 2, color: t.inkFaint, display: 'flex', alignItems: 'center' }}
         >
-          <svg width="8" height="8" viewBox="0 0 10 10" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round">
-            <path d="M2 2l6 6M8 2l-6 6" />
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M18 6 6 18" /><path d="m6 6 12 12" />
           </svg>
         </button>
       </div>
@@ -173,10 +174,10 @@ export function TriggerRow({
           {enabled ? 'on' : 'off'}
         </span>
       )}
-      <svg width="6" height="6" viewBox="0 0 8 8" fill="none"
+      <svg width="10" height="10" viewBox="0 0 24 24" fill="none"
         stroke={active ? 'rgba(251,249,244,0.4)' : t.inkFaint}
-        strokeWidth="1.4" strokeLinecap="round">
-        <path d="M3 1.5l2.5 2.5L3 6.5" />
+        strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round">
+        <path d="m9 18 6-6-6-6" />
       </svg>
     </button>
   )
@@ -352,9 +353,9 @@ export function BrushRow({ label, color, active, shortcut, showCog, cogOpen, cus
             padding: 0,
           }}
         >
-          <svg width="11" height="11" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.3">
-            <circle cx="6" cy="6" r="1.8" />
-            <path d="M6 0v2M6 10v2M0 6h2M10 6h2M2 2l1.4 1.4M8.6 8.6L10 10M2 10l1.4-1.4M8.6 3.4L10 2" />
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M9.671 4.136a2.34 2.34 0 0 1 4.659 0 2.34 2.34 0 0 0 3.319 1.915 2.34 2.34 0 0 1 2.33 4.033 2.34 2.34 0 0 0 0 3.831 2.34 2.34 0 0 1-2.33 4.033 2.34 2.34 0 0 0-3.319 1.915 2.34 2.34 0 0 1-4.659 0 2.34 2.34 0 0 0-3.32-1.915 2.34 2.34 0 0 1-2.33-4.033 2.34 2.34 0 0 0 0-3.831A2.34 2.34 0 0 1 6.35 6.051a2.34 2.34 0 0 0 3.319-1.915" />
+            <circle cx="12" cy="12" r="3" />
           </svg>
         </button>
       )}
@@ -447,9 +448,9 @@ export function ElevBrushRow({ tier, label, color, active, shortcut, showCog, co
             opacity: active || cogOpen || hovered ? 1 : 0, padding: 0,
           }}
         >
-          <svg width="11" height="11" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.3">
-            <circle cx="6" cy="6" r="1.8" />
-            <path d="M6 0v2M6 10v2M0 6h2M10 6h2M2 2l1.4 1.4M8.6 8.6L10 10M2 10l1.4-1.4M8.6 3.4L10 2" />
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M9.671 4.136a2.34 2.34 0 0 1 4.659 0 2.34 2.34 0 0 0 3.319 1.915 2.34 2.34 0 0 1 2.33 4.033 2.34 2.34 0 0 0 0 3.831 2.34 2.34 0 0 1-2.33 4.033 2.34 2.34 0 0 0-3.319 1.915 2.34 2.34 0 0 1-4.659 0 2.34 2.34 0 0 0-3.32-1.915 2.34 2.34 0 0 1-2.33-4.033 2.34 2.34 0 0 0 0-3.831A2.34 2.34 0 0 1 6.35 6.051a2.34 2.34 0 0 0 3.319-1.915" />
+            <circle cx="12" cy="12" r="3" />
           </svg>
         </button>
       )}
@@ -498,14 +499,14 @@ export function ToggleRow({
         justifyContent: 'center',
       }}>
         {checked && (
-          <svg width="9" height="7" viewBox="0 0 9 7" fill="none" stroke={t.surface} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-            <path d="M1 3.5l2.5 2.5L8 1" />
+          <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke={t.surface} strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M20 6 9 17l-5-5" />
           </svg>
         )}
       </div>
       <div>
         <div style={{ fontFamily: t.sans, fontSize: 12, fontWeight: 500, color: t.ink }}>{label}</div>
-        {hint && <div style={{ fontFamily: t.sans, fontSize: 10.5, color: t.inkMute, marginTop: 2, lineHeight: 1.5 }}>{hint}</div>}
+        {hint && <div style={{ fontFamily: t.mono, fontSize: 9.5, color: t.inkFaint, marginTop: 2, lineHeight: 1.4 }}>{hint}</div>}
       </div>
     </div>
   )
@@ -570,8 +571,8 @@ export function DashedAddBtn({ label, onClick, dataAttr }: { label: string; onCl
         color: t.inkFaint,
       }}
     >
-      <svg width="11" height="11" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round">
-        <path d="M6 1v10M1 6h10" />
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round">
+        <path d="M5 12h14" /><path d="M12 5v14" />
       </svg>
       {label}
     </button>
@@ -614,8 +615,8 @@ export function SidebarDetailHeader({
           color: t.inkMute, padding: 0, flexShrink: 0,
         }}
       >
-        <svg width="10" height="10" viewBox="0 0 10 10" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-          <path d="M6 2L3 5l3 3" />
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round">
+          <path d="m15 18-6-6 6-6" />
         </svg>
         <span style={{ fontFamily: t.mono, fontSize: 9, letterSpacing: 0.5, textTransform: 'uppercase' }}>Back</span>
       </button>
@@ -656,8 +657,8 @@ export function SidebarDetailHeader({
                 color: t.inkMute, display: 'flex', alignItems: 'center',
               }}
             >
-              <svg width="11" height="11" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M1 4a5 5 0 1 1 .9 4.5" /><path d="M1 1v3h3" />
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8" /><path d="M3 3v5h5" />
               </svg>
             </button>
           )}
@@ -911,8 +912,8 @@ function ColorPickerOverlay({ cfg, onClose }: { cfg: ColorPickerConfig; onClose:
           onClick={onClose}
           style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 2, color: t.inkFaint, display: 'flex', alignItems: 'center' }}
         >
-          <svg width="8" height="8" viewBox="0 0 8 8" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round">
-            <path d="M6 2L2 6M2 2l4 4" />
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M18 6 6 18" /><path d="m6 6 12 12" />
           </svg>
         </button>
         <div style={{ fontFamily: t.mono, fontSize: 9.5, fontWeight: 600, letterSpacing: 0.5, color: t.ink, flex: 1 }}>
@@ -971,8 +972,8 @@ function ColorPickerOverlay({ cfg, onClose }: { cfg: ColorPickerConfig; onClose:
             display: 'flex', alignItems: 'center', justifyContent: 'center',
           }}
         >
-          <svg width="10" height="10" viewBox="0 0 10 10" fill="none" stroke={t.inkFaint} strokeWidth="1.4" strokeLinecap="round">
-            <path d="M5 1v8M1 5h8" />
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke={t.inkFaint} strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M5 12h14" /><path d="M12 5v14" />
           </svg>
         </button>
         <span style={{ fontFamily: t.mono, fontSize: 10, color: t.inkFaint }}>Custom color…</span>
@@ -1086,8 +1087,8 @@ export function ColorChip({
     >
       <div style={{ width: 14, height: 14, borderRadius: 2, background: value, border: `1px solid ${t.line2}`, flexShrink: 0 }} />
       <span style={{ fontSize: 9.5, color: t.inkFaint }}>{value}</span>
-      <svg width="6" height="4" viewBox="0 0 6 4" fill="none" style={{ flexShrink: 0, marginLeft: 1 }}>
-        <path d="M1 1l2 2 2-2" stroke={t.inkFaint} strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round" />
+      <svg width="9" height="9" viewBox="0 0 24 24" fill="none" style={{ flexShrink: 0, marginLeft: 1 }}>
+        <path d="m6 9 6 6 6-6" stroke={t.inkFaint} strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round" />
       </svg>
     </button>
   )
@@ -1200,8 +1201,8 @@ export function BigColorSwatch({
             outline: 'none',
           }}
         >
-          <svg width="10" height="10" viewBox="0 0 10 10" fill="none" stroke={t.ink2} strokeWidth="1.4" strokeLinecap="round">
-            <path d="M5 1v8M1 5h8" />
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke={t.ink2} strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M5 12h14" /><path d="M12 5v14" />
           </svg>
         </button>
       </div>
@@ -1340,8 +1341,8 @@ export function DataStatusBadge({
       alignItems: 'center',
       gap: 7,
     }}>
-      <svg width="8" height="8" viewBox="0 0 10 10" fill="none" stroke="#1d9e75" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0 }}>
-        <path d="M5 1.5v5" /><path d="M2.5 4.5l2.5 2.5 2.5-2.5" /><path d="M1.5 8.5h7" />
+      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#1d9e75" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0 }}>
+        <path d="M12 15V3" /><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" /><path d="m7 10 5 5 5-5" />
       </svg>
       <div>
         <div style={{ fontFamily: t.mono, fontSize: 10, color: '#5dcaa5', fontWeight: 500, marginBottom: 2 }}>

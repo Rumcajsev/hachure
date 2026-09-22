@@ -304,9 +304,10 @@ export function EditorTopBar({ onExportPDF, onGoHome }: { onExportPDF: (mode: 's
           onMouseEnter={e => { if (!refImageOpen) e.currentTarget.style.background = t.paper2 }}
           onMouseLeave={e => { if (!refImageOpen) e.currentTarget.style.background = 'none' }}
         >
-          <svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round">
-            <rect x="1" y="2" width="12" height="10" rx="1" />
-            <path d="M1 9.5l3-3 2.5 2.5 2-2.5 3.5 3.5" />
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round">
+            <rect width="18" height="18" x="3" y="3" rx="2" ry="2" />
+            <circle cx="9" cy="9" r="2" />
+            <path d="m21 15-3.086-3.086a2 2 0 0 0-2.828 0L6 21" />
           </svg>
           {mapImageDataUrl && (
             <span style={{ fontFamily: t.mono, fontSize: 9, letterSpacing: 0.5 }}>REF</span>
@@ -323,13 +324,13 @@ export function EditorTopBar({ onExportPDF, onGoHome }: { onExportPDF: (mode: 's
       {/* Right: undo/redo + PRINT */}
       <div style={{ display: 'flex', alignItems: 'stretch', borderLeft: `1px solid ${t.line}`, flexShrink: 0 }}>
         <IconBtn onClick={undo} disabled={!canUndo} title="Undo (⌘Z)">
-          <svg width="13" height="13" viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-            <path d="M1 6h8a4 4 0 010 8" /><path d="M4 3L1 6l3 3" />
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M9 14 4 9l5-5" /><path d="M4 9h10.5a5.5 5.5 0 0 1 5.5 5.5a5.5 5.5 0 0 1-5.5 5.5H11" />
           </svg>
         </IconBtn>
         <IconBtn onClick={redo} disabled={!canRedo} title="Redo (⌘⇧Z)">
-          <svg width="13" height="13" viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-            <path d="M13 6H5a4 4 0 000 8" /><path d="M10 3l3 3-3 3" />
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round">
+            <path d="m15 14 5-5-5-5" /><path d="M20 9H9.5A5.5 5.5 0 0 0 4 14.5A5.5 5.5 0 0 0 9.5 20H13" />
           </svg>
         </IconBtn>
 

@@ -158,8 +158,8 @@ export function BlobOverrideFlyout({ type, canonicalKey, terrain, x, y, onClose 
           onMouseEnter={e => (e.currentTarget.style.color = t.ink)}
           onMouseLeave={e => (e.currentTarget.style.color = t.inkFaint)}
         >
-          <svg width="8" height="8" viewBox="0 0 10 10" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round">
-            <path d="M2 2l6 6M8 2l-6 6" />
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M18 6 6 18" /><path d="m6 6 12 12" />
           </svg>
         </button>
       </div>

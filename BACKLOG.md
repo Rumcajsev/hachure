@@ -67,8 +67,16 @@ The loading process when fetching OSM data is functional but not informative. It
 **Progressive layer loading — edit while fetching**
 When generating a map, unlock editing as soon as base terrain is ready instead of blocking the whole UI until every layer finishes. Settlements, coastline, roads, rivers etc. fetch in parallel and appear as they arrive. Each sidebar panel shows a small loader indicator while its data is still in flight, disappearing once that layer is loaded. Goal: the user can start editing terrain immediately after generation without waiting for the slower OSM queries.
 
+**Visual distinction between downloaded-data controls and manual editing tools**
+Every sidebar panel mixes two kinds of controls: options that trigger a fetch (OSM data, elevation, routes, rail types, river topology, etc.) and options that let the user edit manually. Currently there's no visual signal telling these apart. Add a consistent indicator — an icon, a subtle tint, or a label — on any control that relies on downloaded data. Goal: a user can scan a panel and immediately know which actions will hit the network and which ones are purely local edits.
+
+Applies across all panels: Terrain (generation), Roads (fetch routes, road type overrides from OSM), Rivers (fetch rivers, canal detection), Settlements (fetch settlements), Rails (fetch rail lines, rail type classification), and any future panel that pulls external data.
+
 **Bug reporting**
 In-app mechanism to submit bug reports — ideally with automatic context attached (app version, current map state snapshot, browser/OS). Keeps feedback low-friction so issues actually get reported.
+
+**Write hover-info descriptions for every option**
+The long-hover tooltip system (`HoverInfo` + `OPTION_INFO` registry in `frontend/src/content/optionInfo.ts`) is built and wired for one example (Roads → Road shape). Needs: (a) wrap the remaining option rows across all panels — Terrain, Roads, Rivers, Settlements, Overlays, Display, plus the top-level LeftRail panel buttons — with `<HoverInfo id="...">`, and (b) write a short title + description for each, added as entries in the registry. Preview images are optional per entry (path under `public/`) and can be added later without touching the wiring.
 
 ---
 
@@ -107,13 +115,22 @@ This gives the user a hybrid option: some features hexified, others rendered pre
 
 ## Borders / Boundary Import
 
-**Import and display political or regional borders**
-Let the user import GeoJSON (or similar) files containing country, regional, or custom boundary lines — e.g. from Natural Earth or national open-data sources. Two display modes:
+**OSM-sourced border overlays**
+Let the user fetch and display political or administrative boundary lines directly from OSM — no file upload required. Two built-in presets cover the main use cases:
 
-- **Overlay mode** — the border geometry is projected and drawn as-is on top of the map, the same way an SVG outline would be. Useful when the user wants precise geographic accuracy and doesn't care about hex alignment.
-- **Hex-fit mode** — the border polyline is snapped to hex edges, producing a crisp border that follows the grid (analogous to how rivers are built from hex edge sequences). The result becomes a first-class map element the user can style.
+- **Admin boundaries** — fetch by admin level (country = level 2, state/region = level 4, county/municipality = level 6–8). The user picks a level and the relevant boundaries for the current map extent are fetched via Overpass.
+- **Custom Overpass query** — an escape hatch for power users who want something not covered by the presets (e.g. protected areas, urban extents, route relations).
 
-**UI placement is unresolved.** Options: (a) a new **Borders** panel in the left sidebar alongside Rivers, Highlights, etc., (b) a broader **Overlays** section that also absorbs the reference image overlay, or (c) folded into Highlights since highlights already represent user-drawn geometry. Hex-fit borders would need their own layer controller in `render/layers/`; overlay-mode borders could reuse or extend the existing OSM overlay mechanism.
+Two display modes, matching how other line features work:
+
+- **Overlay mode** — the border geometry is projected and drawn as-is on top of the map, without hex alignment. Useful when geographic precision matters more than grid fidelity. Shares the same underlying vector overlay mechanism as the *Vector rendering of rivers and roads* item.
+- **Hex-fit mode** — the border polyline is snapped to hex edges, producing a crisp grid-aligned border (same approach as rivers). The result is a first-class map element with its own layer controller in `render/layers/`.
+
+Style controls: color, stroke weight, dash pattern. Smoothing options (same family as rivers/roads). Both modes need to handle the case where a border exits the map extent mid-line — clip cleanly at the paper edge.
+
+**UI placement is unresolved.** Options: (a) a new **Borders** panel in the left sidebar, (b) a broader **Overlays** section that also absorbs the reference image overlay, or (c) folded into Highlights since highlights already represent user-drawn geometry.
+
+*Historical borders (pre-20th century political boundaries, period-specific states, etc.) are a natural future extension but require a different data source — OSM does not carry this data reliably. That path likely requires fetching from a dedicated historical GIS API or dataset and is out of scope here.*
 
 ---
 
@@ -146,6 +163,11 @@ Current town and village rendering looks poor and has performance issues. Rewrit
 
 **River editing flow overhaul**
 Currently rivers are added from OSM data and then styled globally after the fact. The flow should support per-river inline editing — when adding or selecting a river you can immediately set its properties (width, character, etc.) without having to apply changes across all rivers later. Quick-add stays quick, but individual control is available at the point of interaction rather than as a separate post-process step.
+
+**Trace lines from reference image overlay**
+When a reference image is loaded as an overlay, let the user trace features visible in that image — a road, a border, a river — directly onto the map as an editable polyline. The interaction model should unify with and extend the existing road-trace tool (which already lets the user draw a route on the map and snaps it to OSM road geometry); this is the same tool applied to a different input source. The output is the same kind of line element that borders and highlights produce, so it can be smoothed and optionally snapped to hex edges using the same controls.
+
+Two tracing modes worth exploring: (a) **manual trace** — the user draws along the line in the image while holding a color-picker hint to distinguish the target feature from the background; (b) **color-detect trace** — the user picks a color in the image and the app attempts to auto-detect and extract the corresponding line. Mode (b) is significantly heavier to implement (requires image processing); mode (a) is a lightweight near-term win that reuses existing drawing infrastructure.
 
 **Map Peek — fix shortcut reliability**
 Bottom-corner button that toggles a semi-transparent OSM map overlay on top of the generated hex map. Shortcut was `Space`, now meant to be `M`. Currently `Space` always works, `M` works only sometimes — likely a focus issue where the key listener only fires when the canvas has focus. Fix: register the `M` listener at the `window`/`document` level (same as `Space`) so it fires regardless of what element has focus. Remove `Space` as a trigger once `M` is reliable.

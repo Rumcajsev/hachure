@@ -16,68 +16,65 @@ const RAIL_W = 44
 // ── Icons ─────────────────────────────────────────────────────────────────────
 
 const ICON_HAND = (
-  <svg width="14" height="14" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round">
-    <path d="M4 5.5V2.5a1 1 0 0 1 2 0v3" />
-    <path d="M6 5V2a1 1 0 0 1 2 0v3.5" />
-    <path d="M8 5.2V3.5a1 1 0 0 1 2 0V7c0 2-1.5 3.5-3.5 3.5S3 9 3 7V5.5a1 1 0 0 1 2 0V6" />
+  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M18 11V6a2 2 0 0 0-2-2a2 2 0 0 0-2 2" />
+    <path d="M14 10V4a2 2 0 0 0-2-2a2 2 0 0 0-2 2v2" />
+    <path d="M10 10.5V6a2 2 0 0 0-2-2a2 2 0 0 0-2 2v8" />
+    <path d="M18 8a2 2 0 1 1 4 0v6a8 8 0 0 1-8 8h-2c-2.8 0-4.5-.86-5.99-2.34l-3.6-3.6a2 2 0 0 1 2.83-2.82L7 15" />
   </svg>
 )
 
 const ICON_SELECT = (
-  <svg width="14" height="14" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round">
-    <path d="M2 2 L2 9 L4.5 7 L6 10.5 L7.5 9.8 L6 6.5 L9 6.5 Z" />
+  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M4.037 4.688a.495.495 0 0 1 .651-.651l16 6.5a.5.5 0 0 1-.063.947l-6.124 1.58a2 2 0 0 0-1.438 1.435l-1.579 6.126a.5.5 0 0 1-.947.063z" />
   </svg>
 )
 
+// Lucide-set icons (ISC license), restyled at 1.75 stroke to match the rail's hairline weight.
+
 const ICON_TERRAIN = (
-  <svg width="15" height="15" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round">
-    <polygon points="6,1 10.2,3.5 10.2,8.5 6,11 1.8,8.5 1.8,3.5" />
+  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round">
+    <path d="m8 3 4 8 5-5 5 15H2L8 3z" />
   </svg>
 )
 
 const ICON_ROADS = (
-  <svg width="14" height="14" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round">
-    <path d="M3 11 L5 1" />
-    <path d="M9 11 L7 1" />
-    <line x1="4.5" y1="8.5" x2="7.5" y2="8.5" strokeDasharray="1.2 1.2" />
-    <line x1="5" y1="5.5" x2="7" y2="5.5" strokeDasharray="1.2 1.2" />
+  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M12 17v4" />
+    <path d="M12 5V3" />
+    <path d="M12 9v3" />
+    <path d="M2.077 18.449A2 2 0 0 0 4 21h16a2 2 0 0 0 1.924-2.55l-4-14A2 2 0 0 0 16 3H8a2 2 0 0 0-1.924 1.45z" />
   </svg>
 )
 
 const ICON_RIVERS = (
-  <svg width="14" height="14" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round">
-    <path d="M1 4 C3 4 3 2 5 2 C7 2 7 4 9 4 C11 4 11 3 11 3" />
-    <path d="M1 8 C3 8 4 6 6 7 C8 8 9 7 11 7" strokeWidth="0.9" opacity="0.6" />
+  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M2 12q2.5 2 5 0t5 0 5 0 5 0" />
+    <path d="M2 19q2.5 2 5 0t5 0 5 0 5 0" />
+    <path d="M2 5q2.5 2 5 0t5 0 5 0 5 0" />
   </svg>
 )
 
 const ICON_SETTLEMENTS = (
-  <svg width="14" height="14" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round">
-    <rect x="1" y="6" width="4" height="5" />
-    <path d="M1 6 L3 3.5 L5 6" />
-    <rect x="7" y="4" width="4" height="7" />
-    <path d="M7 4 L9 1.5 L11 4" />
-    <line x1="8.5" y1="7.5" x2="8.5" y2="11" />
+  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round">
+    <path d="m12.681 4.24.834-.715a1.45 1.45 0 0 1 1.88 0l5.09 4.364A1.45 1.45 0 0 1 21 9v6.546a1.45 1.45 0 0 1-1 1.381" />
+    <path d="M15.485 11.889A1.45 1.45 0 0 1 16 13v6.546A1.454 1.454 0 0 1 14.546 21H4.364a1.454 1.454 0 0 1-1.454-1.454V13a1.45 1.45 0 0 1 .515-1.111l5.09-4.364a1.45 1.45 0 0 1 1.88 0z" />
+    <path d="M7.41 20.546v-4a1 1 0 0 1 1-1h2a1 1 0 0 1 1 1v4" />
   </svg>
 )
 
 const ICON_OVERLAYS = (
-  <svg width="14" height="14" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round">
-    <polygon points="6,1.5 7.5,4.5 11,5 8.5,7.5 9,11 6,9.5 3,11 3.5,7.5 1,5 4.5,4.5" />
+  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M12.83 2.18a2 2 0 0 0-1.66 0L2.6 6.08a1 1 0 0 0 0 1.83l8.58 3.91a2 2 0 0 0 1.66 0l8.58-3.9a1 1 0 0 0 0-1.83z" />
+    <path d="M2 12a1 1 0 0 0 .58.91l8.6 3.91a2 2 0 0 0 1.65 0l8.58-3.9A1 1 0 0 0 22 12" />
+    <path d="M2 17a1 1 0 0 0 .58.91l8.6 3.91a2 2 0 0 0 1.65 0l8.58-3.9A1 1 0 0 0 22 17" />
   </svg>
 )
 
 const ICON_SETTINGS = (
-  <svg width="14" height="14" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round">
-    <circle cx="6" cy="6" r="1.8" />
-    <path d="M6 1.5 L6 2.5" />
-    <path d="M6 9.5 L6 10.5" />
-    <path d="M1.5 6 L2.5 6" />
-    <path d="M9.5 6 L10.5 6" />
-    <path d="M3.05 3.05 L3.75 3.75" />
-    <path d="M8.25 8.25 L8.95 8.95" />
-    <path d="M8.95 3.05 L8.25 3.75" />
-    <path d="M3.75 8.25 L3.05 8.95" />
+  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M9.671 4.136a2.34 2.34 0 0 1 4.659 0 2.34 2.34 0 0 0 3.319 1.915 2.34 2.34 0 0 1 2.33 4.033 2.34 2.34 0 0 0 0 3.831 2.34 2.34 0 0 1-2.33 4.033 2.34 2.34 0 0 0-3.319 1.915 2.34 2.34 0 0 1-4.659 0 2.34 2.34 0 0 0-3.32-1.915 2.34 2.34 0 0 1-2.33-4.033 2.34 2.34 0 0 0 0-3.831A2.34 2.34 0 0 1 6.35 6.051a2.34 2.34 0 0 0 3.319-1.915" />
+    <circle cx="12" cy="12" r="3" />
   </svg>
 )
 
@@ -173,14 +170,14 @@ export function LeftRail() {
     : null
 
   return (
-    <div style={{ display: 'flex', height: '100%' }}>
+    <div style={{ display: 'flex', height: '100%', alignItems: 'flex-start' }}>
       {/* Icon rail */}
       <div style={{
         width: RAIL_W,
-        height: '100%',
         flexShrink: 0,
         background: t.surface,
         borderRight: activePanel ? `1px solid ${t.line}` : 'none',
+        boxShadow: t.shadowFlyout,
         display: 'flex',
         flexDirection: 'column',
         alignItems: 'center',

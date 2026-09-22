@@ -260,10 +260,10 @@ export function OsmRiversFlyout({ onClose }: { onClose: () => void }) {
             }}
           >
             <span>{osmRiverWays.length} river{osmRiverWays.length !== 1 ? 's' : ''}</span>
-            <svg width="10" height="10" viewBox="0 0 10 10" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round"
               style={{ transform: listOpen ? 'rotate(0deg)' : 'rotate(-90deg)', transition: 'transform 0.15s ease' }}
             >
-              <path d="M2 3.5l3 3 3-3" />
+              <path d="m6 9 6 6 6-6" />
             </svg>
           </button>
           {listOpen && (

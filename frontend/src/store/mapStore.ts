@@ -2,6 +2,7 @@ import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
 import { get as idbGet, set as idbSet, del as idbDel } from 'idb-keyval'
 import { loadMapImageFromStorage } from '../lib/mapImageStorage'
+import type { PictorialIconShape, BackgroundShape } from '../lib/iconGlyphs'
 import { recordStoreSet, recordStoreSetWithFreezeDetection } from '../lib/perfMonitor'
 
 // Debounce JSON.stringify + IDB writes, and skip the write entirely when the
@@ -618,7 +619,9 @@ export interface Settlement {
 export interface IconOverlay {
   id: string
   name: string
-  shape: 'circle' | 'square' | 'triangle' | 'diamond' | 'star'
+  shape: 'circle' | 'square' | 'triangle' | 'diamond' | 'star' | PictorialIconShape
+  /** Filled backdrop behind a pictorial symbol glyph. Absent on older saved maps — treat as 'circle'. */
+  background?: BackgroundShape
   fillColor: string
   strokeColor: string
   strokeWidth: number

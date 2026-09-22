@@ -1076,9 +1076,9 @@ function CheckRow({ label, done, active, pending, detail, t }: {
     <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
       <div style={{ width: 16, height: 16, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
         {done ? (
-          <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
-            <circle cx="7" cy="7" r="6" stroke={t.rust} strokeWidth="1" />
-            <path d="M4.5 7l2 2 3.5-3.5" stroke={t.rust} strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round" />
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
+            <circle cx="12" cy="12" r="10" stroke={t.rust} strokeWidth="1.75" />
+            <path d="m16 9-5.5 5.5L8 12" stroke={t.rust} strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round" />
           </svg>
         ) : active ? (
           <div style={{ width: 7, height: 7, borderRadius: '50%', background: t.rust }} />

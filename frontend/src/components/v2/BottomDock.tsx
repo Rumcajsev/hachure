@@ -144,9 +144,9 @@ export function BottomDock({ canvasRef }: { canvasRef: React.RefObject<TerrainVi
     }}>
       {hasMap && (
         <DockBtn onMouseDown={mapPeekStart} onMouseUp={mapPeekEnd} onMouseLeave={mapPeekEnd} active={mapPeekOn} label="Map peek">
-          <svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round">
-            <path d="M1 7s2.5-4.5 6-4.5S13 7 13 7s-2.5 4.5-6 4.5S1 7 1 7z" />
-            <circle cx="7" cy="7" r="1.8" />
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M2.062 12.348a1 1 0 0 1 0-.696 10.75 10.75 0 0 1 19.876 0 1 1 0 0 1 0 .696 10.75 10.75 0 0 1-19.876 0" />
+            <circle cx="12" cy="12" r="3" />
           </svg>
           <KbdChip label="M" active={mapPeekOn} />
         </DockBtn>
@@ -154,9 +154,10 @@ export function BottomDock({ canvasRef }: { canvasRef: React.RefObject<TerrainVi
 
       {hasRefImage && (
         <DockBtn onMouseDown={refPeekStart} onMouseUp={refPeekEnd} onMouseLeave={refPeekEnd} active={refPeekOn} label="Ref image">
-          <svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round">
-            <rect x="1" y="2" width="12" height="10" rx="1" />
-            <path d="M1 9.5l3-3 2.5 2.5 2-2.5 3.5 3.5" />
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round">
+            <rect width="18" height="18" x="3" y="3" rx="2" ry="2" />
+            <circle cx="9" cy="9" r="2" />
+            <path d="m21 15-3.086-3.086a2 2 0 0 0-2.828 0L6 21" />
           </svg>
           <KbdChip label="N" active={refPeekOn} />
         </DockBtn>
@@ -165,8 +166,11 @@ export function BottomDock({ canvasRef }: { canvasRef: React.RefObject<TerrainVi
       {showDivider && <DockDivider />}
 
       <DockBtn onClick={handleZoomPhysical} label="1:1">
-        <svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round">
-          <path d="M1 5V1h4M9 1h4v4M13 9v4H9M5 13H1V9" />
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round">
+          <path d="M8 3H5a2 2 0 0 0-2 2v3" />
+          <path d="M21 8V5a2 2 0 0 0-2-2h-3" />
+          <path d="M3 16v3a2 2 0 0 0 2 2h3" />
+          <path d="M16 21h3a2 2 0 0 0 2-2v-3" />
         </svg>
       </DockBtn>
     </div>

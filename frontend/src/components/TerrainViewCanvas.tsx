@@ -110,25 +110,22 @@ const OSM_OVERLAY_STYLE: maplibregl.StyleSpecification = {
 const EMPTY_CORRIDORS: [number, number][][] = []
 
 function CtxIcon({ type, color }: { type: 'edit' | 'dice' | 'erase'; color: string }) {
-  const s: React.CSSProperties = { width: 12, height: 12, flexShrink: 0, display: 'block' }
+  const s: React.CSSProperties = { width: 14, height: 14, flexShrink: 0, display: 'block' }
   if (type === 'edit') return (
-    <svg style={s} viewBox="0 0 12 12" fill="none" stroke={color} strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round">
-      <path d="M8 1.5l2.5 2.5L3.5 11H1v-2.5L8 1.5z" />
+    <svg style={s} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M21.174 6.812a1 1 0 0 0-3.986-3.987L3.842 16.174a2 2 0 0 0-.5.83l-1.321 4.352a.5.5 0 0 0 .623.622l4.353-1.32a2 2 0 0 0 .83-.497z" />
+      <path d="m15 5 4 4" />
     </svg>
   )
   if (type === 'dice') return (
-    <svg style={s} viewBox="0 0 12 12" fill="none" stroke={color} strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round">
-      <rect x="1" y="1" width="10" height="10" rx="2" />
-      <circle cx="4" cy="4" r="0.9" fill={color} stroke="none" />
-      <circle cx="8" cy="4" r="0.9" fill={color} stroke="none" />
-      <circle cx="6" cy="6" r="0.9" fill={color} stroke="none" />
-      <circle cx="4" cy="8" r="0.9" fill={color} stroke="none" />
-      <circle cx="8" cy="8" r="0.9" fill={color} stroke="none" />
+    <svg style={s} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round">
+      <rect width="18" height="18" x="3" y="3" rx="2" ry="2" />
+      <path d="M16 8h.01" /><path d="M8 8h.01" /><path d="M8 16h.01" /><path d="M16 16h.01" /><path d="M12 12h.01" />
     </svg>
   )
   return (
-    <svg style={s} viewBox="0 0 12 12" fill="none" stroke={color} strokeWidth="1.3" strokeLinecap="round">
-      <path d="M2 10L10 2M2 2l8 8" />
+    <svg style={s} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M18 6 6 18" /><path d="m6 6 12 12" />
     </svg>
   )
 }

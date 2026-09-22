@@ -7,6 +7,7 @@ import type { RoadTierStyle, StrokeDash } from '../../store/mapStore'
 import { DEFAULT_STROKE_EFFECT } from '../../store/mapStore'
 import { PALETTE_RAIL_LIGHT, PALETTE_RAIL_DARK } from '../../palettes'
 import { useTheme } from '../../context/ThemeContext'
+import { HoverInfo } from '../HoverInfo'
 import {
   BrushRow, MiniSlider, ColorChip, ColorPickerHost, SegmentedControl, ToggleRow, tintBg,
   STRIP_W, FLYOUT_W, StripShell, FlyoutShell, V2Divider, TriggerRow, TGap,
@@ -41,8 +42,8 @@ export const ROAD_TIERS = [
 const RAIL_COLOR = '#4a7a9a'
 
 const IMPORT_ICON = (
-  <svg width="8" height="8" viewBox="0 0 10 10" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-    <path d="M5 1.5v5" /><path d="M2.5 4.5l2.5 2.5 2.5-2.5" /><path d="M1.5 8.5h7" />
+  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M12 15V3" /><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" /><path d="m7 10 5 5 5-5" />
   </svg>
 )
 
@@ -1186,7 +1187,9 @@ export function RoadsSidebarV3() {
           </div>
         )}
         <TGap />
-        <TriggerRow label="Road shape" active={flyout === 'road-shape'} onClick={() => toggleFlyout('road-shape')} />
+        <HoverInfo id="roads.roadShape">
+          <TriggerRow label="Road shape" active={flyout === 'road-shape'} onClick={() => toggleFlyout('road-shape')} />
+        </HoverInfo>
         <TriggerRow label="Terrain cut" active={flyout === 'road-terrain-cut'} onClick={() => toggleFlyout('road-terrain-cut')} />
         {dataSource === 'osm' && (
           <TriggerRow label="Fetch from OSM" active={flyout === 'road-import'} icon={IMPORT_ICON} onClick={() => toggleFlyout('road-import')} />
