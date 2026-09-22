@@ -1340,8 +1340,8 @@ export function DataStatusBadge({
       alignItems: 'center',
       gap: 7,
     }}>
-      <svg width="8" height="8" viewBox="0 0 8 8" fill="none" stroke="#1d9e75" strokeWidth="1.4" strokeLinecap="round" style={{ flexShrink: 0 }}>
-        <path d="M1.5 3l2.5 2.5L6.5 3" />
+      <svg width="8" height="8" viewBox="0 0 10 10" fill="none" stroke="#1d9e75" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0 }}>
+        <path d="M5 1.5v5" /><path d="M2.5 4.5l2.5 2.5 2.5-2.5" /><path d="M1.5 8.5h7" />
       </svg>
       <div>
         <div style={{ fontFamily: t.mono, fontSize: 10, color: '#5dcaa5', fontWeight: 500, marginBottom: 2 }}>
