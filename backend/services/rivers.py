@@ -217,14 +217,56 @@ def _polyline_to_hex_edges(
 
     Algorithm:
     1. Dense-sample the polyline (every R_m/3 meters).
-    2. Snap each sample to the nearest hex vertex → vertex path.
+    2. Snap each sample to the nearest hex vertex → vertex path. When two
+       consecutive samples snap to non-adjacent vertices (shallow angles /
+       sharp bends can skip a lattice vertex), recursively bisect the source
+       segment between them until the snapped vertices are adjacent, so the
+       walk never silently jumps over a vertex.
     3. For each consecutive vertex pair, find the two hexes sharing that edge
        by probing R_m*0.3 to either side of the midpoint perpendicular.
     4. Validate adjacency and deduplicate.
     """
-    # Step 1: dense sample
     sample_interval = R_m / 3.0
-    samples: list[tuple[float, float]] = []
+    max_vertex_gap_m = R_m * 1.2
+    max_bisect_depth = 16
+
+    def _vkey(v: tuple[float, float]) -> tuple[int, int]:
+        return (round(v[0] * 1_000_000), round(v[1] * 1_000_000))
+
+    def _vertex_gap_m(vA: tuple[float, float], vB: tuple[float, float]) -> float:
+        pAx, pAy = lonlat_to_paper_m(*vA)
+        pBx, pBy = lonlat_to_paper_m(*vB)
+        return math.hypot(pBx - pAx, pBy - pAy)
+
+    # Step 1 + 2: dense sample, snap to nearest hex vertex, bridging gaps
+    vertex_path: list[tuple[float, float]] = []
+    prev_key: tuple[int, int] | None = None
+    prev_lonlat: tuple[float, float] | None = None
+
+    def _emit(v: tuple[float, float], lon: float, lat: float) -> None:
+        nonlocal prev_key, prev_lonlat
+        key = _vkey(v)
+        if key != prev_key:
+            vertex_path.append(v)
+            prev_key = key
+        prev_lonlat = (lon, lat)
+
+    def _bridge(
+        lon1: float, lat1: float, v1: tuple[float, float],
+        lon2: float, lat2: float, v2: tuple[float, float],
+        depth: int,
+    ) -> None:
+        if _vertex_gap_m(v1, v2) <= max_vertex_gap_m or depth >= max_bisect_depth:
+            _emit(v2, lon2, lat2)
+            return
+        mlon, mlat = (lon1 + lon2) / 2, (lat1 + lat2) / 2
+        vm = _nearest_hex_vertex(mlon, mlat, lonlat_to_hex, hex_vertices_lonlat, cos_lat, R_m)
+        if vm is None:
+            _emit(v2, lon2, lat2)
+            return
+        _bridge(lon1, lat1, v1, mlon, mlat, vm, depth + 1)
+        _bridge(mlon, mlat, vm, lon2, lat2, v2, depth + 1)
+
     for i in range(len(coords) - 1):
         lon1, lat1 = coords[i]
         lon2, lat2 = coords[i + 1]
@@ -234,19 +276,17 @@ def _polyline_to_hex_edges(
         n = max(2, int(dist / sample_interval) + 1)
         for j in range(n):
             t = j / (n - 1)
-            samples.append((lon1 + t * (lon2 - lon1), lat1 + t * (lat2 - lat1)))
-
-    # Step 2: snap to nearest hex vertex, deduplicate consecutive
-    vertex_path: list[tuple[float, float]] = []
-    prev_key: tuple[int, int] | None = None
-    for lon, lat in samples:
-        v = _nearest_hex_vertex(lon, lat, lonlat_to_hex, hex_vertices_lonlat, cos_lat, R_m)
-        if v is None:
-            continue
-        key = (round(v[0] * 1_000_000), round(v[1] * 1_000_000))
-        if key != prev_key:
-            vertex_path.append(v)
-            prev_key = key
+            lon, lat = lon1 + t * (lon2 - lon1), lat1 + t * (lat2 - lat1)
+            v = _nearest_hex_vertex(lon, lat, lonlat_to_hex, hex_vertices_lonlat, cos_lat, R_m)
+            if v is None:
+                continue
+            if not vertex_path:
+                _emit(v, lon, lat)
+                continue
+            if _vkey(v) == prev_key:
+                continue
+            plon, plat = prev_lonlat
+            _bridge(plon, plat, vertex_path[-1], lon, lat, v, 0)
 
     if len(vertex_path) < 2:
         log.debug("vertex_path too short (%d vertices)", len(vertex_path))
