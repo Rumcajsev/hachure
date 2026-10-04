@@ -64,6 +64,8 @@ import { type MegaHexSlice, createMegaHexSlice } from './slices/megaHexSlice'
 import { type PresetsSlice, createPresetsSlice } from './slices/presetsSlice'
 import { type MapImageSlice, createMapImageSlice } from './slices/mapImageSlice'
 import { type LabelOffsetsSlice, createLabelOffsetsSlice } from './slices/labelOffsetsSlice'
+import { type P2pNetworkSlice, createP2pNetworkSlice } from './slices/p2pNetworkSlice'
+import { type P2pTerrainSlice, createP2pTerrainSlice } from './slices/p2pTerrainSlice'
 export type { LabelBBox } from './slices/labelOffsetsSlice'
 import type { LabelSpec } from '../lib/labelPresets'
 
@@ -797,7 +799,9 @@ export type MapStore =
   MegaHexSlice &
   PresetsSlice &
   MapImageSlice &
-  LabelOffsetsSlice
+  LabelOffsetsSlice &
+  P2pNetworkSlice &
+  P2pTerrainSlice
 
 // Thin wrapper so dev perf tooling can count store set() calls.
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -826,6 +830,8 @@ export const useMapStore = create<MapStore>()(persist((set, get) => {
   ...createPresetsSlice(s, get),
   ...createMapImageSlice(s, get),
   ...createLabelOffsetsSlice(s),
+  ...createP2pNetworkSlice(s, get),
+  ...createP2pTerrainSlice(s, get),
   }
 }, {
   name: 'ig2-map-store',
@@ -1064,8 +1070,20 @@ export const useMapStore = create<MapStore>()(persist((set, get) => {
     labelOffsets: s.labelOffsets,
     labelPresetId: s.labelPresetId,
     labelOverrides: s.labelOverrides,
+    p2pTowns: s.p2pTowns,
+    p2pEdges: s.p2pEdges,
+    p2pNetworkMinDistCm: s.p2pNetworkMinDistCm,
+    p2pNetworkMaxDistCm: s.p2pNetworkMaxDistCm,
+    p2pMaxNodes: s.p2pMaxNodes,
+    p2pSupplyCount: s.p2pSupplyCount,
+    p2pPruneFactor: s.p2pPruneFactor,
+    p2pCurviness: s.p2pCurviness,
+    p2pPaintLayer: s.p2pPaintLayer,
+    p2pBrush: s.p2pBrush,
+    p2pMaxRegionSizeCm2: s.p2pMaxRegionSizeCm2,
+    p2pRiverSplitRegions: s.p2pRiverSplitRegions,
   }),
-  version: 100,
+  version: 101,
   migrate: migratePersisted,
   merge: (persisted, current) => rehydrateState({ ...current, ...(persisted as Partial<MapStore>) }),
 }))

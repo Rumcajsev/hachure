@@ -1089,6 +1089,20 @@ if (fromVersion < 64) {
     if (s.p2pMinNodeDistCm === undefined) s.p2pMinNodeDistCm = 5
     if (s.p2pMaxNodeDistCm === undefined) s.p2pMaxNodeDistCm = 10
   }
+  if (fromVersion < 101) {
+    if (s.p2pTowns === undefined) s.p2pTowns = []
+    if (s.p2pEdges === undefined) s.p2pEdges = []
+    if (s.p2pNetworkMinDistCm === undefined) s.p2pNetworkMinDistCm = 5
+    if (s.p2pNetworkMaxDistCm === undefined) s.p2pNetworkMaxDistCm = 10
+    if (s.p2pMaxNodes === undefined) s.p2pMaxNodes = 400
+    if (s.p2pSupplyCount === undefined) s.p2pSupplyCount = 3
+    if (s.p2pPruneFactor === undefined) s.p2pPruneFactor = 1.0
+    if (s.p2pCurviness === undefined) s.p2pCurviness = 50
+    if (s.p2pPaintLayer === undefined) s.p2pPaintLayer = {}
+    if (s.p2pBrush === undefined) s.p2pBrush = 'off'
+    if (s.p2pMaxRegionSizeCm2 === undefined) s.p2pMaxRegionSizeCm2 = 60
+    if (s.p2pRiverSplitRegions === undefined) s.p2pRiverSplitRegions = true
+  }
   if (fromVersion < 84) {
     const tiers = s.riverTierStyles as Array<Record<string, unknown>> | undefined
     if (tiers) {
