@@ -93,8 +93,9 @@ def _clip_to_paper(
     β = math.radians(config.bearing)
     cos_β, sin_β = math.cos(β), math.sin(β)
     cos_lat = math.cos(math.radians(config.center_lat))
-    hw = config.width_m / 2 + config.R_m * 2
-    hh = config.height_m / 2 + config.R_m * 2
+    buffer_m = (config.R_m or 0) * 2
+    hw = config.width_m / 2 + buffer_m
+    hh = config.height_m / 2 + buffer_m
 
     def in_paper(lon: float, lat: float) -> bool:
         E_m = (lon - config.center_lon) * cos_lat * METERS_PER_DEGREE
@@ -410,9 +411,13 @@ async def fetch_rivers(config: RiversConfig) -> list[dict]:
     elements = data.get("elements", [])
     log.info("fetch_rivers: %d OSM elements returned", len(elements))
 
-    # Build geometry helpers
-    lonlat_to_hex = make_lonlat_to_hex(config, config.R_m)
-    hex_vertices_lonlat, lonlat_to_paper_m, paper_m_to_lonlat, cos_lat = _make_hex_geometry(config, config.R_m)
+    # Hex-edge snapping only applies when the caller supplies a hex grid (R_m). A
+    # non-hex caller (e.g. point-to-point mode) omits it and gets raw coords/segments
+    # with no edges — there is no grid to snap to.
+    snap_to_hex = config.R_m is not None
+    if snap_to_hex:
+        lonlat_to_hex = make_lonlat_to_hex(config, config.R_m)
+        hex_vertices_lonlat, lonlat_to_paper_m, paper_m_to_lonlat, cos_lat = _make_hex_geometry(config, config.R_m)
 
     rivers = []
     for el in elements:
@@ -437,13 +442,16 @@ async def fetch_rivers(config: RiversConfig) -> list[dict]:
         if len(coords) < 2:
             continue
 
-        edges = _polyline_to_hex_edges(
-            coords, lonlat_to_hex, hex_vertices_lonlat,
-            lonlat_to_paper_m, paper_m_to_lonlat, cos_lat, config.R_m,
-        )
-        if not edges:
-            log.debug("skip %r (%s): no edges from %d coords", tags.get("name", ""), wtype, len(coords))
-            continue
+        if snap_to_hex:
+            edges = _polyline_to_hex_edges(
+                coords, lonlat_to_hex, hex_vertices_lonlat,
+                lonlat_to_paper_m, paper_m_to_lonlat, cos_lat, config.R_m,
+            )
+            if not edges:
+                log.debug("skip %r (%s): no edges from %d coords", tags.get("name", ""), wtype, len(coords))
+                continue
+        else:
+            edges = []
 
         osm_width = _parse_width(tags.get("width"))
         if osm_width is not None:

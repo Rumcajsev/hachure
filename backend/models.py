@@ -41,8 +41,10 @@ class SettlementsConfig(BaseRegionConfig):
 
 
 class RiversConfig(BaseRegionConfig):
-    hex_orientation: str
-    R_m: float
+    # hex_orientation/R_m are omitted for non-hex (e.g. point-to-point) callers —
+    # fetch_rivers() then skips hex-edge snapping and returns raw coords/segments only.
+    hex_orientation: Optional[str] = None
+    R_m: Optional[float] = None
     types: list[str] = ["river"]
     hex_size_km: float = 10.0
     limit: int = 15
