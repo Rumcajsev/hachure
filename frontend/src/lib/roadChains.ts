@@ -49,9 +49,18 @@ export type RoadBaseData = {
 
 export type RoadTierGeomMap = Record<number, { wiggleAmp?: number; wiggleFreq?: number; pathSmoothing?: number; smoothing?: number; centerPull?: number }>
 
+export type RoadEdgeInput = { a: string; b: string; tier: 0 | 1 | 2 }
+
+/** Adapts hex-coordinate edges (as stored for hex mode) to the generic node-id shape buildRoadChains takes. */
+export function hexRoadEdgesToGeneric(
+  edges: { q1: number; r1: number; q2: number; r2: number; tier: 0 | 1 | 2 }[],
+): RoadEdgeInput[] {
+  return edges.map(e => ({ a: `${e.q1},${e.r1}`, b: `${e.q2},${e.r2}`, tier: e.tier }))
+}
+
 export function buildRoadChains(
-  roadEdges: { q1: number; r1: number; q2: number; r2: number; tier: 0 | 1 | 2 }[],
-  hexIdx: Map<string, { center: [number, number] }>,
+  roadEdges: RoadEdgeInput[],
+  nodeIdx: Map<string, { center: [number, number] }>,
   overrides: Record<string, [number, number]>,
   wiggleAmpFactor = 0,
   wiggleFreqFactor = 2.5,
@@ -71,7 +80,7 @@ export function buildRoadChains(
   for (const [jtKey, emKey] of Object.entries(snapBindings)) {
     const parts = emKey.split('|')
     if (parts.length !== 3) continue
-    const h1 = hexIdx.get(parts[1]), h2 = hexIdx.get(parts[2])
+    const h1 = nodeIdx.get(parts[1]), h2 = nodeIdx.get(parts[2])
     if (!h1 || !h2) continue
     effectiveOverrides[jtKey] = (overrides[emKey] as [number, number] | undefined) ??
       [(h1.center[0] + h2.center[0]) / 2, (h1.center[1] + h2.center[1]) / 2]
@@ -79,7 +88,7 @@ export function buildRoadChains(
 
   let interHexDist = 0, hexScaleSamples = 0
   for (const e of roadEdges.slice(0, 8)) {
-    const h1 = hexIdx.get(`${e.q1},${e.r1}`), h2 = hexIdx.get(`${e.q2},${e.r2}`)
+    const h1 = nodeIdx.get(e.a), h2 = nodeIdx.get(e.b)
     if (h1 && h2) { interHexDist += Math.hypot(h2.center[0] - h1.center[0], h2.center[1] - h1.center[1]); hexScaleSamples++ }
   }
   interHexDist = hexScaleSamples > 0 ? interHexDist / hexScaleSamples : 0
@@ -87,7 +96,7 @@ export function buildRoadChains(
   // Build global adjacency over ALL edges regardless of tier.
   const adj = new Map<string, string[]>()
   for (const e of roadEdges) {
-    const k1 = `${e.q1},${e.r1}`, k2 = `${e.q2},${e.r2}`
+    const k1 = e.a, k2 = e.b
     if (!adj.has(k1)) adj.set(k1, [])
     if (!adj.has(k2)) adj.set(k2, [])
     if (!adj.get(k1)!.includes(k2)) adj.get(k1)!.push(k2)
@@ -97,7 +106,7 @@ export function buildRoadChains(
   // Per-edge minimum tier (most important tier wins).
   const edgeMinTier = new Map<string, 0 | 1 | 2>()
   for (const e of roadEdges) {
-    const k1 = `${e.q1},${e.r1}`, k2 = `${e.q2},${e.r2}`
+    const k1 = e.a, k2 = e.b
     const ek = k1 < k2 ? `${k1}|${k2}` : `${k2}|${k1}`
     const existing = edgeMinTier.get(ek)
     if (existing === undefined || e.tier < existing) edgeMinTier.set(ek, e.tier)
@@ -109,7 +118,7 @@ export function buildRoadChains(
   const junctionPositions = new Map<string, [number, number]>()
   for (const [k] of adj) {
     if (!isJunction(k)) continue
-    const h = hexIdx.get(k); if (!h) continue
+    const h = nodeIdx.get(k); if (!h) continue
     let minTier: 0 | 1 | 2 = 2
     for (const nk of adj.get(k) ?? []) {
       const ek = k < nk ? `${k}|${nk}` : `${nk}|${k}`
@@ -120,7 +129,7 @@ export function buildRoadChains(
     for (const nk of adj.get(k) ?? []) {
       const ek = k < nk ? `${k}|${nk}` : `${nk}|${k}`
       if (edgeMinTier.get(ek) !== minTier) continue
-      const hn = hexIdx.get(nk); if (!hn) continue
+      const hn = nodeIdx.get(nk); if (!hn) continue
       sumX += (h.center[0] + hn.center[0]) / 2
       sumY += (h.center[1] + hn.center[1]) / 2
       count++
@@ -137,12 +146,12 @@ export function buildRoadChains(
   for (const [k] of adj) {
     const neighbors = [...(adj.get(k) ?? [])]
     if (neighbors.length <= 2) continue
-    const h = hexIdx.get(k); if (!h) continue
+    const h = nodeIdx.get(k); if (!h) continue
     let bestPair: [string, string] | null = null
     let bestDot = 1
     for (let i = 0; i < neighbors.length; i++) {
       for (let j = i + 1; j < neighbors.length; j++) {
-        const ni = hexIdx.get(neighbors[i]), nj = hexIdx.get(neighbors[j])
+        const ni = nodeIdx.get(neighbors[i]), nj = nodeIdx.get(neighbors[j])
         if (!ni || !nj) continue
         const dx1 = ni.center[0] - h.center[0], dy1 = ni.center[1] - h.center[1]
         const dx2 = nj.center[0] - h.center[0], dy2 = nj.center[1] - h.center[1]
@@ -165,8 +174,8 @@ export function buildRoadChains(
     for (const [k, spinePair] of spineNeighbors) {
       if (effectiveOverrides[`ja|${k}`]) continue
       const basePos = junctionPositions.get(k); if (!basePos) continue
-      const h = hexIdx.get(k); if (!h) continue
-      const hA = hexIdx.get(spinePair[0]), hB = hexIdx.get(spinePair[1])
+      const h = nodeIdx.get(k); if (!h) continue
+      const hA = nodeIdx.get(spinePair[0]), hB = nodeIdx.get(spinePair[1])
       if (!hA || !hB) continue
       const midAx = (h.center[0] + hA.center[0]) / 2, midAy = (h.center[1] + hA.center[1]) / 2
       const midBx = (h.center[0] + hB.center[0]) / 2, midBy = (h.center[1] + hB.center[1]) / 2
@@ -182,9 +191,9 @@ export function buildRoadChains(
   const armToTerminal = new Map<string, [number, number]>()
   const sideTerminals = new Map<string, [number, number]>()
   for (const [k, bestPair] of spineNeighbors) {
-    const h = hexIdx.get(k); if (!h) continue
+    const h = nodeIdx.get(k); if (!h) continue
     const jc = junctionPositions.get(k) ?? h.center
-    const hA = hexIdx.get(bestPair[0]), hB = hexIdx.get(bestPair[1])
+    const hA = nodeIdx.get(bestPair[0]), hB = nodeIdx.get(bestPair[1])
     if (!hA || !hB) continue
 
     const sdx = hA.center[0] - h.center[0], sdy = hA.center[1] - h.center[1]
@@ -196,7 +205,7 @@ export function buildRoadChains(
     const sideA = new Set<string>(), sideB = new Set<string>()
     let tieIdx = 0
     for (const bn of branches) {
-      const hn = hexIdx.get(bn); if (!hn) continue
+      const hn = nodeIdx.get(bn); if (!hn) continue
       const bx = hn.center[0] - h.center[0], by = hn.center[1] - h.center[1]
       const cross = bx * sny - by * snx
       if (cross > 1e-9) sideA.add(bn)
@@ -234,7 +243,7 @@ export function buildRoadChains(
   // Emit junction dots for non-spine junctions.
   for (const [k] of adj) {
     if (isJunction(k) && !spineNeighbors.has(k)) {
-      const h = hexIdx.get(k)
+      const h = nodeIdx.get(k)
       if (h) {
         const pos = junctionPositions.get(k) ?? h.center
         let minTier: 0 | 1 | 2 = 2
@@ -266,7 +275,7 @@ export function buildRoadChains(
     ptsTiers: (0 | 1 | 2 | null)[]
     ptArrivalHex: (string | null)[]
   } => {
-    const h0 = hexIdx.get(startKey)
+    const h0 = nodeIdx.get(startKey)
     if (!h0) return { pts: [], endKey: startKey, pinned: [], edgeKeys: [], ptsTiers: [], ptArrivalHex: [] }
     const startDeg = (adj.get(startKey) ?? []).length
     const pts: [number, number][] = []
@@ -291,7 +300,7 @@ export function buildRoadChains(
       }
       const ep = cur < next ? `${cur}|${next}` : `${next}|${cur}`
       visitedPairs.add(ep)
-      const h1 = hexIdx.get(cur), h2 = hexIdx.get(next)
+      const h1 = nodeIdx.get(cur), h2 = nodeIdx.get(next)
       if (h1 && h2) {
         const ek = edgeCpKey(cur, next)
         const isOverridden = !!effectiveOverrides[ek]
@@ -307,8 +316,8 @@ export function buildRoadChains(
       prevKey = cur
       cur = next
       const curDeg = (adj.get(cur) ?? []).length
-      if (curDeg === 1) { const he = hexIdx.get(cur); if (he) { pts.push(he.center); pinned.push(true); edgeKeys.push(null); ptsTiers.push(null); ptArrivalHex.push(null) } break }
-      if (isJunction(cur)) { const hj = hexIdx.get(cur); if (hj) { pts.push(jPos(cur, hj, prevKey)); pinned.push(true); edgeKeys.push(null); ptsTiers.push(null); ptArrivalHex.push(null) } break }
+      if (curDeg === 1) { const he = nodeIdx.get(cur); if (he) { pts.push(he.center); pinned.push(true); edgeKeys.push(null); ptsTiers.push(null); ptArrivalHex.push(null) } break }
+      if (isJunction(cur)) { const hj = nodeIdx.get(cur); if (hj) { pts.push(jPos(cur, hj, prevKey)); pinned.push(true); edgeKeys.push(null); ptsTiers.push(null); ptArrivalHex.push(null) } break }
     }
     return { pts, endKey: cur, pinned, edgeKeys, ptsTiers, ptArrivalHex }
   }
@@ -357,7 +366,7 @@ export function buildRoadChains(
       newPtsTiers.push(ptsTiers[i])
       if (i < relaxed.length - 1 && edgeKeys[i] !== null && edgeKeys[i + 1] !== null) {
         const arrHex = ptArrivalHex[i]
-        const hc = arrHex ? hexIdx.get(arrHex) : null
+        const hc = arrHex ? nodeIdx.get(arrHex) : null
         if (hc && arrHex && !isJunction(arrHex)) {
           const mx = (relaxed[i][0] + relaxed[i + 1][0]) / 2
           const my = (relaxed[i][1] + relaxed[i + 1][1]) / 2
@@ -513,7 +522,7 @@ export function buildRoadChains(
   // Junction control points and dots for spine junctions.
   const emittedJuncCps = new Set<string>()
   for (const [k, spinePair] of spineNeighbors) {
-    const h = hexIdx.get(k)
+    const h = nodeIdx.get(k)
     let minTier: 0 | 1 | 2 = 2
     for (const nk of adj.get(k) ?? []) {
       const ek = k < nk ? `${k}|${nk}` : `${nk}|${k}`
@@ -535,7 +544,7 @@ export function buildRoadChains(
       if (!effectiveOverrides[cpKey]) continue
       if (emittedJuncCps.has(cpKey)) continue
       emittedJuncCps.add(cpKey)
-      const pos = armToTerminal.get(`${k}|${nk}`) ?? hexIdx.get(k)?.center ?? [0, 0] as [number, number]
+      const pos = armToTerminal.get(`${k}|${nk}`) ?? nodeIdx.get(k)?.center ?? [0, 0] as [number, number]
       controlPoints.push({ key: cpKey, pos })
     }
   }

@@ -4,7 +4,7 @@
  * draw() is not allowed to call buildRoadChains/buildRailChains/buildRiverChainsV2
  * inline — this module owns all live-drag geometry computation and projection caching.
  */
-import { buildRoadChains } from './roadChains'
+import { buildRoadChains, hexRoadEdgesToGeneric } from './roadChains'
 import type { RoadBaseData, RoadTierGeomMap } from './roadChains'
 import { buildRailChains, applyRailWiggle } from './railChains'
 import type { RailBaseData } from './railChains'
@@ -160,7 +160,7 @@ export function computeDragLiveData(p: DragLiveInput): DragLiveResult {
 
   const liveRoadData: RoadBaseData = isDraggingCP
     ? buildRoadChains(
-        roadEdges, hexIdx,
+        hexRoadEdgesToGeneric(roadEdges), hexIdx,
         { ...roadControlOverrides, ...dragLiveOverride },
         roadWiggleAmp, roadWiggleFreq, roadSmoothing, roadPathSmoothing,
         roadChainOverrides, roadSegmentProps, roadHopProps,
@@ -168,7 +168,7 @@ export function computeDragLiveData(p: DragLiveInput): DragLiveResult {
       )
     : isDraggingDense
       ? buildRoadChains(
-          roadEdges, hexIdx,
+          hexRoadEdgesToGeneric(roadEdges), hexIdx,
           roadControlOverrides,
           roadWiggleAmp, roadWiggleFreq, roadSmoothing, roadPathSmoothing,
           liveChainOverrides, roadSegmentProps, roadHopProps,
