@@ -10,6 +10,8 @@ export interface P2pTown {
   population: number
   tier: P2pTownTier
   supply: boolean
+  /** 'filler' = a virtual crossroads inserted to break up an over-long edge, not a real settlement. */
+  kind: 'place' | 'filler'
   isCustom?: boolean
 }
 
