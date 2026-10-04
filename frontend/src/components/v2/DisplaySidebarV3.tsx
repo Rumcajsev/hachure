@@ -4,6 +4,7 @@ import { useTheme } from '../../context/ThemeContext'
 import {
   MiniSlider, ToggleRow, SegmentedControl,
   StripShell, FlyoutShell, V2Divider, TriggerRow, TGap,
+  LinePatternBtn,
 } from './sidebar'
 import { LABEL_PRESETS, resolveLabels } from '../../lib/labelPresets'
 import type { LabelCategory } from '../../lib/labelPresets'
@@ -439,6 +440,8 @@ function MegaHexFlyout({ onClose }: { onClose: () => void }) {
     megaHexColor, setMegaHexColor,
     megaHexOpacity, setMegaHexOpacity,
     megaHexLineWidth, setMegaHexLineWidth,
+    megaHexLinePattern, setMegaHexLinePattern,
+    megaHexPatternSpacing, setMegaHexPatternSpacing,
     activeTool, setActiveTool,
   } = useMapStore()
 
@@ -468,6 +471,18 @@ function MegaHexFlyout({ onClose }: { onClose: () => void }) {
             </div>
             <MiniSlider label="Opacity" display={`${Math.round(megaHexOpacity * 100)}%`} value={megaHexOpacity} min={0.05} max={1}   step={0.05} onChange={setMegaHexOpacity} />
             <MiniSlider label="Width"   display={`${megaHexLineWidth.toFixed(1)}px`}      value={megaHexLineWidth} min={0.5} max={8}   step={0.5}  onChange={setMegaHexLineWidth} />
+          </div>
+
+          <div style={{ borderTop: `1px solid ${t.line2}` }}>
+            <SubLabel label="Line pattern" />
+            <div style={{ display: 'flex', gap: 4, padding: '0 14px 6px' }}>
+              {(['none', 'dotted', 'dashed', 'dashdot'] as const).map(p => (
+                <LinePatternBtn key={p} pattern={p} active={megaHexLinePattern === p} onClick={() => setMegaHexLinePattern(p)} />
+              ))}
+            </div>
+            {megaHexLinePattern !== 'none' && (
+              <MiniSlider label="Spacing" display={`×${megaHexPatternSpacing.toFixed(1)}`} value={megaHexPatternSpacing} min={0.3} max={3} step={0.1} onChange={setMegaHexPatternSpacing} />
+            )}
           </div>
 
           <div style={{ padding: '8px 14px 4px' }}>

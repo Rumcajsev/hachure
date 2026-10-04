@@ -104,7 +104,7 @@ function collectBoundaryEdges(
 }
 
 // Chain boundary edge segments into closed loops.
-function chainBoundaryEdges(
+export function chainBoundaryEdges(
   edges: Array<[[number, number], [number, number]]>,
 ): Array<[number, number][]> {
   if (edges.length === 0) return []

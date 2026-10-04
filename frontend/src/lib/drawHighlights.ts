@@ -4,7 +4,7 @@
 import type { HexHighlight, GeneratedHex } from '../store/mapStore'
 
 type Ctx = CanvasRenderingContext2D | OffscreenCanvasRenderingContext2D
-type LinePattern = 'dotted' | 'dashed' | 'dashdot'
+export type LinePattern = 'dotted' | 'dashed' | 'dashdot'
 
 // ── Path sampler ─────────────────────────────────────────────────────────────
 

@@ -491,6 +491,7 @@ export const createUiSlice = (set: Set, get: () => MapStore): UiSlice => ({
         megaHexColor: s.megaHexColor, megaHexOpacity: s.megaHexOpacity,
         megaHexLineWidth: s.megaHexLineWidth, megaHexOriginQ: s.megaHexOriginQ,
         megaHexOriginR: s.megaHexOriginR,
+        megaHexLinePattern: s.megaHexLinePattern, megaHexPatternSpacing: s.megaHexPatternSpacing,
         highlights: s.highlights, highlightedHexes: s.highlightedHexes,
         highlightLines: s.highlightLines, highlightEdgePaths: s.highlightEdgePaths,
         iconOverlays: s.iconOverlays, placedIcons: s.placedIcons,
@@ -1078,6 +1079,10 @@ if (fromVersion < 64) {
   }
   if (fromVersion < 98) {
     if (!s.imageSwatches) s.imageSwatches = []
+  }
+  if (fromVersion < 99) {
+    if (s.megaHexLinePattern === undefined) s.megaHexLinePattern = 'none'
+    if (s.megaHexPatternSpacing === undefined) s.megaHexPatternSpacing = 1
   }
   if (fromVersion < 84) {
     const tiers = s.riverTierStyles as Array<Record<string, unknown>> | undefined

@@ -170,6 +170,8 @@ export interface MapRefs {
   megaHexColorRef: { current: any }
   megaHexEnabledRef: { current: any }
   megaHexLineWidthRef: { current: any }
+  megaHexLinePatternRef: { current: any }
+  megaHexPatternSpacingRef: { current: any }
   megaHexOpacityRef: { current: any }
   megaHexOriginQRef: { current: any }
   megaHexOriginRRef: { current: any }
@@ -307,6 +309,7 @@ export function drawMap(refs: MapRefs, exportTarget?: ExportTarget): void {
     iconPlaceModeRef, iconSnapRef, isPaintingRef, labelBBoxCacheRef, labelDragStateRef, labelOffsetsRef, labelOverlaysRef, labelSnapRef,
     lastBuildingCacheEpochRef, liveLabelOffsetRef, mapBgColorRef, mapBorderColorRef, mapBorderEnabledRef, mapBorderWidthRef, mapImageElementRef, mapImageOpacityRef,
     mapImageTransformRef, mapOverlayRef, refImagePeekRef, mapStyleRef, megaHexColorRef, megaHexEnabledRef, megaHexLineWidthRef, megaHexOpacityRef, megaHexOriginQRef,
+    megaHexLinePatternRef, megaHexPatternSpacingRef,
     roadColorPreviewImageRef, roadImageExtractPreviewOpenRef, roadTraceLinesPreviewRef,
     roadImageEraseHexKeysRef, eraserHoverTargetRef,
     megaHexOriginRRef, megaHexRadiusRef, metaRef, mountainsColorRef, osmRiverWaysRef, pageGridRef, paintHoverTargetRef,
@@ -680,6 +683,8 @@ export function drawMap(refs: MapRefs, exportTarget?: ExportTarget): void {
       originR: megaHexOriginRRef.current,
       edgeMode,
       inMargin,
+      linePattern: megaHexLinePatternRef.current,
+      patternSpacing: megaHexPatternSpacingRef.current,
     })
   }
 

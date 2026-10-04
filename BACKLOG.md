@@ -145,6 +145,13 @@ No re-fetching required. The hex map stays intact underneath — these are views
 
 ---
 
+## Terrain
+
+**Auto-disabling ocean hexes doesn't really work**
+The auto-disable-on-ocean feature (`autoDisabledOceanHexKeys` in `terrainSlice.ts`) doesn't reliably identify and disable ocean hexes. Needs investigation into why detection is failing before deciding on a fix.
+
+---
+
 ## Elevation
 
 **Elevation system UX overhaul**

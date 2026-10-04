@@ -6,6 +6,8 @@
  *  where dq,dr are relative to the origin hex. */
 
 import type { GeneratedHex } from '../store/mapStore'
+import { chainBoundaryEdges } from './drawHexBorders'
+import { drawPatternAlongPath, type LinePattern } from './drawHighlights'
 
 type Ctx = CanvasRenderingContext2D | OffscreenCanvasRenderingContext2D
 
@@ -20,6 +22,8 @@ export interface MegaHexGridParams {
   originR: number
   edgeMode: string
   inMargin: (verts: [number, number][]) => boolean
+  linePattern: LinePattern | 'none'
+  patternSpacing: number
 }
 
 function latticeIndex(
@@ -54,78 +58,65 @@ function latticeIndex(
 }
 
 export function drawMegaHexGrid(ctx: Ctx, params: MegaHexGridParams): void {
-  const { projected, radius: R, color, opacity, lineWidth, lineScale, originQ, originR, edgeMode, inMargin } = params
+  const {
+    projected, radius: R, color, opacity, lineWidth, lineScale, originQ, originR,
+    edgeMode, inMargin, linePattern, patternSpacing,
+  } = params
   if (!projected.length || opacity <= 0 || lineWidth <= 0) return
 
   const N = 3 * R * R + 3 * R + 1
 
-  // Group projected hexes by their lattice index (i, j)
-  const groups = new Map<string, { hex: GeneratedHex; verts: [number, number][] }[]>()
-  for (const entry of projected) {
-    const { hex, verts } = entry
-    if (edgeMode === 'whole' && hex.partial) continue
-    if (!hex.partial && !inMargin(verts)) continue
-    const [i, j] = latticeIndex(hex.q, hex.r, originQ, originR, R, N)
-    const key = `${i},${j}`
-    let g = groups.get(key)
-    if (!g) { g = []; groups.set(key, g) }
-    g.push(entry)
-  }
-
-  // For each group, find outer edges (edges appearing exactly once)
   const vKey = (v: [number, number]) => `${Math.round(v[0] * 10)},${Math.round(v[1] * 10)}`
   type DirEdge = [[number, number], [number, number]]
 
+  // Tag every visible hex edge with the lattice group (mega hex) its hex belongs to.
+  // An edge touched by hexes from two DIFFERENT groups is a real mega-hex boundary.
+  // An edge touched by only one hex has no neighbor on the other side at all — that's
+  // the edge of the generated map itself (edgeMode cutoff, margin, or missing data),
+  // not a mega-hex boundary — so it's dropped rather than traced.
+  const edgeGroups = new Map<string, { edge: DirEdge; groups: Set<string> }>()
+  for (const { hex, verts } of projected) {
+    if (edgeMode === 'whole' && hex.partial) continue
+    if (!hex.partial && !inMargin(verts)) continue
+    const [i, j] = latticeIndex(hex.q, hex.r, originQ, originR, R, N)
+    const groupKey = `${i},${j}`
+    for (let k = 0; k < 6; k++) {
+      const v1 = verts[k], v2 = verts[(k + 1) % 6]
+      const k1 = vKey(v1), k2 = vKey(v2)
+      const ek = k1 < k2 ? `${k1}|${k2}` : `${k2}|${k1}`
+      let entry = edgeGroups.get(ek)
+      if (!entry) { entry = { edge: [v1, v2], groups: new Set() }; edgeGroups.set(ek, entry) }
+      entry.groups.add(groupKey)
+    }
+  }
+
+  const boundaryEdges: DirEdge[] = []
+  for (const { edge, groups } of edgeGroups.values()) {
+    if (groups.size === 2) boundaryEdges.push(edge)
+  }
+  if (boundaryEdges.length === 0) return
+
+  const loops = chainBoundaryEdges(boundaryEdges)
+  if (loops.length === 0) return
+
   ctx.save()
   ctx.strokeStyle = color
+  ctx.fillStyle = color
   ctx.lineWidth = lineWidth * lineScale
   ctx.lineJoin = 'round'
   ctx.lineCap = 'round'
   ctx.globalAlpha = opacity
 
-  for (const entries of groups.values()) {
-    if (entries.length === 0) continue
-
-    const edgeCount = new Map<string, number>()
-    const allDirEdges: DirEdge[] = []
-
-    for (const { verts } of entries) {
-      for (let i = 0; i < 6; i++) {
-        const v1 = verts[i], v2 = verts[(i + 1) % 6]
-        const k1 = vKey(v1), k2 = vKey(v2)
-        const ek = k1 < k2 ? `${k1}|${k2}` : `${k2}|${k1}`
-        edgeCount.set(ek, (edgeCount.get(ek) ?? 0) + 1)
-        allDirEdges.push([v1, v2])
-      }
-    }
-
-    const outerEdges: DirEdge[] = allDirEdges.filter(([v1, v2]) => {
-      const k1 = vKey(v1), k2 = vKey(v2)
-      const ek = k1 < k2 ? `${k1}|${k2}` : `${k2}|${k1}`
-      return edgeCount.get(ek) === 1
-    })
-    if (outerEdges.length === 0) continue
-
-    const edgeMap = new Map<string, DirEdge>()
-    for (const e of outerEdges) edgeMap.set(vKey(e[0]), e)
-
-    const remaining = new Set(edgeMap.keys())
-    while (remaining.size > 0) {
-      const startKey = remaining.values().next().value as string
-      const poly: [number, number][] = []
-      let key = startKey
-      while (remaining.has(key)) {
-        remaining.delete(key)
-        const [from, to] = edgeMap.get(key)!
-        poly.push(from)
-        key = vKey(to)
-      }
-      if (poly.length < 3) continue
+  for (const loop of loops) {
+    if (loop.length < 3) continue
+    if (linePattern === 'none') {
       ctx.beginPath()
-      ctx.moveTo(poly[0][0], poly[0][1])
-      for (let i = 1; i < poly.length; i++) ctx.lineTo(poly[i][0], poly[i][1])
+      ctx.moveTo(loop[0][0], loop[0][1])
+      for (let i = 1; i < loop.length; i++) ctx.lineTo(loop[i][0], loop[i][1])
       ctx.closePath()
       ctx.stroke()
+    } else {
+      drawPatternAlongPath(ctx, loop, linePattern, lineWidth * lineScale, true, patternSpacing)
     }
   }
 

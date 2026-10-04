@@ -1048,6 +1048,8 @@ export const useMapStore = create<MapStore>()(persist((set, get) => {
     megaHexColor: s.megaHexColor,
     megaHexOpacity: s.megaHexOpacity,
     megaHexLineWidth: s.megaHexLineWidth,
+    megaHexLinePattern: s.megaHexLinePattern,
+    megaHexPatternSpacing: s.megaHexPatternSpacing,
     megaHexOriginQ: s.megaHexOriginQ,
     megaHexOriginR: s.megaHexOriginR,
     dataSource: s.dataSource,
@@ -1060,7 +1062,7 @@ export const useMapStore = create<MapStore>()(persist((set, get) => {
     labelPresetId: s.labelPresetId,
     labelOverrides: s.labelOverrides,
   }),
-  version: 98,
+  version: 99,
   migrate: migratePersisted,
   merge: (persisted, current) => rehydrateState({ ...current, ...(persisted as Partial<MapStore>) }),
 }))

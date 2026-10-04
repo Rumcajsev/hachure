@@ -1320,6 +1320,28 @@ export function SegmentedControl<T extends string>({
   )
 }
 
+// ── Line pattern picker ────────────────────────────────────────────────────────
+
+export type LinePattern = 'none' | 'dotted' | 'dashed' | 'dashdot'
+
+export function LinePatternBtn({ pattern, active, onClick }: { pattern: LinePattern; active: boolean; onClick: () => void }) {
+  const t = useTheme()
+  const sw = 1.4
+  const color = active ? t.rust : t.inkMute
+  const lp = { stroke: color, strokeWidth: sw }
+  const preview: Record<LinePattern, React.ReactNode> = {
+    none:    <svg width="28" height="18" viewBox="0 0 28 18"><line x1="2" y1="9" x2="26" y2="9" {...lp} strokeLinecap="round" /></svg>,
+    dotted:  <svg width="28" height="18" viewBox="0 0 28 18"><line x1="2" y1="9" x2="26" y2="9" {...lp} strokeLinecap="round" strokeDasharray="1.5 3.5" /></svg>,
+    dashed:  <svg width="28" height="18" viewBox="0 0 28 18"><line x1="2" y1="9" x2="26" y2="9" {...lp} strokeLinecap="butt" strokeDasharray="5 2.5" /></svg>,
+    dashdot: <svg width="28" height="18" viewBox="0 0 28 18"><line x1="2" y1="9" x2="8" y2="9" {...lp} strokeLinecap="butt" /><circle cx="12" cy="9" r="1.5" fill={color} /><line x1="16" y1="9" x2="22" y2="9" {...lp} strokeLinecap="butt" /><circle cx="26" cy="9" r="1.5" fill={color} /></svg>,
+  }
+  return (
+    <button onClick={onClick} title={pattern} style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '2px 3px', background: active ? tintBg(t.rust, 0.1) : 'transparent', border: `1px solid ${active ? t.rust : t.line}`, cursor: 'pointer', flexShrink: 0 }}>
+      {preview[pattern]}
+    </button>
+  )
+}
+
 // ── DataStatusBadge ───────────────────────────────────────────────────────────
 
 export function DataStatusBadge({

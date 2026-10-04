@@ -52,6 +52,7 @@ export const STYLE_PRESET_KEYS: string[] = [
   'showPaperTexture', 'paperTextureOpacity', 'showPaperVignette',
   'mapBgColor', 'mapBorderEnabled', 'mapBorderColor', 'mapBorderWidth', 'clipToHexGrid',
   'megaHexEnabled', 'megaHexRadius', 'megaHexColor', 'megaHexOpacity', 'megaHexLineWidth',
+  'megaHexLinePattern', 'megaHexPatternSpacing',
   // Global style
   'mapStyle',
   // Areas style
@@ -186,6 +187,8 @@ function baseStructural(): StylePreset {
     megaHexRadius: 1,
     megaHexOpacity: 0.8,
     megaHexLineWidth: 2,
+    megaHexLinePattern: 'none',
+    megaHexPatternSpacing: 1,
     mapStyle: 'standard',
     areasStyle: { borderWidth: 2.0, labelSize: 1.0, borderColor: '#2c1a00' },
     // Colours
