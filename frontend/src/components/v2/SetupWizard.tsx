@@ -633,7 +633,9 @@ function PaperAreaStep({ onBack, onGenerate, showMap = true, generateLabel, t }:
               </div>
               <div style={{ marginTop: 10, fontFamily: t.sans, fontSize: 10, color: t.inkFaint, lineHeight: 1.5 }}>
                 Towns closer than the minimum are merged; roads longer than the
-                maximum get a filler node inserted along the way.
+                maximum get a filler node inserted along the way. Just a
+                starting point — adjustable later in the editor without
+                re-fetching.
               </div>
             </PanelSection>
           )}
