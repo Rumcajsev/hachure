@@ -1084,6 +1084,11 @@ if (fromVersion < 64) {
     if (s.megaHexLinePattern === undefined) s.megaHexLinePattern = 'none'
     if (s.megaHexPatternSpacing === undefined) s.megaHexPatternSpacing = 1
   }
+  if (fromVersion < 100) {
+    if (s.mapMode === undefined) s.mapMode = 'hex'
+    if (s.p2pMinNodeDistCm === undefined) s.p2pMinNodeDistCm = 5
+    if (s.p2pMaxNodeDistCm === undefined) s.p2pMaxNodeDistCm = 10
+  }
   if (fromVersion < 84) {
     const tiers = s.riverTierStyles as Array<Record<string, unknown>> | undefined
     if (tiers) {

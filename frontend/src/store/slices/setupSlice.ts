@@ -1,8 +1,11 @@
 import type { MapStore, PaperSize, Orientation, PageGrid, HexOrientation, HexEdgeMode, Hex, GridMetadata } from '../mapStore'
 import { pageGridTotalMm, uniformPageGrid, paperDimsMm, mapResolutionMpx } from '../mapStore'
 
+export type MapMode = 'hex' | 'p2p'
+
 export type SetupSlice = {
   step: 'setup' | 'terrain' | 'image-align'
+  mapMode: MapMode
   paperSize: PaperSize
   orientation: Orientation
   pageGrid: PageGrid
@@ -10,6 +13,8 @@ export type SetupSlice = {
   hexOrientation: HexOrientation
   marginMm: number
   hexEdgeMode: HexEdgeMode
+  p2pMinNodeDistCm: number
+  p2pMaxNodeDistCm: number
   bearing: number
   center: [number, number]
   zoom: number
@@ -18,6 +23,7 @@ export type SetupSlice = {
   metadata: GridMetadata | null
   status: 'idle' | 'loading' | 'error' | 'done'
   error: string | null
+  setMapMode: (v: MapMode) => void
   setPaperSize: (v: PaperSize) => void
   setOrientation: (v: Orientation) => void
   setPageGrid: (v: PageGrid) => void
@@ -25,6 +31,8 @@ export type SetupSlice = {
   setHexOrientation: (v: HexOrientation) => void
   setMarginMm: (v: number) => void
   setHexEdgeMode: (v: HexEdgeMode) => void
+  setP2pMinNodeDistCm: (v: number) => void
+  setP2pMaxNodeDistCm: (v: number) => void
   flyTarget: { center: [number, number]; zoom: number; id: number } | null
   setMapState: (bearing: number, center: [number, number], zoom: number) => void
   setFramePixelWidth: (w: number) => void
@@ -38,6 +46,7 @@ type Set = (partial: Partial<MapStore> | ((s: MapStore) => Partial<MapStore>)) =
 
 export const createSetupSlice = (set: Set, get: () => MapStore): SetupSlice => ({
   step: 'setup',
+  mapMode: 'hex',
   paperSize: 'A3',
   orientation: 'landscape',
   pageGrid: uniformPageGrid('A3', 'landscape'),
@@ -45,6 +54,8 @@ export const createSetupSlice = (set: Set, get: () => MapStore): SetupSlice => (
   hexOrientation: 'flat',
   marginMm: 8,
   hexEdgeMode: 'whole',
+  p2pMinNodeDistCm: 5,
+  p2pMaxNodeDistCm: 10,
   bearing: 0,
   center: [15, 50],
   zoom: 7,
@@ -55,6 +66,9 @@ export const createSetupSlice = (set: Set, get: () => MapStore): SetupSlice => (
   error: null,
   flyTarget: null,
 
+  setMapMode: (v) => set({ mapMode: v }),
+  setP2pMinNodeDistCm: (v) => set({ p2pMinNodeDistCm: v }),
+  setP2pMaxNodeDistCm: (v) => set({ p2pMaxNodeDistCm: v }),
   setPaperSize: (v) => set((s) => ({
     paperSize: v,
     pageGrid: uniformPageGrid(v, s.orientation, s.pageGrid.colWidths.length, s.pageGrid.rowHeights.length),

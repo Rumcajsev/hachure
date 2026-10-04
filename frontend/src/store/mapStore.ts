@@ -832,6 +832,7 @@ export const useMapStore = create<MapStore>()(persist((set, get) => {
   storage: _debouncedIdbStorage,
   partialize: (s) => ({
     step: s.step,
+    mapMode: s.mapMode,
     paperSize: s.paperSize,
     orientation: s.orientation,
     pageGrid: s.pageGrid,
@@ -839,6 +840,8 @@ export const useMapStore = create<MapStore>()(persist((set, get) => {
     hexOrientation: s.hexOrientation,
     marginMm: s.marginMm,
     hexEdgeMode: s.hexEdgeMode,
+    p2pMinNodeDistCm: s.p2pMinNodeDistCm,
+    p2pMaxNodeDistCm: s.p2pMaxNodeDistCm,
     generatedHexes: s.generatedHexes,
     generatedMetadata: s.generatedMetadata,
     terrainRules: s.terrainRules,
@@ -1062,7 +1065,7 @@ export const useMapStore = create<MapStore>()(persist((set, get) => {
     labelPresetId: s.labelPresetId,
     labelOverrides: s.labelOverrides,
   }),
-  version: 99,
+  version: 100,
   migrate: migratePersisted,
   merge: (persisted, current) => rehydrateState({ ...current, ...(persisted as Partial<MapStore>) }),
 }))
