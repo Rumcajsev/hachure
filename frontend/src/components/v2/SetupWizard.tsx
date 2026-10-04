@@ -8,7 +8,7 @@ import { generateMapTitle, nominatimZoomForWidth } from '../../lib/generateMapTi
 import type { NominatimResult } from '../../lib/generateMapTitle'
 
 type Theme = typeof TK
-type WizardStep = 'source' | 'paper-blank' | 'paper-area' | 'generating'
+type WizardStep = 'mode' | 'source' | 'paper-blank' | 'paper-area' | 'generating'
 type SourceMode = 'osm' | 'blank'
 
 export function SetupWizard({ onCancel, onDone, isDark = false }: {
@@ -16,9 +16,9 @@ export function SetupWizard({ onCancel, onDone, isDark = false }: {
   onDone: () => void
   isDark?: boolean
 }) {
-  const [step, setStep] = useState<WizardStep>('source')
+  const [step, setStep] = useState<WizardStep>('mode')
   const [source, setSource] = useState<SourceMode>('osm')
-  const { setBlankMap, generateMap, setActiveTool } = useMapStore()
+  const { mapMode, setMapMode, setBlankMap, generateMap, setActiveTool } = useMapStore()
   const t = isDark ? TK_DARK : TK
 
   function handleContinue() {
@@ -48,11 +48,21 @@ export function SetupWizard({ onCancel, onDone, isDark = false }: {
     }}>
       <WizardTopBar step={step} onExit={onCancel} t={t} />
 
+      {step === 'mode' && (
+        <ModePickerStep
+          selected={mapMode}
+          onSelect={setMapMode}
+          onBack={onCancel}
+          onContinue={() => setStep('source')}
+          t={t}
+        />
+      )}
+
       {step === 'source' && (
         <SourcePickerStep
           selected={source}
           onSelect={setSource}
-          onBack={onCancel}
+          onBack={() => setStep('mode')}
           onContinue={handleContinue}
           t={t}
         />
@@ -96,7 +106,7 @@ function WizardTopBar({ step, onExit, t }: {
       </button>
 
       <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 16 }}>
-        {step === 'source' && (
+        {(step === 'mode' || step === 'source') && (
           <span style={{ fontFamily: t.mono, fontSize: 10, color: t.inkFaint, letterSpacing: 0.5 }}>
             DRAFT · UNTITLED
           </span>
@@ -143,7 +153,7 @@ function SourcePickerStep({ selected, onSelect, onBack, onContinue, t }: {
             fontFamily: t.mono, fontSize: 10, letterSpacing: 2,
             color: t.rust, textTransform: 'uppercase', marginBottom: 12,
           }}>
-            Step 01 of 02
+            Step 02 of 03
           </div>
           <h2 style={{
             fontFamily: t.serif, fontSize: 52, fontWeight: 400,
@@ -192,7 +202,86 @@ function SourcePickerStep({ selected, onSelect, onBack, onContinue, t }: {
         right={
           <div style={{ display: 'flex', alignItems: 'center', gap: 20 }}>
             <span style={{ fontFamily: t.mono, fontSize: 10, color: t.inkMute, letterSpacing: 0.5 }}>
-              STEP 1 / 2
+              STEP 2 / 3
+            </span>
+            <NavButton onClick={onContinue} t={t}>CONTINUE →</NavButton>
+          </div>
+        }
+      />
+    </div>
+  )
+}
+
+// ── Screen 00 — Map type picker ─────────────────────────────────────────────
+
+function ModePickerStep({ selected, onSelect, onBack, onContinue, t }: {
+  selected: 'hex' | 'p2p'
+  onSelect: (m: 'hex' | 'p2p') => void
+  onBack: () => void
+  onContinue: () => void
+  t: Theme
+}) {
+  return (
+    <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+      <div style={{
+        flex: 1,
+        display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
+        padding: '32px 40px',
+        gap: 32,
+      }}>
+        <div style={{ textAlign: 'center' }}>
+          <div style={{
+            fontFamily: t.mono, fontSize: 10, letterSpacing: 2,
+            color: t.rust, textTransform: 'uppercase', marginBottom: 12,
+          }}>
+            Step 01 of 03
+          </div>
+          <h2 style={{
+            fontFamily: t.serif, fontSize: 52, fontWeight: 400,
+            color: t.ink, margin: '0 0 14px 0', lineHeight: 1.05,
+          }}>
+            What kind of <em>map?</em>
+          </h2>
+          <p style={{
+            fontFamily: t.sans, fontSize: 13, color: t.inkMute,
+            maxWidth: 520, lineHeight: 1.6, margin: '0 auto',
+          }}>
+            One choice — cannot be reversed after generation. Everything else is
+            adjustable in the next steps.
+          </p>
+        </div>
+
+        <div style={{ display: 'flex', gap: 16, alignItems: 'stretch' }}>
+          <SourceCard
+            num="01" category="GRID"
+            title="Hex grid"
+            desc="Terrain, roads, rivers, and settlements snapped onto a hex grid. The classic wargaming board."
+            footer="PAPER · HEX SIZE NEXT"
+            selected={selected === 'hex'}
+            onClick={() => onSelect('hex')}
+            illustration={<OsmIllustration t={t} />}
+            t={t}
+          />
+          <SourceCard
+            num="02" category="NETWORK"
+            title="Point-to-point"
+            desc="Towns connected by a synthesized road network, with hand-paintable terrain regions. No grid."
+            footer="PAPER · NODE SPACING NEXT"
+            selected={selected === 'p2p'}
+            onClick={() => onSelect('p2p')}
+            illustration={<PointToPointIllustration t={t} />}
+            t={t}
+          />
+        </div>
+      </div>
+
+      <BottomNav
+        t={t}
+        left={<NavButton onClick={onBack} ghost t={t}>← CANCEL</NavButton>}
+        right={
+          <div style={{ display: 'flex', alignItems: 'center', gap: 20 }}>
+            <span style={{ fontFamily: t.mono, fontSize: 10, color: t.inkMute, letterSpacing: 0.5 }}>
+              STEP 1 / 3
             </span>
             <NavButton onClick={onContinue} t={t}>CONTINUE →</NavButton>
           </div>
@@ -286,8 +375,10 @@ function PaperAreaStep({ onBack, onGenerate, showMap = true, generateLabel, t }:
   onBack: () => void; onGenerate: () => void; showMap?: boolean; generateLabel?: string; t: Theme
 }) {
   const {
+    mapMode,
     paperSize, orientation, pageGrid,
     hexSizeMm, hexOrientation, marginMm, hexEdgeMode,
+    p2pMinNodeDistCm, p2pMaxNodeDistCm, setP2pMinNodeDistCm, setP2pMaxNodeDistCm,
     zoom, framePixelWidth, center,
     setPaperSize, setOrientation, setPageGrid,
     setHexSizeMm, setHexOrientation, setMarginMm, setHexEdgeMode,
@@ -333,7 +424,7 @@ function PaperAreaStep({ onBack, onGenerate, showMap = true, generateLabel, t }:
     return () => clearTimeout(timer)
   }, [hexSizeMm, hexOrientation, paperSize, orientation, marginMm, hexEdgeMode]) // eslint-disable-line react-hooks/exhaustive-deps
 
-  const isDisabled = showMap && framePixelWidth === 0
+  const isDisabled = (showMap && framePixelWidth === 0) || mapMode === 'p2p'
 
   async function handleSearch() {
     if (!searchQuery.trim()) return
@@ -484,40 +575,68 @@ function PaperAreaStep({ onBack, onGenerate, showMap = true, generateLabel, t }:
             </div>
           </PanelSection>
 
-          {/* HEX */}
-          <PanelSection label="HEX" t={t}>
-            <div>
-              <FieldLabel t={t}>HEX SIZE</FieldLabel>
-              <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, marginBottom: 8 }}>
-                <span style={{ fontFamily: t.serif, fontSize: 28, fontWeight: 400, color: t.ink, lineHeight: 1 }}>
-                  {hexSizeMm}
-                </span>
-                <span style={{ fontFamily: t.mono, fontSize: 11, color: t.inkMute }}>
-                  mm{hexKm !== null ? ` · ≈ ${hexKm.toFixed(1)} km` : ''}
-                </span>
+          {/* HEX — hex mode only */}
+          {mapMode === 'hex' && (
+            <PanelSection label="HEX" t={t}>
+              <div>
+                <FieldLabel t={t}>HEX SIZE</FieldLabel>
+                <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, marginBottom: 8 }}>
+                  <span style={{ fontFamily: t.serif, fontSize: 28, fontWeight: 400, color: t.ink, lineHeight: 1 }}>
+                    {hexSizeMm}
+                  </span>
+                  <span style={{ fontFamily: t.mono, fontSize: 11, color: t.inkMute }}>
+                    mm{hexKm !== null ? ` · ≈ ${hexKm.toFixed(1)} km` : ''}
+                  </span>
+                </div>
+                <SetupSliderTrack value={hexSizeMm} min={5} max={50} step={1} t={t} onChange={setHexSizeMm} />
               </div>
-              <SetupSliderTrack value={hexSizeMm} min={5} max={50} step={1} t={t} onChange={setHexSizeMm} />
-            </div>
 
-            <div style={{ marginTop: 10 }}>
-              <FieldLabel t={t}>ORIENTATION</FieldLabel>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+              <div style={{ marginTop: 10 }}>
+                <FieldLabel t={t}>ORIENTATION</FieldLabel>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                  <ToggleGroup>
+                    <ToggleBtn active={hexOrientation === 'pointy'} onClick={() => setHexOrientation('pointy' as HexOrientation)} t={t}>Pointy</ToggleBtn>
+                    <ToggleBtn active={hexOrientation === 'flat'}   onClick={() => setHexOrientation('flat'   as HexOrientation)} t={t}>Flat</ToggleBtn>
+                  </ToggleGroup>
+                  <HexOrientIcon orientation={hexOrientation} t={t} />
+                </div>
+              </div>
+
+              <div style={{ marginTop: 10 }}>
+                <FieldLabel t={t}>EDGE HEXES</FieldLabel>
                 <ToggleGroup>
-                  <ToggleBtn active={hexOrientation === 'pointy'} onClick={() => setHexOrientation('pointy' as HexOrientation)} t={t}>Pointy</ToggleBtn>
-                  <ToggleBtn active={hexOrientation === 'flat'}   onClick={() => setHexOrientation('flat'   as HexOrientation)} t={t}>Flat</ToggleBtn>
+                  <ToggleBtn active={hexEdgeMode === 'whole'} onClick={() => setHexEdgeMode('whole')} t={t}>Full only</ToggleBtn>
+                  <ToggleBtn active={hexEdgeMode === 'half'}  onClick={() => setHexEdgeMode('half')} t={t}>Partial</ToggleBtn>
                 </ToggleGroup>
-                <HexOrientIcon orientation={hexOrientation} t={t} />
               </div>
-            </div>
+            </PanelSection>
+          )}
 
-            <div style={{ marginTop: 10 }}>
-              <FieldLabel t={t}>EDGE HEXES</FieldLabel>
-              <ToggleGroup>
-                <ToggleBtn active={hexEdgeMode === 'whole'} onClick={() => setHexEdgeMode('whole')} t={t}>Full only</ToggleBtn>
-                <ToggleBtn active={hexEdgeMode === 'half'}  onClick={() => setHexEdgeMode('half')} t={t}>Partial</ToggleBtn>
-              </ToggleGroup>
-            </div>
-          </PanelSection>
+          {/* NETWORK — point-to-point mode only */}
+          {mapMode === 'p2p' && (
+            <PanelSection label="NETWORK" t={t}>
+              <SetupSliderRow
+                label="Min node distance"
+                display={`${p2pMinNodeDistCm} cm`}
+                value={p2pMinNodeDistCm} min={1} max={20} step={0.5}
+                t={t}
+                onChange={(v) => setP2pMinNodeDistCm(Math.min(v, p2pMaxNodeDistCm))}
+              />
+              <div style={{ marginTop: 10 }}>
+                <SetupSliderRow
+                  label="Max node distance"
+                  display={`${p2pMaxNodeDistCm} cm`}
+                  value={p2pMaxNodeDistCm} min={1} max={30} step={0.5}
+                  t={t}
+                  onChange={(v) => setP2pMaxNodeDistCm(Math.max(v, p2pMinNodeDistCm))}
+                />
+              </div>
+              <div style={{ marginTop: 10, fontFamily: t.sans, fontSize: 10, color: t.inkFaint, lineHeight: 1.5 }}>
+                Towns closer than the minimum are merged; roads longer than the
+                maximum get a filler node inserted along the way.
+              </div>
+            </PanelSection>
+          )}
 
           {/* REFERENCE IMAGE — blank map only */}
           {!showMap && (
@@ -608,7 +727,9 @@ function PaperAreaStep({ onBack, onGenerate, showMap = true, generateLabel, t }:
       }}>
         <NavButton onClick={onBack} ghost t={t}>← BACK</NavButton>
         <NavButton onClick={onGenerate} disabled={isDisabled} t={t}>
-          {generateLabel ?? (showMap ? 'GENERATE →' : 'START EDITING →')}
+          {mapMode === 'p2p'
+            ? 'POINT-TO-POINT GENERATION — COMING SOON'
+            : (generateLabel ?? (showMap ? 'GENERATE →' : 'START EDITING →'))}
         </NavButton>
       </div>
     </div>
@@ -854,6 +975,33 @@ function BlankIllustration({ t }: { t: Theme }) {
         EMPTY
       </span>
     </div>
+  )
+}
+
+function PointToPointIllustration({ t }: { t: Theme }) {
+  const towns: { x: number; y: number; r: number }[] = [
+    { x: 35, y: 95, r: 4 },
+    { x: 85, y: 45, r: 5 },
+    { x: 150, y: 70, r: 6 },
+    { x: 105, y: 112, r: 4 },
+    { x: 205, y: 50, r: 4 },
+    { x: 245, y: 95, r: 5 },
+  ]
+  const edges: [number, number][] = [[0, 1], [1, 2], [2, 4], [4, 5], [1, 3]]
+
+  return (
+    <svg width="280" height="140" style={{ display: 'block' }}>
+      {edges.map(([a, b], i) => (
+        <line
+          key={i}
+          x1={towns[a].x} y1={towns[a].y} x2={towns[b].x} y2={towns[b].y}
+          stroke={t.rust} strokeWidth={1.4} strokeLinecap="round"
+        />
+      ))}
+      {towns.map((p, i) => (
+        <circle key={i} cx={p.x} cy={p.y} r={p.r} fill={t.paper} stroke={t.ink} strokeWidth={1.2} />
+      ))}
+    </svg>
   )
 }
 
