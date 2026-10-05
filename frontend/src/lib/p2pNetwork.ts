@@ -200,7 +200,9 @@ function computeTiers(nodes: Node[], topN: number, villagePct: number): void {
 
 // ── River-avoiding routing (A* on a coarse grid) ─────────────────────────────
 
-const CELL = 0.5 // km per grid cell
+/** km per routing-grid cell. Exported so p2pTerrainRegions.ts's paint/terrain grid lines up exactly. */
+export const P2P_GRID_CELL_KM = 0.5
+const CELL = P2P_GRID_CELL_KM
 
 class Heap {
   d: number[] = []
