@@ -13,7 +13,7 @@
  *  about partial (edge-clipped) hex shapes, so output loops can bleed past the paper
  *  boundary; use clipLoopsToRect() to cut them back to the paper rect after shaping. */
 
-import { makePermutation, perlinNoise2D } from './noise'
+import { makePermutation, perlinNoise2D, hashStr } from './noise'
 import { chaikin, douglasPeuckerClosed, clipPolygonToConvex } from './geometry'
 
 // ── User-facing controls ──────────────────────────────────────────────────────
@@ -414,4 +414,58 @@ export function clipLoopsToRect(
     const clipped = clipPolygonToConvex(loop, rectPoly)
     return clipped.length >= 3 ? [clipped] : []
   })
+}
+
+// ── Per-terrain adapter ───────────────────────────────────────────────────────
+
+export interface FieldBlobHexInput {
+  cx: number
+  cy: number
+  /** True if this hex belongs to the target terrain (any component). */
+  painted: boolean
+  /** Canonical connected-component key (same convention as computeConnectedComponents /
+   *  blobComponentsByTerrain: "minQ,minR" of the component). Required when painted. */
+  componentKey?: string
+}
+
+/** Shapes one terrain's painted hexes into field-based blob loops, one call per
+ *  connected component so each component keeps a stable identity (blobKeys) for
+ *  handle drag / dice re-roll — mirrors shapeTerrainBlobs's output shape so it can
+ *  be swapped in at the same call site.
+ *  `hexes` must include EVERY hex in the local area, not just painted ones — see
+ *  FieldHex.painted in traceFieldBlobs for why unpainted neighbors are required. */
+export function shapeTerrainBlobsField(
+  terrain: string,
+  hexes: FieldBlobHexInput[],
+  controls: FieldBlobControls,
+  R: number,
+  blobSeeds: Record<string, number> = {},
+): { terrain: string; polys: [number, number][][]; blobKeys: string[] } {
+  const settings = fieldBlobControlsToSettings(controls, R)
+  const byComponent = new Map<string, FieldBlobHexInput[]>()
+  for (const h of hexes) {
+    if (!h.painted || !h.componentKey) continue
+    const arr = byComponent.get(h.componentKey)
+    if (arr) arr.push(h); else byComponent.set(h.componentKey, [h])
+  }
+
+  const pad = R * 4 + settings.warp
+  const polys: [number, number][][] = []
+  const blobKeys: string[] = []
+  for (const [componentKey, paintedHexes] of byComponent) {
+    const minX = Math.min(...paintedHexes.map(h => h.cx)) - pad
+    const maxX = Math.max(...paintedHexes.map(h => h.cx)) + pad
+    const minY = Math.min(...paintedHexes.map(h => h.cy)) - pad
+    const maxY = Math.max(...paintedHexes.map(h => h.cy)) + pad
+    const local: FieldHex[] = hexes
+      .filter(h => h.cx >= minX && h.cx <= maxX && h.cy >= minY && h.cy <= maxY)
+      .map(h => ({ cx: h.cx, cy: h.cy, painted: h.componentKey === componentKey }))
+
+    const seed = (hashStr(componentKey) ^ (blobSeeds[componentKey] ?? 0)) >>> 0
+    for (const loop of traceFieldBlobs(local, settings, R, seed)) {
+      polys.push(loop)
+      blobKeys.push(componentKey)
+    }
+  }
+  return { terrain, polys, blobKeys }
 }
