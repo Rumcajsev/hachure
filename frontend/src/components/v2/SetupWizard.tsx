@@ -476,6 +476,14 @@ function PaperAreaStep({ onBack, onGenerate, onDone, showMap = true, generateLab
     ? `${hexSizeMm} mm · ${hexKm.toFixed(1)} km`
     : `${hexSizeMm} mm`
 
+  const kmPerCm = terrainWidthKm !== null ? (10 / paperW) * terrainWidthKm : null
+  const minDistDisplay = kmPerCm !== null
+    ? `${p2pMinNodeDistCm} cm · ≈ ${(p2pMinNodeDistCm * kmPerCm).toFixed(1)} km`
+    : `${p2pMinNodeDistCm} cm`
+  const maxDistDisplay = kmPerCm !== null
+    ? `${p2pMaxNodeDistCm} cm · ≈ ${(p2pMaxNodeDistCm * kmPerCm).toFixed(1)} km`
+    : `${p2pMaxNodeDistCm} cm`
+
   return (
     <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
       <div style={{ flex: 1, display: 'flex', overflow: 'hidden' }}>
@@ -629,7 +637,7 @@ function PaperAreaStep({ onBack, onGenerate, onDone, showMap = true, generateLab
             <PanelSection label="NETWORK" t={t}>
               <SetupSliderRow
                 label="Min node distance"
-                display={`${p2pMinNodeDistCm} cm`}
+                display={minDistDisplay}
                 value={p2pMinNodeDistCm} min={1} max={20} step={0.5}
                 t={t}
                 onChange={(v) => setP2pMinNodeDistCm(Math.min(v, p2pMaxNodeDistCm))}
@@ -637,7 +645,7 @@ function PaperAreaStep({ onBack, onGenerate, onDone, showMap = true, generateLab
               <div style={{ marginTop: 10 }}>
                 <SetupSliderRow
                   label="Max node distance"
-                  display={`${p2pMaxNodeDistCm} cm`}
+                  display={maxDistDisplay}
                   value={p2pMaxNodeDistCm} min={1} max={30} step={0.5}
                   t={t}
                   onChange={(v) => setP2pMaxNodeDistCm(Math.max(v, p2pMinNodeDistCm))}

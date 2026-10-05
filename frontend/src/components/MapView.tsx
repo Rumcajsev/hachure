@@ -187,7 +187,7 @@ export function MapView({ editable = false }: { editable?: boolean }) {
   const [hoveredCell, setHoveredCell] = useState<{ col: number; row: number } | null>(null)
   const [pickerEdge, setPickerEdge] = useState<Edge | null>(null)
 
-  const { pageGrid, hexSizeMm, hexOrientation, marginMm, hexEdgeMode, center, setMapState, setFramePixelWidth, flyTarget, clearFlyTarget, setPageGrid } = useMapStore()
+  const { mapMode, pageGrid, hexSizeMm, hexOrientation, marginMm, hexEdgeMode, center, setMapState, setFramePixelWidth, flyTarget, clearFlyTarget, setPageGrid } = useMapStore()
   const [cwMm, chMm] = pageGridTotalMm(pageGrid)
 
   // Recompute frame pixel size when viewport or paper settings change
@@ -440,17 +440,19 @@ export function MapView({ editable = false }: { editable?: boolean }) {
           overflow: 'hidden',
         }}
       >
-        <HexPreviewSVG
-          frameW={frameDims.w}
-          frameH={frameDims.h}
-          paperWidthMm={cwMm}
-          paperHeightMm={chMm}
-          pageGrid={pageGrid}
-          hexSizeMm={hexSizeMm}
-          hexOrientation={hexOrientation}
-          marginMm={marginMm}
-          hexEdgeMode={hexEdgeMode}
-        />
+        {mapMode !== 'p2p' && (
+          <HexPreviewSVG
+            frameW={frameDims.w}
+            frameH={frameDims.h}
+            paperWidthMm={cwMm}
+            paperHeightMm={chMm}
+            pageGrid={pageGrid}
+            hexSizeMm={hexSizeMm}
+            hexOrientation={hexOrientation}
+            marginMm={marginMm}
+            hexEdgeMode={hexEdgeMode}
+          />
+        )}
         {pageGrid.colWidths.slice(0, -1).reduce<{ seams: number[]; acc: number }>(
           ({ seams, acc }, w) => ({ seams: [...seams, acc + w], acc: acc + w }), { seams: [], acc: 0 }
         ).seams.map((xMm, i) => (
