@@ -1,4 +1,5 @@
 import { useRef, useEffect, useCallback, useState, useMemo, forwardRef, useImperativeHandle, type CSSProperties } from 'react'
+import { createPortal } from 'react-dom'
 import maplibregl from 'maplibre-gl'
 import 'maplibre-gl/dist/maplibre-gl.css'
 import { useMapStore, TERRAIN_COLORS, TERRAIN_PRIORITY, hexTerrainLayers, edgeBlobCanonicalKey, WORLDCOVER_CLASSES, validColWidthsForRows, validRowHeightsForCols, cellPaperInfo, type GeneratedHex, type RoadTierStyle, type SettlementTier, type SettlementTierStyle } from '../store/mapStore'
@@ -3060,13 +3061,17 @@ terrainTextureFileRef.current = terrainTextureFile
         style={{ position: 'absolute', top: 0, left: 0, pointerEvents: 'none', display: 'block', zIndex: 5 }}
       />
       {/* DEV TOGGLE panel — see USE_FIELD_BLOBS at the top of this file. Remove together
-          with the toggle once the field-blob experiment is decided one way or the other. */}
-      {USE_FIELD_BLOBS && (
+          with the toggle once the field-blob experiment is decided one way or the other.
+          Portaled to document.body: CanvasToolbar/BottomDock are siblings of this
+          component with their own explicit z-index, which otherwise paints over this
+          component's entire subtree regardless of any z-index set inside it (TVC's own
+          root div has no z-index of its own, so it stacks below any sibling that does). */}
+      {USE_FIELD_BLOBS && createPortal(
         <div
           onMouseDown={e => e.stopPropagation()}
           onClick={e => e.stopPropagation()}
           style={{
-            position: 'absolute', right: 12, top: 12, width: 220, zIndex: 50,
+            position: 'fixed', right: 12, top: 56, width: 220, zIndex: 9999,
             background: '#12121e', border: '1px solid #1e1f2e', borderLeft: '3px solid #4a7a9a',
             borderRadius: 4, boxShadow: '0 4px 24px rgba(0,0,0,0.6)',
             padding: '10px 0 6px', fontFamily: 'ui-monospace, monospace',
@@ -3097,7 +3102,8 @@ terrainTextureFileRef.current = terrainTextureFile
             onChange={v => setFieldBlobControls(c => ({ ...c, detail: v }))} />
           <MiniSlider label="Coves" display={fieldBlobControls.coves.toFixed(2)} value={fieldBlobControls.coves} min={0} max={1} step={0.05}
             onChange={v => setFieldBlobControls(c => ({ ...c, coves: v }))} />
-        </div>
+        </div>,
+        document.body,
       )}
       {/* OSM overlay — hidden in map_image mode (image overlay is drawn on canvas instead) */}
       <div
