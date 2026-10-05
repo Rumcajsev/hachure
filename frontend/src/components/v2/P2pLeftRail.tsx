@@ -13,7 +13,11 @@ const TERRAIN_LABELS: Record<P2pTerrainType, string> = {
 
 /** Minimal placeholder sidebar for p2p mode — just the terrain brush for now.
  *  Phase 7 replaces this with full Network/Terrain/Rivers panels. */
-export function P2pLeftRail() {
+export function P2pLeftRail({ onRegionSizePreviewChange }: {
+  /** Called with the slider's in-progress value while dragging (for the canvas's
+   *  live all-edges preview), and with null once the drag ends. */
+  onRegionSizePreviewChange: (v: number | null) => void
+}) {
   const t = useTheme()
   const { p2pBrush, setP2pBrush, p2pMaxRegionSizeCm2, setP2pMaxRegionSizeCm2 } = useMapStore()
   const regionSizeSlider = useDeferredSlider(p2pMaxRegionSizeCm2, setP2pMaxRegionSizeCm2)
@@ -52,8 +56,9 @@ export function P2pLeftRail() {
         min={1}
         max={60}
         step={1}
-        onChange={regionSizeSlider.onChange}
-        onDragEnd={regionSizeSlider.onDragEnd}
+        onChange={v => { regionSizeSlider.onChange(v); onRegionSizePreviewChange(v) }}
+        onDragStart={() => onRegionSizePreviewChange(p2pMaxRegionSizeCm2)}
+        onDragEnd={() => { regionSizeSlider.onDragEnd(); onRegionSizePreviewChange(null) }}
       />
     </StripShell>
   )

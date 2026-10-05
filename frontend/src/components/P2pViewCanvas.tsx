@@ -1,21 +1,30 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useMapStore } from '../store/mapStore'
 import { makeP2pBoardProjection, P2P_GRID_CELL_KM } from '../lib/p2pNetwork'
-import { computeP2pTerrainRegions, cellKey, regionType, regionAnchorKey, type P2pTerrainRegion } from '../lib/p2pTerrainRegions'
+import {
+  traceP2pRegionFaces, splitP2pRegionFaces, cellKey, regionType, regionAnchorKey,
+  type P2pTerrainRegion,
+} from '../lib/p2pTerrainRegions'
 import type { P2pTerrainType } from '../store/slices/p2pTerrainSlice'
 import { drawP2pTerrain, DEFAULT_P2P_TERRAIN_STYLES } from '../lib/drawP2pTerrain'
 import { drawP2pTowns, DEFAULT_P2P_TOWN_TIER_STYLES } from '../lib/drawP2pTowns'
 import { drawRoadsAndRails, type RoadChainPx } from '../lib/drawRoadsRails'
 import { DEFAULT_ROAD_TIER_STYLES, DEFAULT_RAIL_STYLE } from '../store/mapStore'
 
-// Stable reference so passing "no paint yet" to computeP2pTerrainRegions never looks
-// like a changed input to useMemo.
-const EMPTY_PAINT_LAYER: Record<string, P2pTerrainType> = {}
-
 /** Point-to-point map canvas. Deliberately simpler than TerrainViewCanvas: no
  *  LayerCache/RAF machinery, because a p2p scene is tens of towns/roads/regions,
  *  not thousands of hexes — a full redraw on every relevant change is cheap. */
-export function P2pViewCanvas({ surroundColor = '#B7B0A6' }: { surroundColor?: string }) {
+export function P2pViewCanvas({
+  surroundColor = '#B7B0A6',
+  regionSizePreviewCm2 = null,
+}: {
+  surroundColor?: string
+  /** In-progress "max region size" value while the sidebar slider is being dragged —
+   *  deliberately NOT read from the store (see P2pLeftRail.tsx): writing it there would
+   *  mean a localStorage serialize on every drag tick, which is exactly the slider-lag
+   *  bug this prop exists to avoid. null/omitted = use the committed store value. */
+  regionSizePreviewCm2?: number | null
+}) {
   const containerRef = useRef<HTMLDivElement>(null)
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const hoverCanvasRef = useRef<HTMLCanvasElement>(null)
@@ -99,24 +108,29 @@ export function P2pViewCanvas({ surroundColor = '#B7B0A6' }: { surroundColor?: s
     return p2pRawRivers.map(r => r.coords.map(([lon, lat]) => projection.toLocal(lon, lat)))
   }, [p2pRawRivers, projection])
 
-  // Region shapes depend only on roads/rivers/frame/max-size — never on paint — so this
-  // is kept separate from paint state. It's the expensive part (face tracing, splitting)
-  // and must NOT re-run on every brush stroke, only when the topology or settings change.
-  const regionsGeometry = useMemo(() => {
+  // Face tracing is the expensive part (planarize + walk) and depends only on
+  // roads/rivers/frame — never on paint, and NOT on max-region-size either. Stable
+  // across both brush strokes and "max region size" slider drags.
+  const rawFaces = useMemo(() => {
     if (!projection || p2pWidthKm === 0) return []
-    const [cwMm] = paperMm
-    const kmPerCm = p2pWidthKm / (cwMm / 10)
-    return computeP2pTerrainRegions(
+    return traceP2pRegionFaces(
       roadsLocal.map(poly => poly.map(([x, y]) => ({ x, y }))),
       riversLocal.map(poly => poly.map(([x, y]) => ({ x, y }))),
-      EMPTY_PAINT_LAYER,
-      {
-        widthKm: p2pWidthKm, heightKm: p2pHeightKm,
-        maxRegionAreaKm2: p2pMaxRegionSizeCm2 * kmPerCm * kmPerCm,
-        splitRivers: p2pRiverSplitRegions,
-      },
+      { widthKm: p2pWidthKm, heightKm: p2pHeightKm, splitRivers: p2pRiverSplitRegions },
     )
-  }, [roadsLocal, riversLocal, p2pWidthKm, p2pHeightKm, p2pMaxRegionSizeCm2, p2pRiverSplitRegions, projection, paperMm])
+  }, [roadsLocal, riversLocal, p2pWidthKm, p2pHeightKm, p2pRiverSplitRegions, projection])
+
+  // Splitting oversized faces (Voronoi cuts) is comparatively cheap — safe to re-run on
+  // every tick of a live "max region size" drag. regionSizePreviewCm2 is the sidebar
+  // slider's in-progress value (see the constructor comment on why it's a prop, not a
+  // store field); falls back to the committed store value when not dragging.
+  const effectiveMaxRegionSizeCm2 = regionSizePreviewCm2 ?? p2pMaxRegionSizeCm2
+  const regionsGeometry = useMemo(() => {
+    if (!rawFaces.length) return []
+    const [cwMm] = paperMm
+    const kmPerCm = p2pWidthKm / (cwMm / 10)
+    return splitP2pRegionFaces(rawFaces, effectiveMaxRegionSizeCm2 * kmPerCm * kmPerCm, {})
+  }, [rawFaces, effectiveMaxRegionSizeCm2, p2pWidthKm, paperMm])
 
   // Grid cell -> region index, for O(1) hit-testing by the paint tool. Stable across
   // brush strokes since it only depends on the (paint-independent) region shapes.
@@ -164,6 +178,36 @@ export function P2pViewCanvas({ surroundColor = '#B7B0A6' }: { surroundColor?: s
     if (ctx) ctx.setTransform(dpr, 0, 0, dpr, 0, 0)
   }, [size])
 
+  // While the sidebar's "max region size" slider is being dragged, trace ALL current
+  // region boundaries instead of just the one hovered — so the cuts are visible as they
+  // change, without touching the store (regionSizePreviewCm2 is a prop, see above) or
+  // the heavier terrain/road/river canvas.
+  useEffect(() => {
+    const hc = hoverCanvasRef.current
+    const ctx = hc?.getContext('2d')
+    if (!ctx || !hc || !projection) return
+
+    if (regionSizePreviewCm2 !== null) {
+      ctx.clearRect(0, 0, hc.clientWidth, hc.clientHeight)
+      ctx.lineJoin = 'round'
+      ctx.strokeStyle = 'rgba(80, 60, 20, 0.6)'
+      ctx.lineWidth = 1
+      for (const r of regionsGeometry) {
+        ctx.beginPath()
+        r.poly.forEach(([x, y], i) => {
+          const [px, py] = projection.projectKm(x, y)
+          if (i === 0) ctx.moveTo(px, py); else ctx.lineTo(px, py)
+        })
+        ctx.closePath()
+        ctx.stroke()
+      }
+    }
+
+    return () => {
+      if (regionSizePreviewCm2 !== null) ctx.clearRect(0, 0, hc.clientWidth, hc.clientHeight)
+    }
+  }, [regionSizePreviewCm2, regionsGeometry, projection])
+
   // Terrain brush: click or drag fills the WHOLE road-bounded region under the cursor
   // in one go (matches the reference prototype's paintRegion()/regionAt() — it's a
   // flood fill of one region at a time, not per-cell painting; see conversation).
@@ -183,6 +227,7 @@ export function P2pViewCanvas({ surroundColor = '#B7B0A6' }: { surroundColor?: s
     }
 
     const drawHover = (ri: number) => {
+      if (regionSizePreviewCm2 !== null) return // the all-edges effect owns the overlay while dragging
       if (ri === hoverRegionRef.current) return
       hoverRegionRef.current = ri
       const hc = hoverCanvasRef.current
@@ -302,7 +347,7 @@ export function P2pViewCanvas({ surroundColor = '#B7B0A6' }: { surroundColor?: s
       const hc = hoverCanvasRef.current
       hc?.getContext('2d')?.clearRect(0, 0, hc.clientWidth, hc.clientHeight)
     }
-  }, [layout, projection, p2pWidthKm, p2pHeightKm, regionsGeometry, cellToRegion, batchPaintP2pTerrain, batchEraseP2pTerrain])
+  }, [layout, projection, p2pWidthKm, p2pHeightKm, regionsGeometry, cellToRegion, regionSizePreviewCm2, batchPaintP2pTerrain, batchEraseP2pTerrain])
 
   useEffect(() => {
     const canvas = canvasRef.current
