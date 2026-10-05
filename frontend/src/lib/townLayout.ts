@@ -125,6 +125,40 @@ export const DEFAULT_CLUSTER = 0.7
 const STEP = 0.03
 const LANE_HALF_WIDTH = 0.055
 
+const smoothstep = (lo: number, hi: number, x: number): number => {
+  const t = Math.max(0, Math.min(1, (x - lo) / (hi - lo)))
+  return t * t * (3 - 2 * t)
+}
+
+/** Translates a single 0..1 "complexity" knob into the engine's full per-tier
+ *  config, for callers that want to expose one user-facing richness slider
+ *  instead of the engine's individual structural fields. Features switch on
+ *  progressively: density/wobble move from the start, a second house row
+ *  fades in early-mid, infill mid-high, spur lanes from the midpoint up,
+ *  connectors and a third row only near the top — low complexity reads as
+ *  "houses radiating outward," high complexity reads as a full street grid. */
+export function tierConfigForComplexity(tier: 0 | 1 | 2, complexity: number): TownTierConfig {
+  const c = Math.max(0, Math.min(1, complexity))
+  const base = DEFAULT_TOWN_TIER_CONFIG[tier]
+  return {
+    radius: base.radius,
+    density: lerp(base.density * 0.85, base.density * 1.1, c),
+    laneCount: Math.round(smoothstep(0.4, 1.0, c) * 3),
+    connectorCount: Math.round(smoothstep(0.6, 1.0, c) * 2),
+    row2: smoothstep(0.15, 0.6, c) * 0.6,
+    row3: smoothstep(0.65, 1.0, c) * 0.35,
+    infill: smoothstep(0.35, 0.85, c) * 0.5,
+    reach: lerp(0.25, 0.45, c),
+    wobble: lerp(0.15, 0.45, c),
+  }
+}
+
+/** Companion to tierConfigForComplexity for the engine's two non-tier knobs. */
+export function gapClusterForComplexity(complexity: number): { gap: number; cluster: number } {
+  const c = Math.max(0, Math.min(1, complexity))
+  return { gap: DEFAULT_GAP, cluster: lerp(0.3, 0.85, c) }
+}
+
 // ── Internal geometry ────────────────────────────────────────────────────────
 
 type Pt = { x: number; y: number }
