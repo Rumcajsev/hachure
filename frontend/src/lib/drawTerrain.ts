@@ -238,6 +238,80 @@ function drawElevationBlobs(
   tCtx.fill('evenodd')
 }
 
+export interface BlobFillStyle {
+  color: string
+  texture: HTMLImageElement | null
+  textureScale: number
+  /** Raw blend mode as stored — 'color'/'color-bg' are handled specially, everything
+   *  else is a real GlobalCompositeOperation. Passed through to applyTextureOverlay
+   *  verbatim (it inspects the raw value, not a pre-resolved one). */
+  blendMode: GlobalCompositeOperation | 'color' | 'color-bg'
+  opacity: number
+  tintColor: string
+  tintOpacity: number
+}
+
+/** Fill + texture a shaped set of same-terrain blob polygons. Used for both hex
+ *  terrain blobs (drawTerrain's per-terrain loop) and point-to-point terrain
+ *  regions (drawP2pTerrain) — by the time polygons reach here, hex vs. area-based
+ *  origin no longer matters, it's just a set of polygons for one terrain type.
+ *  Outline is a separate pass (drawBlobOutline) since callers may need to
+ *  interleave other draws (e.g. hex mode's per-component overrides) in between. */
+export function drawTerrainBlobFill(
+  tCtx: Ctx,
+  polys: [number, number][][],
+  R: number,
+  style: BlobFillStyle,
+): void {
+  if (polys.length === 0) return
+  const isColorMode = style.blendMode === 'color' || style.blendMode === 'color-bg'
+
+  if (!isColorMode) {
+    tCtx.fillStyle = style.color
+    tCtx.beginPath()
+    for (const poly of polys) {
+      if (poly.length < 3) continue
+      tCtx.moveTo(poly[0][0], poly[0][1])
+      for (let i = 1; i < poly.length; i++) tCtx.lineTo(poly[i][0], poly[i][1])
+      tCtx.closePath()
+    }
+    tCtx.fill('evenodd')
+  }
+
+  if (style.texture) {
+    applyTextureOverlay(
+      tCtx, style.texture, polys, R, style.textureScale, 0,
+      style.blendMode as GlobalCompositeOperation,
+      style.opacity,
+      isColorMode ? style.color : style.tintColor,
+      isColorMode ? 1.0 : style.tintOpacity,
+      isColorMode,
+    )
+  }
+}
+
+export function drawBlobOutline(
+  tCtx: Ctx,
+  polys: [number, number][][],
+  color: string,
+  width: number,
+): void {
+  if (polys.length === 0) return
+  tCtx.save()
+  tCtx.strokeStyle = color
+  tCtx.lineWidth = width
+  tCtx.lineJoin = 'round'
+  tCtx.beginPath()
+  for (const poly of polys) {
+    if (poly.length < 3) continue
+    tCtx.moveTo(poly[0][0], poly[0][1])
+    for (let i = 1; i < poly.length; i++) tCtx.lineTo(poly[i][0], poly[i][1])
+    tCtx.closePath()
+  }
+  tCtx.stroke()
+  tCtx.restore()
+}
+
 /**
  * Draw blob fill to an offscreen, blur it, composite onto tCtx.
  * The blur of a solid shape has full opacity at centre, fading at edges.
@@ -710,31 +784,16 @@ export function drawTerrain(tCtx: Ctx, params: DrawTerrainParams): void {
 
       const terrainColor = terrainColors[terrain] ?? '#cccccc'
 
-      // a. Fill default polys
-      if (defaultPolys.length > 0 && !isColorMode) {
-        tCtx.fillStyle = terrainColor
-        tCtx.beginPath()
-        for (const poly of defaultPolys) {
-          if (poly.length < 3) continue
-          tCtx.moveTo(poly[0][0], poly[0][1])
-          for (let i = 1; i < poly.length; i++) tCtx.lineTo(poly[i][0], poly[i][1])
-          tCtx.closePath()
-        }
-        tCtx.fill('evenodd')
-      }
-
-      // a2. Default texture overlay
-      if (defaultPolys.length > 0) {
-        const defTex = terrainTextures.get(terrain) ?? null
-        if (defTex) {
-          applyTextureOverlay(tCtx, defTex, defaultPolys, R, terrainTextureScales[terrain] ?? 3, 0,
-            rawMode as GlobalCompositeOperation,
-            terrainTextureOpacities[terrain] ?? 0.6,
-            isColorMode ? (terrainColors[terrain] ?? '') : (terrainTextureTintColors[terrain] ?? ''),
-            isColorMode ? 1.0 : (terrainTextureTintOpacities[terrain] ?? 0.5),
-            isColorMode)
-        }
-      }
+      // a. + a2. Fill + texture default polys
+      drawTerrainBlobFill(tCtx, defaultPolys, R, {
+        color: terrainColor,
+        texture: terrainTextures.get(terrain) ?? null,
+        textureScale: terrainTextureScales[terrain] ?? 3,
+        blendMode: rawMode,
+        opacity: terrainTextureOpacities[terrain] ?? 0.6,
+        tintColor: terrainTextureTintColors[terrain] ?? '',
+        tintOpacity: terrainTextureTintOpacities[terrain] ?? 0.5,
+      })
 
       // b. Override passes for this terrain
       for (const [canonicalKey, override] of overridesByTerrain.get(terrain) ?? []) {
@@ -792,24 +851,10 @@ export function drawTerrain(tCtx: Ctx, params: DrawTerrainParams): void {
       }
 
       // c. Blob outline + glow pass
-      if (defaultPolys.length > 0) {
+      {
         const typeStyle = params.terrainTypeBlobStyles[terrain]
         const fx = resolveBlobEffect(typeStyle, params.terrainBlobEffect ?? DEFAULT_STROKE_EFFECT, terrainBlobOutlineEnabled, terrainBlobOutlineColor, terrainBlobOutlineWidth)
-        if (fx.outlineEnabled) {
-          tCtx.save()
-          tCtx.strokeStyle = fx.outlineColor
-          tCtx.lineWidth   = fx.outlineWidth
-          tCtx.lineJoin    = 'round'
-          tCtx.beginPath()
-          for (const poly of defaultPolys) {
-            if (poly.length < 3) continue
-            tCtx.moveTo(poly[0][0], poly[0][1])
-            for (let i = 1; i < poly.length; i++) tCtx.lineTo(poly[i][0], poly[i][1])
-            tCtx.closePath()
-          }
-          tCtx.stroke()
-          tCtx.restore()
-        }
+        if (fx.outlineEnabled) drawBlobOutline(tCtx, defaultPolys, fx.outlineColor, fx.outlineWidth)
       }
     }
 
