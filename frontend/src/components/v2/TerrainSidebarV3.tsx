@@ -103,8 +103,6 @@ function ShapeSettingsFlyout({ onClose, usedAs }: { onClose: () => void; usedAs:
     terrainBlobLobeDirection, setTerrainBlobLobeDirection,
     terrainBlobTopoStyle, setTerrainBlobTopoStyle,
     terrainBlobClusterSize, setTerrainBlobClusterSize,
-    terrainBlobSplatDensity, setTerrainBlobSplatDensity,
-    terrainBlobSplatSize, setTerrainBlobSplatSize,
     terrainBlobOutlineEnabled, setTerrainBlobOutlineEnabled,
     terrainBlobOutlineColor, setTerrainBlobOutlineColor,
     terrainBlobOutlineWidth, setTerrainBlobOutlineWidth,
@@ -121,8 +119,6 @@ function ShapeSettingsFlyout({ onClose, usedAs }: { onClose: () => void; usedAs:
   const [fringeLocal, setFringeLocal] = useState(Math.round(terrainBlobLobeAmp * 100))
   useEffect(() => { setFringeLocal(Math.round(terrainBlobLobeAmp * 100)); fringeRef.current = terrainBlobLobeAmp }, [terrainBlobLobeAmp])
   const clusterSizeSlider  = useDeferredSlider(terrainBlobClusterSize, setTerrainBlobClusterSize)
-  const splatDensitySlider = useDeferredSlider(Math.round(terrainBlobSplatDensity * 10), v => setTerrainBlobSplatDensity(v / 10))
-  const splatSizeSlider    = useDeferredSlider(Math.round(terrainBlobSplatSize * 100),   v => setTerrainBlobSplatSize(v / 100))
   const topoSlider         = useDeferredSlider(Math.round(terrainBlobTopoStyle * 10),  v => setTerrainBlobTopoStyle(v / 10))
 
   const isModified =
@@ -164,14 +160,6 @@ function ShapeSettingsFlyout({ onClose, usedAs }: { onClose: () => void; usedAs:
         onDragEnd={() => { const amp = fringeRef.current; setTerrainBlobLobeAmp(amp); setTerrainBlobLobeFreq(2.0 + amp * 3.0); setTerrainBlobLobeThreshold(0) }}
         accentColor={t.rust}
       />
-      <div style={{ borderTop: `1px solid ${t.line2}`, padding: '6px 12px 2px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-        <span style={{ fontFamily: t.mono, fontSize: 9, letterSpacing: 0.8, color: t.inkFaint, textTransform: 'uppercase', fontWeight: 600 }}>Splats</span>
-        <ToggleSwitch enabled={terrainBlobSplatDensity > 0} onChange={on => setTerrainBlobSplatDensity(on ? 3 : 0)} />
-      </div>
-      {terrainBlobSplatDensity > 0 && <>
-        <MiniSlider label="Satellites" display={`${Math.round(splatDensitySlider.value) / 10}`} value={splatDensitySlider.value} min={1} max={20} step={1} onChange={splatDensitySlider.onChange} onDragEnd={splatDensitySlider.onDragEnd} />
-        <MiniSlider label="Sat. size"  display={`${splatSizeSlider.value}%`}                    value={splatSizeSlider.value}    min={10} max={80} step={5} onChange={splatSizeSlider.onChange}   onDragEnd={splatSizeSlider.onDragEnd} />
-      </>}
       <div style={{ borderTop: `1px solid ${t.line2}`, padding: '6px 12px 2px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
         <span style={{ fontFamily: t.mono, fontSize: 9, letterSpacing: 0.8, color: t.inkFaint, textTransform: 'uppercase', fontWeight: 600 }}>Blob outline</span>
         <ToggleSwitch enabled={terrainBlobOutlineEnabled} onChange={setTerrainBlobOutlineEnabled} />
@@ -691,8 +679,6 @@ function TerrainCogFlyout({ terrain, onClose, usedAs }: { terrain: string; onClo
     terrainBlobClusterSize,
     terrainBlobOutlineEnabled, terrainBlobOutlineColor, terrainBlobOutlineWidth,
     edgeBlobWidth, edgeBlobBlend,
-    activeTool, setActiveTool,
-    blobMaskEdits, clearBlobMaskEdits,
   } = useMapStore()
 
   const color = terrainColors[terrain] ?? TERRAIN_COLORS[terrain] ?? '#888888'
@@ -912,56 +898,6 @@ function TerrainCogFlyout({ terrain, onClose, usedAs }: { terrain: string; onClo
           />
         </>}
       </div>
-
-      {/* Blob mask editing */}
-      {(() => {
-        const isMaskActive = activeTool.type === 'blob-mask' && (activeTool as Extract<typeof activeTool, { type: 'blob-mask' }>).terrain === terrain
-        const activeMode = isMaskActive ? (activeTool as Extract<typeof activeTool, { type: 'blob-mask' }>).mode : null
-        const editCount = blobMaskEdits.filter(e => e.terrain === terrain).length
-
-        const activate = (mode: 'add' | 'subtract') => {
-          if (isMaskActive && activeMode === mode) setActiveTool({ type: 'none' })
-          else setActiveTool({ type: 'blob-mask', mode, terrain })
-        }
-
-        const btnStyle = (active: boolean, danger = false): React.CSSProperties => ({
-          flex: 1, padding: '5px 0',
-          fontFamily: tk.mono, fontSize: 9, letterSpacing: 0.5, textTransform: 'uppercase',
-          background: active ? (danger ? 'rgba(255,80,80,0.15)' : 'rgba(80,200,120,0.12)') : 'transparent',
-          color: active ? (danger ? '#f88' : '#6da') : tk.inkMute,
-          border: `1px solid ${active ? (danger ? '#f88' : '#6da') : tk.line}`,
-          marginLeft: -1, cursor: 'pointer',
-          position: 'relative', zIndex: active ? 1 : 0,
-        })
-
-        return (
-          <div style={{ borderTop: `1px solid ${tk.line2}`, paddingTop: 4 }}>
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '6px 12px 4px' }}>
-              <span style={{ fontFamily: tk.mono, fontSize: 8.5, letterSpacing: 0.8, color: tk.inkFaint, textTransform: 'uppercase', fontWeight: 600 }}>Blob regions</span>
-              {editCount > 0 && (
-                <button onClick={() => clearBlobMaskEdits(terrain)} style={{
-                  background: 'none', border: 'none', fontFamily: tk.mono, fontSize: 9,
-                  color: tk.inkMute, cursor: 'pointer', padding: 0, letterSpacing: 0.3,
-                }}
-                  onMouseEnter={e => (e.currentTarget.style.color = tk.rust)}
-                  onMouseLeave={e => (e.currentTarget.style.color = tk.inkMute)}
-                >
-                  clear {editCount}
-                </button>
-              )}
-            </div>
-            <div style={{ display: 'flex', margin: '0 12px 8px' }}>
-              <button style={btnStyle(activeMode === 'add')} onClick={() => activate('add')}>+ Add</button>
-              <button style={btnStyle(activeMode === 'subtract', true)} onClick={() => activate('subtract')}>− Subtract</button>
-            </div>
-            {isMaskActive && (
-              <div style={{ padding: '0 12px 6px', fontFamily: tk.mono, fontSize: 9, color: tk.inkFaint, lineHeight: 1.5 }}>
-                Draw a closed shape on the map{activeMode === 'subtract' ? ' to cut out' : ' to add'}.
-              </div>
-            )}
-          </div>
-        )
-      })()}
 
     </FlyoutShell>
   )

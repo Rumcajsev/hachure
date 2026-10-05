@@ -6,7 +6,7 @@ import { makePermutation, perlinNoise2D, perturbXY, perturbNormal, mulberry32 } 
 import { projectToCanvas } from './projection'
 import polygonClipping from 'polygon-clipping'
 import { hexTerrainLayers } from '../store/mapStore'
-import type { GridMetadata, GeneratedHex, BlobMaskEdit } from '../store/mapStore'
+import type { GridMetadata, GeneratedHex } from '../store/mapStore'
 
 // ── Coastal hex helpers ──────────────────────────────────────────────────────
 
@@ -557,93 +557,6 @@ export function buildFieldCanvas(
   return offscreen
 }
 
-// ── Blob mask edits (boolean add/subtract) ───────────────────────────────────
-
-export type BlobShapeParams = {
-  R: number
-  smooth: number
-  bump: number
-  sweepFreq: number
-  lobeFreq: number
-  lobeAmp: number
-  lobeThreshold: number
-  lobeDirection: number
-}
-
-/** Apply stored BlobMaskEdits to pre-shaped blob polygons.
- *  Edits are stored in WGS84 lon/lat; projectFn converts them to canvas space.
- *  Add/subtract edits both go through the terrain blob shaping pipeline when shapeParams is provided. */
-export function applyBlobMaskEdits(
-  blobs: { terrain: string; polys: [number, number][][] }[],
-  edits: BlobMaskEdit[],
-  projectFn: (lonlat: [number, number]) => [number, number],
-  shapeParams?: BlobShapeParams,
-): { terrain: string; polys: [number, number][][] }[] {
-  if (edits.length === 0) return blobs
-  return blobs.map(blob => {
-    const relevant = edits.filter(e => e.terrain === blob.terrain)
-    if (relevant.length === 0) return blob
-
-    let polys = blob.polys
-    for (const edit of relevant) {
-      const editCanvas = edit.polygon.map(projectFn)
-      if (editCanvas.length < 3) continue
-
-      const seed = Math.abs(Math.round(editCanvas[0][0] * 73 + editCanvas[0][1] * 97)) ^ (edit.id.split('').reduce((a, c) => a + c.charCodeAt(0), 0))
-
-      let shaped: [number, number][] = editCanvas as [number, number][]
-      if (shapeParams) {
-        const p = shapeParams
-        const p1Amp = p.bump * p.R
-        const p2Amp = p.bump * p.lobeAmp * p.R * p.lobeDirection
-        let out: [number, number][] = shaped
-        const smoothPasses = Math.floor(p.smooth)
-        const smoothRemainder = p.smooth - smoothPasses
-        for (let i = 0; i < smoothPasses; i++) out = preSmoothVar(out, 0.4)
-        if (smoothRemainder > 0) out = preSmoothVar(out, 0.4 * smoothRemainder)
-        out = subdivideClosedPolygon(out, p.R * 0.25)
-        out = perturbXY(out, makePermutation(seed), makePermutation(seed + 31), p.sweepFreq / p.R, p1Amp)
-        out = resampleSmoothQuad(out, 5)
-        out = perturbNormal(out, makePermutation(seed + 67), makePermutation(seed + 113), p.lobeFreq / p.R, p2Amp, p.lobeThreshold)
-        shaped = out
-      }
-
-      if (edit.type === 'subtract') {
-        const editMPoly: polygonClipping.MultiPolygon = [[shaped as polygonClipping.Ring]]
-        const next: [number, number][][] = []
-        for (const poly of polys) {
-          if (poly.length < 3) continue
-          const subject: polygonClipping.MultiPolygon = [[poly as polygonClipping.Ring]]
-          try {
-            const result = polygonClipping.difference(subject, editMPoly)
-            for (const polygon of result) {
-              if (polygon[0]?.length >= 3) next.push(polygon[0] as [number, number][])
-            }
-          } catch {
-            next.push(poly)
-          }
-        }
-        polys = next
-      } else {
-        // Union into existing polys so overlapping regions don't punch holes under evenodd fill
-        if (polys.length === 0) {
-          polys = [shaped]
-        } else {
-          try {
-            const existingMulti: polygonClipping.MultiPolygon = polys.filter(p => p.length >= 3).map(p => [p as polygonClipping.Ring])
-            const addMulti: polygonClipping.MultiPolygon = [[shaped as polygonClipping.Ring]]
-            const result = polygonClipping.union(existingMulti, addMulti)
-            polys = result.map(polygon => polygon[0] as [number, number][]).filter(p => p?.length >= 3)
-          } catch {
-            polys = [...polys, shaped]
-          }
-        }
-      }
-    }
-    return { ...blob, polys }
-  })
-}
-
 /**
  * Return a perturbed copy of each corridor polygon.
  * variance (0–1): amplitude as a fraction of corridorHalfWidth; 0 = straight cut.
@@ -711,107 +624,6 @@ export function cutRawPolysWithCorridors(
       const result = polygonClipping.difference(subject, cutMultiPoly)
       return result.map(p => p[0] as [number, number][]).filter(p => p?.length >= 3)
     } catch { return [poly] }
-  })
-}
-
-export type BlobSplatParams = {
-  splatDensity: number  // expected satellites per R of perimeter (0 = none)
-  splatSize: number     // satellite radius as fraction of R
-}
-
-/** Generate procedural satellite splats (small blobs near blob edges).
- *  Seeded deterministically from blob geometry — stable across re-renders. */
-export function generateBlobSplats(
-  blobs: { terrain: string; polys: [number, number][][] }[],
-  params: BlobSplatParams,
-  R: number,
-  shapeParams: BlobShapeParams,
-): { terrain: string; polys: [number, number][][] }[] {
-  const { splatDensity, splatSize } = params
-  if (splatDensity <= 0) return blobs
-
-  return blobs.map(blob => {
-    const addSplats: [number, number][][] = []
-
-
-    for (const poly of blob.polys) {
-      const n = poly.length
-      if (n < 3) continue
-
-      const seed = Math.abs(Math.round(poly[0][0] * 73 + poly[0][1] * 97))
-      const rng = mulberry32(seed ^ 0x5A7B3C)
-
-      // Perimeter arc-length table
-      let totalLen = 0
-      const arcLens: number[] = [0]
-      for (let i = 0; i < n; i++) {
-        const a = poly[i], b = poly[(i + 1) % n]
-        totalLen += Math.hypot(b[0] - a[0], b[1] - a[1])
-        arcLens.push(totalLen)
-      }
-
-      // Centroid for normal-direction checks and hole placement
-      let cx = 0, cy = 0
-      for (const [x, y] of poly) { cx += x; cy += y }
-      cx /= n; cy /= n
-
-      // ── Satellites along the boundary ───────────────────────────────────────
-      if (splatDensity > 0) {
-        const spacing = R / splatDensity
-        let t = rng() * spacing
-        let idx = 0
-        while (t < totalLen) {
-          // Find position at arc length t
-          const tmod = t % totalLen
-          while (idx + 1 < arcLens.length - 1 && arcLens[idx + 1] <= tmod) idx++
-          const a = poly[idx], b = poly[(idx + 1) % n]
-          const segLen = arcLens[idx + 1] - arcLens[idx]
-          const f = segLen < 1e-9 ? 0 : (tmod - arcLens[idx]) / segLen
-          const px = a[0] + f * (b[0] - a[0])
-          const py = a[1] + f * (b[1] - a[1])
-
-          // Outward normal (flip if it points toward centroid)
-          const dx = b[0] - a[0], dy = b[1] - a[1]
-          const elen = Math.hypot(dx, dy)
-          let nx = elen < 1e-9 ? 0 : -dy / elen
-          let ny = elen < 1e-9 ? 0 :  dx / elen
-          if (nx * (cx - px) + ny * (cy - py) > 0) { nx = -nx; ny = -ny }
-
-          // Satellite center: just outside the boundary
-          const offset = R * (0.15 + rng() * 0.25)
-          const scx = px + nx * offset
-          const scy = py + ny * offset
-
-          // Satellite radius with variation
-          const sr = R * splatSize * (0.6 + rng() * 0.8)
-          const splatSeed = seed ^ Math.abs(Math.round(t)) ^ 0x9A3F
-
-          // Build circle polygon and shape it organically
-          const nPts = 8 + Math.floor(rng() * 5)
-          const circle: [number, number][] = []
-          for (let i = 0; i < nPts; i++) {
-            const angle = (i / nPts) * Math.PI * 2
-            circle.push([scx + Math.cos(angle) * sr, scy + Math.sin(angle) * sr])
-          }
-
-          const sp = shapeParams
-          const p1Amp = sp.bump * sr
-          const p2Amp = sp.bump * sp.lobeAmp * sr * sp.lobeDirection
-          let out: [number, number][] = circle
-          out = subdivideClosedPolygon(out, Math.max(sr * 0.25, 1))
-          out = perturbXY(out, makePermutation(splatSeed), makePermutation(splatSeed + 31), sp.sweepFreq / sr, p1Amp)
-          out = resampleSmoothQuad(out, 3)
-          out = perturbNormal(out, makePermutation(splatSeed + 67), makePermutation(splatSeed + 113), sp.lobeFreq / sr, p2Amp, sp.lobeThreshold)
-
-          if (out.length >= 3) addSplats.push(out)
-
-          t += spacing * (0.5 + rng())
-        }
-      }
-
-    }
-
-    return { ...blob, polys: [...blob.polys, ...addSplats] }
   })
 }
 

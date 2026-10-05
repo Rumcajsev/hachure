@@ -1,6 +1,6 @@
 import type {
   MapStore, GeneratedHex, GridMetadata, GenerateProgress, BlobOverride,
-  ActiveTool, CustomTerrain, TerrainRules, ClassRule, StrokeEffect, BlobMaskEdit, SlopeStyle,
+  ActiveTool, CustomTerrain, TerrainRules, ClassRule, StrokeEffect, SlopeStyle,
   ImageSwatch,
 } from '../mapStore'
 import {
@@ -34,8 +34,6 @@ export type TerrainSlice = {
   terrainBlobLobeDirection: number
   terrainBlobTopoStyle: number
   terrainBlobClusterSize: number
-  terrainBlobSplatDensity: number
-  terrainBlobSplatSize: number
   terrainBlobOutlineEnabled: boolean
   terrainBlobOutlineColor: string
   terrainBlobOutlineWidth: number
@@ -139,8 +137,6 @@ export type TerrainSlice = {
   setTerrainBlobLobeDirection: (v: number) => void
   setTerrainBlobTopoStyle: (v: number) => void
   setTerrainBlobClusterSize: (v: number) => void
-  setTerrainBlobSplatDensity: (v: number) => void
-  setTerrainBlobSplatSize: (v: number) => void
   setTerrainBlobOutlineEnabled: (v: boolean) => void
   setTerrainBlobOutlineColor: (v: string) => void
   setTerrainBlobOutlineWidth: (v: number) => void
@@ -190,11 +186,6 @@ export type TerrainSlice = {
   setActiveBlobEditId: (id: string | null) => void
   setBlobHandleOverride: (canonicalKey: string, hexKey: string, offset: [number, number] | null) => void
   clearBlobHandleOverrides: (canonicalKey: string) => void
-  // Blob mask edits (boolean add/subtract regions in world space)
-  blobMaskEdits: BlobMaskEdit[]
-  addBlobMaskEdit: (edit: BlobMaskEdit) => void
-  removeBlobMaskEdit: (id: string) => void
-  clearBlobMaskEdits: (terrain?: string) => void
   // WorldCover raw overlay
   worldcoverImageUrl: string | null
   showWorldcoverOverlay: boolean
@@ -244,8 +235,6 @@ export const createTerrainSlice = (set: Set, get: () => MapStore): TerrainSlice 
   terrainBlobLobeDirection: DEFAULT_TERRAIN_BLOB.lobeDirection,
   terrainBlobTopoStyle: DEFAULT_TERRAIN_BLOB.topoStyle,
   terrainBlobClusterSize: 0,
-  terrainBlobSplatDensity: 0,
-  terrainBlobSplatSize: 0.3,
   terrainBlobOutlineEnabled: false,
   terrainBlobOutlineColor: '#000000',
   terrainBlobOutlineWidth: 1,
@@ -312,7 +301,6 @@ export const createTerrainSlice = (set: Set, get: () => MapStore): TerrainSlice 
   blobEditMode: false,
   activeBlobEditId: null,
   blobHandleOverrides: {},
-  blobMaskEdits: [],
   worldcoverImageUrl: null,
   showWorldcoverOverlay: false,
   setShowWorldcoverOverlay: (v) => set({ showWorldcoverOverlay: v }),
@@ -436,7 +424,6 @@ export const createTerrainSlice = (set: Set, get: () => MapStore): TerrainSlice 
     blobHandleOverrides: {},
     activeBlobEditId: null,
     blobEditMode: false,
-    blobMaskEdits: [],
     urbanHexes: [],
     excludedHexKeys: [],
     disabledHexKeys: [],
@@ -1060,8 +1047,6 @@ export const createTerrainSlice = (set: Set, get: () => MapStore): TerrainSlice 
   setTerrainBlobLobeDirection: (v) => set({ terrainBlobLobeDirection: v }),
   setTerrainBlobTopoStyle: (v) => set({ terrainBlobTopoStyle: v }),
   setTerrainBlobClusterSize: (v) => set({ terrainBlobClusterSize: v }),
-  setTerrainBlobSplatDensity: (v) => set({ terrainBlobSplatDensity: v }),
-  setTerrainBlobSplatSize: (v) => set({ terrainBlobSplatSize: v }),
   setTerrainBlobOutlineEnabled: (v) => set({ terrainBlobOutlineEnabled: v }),
   setTerrainBlobOutlineColor: (v) => set({ terrainBlobOutlineColor: v }),
   setTerrainBlobOutlineWidth: (v) => set({ terrainBlobOutlineWidth: v }),
@@ -1220,10 +1205,4 @@ export const createTerrainSlice = (set: Set, get: () => MapStore): TerrainSlice 
     const { [ck]: _, ...rest } = s.blobHandleOverrides
     return { blobHandleOverrides: rest }
   }),
-
-  addBlobMaskEdit: (edit) => set((s) => ({ blobMaskEdits: [...s.blobMaskEdits, edit] })),
-  removeBlobMaskEdit: (id) => set((s) => ({ blobMaskEdits: s.blobMaskEdits.filter(e => e.id !== id) })),
-  clearBlobMaskEdits: (terrain) => set((s) => ({
-    blobMaskEdits: terrain ? s.blobMaskEdits.filter(e => e.terrain !== terrain) : [],
-  })),
 })

@@ -1,7 +1,6 @@
 /**
- * Screen-only overlays for blob shape editing:
- *  - handle vertex dots and edge-segment highlights (drawn when blobEditMode is on)
- *  - freehand mask stroke preview (drawn while blob-mask tool is active)
+ * Screen-only overlay for blob shape editing: handle vertex dots and
+ * edge-segment highlights, drawn when blobEditMode is on.
  * Never called during export.
  */
 
@@ -156,39 +155,5 @@ export function _drawBlobHandleOverlay(p: BlobHandleOverlayParams): void {
     }
   }
 
-  ctx.restore()
-}
-
-export interface BlobMaskPreviewParams {
-  ctx: CanvasRenderingContext2D
-  blobMaskDrawing: boolean
-  blobMaskStroke: [number, number][]
-  toolMode: string | null  // 'subtract' | 'add' | null
-  px: number
-  py: number
-  zoom: number
-}
-
-export function _drawBlobMaskPreview(p: BlobMaskPreviewParams): void {
-  const { ctx, blobMaskDrawing, blobMaskStroke, toolMode, px, py, zoom } = p
-  if (!blobMaskDrawing || blobMaskStroke.length < 2 || toolMode === null) return
-
-  const isSubtract = toolMode === 'subtract'
-  const iz = 1 / zoom
-  ctx.save()
-  ctx.strokeStyle = isSubtract ? 'rgba(255,80,80,0.85)' : 'rgba(80,220,120,0.85)'
-  ctx.fillStyle = isSubtract ? 'rgba(255,80,80,0.1)' : 'rgba(80,220,120,0.1)'
-  ctx.lineWidth = 2 * iz
-  ctx.lineCap = 'round'
-  ctx.lineJoin = 'round'
-  ctx.setLineDash([6 * iz, 4 * iz])
-  ctx.beginPath()
-  ctx.moveTo(blobMaskStroke[0][0] - px, blobMaskStroke[0][1] - py)
-  for (let i = 1; i < blobMaskStroke.length; i++) {
-    ctx.lineTo(blobMaskStroke[i][0] - px, blobMaskStroke[i][1] - py)
-  }
-  ctx.closePath()
-  ctx.fill()
-  ctx.stroke()
   ctx.restore()
 }

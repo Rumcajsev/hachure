@@ -9,7 +9,7 @@ import { _drawHoveredEdgePreview } from '../lib/drawHighlights'
 import { _drawWorldcoverOverlay, _drawRawOsmRoadsOverlay, _drawExtractedRoadWaysOverlay } from '../lib/drawDebugOverlays'
 import { _drawTerrainPaintOverlay, _drawElevationPaintOverlay, _drawSlopeOverlay } from '../lib/drawPaintOverlays'
 import { drawImageEraserOverlay as _drawImageEraserOverlay } from '../lib/drawEraserOverlay'
-import { _drawBlobHandleOverlay, _drawBlobMaskPreview } from '../lib/drawBlobHandleOverlay'
+import { _drawBlobHandleOverlay } from '../lib/drawBlobHandleOverlay'
 import { drawLabels as _drawLabels, _drawLabelDragHandles } from '../lib/drawLabels'
 import { drawIcons as _drawIcons } from '../lib/drawIcons'
 import { drawBridges as _drawBridges } from '../lib/drawBridges'
@@ -53,8 +53,6 @@ export interface MapRefs {
   blobEditModeRef: { current: any }
   blobHandleDataRef: { current: any }
   blobHandleOverridesRef: { current: any }
-  blobMaskDrawingRef: { current: any }
-  blobMaskStrokeRef: { current: any }
   bridgeOverridesRef: { current: any }
   bridgeLengthScaleRef: { current: any }
   bridgeStyleRef: { current: any }
@@ -296,8 +294,8 @@ export interface MapRefs {
 export function drawMap(refs: MapRefs, exportTarget?: ExportTarget): void {
   const {
     activeBlobEditIdRef, activeIconOverlayIdRef, activeToolRef, appliedOsmRiverIndicesRef, autoDisabledOceanHexKeysRef, beachColorRef, beachStripRef, beachWidthRef,
-    bgPaintHoldRef, blobComponentsByTerrainRef, blobComponentsRef, blobDragLiveRef, blobEditModeRef, blobHandleDataRef, blobHandleOverridesRef, blobMaskDrawingRef,
-    blobMaskStrokeRef, bridgeOverridesRef, bridgeLengthScaleRef, bridgeStyleRef, bridgeTiersRef, bridgesEnabledRef, cachedRiverChainDataRef, cachedRiverTierChainDataRef, canvasRef,
+    bgPaintHoldRef, blobComponentsByTerrainRef, blobComponentsRef, blobDragLiveRef, blobEditModeRef, blobHandleDataRef, blobHandleOverridesRef,
+    bridgeOverridesRef, bridgeLengthScaleRef, bridgeStyleRef, bridgeTiersRef, bridgesEnabledRef, cachedRiverChainDataRef, cachedRiverTierChainDataRef, canvasRef,
     clipToHexGridRef, coastlineDebugRawRef, contourCanvasRef, contourDisabledElevClassesSetRef, contourDisabledTerrainsSetRef, customTerrainsRef, dataSourceRef, defaultBackgroundBlobsRef,
     defaultElevationBlobsRef, defaultTerrainBlobsMaskedRef, detectedBridgesRef, disabledHexKeysRef, dragLiveDensePosRef, dragLiveOverrideRef, draggingCpKeyRef,
     draggingCpKindRef, draggingDensePtRef, draggingLabelRef, drawOsmHighlightRef, drawPerfRef, edgeBlobBlendRef, edgeBlobOverridesRef, edgeBlobPaintedRef, edgeBlobWidthRef,
@@ -1097,14 +1095,6 @@ export function drawMap(refs: MapRefs, exportTarget?: ExportTarget): void {
       hoveredEdgeHandle: hoveredEdgeHandleRef.current,
       hoveredVertexHandle: hoveredVertexHandleRef.current,
       zoom,
-    })
-    const _blobMaskTool = activeToolRef.current
-    _drawBlobMaskPreview({
-      ctx,
-      blobMaskDrawing: blobMaskDrawingRef.current,
-      blobMaskStroke: blobMaskStrokeRef.current,
-      toolMode: _blobMaskTool.type === 'blob-mask' ? (_blobMaskTool as { mode: string }).mode : null,
-      px, py, zoom,
     })
   }
 

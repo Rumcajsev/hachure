@@ -108,13 +108,6 @@ export interface BlobOverride {
 }
 
 
-export type BlobMaskEdit = {
-  id: string
-  terrain: string
-  type: 'subtract' | 'add'
-  polygon: [number, number][]  // WGS84 lon/lat coordinates
-}
-
 export interface ClassificationParams {
   rangeHillsM: number     // min relief (range) to qualify as hills
   rangeMountainsM: number // min relief (range) to qualify as mountains
@@ -169,7 +162,6 @@ export type ActiveTool =
   /** Label follows cursor until left-click confirms placement or Escape cancels.
    *  dx/dy are stored relative to the icon centre (cx, cy), not the auto-placer output. */
   | { type: 'label-follow'; id: string; iconCx: number; iconCy: number; prevDx: number; prevDy: number }
-  | { type: 'blob-mask'; mode: 'add' | 'subtract'; terrain: string }
 
 export type MapMode = 'single' | 'diptych'
 export type DiptychJoin = 'long' | 'short'
@@ -996,8 +988,6 @@ export const useMapStore = create<MapStore>()(persist((set, get) => {
     terrainBlobLobeThreshold: s.terrainBlobLobeThreshold,
     terrainBlobLobeDirection: s.terrainBlobLobeDirection,
     terrainBlobTopoStyle: s.terrainBlobTopoStyle,
-    terrainBlobSplatDensity: s.terrainBlobSplatDensity,
-    terrainBlobSplatSize: s.terrainBlobSplatSize,
     terrainBlobOutlineEnabled: s.terrainBlobOutlineEnabled,
     terrainBlobOutlineColor: s.terrainBlobOutlineColor,
     terrainBlobOutlineWidth: s.terrainBlobOutlineWidth,
@@ -1023,7 +1013,6 @@ export const useMapStore = create<MapStore>()(persist((set, get) => {
     customTerrains: s.customTerrains,
     blobSeeds: s.blobSeeds,
     blobHandleOverrides: s.blobHandleOverrides,
-    blobMaskEdits: s.blobMaskEdits,
     highlights: s.highlights,
     highlightedHexes: s.highlightedHexes,
     highlightLines: s.highlightLines,
@@ -1087,7 +1076,7 @@ export const useMapStore = create<MapStore>()(persist((set, get) => {
     p2pWidthKm: s.p2pWidthKm,
     p2pHeightKm: s.p2pHeightKm,
   }),
-  version: 102,
+  version: 103,
   migrate: migratePersisted,
   merge: (persisted, current) => rehydrateState({ ...current, ...(persisted as Partial<MapStore>) }),
 }))

@@ -457,8 +457,6 @@ export const createUiSlice = (set: Set, get: () => MapStore): UiSlice => ({
         terrainBlobLobeFreq: s.terrainBlobLobeFreq, terrainBlobLobeAmp: s.terrainBlobLobeAmp,
         terrainBlobLobeThreshold: s.terrainBlobLobeThreshold, terrainBlobLobeDirection: s.terrainBlobLobeDirection,
         terrainBlobTopoStyle: s.terrainBlobTopoStyle,
-        terrainBlobSplatDensity: s.terrainBlobSplatDensity,
-        terrainBlobSplatSize: s.terrainBlobSplatSize,
         terrainBlobOutlineEnabled: s.terrainBlobOutlineEnabled,
         terrainBlobOutlineColor: s.terrainBlobOutlineColor,
         terrainBlobOutlineWidth: s.terrainBlobOutlineWidth,
@@ -1135,6 +1133,11 @@ if (fromVersion < 64) {
     delete (s as Record<string, unknown>).canalEditMode
     delete (s as Record<string, unknown>).canalSelectMode
     delete (s as Record<string, unknown>).selectedCanalSegmentKeys
+  }
+  if (fromVersion < 103) {
+    delete s.blobMaskEdits
+    delete s.terrainBlobSplatDensity
+    delete s.terrainBlobSplatSize
   }
   if (fromVersion < 69) {
     const cp = s.classificationParams as Record<string, unknown> | undefined

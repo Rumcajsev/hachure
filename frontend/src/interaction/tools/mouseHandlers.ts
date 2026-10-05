@@ -13,7 +13,6 @@ import { getLabelBoxBounds } from '../../lib/drawLabels'
 import type { RiverChainV2 } from '../../lib/riverChains'
 import type { RoadNetwork } from '../../lib/roadNetwork'
 import type { LabelBBox } from '../../store/slices/labelOffsetsSlice'
-import type { BlobMaskEdit } from '../../store/mapStore'
 
 // RIVER_V2 is a Vite define flag — permanently true in this codebase
 const RIVER_V2 = true
@@ -103,10 +102,6 @@ export interface MouseHandlerRefs {
   edgeDragRef: MutableRefObject<{ mode: 'add' | 'remove'; painted: Set<string>; pendingRiverToggles: Array<[number, number, number, number]> } | null>
   // Drag suppression
   draggedRef: MutableRefObject<boolean>
-  // Blob mask
-  blobMaskStrokeRef: MutableRefObject<[number, number][]>
-  blobMaskDrawingRef: MutableRefObject<boolean>
-  addBlobMaskEditRef: MutableRefObject<(edit: BlobMaskEdit) => void>
   // Highlights
   activeHighlightIdRef: MutableRefObject<string | null>
   highlightsRef: MutableRefObject<HighlightObj[]>
@@ -693,8 +688,7 @@ export function handleMouseDown(e: MEDown, refs: MouseHandlerRefs): void {
     setActiveToolRef, drawRef, labelBBoxCacheRef, labelOffsetsRef, labelDragStateRef,
     canvasRef, clientToLogicalRef, mapImageTransformRef, alignImageDragRef,
     activePanelRef, labelOverlaysRef, placedLabelsRef, draggingLabelRef, labelSnapRef,
-    moveLabelToRef, getPaperRef, metaRef, blobMaskStrokeRef, blobMaskDrawingRef,
-    addBlobMaskEditRef, hoveredEdgeRef, edgeDragRef } = refs
+    moveLabelToRef, getPaperRef, metaRef, hoveredEdgeRef, edgeDragRef } = refs
 
   if (editingLabelRef.current) return
   draggedRef.current = false
@@ -787,50 +781,6 @@ export function handleMouseDown(e: MEDown, refs: MouseHandlerRefs): void {
         }
       }
     }
-  }
-
-  // Blob mask freehand drawing
-  if (activeToolRef.current.type === 'blob-mask') {
-    const logical = clientToLogicalRef.current(e.clientX, e.clientY)
-    if (!logical) return
-    blobMaskStrokeRef.current = [[logical.lx, logical.ly]]
-    blobMaskDrawingRef.current = true
-    draggedRef.current = true
-    const onMove = (ev: MouseEvent) => {
-      const log = clientToLogicalRef.current(ev.clientX, ev.clientY)
-      if (!log) return
-      const last = blobMaskStrokeRef.current.at(-1)!
-      if (Math.hypot(log.lx - last[0], log.ly - last[1]) > 3) {
-        blobMaskStrokeRef.current = [...blobMaskStrokeRef.current, [log.lx, log.ly]]
-        drawRef.current()
-      }
-    }
-    const onUp = () => {
-      blobMaskDrawingRef.current = false
-      const pts = blobMaskStrokeRef.current
-      blobMaskStrokeRef.current = []
-      window.removeEventListener('mousemove', onMove)
-      window.removeEventListener('mouseup', onUp)
-      if (pts.length < 2) { drawRef.current(); return }
-      const tool = activeToolRef.current
-      if (tool.type !== 'blob-mask') { drawRef.current(); return }
-      const meta = metaRef.current
-      const canvas = canvasRef.current
-      if (!meta || !canvas) { drawRef.current(); return }
-      const { pw, ph, px, py } = getPaperRef.current(canvas.width / window.devicePixelRatio, canvas.height / window.devicePixelRatio)
-      const unproj = (p: [number, number]): [number, number] => unprojectFromCanvas(p[0], p[1], meta, pw, ph, px, py)
-      const polygon = pts.map(unproj)
-      if (polygon.length > 2) polygon.push(polygon[0])
-      addBlobMaskEditRef.current({
-        id: `mask-${Date.now()}`,
-        terrain: tool.terrain as string,
-        type: tool.mode as BlobMaskEdit['type'],
-        polygon,
-      })
-      drawRef.current()
-    }
-    window.addEventListener('mousemove', onMove)
-    window.addEventListener('mouseup', onUp); return
   }
 
   // Edge-paint drag
