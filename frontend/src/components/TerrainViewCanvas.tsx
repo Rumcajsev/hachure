@@ -10,15 +10,15 @@ import { projectToCanvas, unprojectFromCanvas, computePaper, computeWorldcoverBb
 import { coastalBlobTerrains, bleedPolygon, buildTerrainBlobsV2, buildTerrainBlobTopology, shapeTerrainBlobs, shapeInputPolygon, computeConnectedComponents, cutRawPolysWithCorridors, perturbCorridorsForTerrain, buildExportTerrainBlobs } from '../lib/terrainBlobs'
 import type { BlobTopologyEntry } from '../lib/terrainBlobs'
 import { shapeTerrainBlobsField, type FieldBlobControls, type FieldBlobHexInput } from '../lib/terrainBlobsField'
+import { MiniSlider } from './v2/sidebar'
 
-// DEV TOGGLE — field-blob experiment (see src/lib/terrainBlobsField.ts). Flip to true to
-// render terrain blobs via the field+marching-squares pipeline instead of the polygon-
-// perturbation one, on the interactive canvas only — PDF export still uses the old
-// pipeline. Not wired into any UI on purpose; this is a comparison toggle, not a feature.
-const USE_FIELD_BLOBS = false
-// Same for every terrain for now — no per-terrain style mapping yet, this is just enough
-// to see the shape language in the running app. Tune freely while comparing.
-const TEST_FIELD_BLOB_CONTROLS: FieldBlobControls = { shape: 0.55, size: 0, bend: 0.25, bendVariation: 0, detail: 0.15, coves: 0.35 }
+// DEV TOGGLE — field-blob experiment (see src/lib/terrainBlobsField.ts). Flip to false to
+// instantly revert the interactive canvas to the polygon-perturbation pipeline — PDF
+// export still uses that pipeline regardless of this flag. While true, a floating panel
+// (bottom-right of the canvas) lets you tune the shape live instead of editing code.
+// Same controls apply to every terrain for now — no per-terrain style mapping yet.
+const USE_FIELD_BLOBS = true
+const DEFAULT_TEST_FIELD_BLOB_CONTROLS: FieldBlobControls = { shape: 0.55, size: 0, bend: 0.25, bendVariation: 0, detail: 0.15, coves: 0.35 }
 import { findEdgeChains as findEdgeChainsSync } from '../lib/edgeBlobs'
 import { riverChainCache, buildRiverChainsV2, type RiverChainCache } from '../lib/riverChains'
 import { computeDragLiveData, computeRoadProjections, computeLiveRiverChainData } from '../lib/roadLiveGeometry'
@@ -198,6 +198,8 @@ export const TerrainViewCanvas = forwardRef<TerrainViewCanvasHandle, { surroundC
   const [roadDataVersion, setRoadDataVersion] = useState(0)
   const [isTerrainPainting, setIsTerrainPainting] = useState(false)
   const [wcTooltip, setWcTooltip] = useState<{ x: number; y: number; label: string } | null>(null)
+  // DEV TOGGLE panel state — see USE_FIELD_BLOBS at the top of this file.
+  const [fieldBlobControls, setFieldBlobControls] = useState<FieldBlobControls>(DEFAULT_TEST_FIELD_BLOB_CONTROLS)
 
   const [mapOverlay, setMapOverlay] = useState(false)
   const mapOverlayRef = useRef(false)
@@ -1428,7 +1430,7 @@ terrainTextureFileRef.current = terrainTextureFile
 
       // DEV TOGGLE path — see USE_FIELD_BLOBS at the top of this file. Bypasses the whole
       // topology/handle/cache machinery below; no river/road corridor cutting yet and no
-      // per-terrain style mapping yet (uses TEST_FIELD_BLOB_CONTROLS for every terrain).
+      // per-terrain style mapping yet (uses fieldBlobControls for every terrain).
       if (USE_FIELD_BLOBS) {
         const isPaintedForTerrain = (h: GeneratedHex): boolean => {
           if (!coastalBlobTerrains(h).includes(terrain)) return false
@@ -1447,7 +1449,7 @@ terrainTextureFileRef.current = terrainTextureFile
           return { cx, cy, painted, componentKey: painted ? componentMap.get(key) : undefined }
         })
         if (!fieldHexes.some(h => h.painted)) return []
-        return [shapeTerrainBlobsField(terrain, fieldHexes, TEST_FIELD_BLOB_CONTROLS, hexRadius, blobSeeds)]
+        return [shapeTerrainBlobsField(terrain, fieldHexes, fieldBlobControls, hexRadius, blobSeeds)]
       }
 
       const terrainProjected = projectedHexes.filter(p => {
@@ -1643,7 +1645,7 @@ terrainTextureFileRef.current = terrainTextureFile
     prevTerrainBlobsRef.current = result
     console.log(`[blobUseMemo] total ${(performance.now()-_tMemo0).toFixed(1)}ms terrainTypes=${terrainTypes.length}`)
     return result
-  }, [isTerrainPainting, projectedHexes, blobComponentsByTerrain, terrainBlobOverrides, terrainTypeBlobStyles, terrainBlobSmooth, terrainBlobOffset, terrainBlobBump, terrainBlobSweepFreq, terrainBlobLobeFreq, terrainBlobLobeAmp, terrainBlobLobeThreshold, terrainBlobLobeDirection, terrainBlobTopoStyle, terrainBlobClusterSize, hexRadius, blobSeeds, elevationOverridesTerrain, blobHandleOverrides, riverAutoCorridors, roadAutoCorridors, riverBlobCutRoughness, roadBlobCutRoughness])
+  }, [isTerrainPainting, projectedHexes, blobComponentsByTerrain, terrainBlobOverrides, terrainTypeBlobStyles, terrainBlobSmooth, terrainBlobOffset, terrainBlobBump, terrainBlobSweepFreq, terrainBlobLobeFreq, terrainBlobLobeAmp, terrainBlobLobeThreshold, terrainBlobLobeDirection, terrainBlobTopoStyle, terrainBlobClusterSize, hexRadius, blobSeeds, elevationOverridesTerrain, blobHandleOverrides, riverAutoCorridors, roadAutoCorridors, riverBlobCutRoughness, roadBlobCutRoughness, fieldBlobControls, hexCenterByKey])
   const defaultTerrainBlobsRef = useRef(defaultTerrainBlobs)
   defaultTerrainBlobsRef.current = defaultTerrainBlobs
 
@@ -3057,6 +3059,46 @@ terrainTextureFileRef.current = terrainTextureFile
         ref={highlightCanvasRef}
         style={{ position: 'absolute', top: 0, left: 0, pointerEvents: 'none', display: 'block', zIndex: 5 }}
       />
+      {/* DEV TOGGLE panel — see USE_FIELD_BLOBS at the top of this file. Remove together
+          with the toggle once the field-blob experiment is decided one way or the other. */}
+      {USE_FIELD_BLOBS && (
+        <div
+          onMouseDown={e => e.stopPropagation()}
+          onClick={e => e.stopPropagation()}
+          style={{
+            position: 'absolute', right: 12, bottom: 12, width: 220, zIndex: 50,
+            background: '#12121e', border: '1px solid #1e1f2e', borderLeft: '3px solid #4a7a9a',
+            borderRadius: 4, boxShadow: '0 4px 24px rgba(0,0,0,0.6)',
+            padding: '10px 0 6px', fontFamily: 'ui-monospace, monospace',
+          }}
+        >
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0 14px 4px' }}>
+            <span style={{ fontSize: 10, fontWeight: 700, color: '#a0a0c0', textTransform: 'uppercase', letterSpacing: '0.08em' }}>
+              Field blobs (test)
+            </span>
+            <button
+              onClick={() => setFieldBlobControls(DEFAULT_TEST_FIELD_BLOB_CONTROLS)}
+              style={{ background: 'none', border: 'none', color: '#6a6a8a', cursor: 'pointer', fontSize: 11, padding: 0, fontFamily: 'inherit' }}
+              onMouseEnter={e => (e.currentTarget.style.color = '#e0e0f0')}
+              onMouseLeave={e => (e.currentTarget.style.color = '#6a6a8a')}
+            >
+              ↺ reset
+            </button>
+          </div>
+          <MiniSlider label="Shape" display={fieldBlobControls.shape.toFixed(2)} value={fieldBlobControls.shape} min={-1} max={1} step={0.05}
+            onChange={v => setFieldBlobControls(c => ({ ...c, shape: v }))} />
+          <MiniSlider label="Size" display={fieldBlobControls.size.toFixed(2)} value={fieldBlobControls.size} min={-1} max={1} step={0.05}
+            onChange={v => setFieldBlobControls(c => ({ ...c, size: v }))} />
+          <MiniSlider label="Bend" display={fieldBlobControls.bend.toFixed(2)} value={fieldBlobControls.bend} min={0} max={1} step={0.05}
+            onChange={v => setFieldBlobControls(c => ({ ...c, bend: v }))} />
+          <MiniSlider label="Bend variation" display={fieldBlobControls.bendVariation} value={fieldBlobControls.bendVariation} min={0} max={999} step={1}
+            onChange={v => setFieldBlobControls(c => ({ ...c, bendVariation: v }))} />
+          <MiniSlider label="Detail" display={fieldBlobControls.detail.toFixed(2)} value={fieldBlobControls.detail} min={0} max={1} step={0.05}
+            onChange={v => setFieldBlobControls(c => ({ ...c, detail: v }))} />
+          <MiniSlider label="Coves" display={fieldBlobControls.coves.toFixed(2)} value={fieldBlobControls.coves} min={0} max={1} step={0.05}
+            onChange={v => setFieldBlobControls(c => ({ ...c, coves: v }))} />
+        </div>
+      )}
       {/* OSM overlay — hidden in map_image mode (image overlay is drawn on canvas instead) */}
       <div
         ref={overlayContainerRef}
