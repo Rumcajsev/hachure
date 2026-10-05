@@ -9,6 +9,16 @@ import { mulberry32, makePermutation } from '../lib/noise'
 import { projectToCanvas, unprojectFromCanvas, computePaper, computeWorldcoverBbox } from '../lib/projection'
 import { coastalBlobTerrains, bleedPolygon, buildTerrainBlobsV2, buildTerrainBlobTopology, shapeTerrainBlobs, shapeInputPolygon, computeConnectedComponents, cutRawPolysWithCorridors, perturbCorridorsForTerrain, buildExportTerrainBlobs } from '../lib/terrainBlobs'
 import type { BlobTopologyEntry } from '../lib/terrainBlobs'
+import { shapeTerrainBlobsField, type FieldBlobControls, type FieldBlobHexInput } from '../lib/terrainBlobsField'
+
+// DEV TOGGLE — field-blob experiment (see src/lib/terrainBlobsField.ts). Flip to true to
+// render terrain blobs via the field+marching-squares pipeline instead of the polygon-
+// perturbation one, on the interactive canvas only — PDF export still uses the old
+// pipeline. Not wired into any UI on purpose; this is a comparison toggle, not a feature.
+const USE_FIELD_BLOBS = false
+// Same for every terrain for now — no per-terrain style mapping yet, this is just enough
+// to see the shape language in the running app. Tune freely while comparing.
+const TEST_FIELD_BLOB_CONTROLS: FieldBlobControls = { shape: 0.55, size: 0, bend: 0.25, bendVariation: 0, detail: 0.15, coves: 0.35 }
 import { findEdgeChains as findEdgeChainsSync } from '../lib/edgeBlobs'
 import { riverChainCache, buildRiverChainsV2, type RiverChainCache } from '../lib/riverChains'
 import { computeDragLiveData, computeRoadProjections, computeLiveRiverChainData } from '../lib/roadLiveGeometry'
@@ -1288,6 +1298,20 @@ terrainTextureFileRef.current = terrainTextureFile
   const hexVertMapRef = useRef(hexVertMap)
   hexVertMapRef.current = hexVertMap
 
+  // All hex centers, any terrain — field-based blob shaping (USE_FIELD_BLOBS) needs the
+  // full neighborhood, not just the hexes painted with the terrain being shaped, so it
+  // can resolve where a blob's boundary actually falls. See terrainBlobsField.ts.
+  const hexCenterByKey = useMemo(() => {
+    const map = new Map<string, [number, number]>()
+    for (const { hex, verts } of projectedHexes) {
+      map.set(`${hex.q},${hex.r}`, [
+        (verts[0][0] + verts[1][0] + verts[2][0] + verts[3][0] + verts[4][0] + verts[5][0]) / 6,
+        (verts[0][1] + verts[1][1] + verts[2][1] + verts[3][1] + verts[4][1] + verts[5][1]) / 6,
+      ])
+    }
+    return map
+  }, [projectedHexes])
+
   // Ocean sea keys: pure-sea hexes (terrain='sea', no clip) that are reachable via
   // flood-fill from any pure-sea hex adjacent to a coastal hex (one with coastline_clip).
   // Inland water bodies form isolated islands with no path to the coast — excluded.
@@ -1401,6 +1425,31 @@ terrainTextureFileRef.current = terrainTextureFile
     const result = terrainTypes.flatMap(terrain => {
       const _tT0 = performance.now()
       const componentMap = blobComponentsByTerrain.get(terrain) ?? new Map<string, string>()
+
+      // DEV TOGGLE path — see USE_FIELD_BLOBS at the top of this file. Bypasses the whole
+      // topology/handle/cache machinery below; no river/road corridor cutting yet and no
+      // per-terrain style mapping yet (uses TEST_FIELD_BLOB_CONTROLS for every terrain).
+      if (USE_FIELD_BLOBS) {
+        const isPaintedForTerrain = (h: GeneratedHex): boolean => {
+          if (!coastalBlobTerrains(h).includes(terrain)) return false
+          if (elevationOverridesTerrain && (h.elevation_class === 'hills' || h.elevation_class === 'mountains')) return false
+          if (overriddenKeys.size > 0) {
+            const ck = componentMap.get(`${h.q},${h.r}`)
+            if (ck && overriddenKeys.has(ck)) return false
+          }
+          return true
+        }
+        const fieldHexes: FieldBlobHexInput[] = projectedHexes.map(p => {
+          const h = p.hex as GeneratedHex
+          const key = `${h.q},${h.r}`
+          const [cx, cy] = hexCenterByKey.get(key) ?? [0, 0]
+          const painted = isPaintedForTerrain(h)
+          return { cx, cy, painted, componentKey: painted ? componentMap.get(key) : undefined }
+        })
+        if (!fieldHexes.some(h => h.painted)) return []
+        return [shapeTerrainBlobsField(terrain, fieldHexes, TEST_FIELD_BLOB_CONTROLS, hexRadius, blobSeeds)]
+      }
+
       const terrainProjected = projectedHexes.filter(p => {
         const h = p.hex as GeneratedHex
         const terrains = coastalBlobTerrains(h)
