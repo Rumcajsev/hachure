@@ -39,6 +39,12 @@ export function P2pLeftRail({ onRegionSizePreviewChange }: {
     p2pBlobOutlineColor, setP2pBlobOutlineColor,
     p2pBlobOutlineWidth, setP2pBlobOutlineWidth,
     applyP2pBlobPreset, resetP2pBlobShape,
+    p2pRoadBlobCutEnabled, setP2pRoadBlobCutEnabled,
+    p2pRoadBlobCutWidth, setP2pRoadBlobCutWidth,
+    p2pRoadBlobCutRoughness, setP2pRoadBlobCutRoughness,
+    p2pRiverBlobCutEnabled, setP2pRiverBlobCutEnabled,
+    p2pRiverBlobCutWidth, setP2pRiverBlobCutWidth,
+    p2pRiverBlobCutRoughness, setP2pRiverBlobCutRoughness,
   } = useMapStore()
   const regionSizeSlider = useDeferredSlider(p2pMaxRegionSizeCm2, setP2pMaxRegionSizeCm2)
 
@@ -51,6 +57,14 @@ export function P2pLeftRail({ onRegionSizePreviewChange }: {
   const fringeRef = useRef(p2pBlobLobeAmp)
   const [fringeLocal, setFringeLocal] = useState(Math.round(p2pBlobLobeAmp * 100))
   useEffect(() => { setFringeLocal(Math.round(p2pBlobLobeAmp * 100)); fringeRef.current = p2pBlobLobeAmp }, [p2pBlobLobeAmp])
+
+  // Corridor clipping sliders — same deferred-commit discipline (full re-shape + cut
+  // on every value), same units as hex mode's RoadTerrainCutFlyout/river equivalent:
+  // width is a multiple of R, roughness 0% = a straight-sided cut.
+  const roadCutWidthSlider = useDeferredSlider(Math.round(p2pRoadBlobCutWidth * 100), v => setP2pRoadBlobCutWidth(v / 100))
+  const roadCutRoughSlider = useDeferredSlider(Math.round(p2pRoadBlobCutRoughness * 100), v => setP2pRoadBlobCutRoughness(v / 100))
+  const riverCutWidthSlider = useDeferredSlider(Math.round(p2pRiverBlobCutWidth * 100), v => setP2pRiverBlobCutWidth(v / 100))
+  const riverCutRoughSlider = useDeferredSlider(Math.round(p2pRiverBlobCutRoughness * 100), v => setP2pRiverBlobCutRoughness(v / 100))
 
   const isShapeModified =
     p2pBlobSmooth !== DEFAULT_P2P_BLOB.smooth ||
@@ -140,6 +154,32 @@ export function P2pLeftRail({ onRegionSizePreviewChange }: {
             <ColorChip value={p2pBlobOutlineColor} onChange={setP2pBlobOutlineColor} groups={PALETTE_TERRAIN_GROUPS} label="Outline color" />
           </div>
           <MiniSlider label="Width" display={`${p2pBlobOutlineWidth}px`} value={p2pBlobOutlineWidth} min={0.5} max={8} step={0.5} onChange={setP2pBlobOutlineWidth} />
+        </>}
+
+        <div style={{ borderTop: `1px solid ${t.line2}`, padding: '6px 12px 2px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+          <span style={{ fontFamily: t.mono, fontSize: 9, letterSpacing: 0.8, color: t.inkFaint, textTransform: 'uppercase', fontWeight: 600 }}>Road corridor cut</span>
+          <ToggleSwitch enabled={p2pRoadBlobCutEnabled} onChange={setP2pRoadBlobCutEnabled} />
+        </div>
+        {p2pRoadBlobCutEnabled && <>
+          <MiniSlider label="Width" display={`${(roadCutWidthSlider.value / 100).toFixed(2)}×`}
+            value={roadCutWidthSlider.value} min={1} max={100} step={1}
+            onChange={roadCutWidthSlider.onChange} onDragEnd={roadCutWidthSlider.onDragEnd} />
+          <MiniSlider label="Roughness" display={`${roadCutRoughSlider.value}%`}
+            value={roadCutRoughSlider.value} min={0} max={100} step={1}
+            onChange={roadCutRoughSlider.onChange} onDragEnd={roadCutRoughSlider.onDragEnd} />
+        </>}
+
+        <div style={{ borderTop: `1px solid ${t.line2}`, padding: '6px 12px 2px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+          <span style={{ fontFamily: t.mono, fontSize: 9, letterSpacing: 0.8, color: t.inkFaint, textTransform: 'uppercase', fontWeight: 600 }}>River corridor cut</span>
+          <ToggleSwitch enabled={p2pRiverBlobCutEnabled} onChange={setP2pRiverBlobCutEnabled} />
+        </div>
+        {p2pRiverBlobCutEnabled && <>
+          <MiniSlider label="Width" display={`${(riverCutWidthSlider.value / 100).toFixed(2)}×`}
+            value={riverCutWidthSlider.value} min={1} max={100} step={1}
+            onChange={riverCutWidthSlider.onChange} onDragEnd={riverCutWidthSlider.onDragEnd} />
+          <MiniSlider label="Roughness" display={`${riverCutRoughSlider.value}%`}
+            value={riverCutRoughSlider.value} min={0} max={100} step={1}
+            onChange={riverCutRoughSlider.onChange} onDragEnd={riverCutRoughSlider.onDragEnd} />
         </>}
 
         {isShapeModified && (

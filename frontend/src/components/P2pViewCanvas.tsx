@@ -56,6 +56,8 @@ export function P2pViewCanvas({
     p2pBlobSmooth, p2pBlobOffset, p2pBlobBump, p2pBlobSweepFreq, p2pBlobLobeFreq,
     p2pBlobLobeAmp, p2pBlobLobeThreshold, p2pBlobLobeDirection, p2pBlobTopoStyle,
     p2pBlobOutlineEnabled, p2pBlobOutlineColor, p2pBlobOutlineWidth,
+    p2pRoadBlobCutEnabled, p2pRoadBlobCutWidth, p2pRoadBlobCutRoughness,
+    p2pRiverBlobCutEnabled, p2pRiverBlobCutWidth, p2pRiverBlobCutRoughness,
   } = useMapStore()
 
   // Cells painted during an in-progress brush stroke, merged over the committed
@@ -261,6 +263,19 @@ export function P2pViewCanvas({
     ctx.fillStyle = '#f3e9c6'
     ctx.fillRect(view.px, view.py, view.pw, view.ph)
 
+    const roadChains: RoadChainPx[] = p2pEdges.map(e => {
+      const pts = e.points && e.points.length >= 2
+        ? e.points.map(([lon, lat]) => project(lon, lat))
+        : (() => {
+            const a = p2pTowns.find(t => t.id === e.a), b = p2pTowns.find(t => t.id === e.b)
+            if (!a || !b) return []
+            return [project(a.lon, a.lat), project(b.lon, b.lat)]
+          })()
+      return { tier: e.tier, chain: pts }
+    }).filter(c => c.chain.length >= 2)
+
+    const riverChainsPx = p2pRawRivers.map(r => r.coords.map(([lon, lat]) => project(lon, lat)))
+
     // Deformation scale for the organic blob shaping — same role hex radius plays for
     // hex blobs (the size of "one topological unit"). A p2p region's natural unit is
     // its target size (p2pMaxRegionSizeCm2), NOT the 0.5km classification grid cell —
@@ -275,32 +290,23 @@ export function P2pViewCanvas({
       sweepFreq: p2pBlobSweepFreq, lobeFreq: p2pBlobLobeFreq, lobeAmp: p2pBlobLobeAmp,
       lobeThreshold: p2pBlobLobeThreshold, lobeDirection: p2pBlobLobeDirection,
       topoStyle: p2pBlobTopoStyle,
+      roadChainsPx: roadChains.map(c => c.chain), riverChainsPx,
+      roadCutEnabled: p2pRoadBlobCutEnabled, roadCutWidth: p2pRoadBlobCutWidth, roadCutRoughness: p2pRoadBlobCutRoughness,
+      riverCutEnabled: p2pRiverBlobCutEnabled, riverCutWidth: p2pRiverBlobCutWidth, riverCutRoughness: p2pRiverBlobCutRoughness,
     })
 
     // Rivers — simple stroke for now, no variable width/wobble yet.
     ctx.strokeStyle = '#7fb2d9'
     ctx.lineCap = 'round'
     ctx.lineJoin = 'round'
-    for (const r of p2pRawRivers) {
+    p2pRawRivers.forEach((r, i) => {
       ctx.lineWidth = Math.max(1, 2 * (r.width_multiplier || 1))
       ctx.beginPath()
-      r.coords.forEach(([lon, lat], i) => {
-        const [x, y] = project(lon, lat)
-        if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y)
+      riverChainsPx[i].forEach(([x, y], j) => {
+        if (j === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y)
       })
       ctx.stroke()
-    }
-
-    const roadChains: RoadChainPx[] = p2pEdges.map(e => {
-      const pts = e.points && e.points.length >= 2
-        ? e.points.map(([lon, lat]) => project(lon, lat))
-        : (() => {
-            const a = p2pTowns.find(t => t.id === e.a), b = p2pTowns.find(t => t.id === e.b)
-            if (!a || !b) return []
-            return [project(a.lon, a.lat), project(b.lon, b.lat)]
-          })()
-      return { tier: e.tier, chain: pts }
-    }).filter(c => c.chain.length >= 2)
+    })
 
     drawRoadsAndRails(ctx, {
       roadChains, junctions: [], railChains: [],
@@ -322,6 +328,8 @@ export function P2pViewCanvas({
     terrainStyles, p2pBlobSmooth, p2pBlobOffset, p2pBlobBump, p2pBlobSweepFreq,
     p2pBlobLobeFreq, p2pBlobLobeAmp, p2pBlobLobeThreshold, p2pBlobLobeDirection, p2pBlobTopoStyle,
     p2pMaxRegionSizeCm2, kmPerCm,
+    p2pRoadBlobCutEnabled, p2pRoadBlobCutWidth, p2pRoadBlobCutRoughness,
+    p2pRiverBlobCutEnabled, p2pRiverBlobCutWidth, p2pRiverBlobCutRoughness,
   ])
 
   // Reactive redraw whenever the underlying data (not pan/zoom) changes.

@@ -42,6 +42,19 @@ export interface P2pTerrainSlice {
   p2pBlobOutlineColor: string
   p2pBlobOutlineWidth: number
 
+  // Corridor clipping — cuts terrain blobs where roads/rivers cross them, so the
+  // organic wobble never bulges across a road/river line. Same mechanism as hex
+  // mode's roadBlobCut*/riverBlobCut* (perturbCorridorsForTerrain + cutRawPolysWith-
+  // Corridors), defaulting ON here (unlike hex's off-by-default) because in p2p the
+  // road network IS the terrain topology — a blob crossing its own bounding road
+  // reads as broken, not just untidy.
+  p2pRoadBlobCutEnabled: boolean
+  p2pRoadBlobCutWidth: number
+  p2pRoadBlobCutRoughness: number
+  p2pRiverBlobCutEnabled: boolean
+  p2pRiverBlobCutWidth: number
+  p2pRiverBlobCutRoughness: number
+
   setP2pBrush: (v: P2pTerrainType | 'eraser' | 'off') => void
   batchPaintP2pTerrain: (cells: { key: string; terrain: P2pTerrainType }[]) => void
   batchEraseP2pTerrain: (keys: string[]) => void
@@ -63,6 +76,13 @@ export interface P2pTerrainSlice {
   setP2pBlobOutlineWidth: (v: number) => void
   applyP2pBlobPreset: (id: BlobPresetId) => void
   resetP2pBlobShape: () => void
+
+  setP2pRoadBlobCutEnabled: (v: boolean) => void
+  setP2pRoadBlobCutWidth: (v: number) => void
+  setP2pRoadBlobCutRoughness: (v: number) => void
+  setP2pRiverBlobCutEnabled: (v: boolean) => void
+  setP2pRiverBlobCutWidth: (v: number) => void
+  setP2pRiverBlobCutRoughness: (v: number) => void
 }
 
 type Set = (partial: Partial<MapStore> | ((s: MapStore) => Partial<MapStore>)) => void
@@ -85,6 +105,13 @@ export const createP2pTerrainSlice = (set: Set, _get: () => MapStore): P2pTerrai
   p2pBlobOutlineEnabled: false,
   p2pBlobOutlineColor: '#000000',
   p2pBlobOutlineWidth: 1,
+
+  p2pRoadBlobCutEnabled: true,
+  p2pRoadBlobCutWidth: 0.3,
+  p2pRoadBlobCutRoughness: 0.3,
+  p2pRiverBlobCutEnabled: true,
+  p2pRiverBlobCutWidth: 0.5,
+  p2pRiverBlobCutRoughness: 0.3,
 
   setP2pBrush: (v) => set({ p2pBrush: v }),
 
@@ -145,4 +172,11 @@ export const createP2pTerrainSlice = (set: Set, _get: () => MapStore): P2pTerrai
     p2pBlobLobeDirection: DEFAULT_P2P_BLOB.lobeDirection,
     p2pBlobTopoStyle: DEFAULT_P2P_BLOB.topoStyle,
   }),
+
+  setP2pRoadBlobCutEnabled: (v) => set({ p2pRoadBlobCutEnabled: v }),
+  setP2pRoadBlobCutWidth: (v) => set({ p2pRoadBlobCutWidth: v }),
+  setP2pRoadBlobCutRoughness: (v) => set({ p2pRoadBlobCutRoughness: v }),
+  setP2pRiverBlobCutEnabled: (v) => set({ p2pRiverBlobCutEnabled: v }),
+  setP2pRiverBlobCutWidth: (v) => set({ p2pRiverBlobCutWidth: v }),
+  setP2pRiverBlobCutRoughness: (v) => set({ p2pRiverBlobCutRoughness: v }),
 })

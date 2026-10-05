@@ -1123,6 +1123,14 @@ if (fromVersion < 64) {
     if (s.p2pBlobOutlineColor === undefined) s.p2pBlobOutlineColor = '#000000'
     if (s.p2pBlobOutlineWidth === undefined) s.p2pBlobOutlineWidth = 1
   }
+  if (fromVersion < 104) {
+    if (s.p2pRoadBlobCutEnabled === undefined) s.p2pRoadBlobCutEnabled = true
+    if (s.p2pRoadBlobCutWidth === undefined) s.p2pRoadBlobCutWidth = 0.3
+    if (s.p2pRoadBlobCutRoughness === undefined) s.p2pRoadBlobCutRoughness = 0.3
+    if (s.p2pRiverBlobCutEnabled === undefined) s.p2pRiverBlobCutEnabled = true
+    if (s.p2pRiverBlobCutWidth === undefined) s.p2pRiverBlobCutWidth = 0.5
+    if (s.p2pRiverBlobCutRoughness === undefined) s.p2pRiverBlobCutRoughness = 0.3
+  }
   if (fromVersion < 84) {
     const tiers = s.riverTierStyles as Array<Record<string, unknown>> | undefined
     if (tiers) {
