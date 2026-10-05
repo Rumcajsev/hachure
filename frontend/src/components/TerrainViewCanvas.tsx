@@ -3066,7 +3066,7 @@ terrainTextureFileRef.current = terrainTextureFile
           onMouseDown={e => e.stopPropagation()}
           onClick={e => e.stopPropagation()}
           style={{
-            position: 'absolute', right: 12, bottom: 12, width: 220, zIndex: 50,
+            position: 'absolute', right: 12, top: 12, width: 220, zIndex: 50,
             background: '#12121e', border: '1px solid #1e1f2e', borderLeft: '3px solid #4a7a9a',
             borderRadius: 4, boxShadow: '0 4px 24px rgba(0,0,0,0.6)',
             padding: '10px 0 6px', fontFamily: 'ui-monospace, monospace',
