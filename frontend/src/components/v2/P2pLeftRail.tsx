@@ -2,7 +2,7 @@ import { useTheme } from '../../context/ThemeContext'
 import { useMapStore } from '../../store/mapStore'
 import { P2P_TERRAIN_TYPES, type P2pTerrainType } from '../../store/slices/p2pTerrainSlice'
 import { DEFAULT_P2P_TERRAIN_STYLES } from '../../lib/drawP2pTerrain'
-import { BrushRow, StripShell } from './sidebar'
+import { BrushRow, MiniSlider, StripShell } from './sidebar'
 
 const TERRAIN_LABELS: Record<P2pTerrainType, string> = {
   fields: 'Fields',
@@ -15,7 +15,7 @@ const TERRAIN_LABELS: Record<P2pTerrainType, string> = {
  *  Phase 7 replaces this with full Network/Terrain/Rivers panels. */
 export function P2pLeftRail() {
   const t = useTheme()
-  const { p2pBrush, setP2pBrush } = useMapStore()
+  const { p2pBrush, setP2pBrush, p2pMaxRegionSizeCm2, setP2pMaxRegionSizeCm2 } = useMapStore()
 
   const selectBrush = (v: P2pTerrainType | 'eraser') => {
     setP2pBrush(p2pBrush === v ? 'off' : v)
@@ -40,6 +40,18 @@ export function P2pLeftRail() {
         color="#cc4444"
         active={p2pBrush === 'eraser'}
         onSelect={() => selectBrush('eraser')}
+      />
+      <div style={{ padding: '10px 12px 2px', fontFamily: t.mono, fontSize: 9, letterSpacing: 0.8, color: t.inkFaint, textTransform: 'uppercase', fontWeight: 600 }}>
+        Regions
+      </div>
+      <MiniSlider
+        label="Max region size"
+        display={`${p2pMaxRegionSizeCm2} cm²`}
+        value={p2pMaxRegionSizeCm2}
+        min={5}
+        max={150}
+        step={5}
+        onChange={setP2pMaxRegionSizeCm2}
       />
     </StripShell>
   )

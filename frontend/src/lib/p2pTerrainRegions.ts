@@ -273,7 +273,19 @@ function voronoiPieces(poly: Pt[], seeds: Pt[]): Pt[][] {
   return out
 }
 
-function regionType(cellKeys: string[], centroidKey: string, paintLayer: Record<string, P2pTerrainType>): P2pTerrainType | 'empty' {
+/** Grid cell key of a region's polygon centroid — used as the paint-layer key for a
+ *  region too small to raster any cell of its own (its `cellKeys` is empty). */
+export function regionAnchorKey(poly: [number, number][]): string {
+  let cx = 0, cy = 0
+  for (const p of poly) { cx += p[0]; cy += p[1] }
+  return cellKey(cx / poly.length, cy / poly.length)
+}
+
+/** A region's terrain is the majority paint value among its cells (ties favor whatever
+ *  was seen first). Exported so callers can re-classify already-traced regions against
+ *  a new paint layer without re-running the (expensive) face tracing that built them —
+ *  region shape doesn't depend on paint, only this classification does. */
+export function regionType(cellKeys: string[], centroidKey: string, paintLayer: Record<string, P2pTerrainType>): P2pTerrainType | 'empty' {
   if (!cellKeys.length) return paintLayer[centroidKey] ?? 'empty'
   const counts: Record<string, number> = {}
   for (const k of cellKeys) {
@@ -401,13 +413,11 @@ export function computeP2pTerrainRegions(
 
   return polys.map((poly): P2pTerrainRegion => {
     const cellKeys = rasterCellKeys(poly)
-    let cx = 0, cy = 0
-    for (const p of poly) { cx += p.x; cy += p.y }
-    cx /= poly.length; cy /= poly.length
+    const polyPts = poly.map(p => [p.x, p.y] as [number, number])
     return {
-      poly: poly.map(p => [p.x, p.y] as [number, number]),
+      poly: polyPts,
       area: Math.abs(polyArea2(poly)),
-      type: regionType(cellKeys, cellKey(cx, cy), paintLayer),
+      type: regionType(cellKeys, regionAnchorKey(polyPts), paintLayer),
       cellKeys,
     }
   })
