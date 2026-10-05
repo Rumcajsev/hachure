@@ -39,6 +39,64 @@ export interface DrawP2pTerrainParams {
   topoStyle: number
 }
 
+/** Merge same-type adjacent region polygons into one outer-boundary polygon per
+ *  connected cluster. Mirrors terrainBlobs.ts's buildTerrainBlobTopology (the hex-grid
+ *  equivalent): an edge shared by two same-type regions is interior and must be
+ *  dissolved before organic shaping runs, or each side gets deformed independently
+ *  and a seam/gap opens up right along what used to be a seamless shared edge. */
+function dissolveAdjacentPolys(polys: [number, number][][], R: number): [number, number][][] {
+  const SNAP = Math.max(2, R * 0.015)
+  const vk = (p: [number, number]) => `${Math.round(p[0] / SNAP)},${Math.round(p[1] / SNAP)}`
+  const vpos = new Map<string, [number, number]>()
+  const edgeCount = new Map<string, number>()
+  const edgeEnds = new Map<string, [string, string]>()
+
+  for (const poly of polys) {
+    for (let i = 0; i < poly.length; i++) {
+      const a = poly[i], b = poly[(i + 1) % poly.length]
+      const ka = vk(a), kb = vk(b)
+      if (!vpos.has(ka)) vpos.set(ka, a)
+      if (!vpos.has(kb)) vpos.set(kb, b)
+      const ek = ka < kb ? `${ka}|${kb}` : `${kb}|${ka}`
+      edgeCount.set(ek, (edgeCount.get(ek) ?? 0) + 1)
+      if (!edgeEnds.has(ek)) edgeEnds.set(ek, [ka, kb])
+    }
+  }
+
+  const adj = new Map<string, string[]>()
+  for (const [ek, count] of edgeCount) {
+    if (count !== 1) continue
+    const [ka, kb] = edgeEnds.get(ek)!
+    if (!adj.has(ka)) adj.set(ka, [])
+    if (!adj.has(kb)) adj.set(kb, [])
+    adj.get(ka)!.push(kb)
+    adj.get(kb)!.push(ka)
+  }
+
+  const visitedVerts = new Set<string>()
+  const visitedEdges = new Set<string>()
+  const out: [number, number][][] = []
+  for (const [startKey] of adj) {
+    if (visitedVerts.has(startKey)) continue
+    const pts: [number, number][] = []
+    let cur = startKey
+    for (;;) {
+      visitedVerts.add(cur)
+      pts.push(vpos.get(cur)!)
+      const nbrs = adj.get(cur) ?? []
+      let next: string | null = null
+      for (const n of nbrs) {
+        const ek = cur < n ? `${cur}|${n}` : `${n}|${cur}`
+        if (!visitedEdges.has(ek)) { visitedEdges.add(ek); next = n; break }
+      }
+      if (!next || next === startKey) break
+      cur = next
+    }
+    if (pts.length >= 3) out.push(pts)
+  }
+  return out
+}
+
 export function drawP2pTerrain(ctx: Ctx, params: DrawP2pTerrainParams): void {
   const {
     regions, project, styles, R,
@@ -60,7 +118,7 @@ export function drawP2pTerrain(ctx: Ctx, params: DrawP2pTerrainParams): void {
 
   const topology: BlobTopologyEntry[] = [...byType.entries()].map(([terrain, { polys, centers }]) => ({
     terrain,
-    rawPolys: polys.map(poly => {
+    rawPolys: dissolveAdjacentPolys(polys, R).map(poly => {
       const seed = Math.abs(Math.round(poly[0][0] * 73 + poly[0][1] * 97))
       return shapeInputPolygon(poly, topoStyle, R, seed)
     }),

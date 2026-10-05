@@ -18,6 +18,7 @@ const EMPTY_PAINT_LAYER: Record<string, P2pTerrainType> = {}
 export function P2pViewCanvas({ surroundColor = '#B7B0A6' }: { surroundColor?: string }) {
   const containerRef = useRef<HTMLDivElement>(null)
   const canvasRef = useRef<HTMLCanvasElement>(null)
+  const hoverCanvasRef = useRef<HTMLCanvasElement>(null)
   const [size, setSize] = useState({ w: 0, h: 0 })
 
   const {
@@ -34,6 +35,7 @@ export function P2pViewCanvas({ surroundColor = '#B7B0A6' }: { surroundColor?: s
   const isPaintingRef = useRef(false)
   const lastPaintKmRef = useRef<[number, number] | null>(null)
   const lastRegionRef = useRef(-1)
+  const hoverRegionRef = useRef(-1)
 
   useEffect(() => {
     const el = containerRef.current
@@ -147,14 +149,30 @@ export function P2pViewCanvas({ surroundColor = '#B7B0A6' }: { surroundColor?: s
     }))
   }, [regionsGeometry, effectivePaintLayer])
 
+  // Sizes/clears the hover-outline overlay canvas whenever the viewport changes.
+  // Kept separate from the main canvas so highlighting the hovered region never
+  // touches the (comparatively expensive) terrain/road/river redraw.
+  useEffect(() => {
+    const canvas = hoverCanvasRef.current
+    if (!canvas) return
+    const dpr = window.devicePixelRatio || 1
+    canvas.width = size.w * dpr
+    canvas.height = size.h * dpr
+    canvas.style.width = `${size.w}px`
+    canvas.style.height = `${size.h}px`
+    const ctx = canvas.getContext('2d')
+    if (ctx) ctx.setTransform(dpr, 0, 0, dpr, 0, 0)
+  }, [size])
+
   // Terrain brush: click or drag fills the WHOLE road-bounded region under the cursor
   // in one go (matches the reference prototype's paintRegion()/regionAt() — it's a
   // flood fill of one region at a time, not per-cell painting; see conversation).
   // Buffers the whole stroke's affected cells in a ref and flushes with one batch
-  // store action on mouseup.
+  // store action on mouseup. Also drives the hover-outline overlay so the region
+  // about to be painted is visible before and during a drag.
   useEffect(() => {
     const canvas = canvasRef.current
-    if (!canvas || !layout) return
+    if (!canvas || !layout || !projection) return
 
     const toKm = (clientX: number, clientY: number): [number, number] | null => {
       const rect = canvas.getBoundingClientRect()
@@ -163,6 +181,32 @@ export function P2pViewCanvas({ surroundColor = '#B7B0A6' }: { surroundColor?: s
       if (xKm < 0 || xKm > p2pWidthKm || yKm < 0 || yKm > p2pHeightKm) return null
       return [xKm, yKm]
     }
+
+    const drawHover = (ri: number) => {
+      if (ri === hoverRegionRef.current) return
+      hoverRegionRef.current = ri
+      const hc = hoverCanvasRef.current
+      const ctx = hc?.getContext('2d')
+      if (!ctx || !hc) return
+      ctx.clearRect(0, 0, hc.clientWidth, hc.clientHeight)
+      const region = ri >= 0 ? regionsGeometry[ri] : null
+      if (!region) return
+      ctx.beginPath()
+      region.poly.forEach(([x, y], i) => {
+        const [px, py] = projection.projectKm(x, y)
+        if (i === 0) ctx.moveTo(px, py); else ctx.lineTo(px, py)
+      })
+      ctx.closePath()
+      ctx.lineJoin = 'round'
+      ctx.strokeStyle = 'rgba(0,0,0,0.55)'
+      ctx.lineWidth = 4
+      ctx.stroke()
+      ctx.strokeStyle = '#ffd43b'
+      ctx.lineWidth = 2
+      ctx.stroke()
+    }
+
+    const clearHover = () => drawHover(-1)
 
     const floodRegion = (ri: number, brush: P2pTerrainType | 'eraser') => {
       const region = regionsGeometry[ri]
@@ -206,13 +250,20 @@ export function P2pViewCanvas({ surroundColor = '#B7B0A6' }: { surroundColor?: s
       lastPaintKmRef.current = null
       lastRegionRef.current = -1
       paintAt(km[0], km[1])
+      drawHover(lastRegionRef.current)
     }
 
     const onMove = (e: MouseEvent) => {
-      if (!isPaintingRef.current) return
+      const brush = useMapStore.getState().p2pBrush
+      if (brush === 'off') { clearHover(); return }
       const km = toKm(e.clientX, e.clientY)
-      if (!km) return
-      paintAt(km[0], km[1])
+      if (!km) { clearHover(); return }
+      if (isPaintingRef.current) {
+        paintAt(km[0], km[1])
+        drawHover(lastRegionRef.current)
+      } else {
+        drawHover(cellToRegion.get(cellKey(km[0], km[1])) ?? -1)
+      }
     }
 
     const onUp = () => {
@@ -234,15 +285,24 @@ export function P2pViewCanvas({ surroundColor = '#B7B0A6' }: { surroundColor?: s
       if (erases.length) batchEraseP2pTerrain(erases)
     }
 
+    const onLeave = () => { if (!isPaintingRef.current) clearHover() }
+
     canvas.addEventListener('mousedown', onDown)
+    canvas.addEventListener('mouseleave', onLeave)
     window.addEventListener('mousemove', onMove)
     window.addEventListener('mouseup', onUp)
     return () => {
       canvas.removeEventListener('mousedown', onDown)
+      canvas.removeEventListener('mouseleave', onLeave)
       window.removeEventListener('mousemove', onMove)
       window.removeEventListener('mouseup', onUp)
+      // Force the next mount's first drawHover() to actually redraw, even if the
+      // region index happens to match — the shapes behind it may have changed.
+      hoverRegionRef.current = -2
+      const hc = hoverCanvasRef.current
+      hc?.getContext('2d')?.clearRect(0, 0, hc.clientWidth, hc.clientHeight)
     }
-  }, [layout, p2pWidthKm, p2pHeightKm, regionsGeometry, cellToRegion, batchPaintP2pTerrain, batchEraseP2pTerrain])
+  }, [layout, projection, p2pWidthKm, p2pHeightKm, regionsGeometry, cellToRegion, batchPaintP2pTerrain, batchEraseP2pTerrain])
 
   useEffect(() => {
     const canvas = canvasRef.current
@@ -320,6 +380,7 @@ export function P2pViewCanvas({ surroundColor = '#B7B0A6' }: { surroundColor?: s
   return (
     <div ref={containerRef} style={{ width: '100%', height: '100%', position: 'relative' }}>
       <canvas ref={canvasRef} style={{ display: 'block', cursor: p2pBrush !== 'off' ? 'crosshair' : 'default' }} />
+      <canvas ref={hoverCanvasRef} style={{ display: 'block', position: 'absolute', inset: 0, pointerEvents: 'none' }} />
     </div>
   )
 }

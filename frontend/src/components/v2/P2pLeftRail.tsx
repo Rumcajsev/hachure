@@ -2,7 +2,7 @@ import { useTheme } from '../../context/ThemeContext'
 import { useMapStore } from '../../store/mapStore'
 import { P2P_TERRAIN_TYPES, type P2pTerrainType } from '../../store/slices/p2pTerrainSlice'
 import { DEFAULT_P2P_TERRAIN_STYLES } from '../../lib/drawP2pTerrain'
-import { BrushRow, MiniSlider, StripShell } from './sidebar'
+import { BrushRow, MiniSlider, StripShell, useDeferredSlider } from './sidebar'
 
 const TERRAIN_LABELS: Record<P2pTerrainType, string> = {
   fields: 'Fields',
@@ -16,6 +16,7 @@ const TERRAIN_LABELS: Record<P2pTerrainType, string> = {
 export function P2pLeftRail() {
   const t = useTheme()
   const { p2pBrush, setP2pBrush, p2pMaxRegionSizeCm2, setP2pMaxRegionSizeCm2 } = useMapStore()
+  const regionSizeSlider = useDeferredSlider(p2pMaxRegionSizeCm2, setP2pMaxRegionSizeCm2)
 
   const selectBrush = (v: P2pTerrainType | 'eraser') => {
     setP2pBrush(p2pBrush === v ? 'off' : v)
@@ -46,12 +47,13 @@ export function P2pLeftRail() {
       </div>
       <MiniSlider
         label="Max region size"
-        display={`${p2pMaxRegionSizeCm2} cm²`}
-        value={p2pMaxRegionSizeCm2}
-        min={5}
-        max={150}
-        step={5}
-        onChange={setP2pMaxRegionSizeCm2}
+        display={`${regionSizeSlider.value} cm²`}
+        value={regionSizeSlider.value}
+        min={1}
+        max={60}
+        step={1}
+        onChange={regionSizeSlider.onChange}
+        onDragEnd={regionSizeSlider.onDragEnd}
       />
     </StripShell>
   )
