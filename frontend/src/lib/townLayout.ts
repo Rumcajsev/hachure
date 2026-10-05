@@ -107,6 +107,10 @@ export interface TownLayoutInput {
   spread: number
   /** Overrides DEFAULT_TOWN_TIER_CONFIG[tier] if given. */
   config?: TownTierConfig
+  /** Clearance between a road's edge and the first row of houses. Defaults to DEFAULT_GAP. */
+  gap?: number
+  /** How clumpy (vs. uniform) house spacing is along a street, 0..1. Defaults to DEFAULT_CLUSTER. */
+  cluster?: number
 }
 
 export const DEFAULT_TOWN_TIER_CONFIG: Record<0 | 1 | 2, TownTierConfig> = {
@@ -115,9 +119,10 @@ export const DEFAULT_TOWN_TIER_CONFIG: Record<0 | 1 | 2, TownTierConfig> = {
   2: { radius: 2.0, density: 0.75, laneCount: 2, connectorCount: 0, row2: 0.5, row3: 0, infill: 0.45, reach: 0.20, wobble: 0.4 },
 }
 
+export const DEFAULT_GAP = 0.05
+export const DEFAULT_CLUSTER = 0.7
+
 const STEP = 0.03
-const TN_GAP = 0.05
-const TN_CLUSTER = 0.7
 const LANE_HALF_WIDTH = 0.055
 
 // ── Internal geometry ────────────────────────────────────────────────────────
@@ -524,7 +529,7 @@ function placeLabel(text: string, houses: HouseWIP[], roads: RoadPiece[], ext: n
 export function layoutTown(input: TownLayoutInput): TownLayoutResult {
   const base = input.config ?? DEFAULT_TOWN_TIER_CONFIG[input.tier]
   const T: TownTierConfig = { ...base, radius: base.radius * input.spread }
-  const G: GCfg = { size: input.houseSize, gap: TN_GAP, cluster: TN_CLUSTER }
+  const G: GCfg = { size: input.houseSize, gap: input.gap ?? DEFAULT_GAP, cluster: input.cluster ?? DEFAULT_CLUSTER }
 
   const seedBase = hashStr(input.name + '#townlayout')
   const rngRoads = mulberry32(seedBase)
