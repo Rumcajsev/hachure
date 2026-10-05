@@ -7,11 +7,11 @@ export type P2pTerrainType = typeof P2P_TERRAIN_TYPES[number]
 export interface P2pTerrainSlice {
   /** Sparse paint grid: cell key (format owned by the paint tool) -> terrain type. Unpainted cells are empty/clear. */
   p2pPaintLayer: Record<string, P2pTerrainType>
-  p2pBrush: P2pTerrainType | 'off'
+  p2pBrush: P2pTerrainType | 'eraser' | 'off'
   p2pMaxRegionSizeCm2: number
   p2pRiverSplitRegions: boolean
 
-  setP2pBrush: (v: P2pTerrainType | 'off') => void
+  setP2pBrush: (v: P2pTerrainType | 'eraser' | 'off') => void
   batchPaintP2pTerrain: (cells: { key: string; terrain: P2pTerrainType }[]) => void
   batchEraseP2pTerrain: (keys: string[]) => void
   setP2pMaxRegionSizeCm2: (v: number) => void

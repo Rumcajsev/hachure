@@ -12,6 +12,7 @@ import { SetupLandingPage } from './components/v2/SetupLandingPage'
 import { SetupWizard } from './components/v2/SetupWizard'
 import { ErrorBoundary } from './components/ErrorBoundary'
 import { LeftRail } from './components/v2/LeftRail'
+import { P2pLeftRail } from './components/v2/P2pLeftRail'
 
 export function AppV2() {
   const [screen, setScreen] = useState<'landing' | 'wizard' | 'editor'>('landing')
@@ -153,8 +154,13 @@ function AppV2Inner({ screen, setScreen, isDark, setIsDark }: {
               : <TerrainViewCanvas ref={canvasHandleRef} surroundColor={surroundColor} />}
           </div>
 
-          {/* Hex-specific sidebars — p2p mode gets its own panels in a later pass */}
-          {mapMode !== 'p2p' && (
+          {mapMode === 'p2p' ? (
+            <div style={{ position: 'absolute', top: 16, left: 16, bottom: 16, zIndex: 10, pointerEvents: 'none' }}>
+              <div style={{ pointerEvents: 'auto', height: '100%', zoom: uiScale }}>
+                <P2pLeftRail />
+              </div>
+            </div>
+          ) : (
             <>
               <div style={{ position: 'absolute', top: 16, left: 16, bottom: 16, zIndex: 10, pointerEvents: 'none' }}>
                 <div style={{ pointerEvents: 'auto', height: '100%', zoom: uiScale }}>
