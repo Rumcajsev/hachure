@@ -14,7 +14,7 @@ import { liveClassParamsRef, requestDraw } from '../../lib/liveClassParamsRef'
 import {
   BrushRow, ElevBrushRow, ToggleRow, ToggleSwitch, DashedAddBtn, MiniSlider, ColorChip, ColorPickerHost, tintBg,
   STRIP_W, FLYOUT_W, StripShell, FlyoutShell, V2Divider, TriggerRow, TGap,
-  useDeferredSlider, SegmentedControl, DataStatusBadge,
+  useDeferredSlider, SegmentedControl, DataStatusBadge, BlobPresetChips,
 } from './sidebar'
 import { TEXTURE_OPTIONS, TEXTURE_PATHS, DEFAULT_TERRAIN_TEXTURES } from '../../lib/terrainTextures'
 
@@ -46,49 +46,6 @@ type FlyoutId =
   | null
 
 // ── Flyout content: blob shape ──────────────────────────────────────────────
-
-function BlobPresetChips({
-  currentValues, onSelect,
-}: {
-  currentValues: BlobPresetValues | null
-  onSelect: (id: BlobPresetId) => void
-}) {
-  const t = useTheme()
-  const activePreset = currentValues == null ? null :
-    BLOB_PRESET_ORDER.find(id => {
-      const p = BLOB_PRESETS[id].values
-      return (
-        p.smooth === currentValues.smooth &&
-        Math.abs(p.offset - currentValues.offset) < 0.001 &&
-        Math.abs(p.bump - currentValues.bump) < 0.001 &&
-        Math.abs(p.sweepFreq - currentValues.sweepFreq) < 0.001 &&
-        Math.abs(p.lobeFreq - currentValues.lobeFreq) < 0.01 &&
-        Math.abs(p.lobeAmp - currentValues.lobeAmp) < 0.001 &&
-        Math.abs(p.lobeThreshold - currentValues.lobeThreshold) < 0.001 &&
-        p.lobeDirection === currentValues.lobeDirection
-      )
-    }) ?? 'custom'
-
-  return (
-    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4, padding: '4px 12px 6px' }}>
-      {BLOB_PRESET_ORDER.map(id => {
-        const active = activePreset === id
-        return (
-          <button key={id} onClick={() => onSelect(id)} style={{
-            padding: '3px 7px',
-            fontFamily: t.mono, fontSize: 9, letterSpacing: 0.4,
-            background: active ? tintBg(t.rust, 0.15) : 'transparent',
-            border: `1px solid ${active ? t.rust : t.line}`,
-            color: active ? t.rust : t.inkMute,
-            cursor: 'pointer', textTransform: 'uppercase',
-          }}>
-            {BLOB_PRESETS[id].label}
-          </button>
-        )
-      })}
-    </div>
-  )
-}
 
 function ShapeSettingsFlyout({ onClose, usedAs }: { onClose: () => void; usedAs: Record<string, string> }) {
   const t = useTheme()

@@ -5,7 +5,7 @@ import {
   traceP2pRegionFaces, splitP2pRegionFaces, cellKey, regionType, regionAnchorKey,
   type P2pTerrainRegion,
 } from '../lib/p2pTerrainRegions'
-import type { P2pTerrainType } from '../store/slices/p2pTerrainSlice'
+import { P2P_TERRAIN_TYPES, type P2pTerrainType } from '../store/slices/p2pTerrainSlice'
 import { drawP2pTerrain, DEFAULT_P2P_TERRAIN_STYLES } from '../lib/drawP2pTerrain'
 import { drawP2pTowns, DEFAULT_P2P_TOWN_TIER_STYLES } from '../lib/drawP2pTowns'
 import { drawRoadsAndRails, type RoadChainPx } from '../lib/drawRoadsRails'
@@ -34,6 +34,9 @@ export function P2pViewCanvas({
     p2pTowns, p2pEdges, p2pRawRivers, p2pPaintLayer, p2pWidthKm, p2pHeightKm,
     p2pMaxRegionSizeCm2, p2pRiverSplitRegions, center, bearing, pageGrid, marginMm,
     p2pBrush, batchPaintP2pTerrain, batchEraseP2pTerrain,
+    p2pBlobSmooth, p2pBlobOffset, p2pBlobBump, p2pBlobSweepFreq, p2pBlobLobeFreq,
+    p2pBlobLobeAmp, p2pBlobLobeThreshold, p2pBlobLobeDirection, p2pBlobTopoStyle,
+    p2pBlobOutlineEnabled, p2pBlobOutlineColor, p2pBlobOutlineWidth,
   } = useMapStore()
 
   // Cells painted during an in-progress brush stroke, merged over the committed
@@ -162,6 +165,22 @@ export function P2pViewCanvas({
       type: regionType(r.cellKeys, regionAnchorKey(r.poly), effectivePaintLayer),
     }))
   }, [regionsGeometry, effectivePaintLayer])
+
+  // The outline toggle/color/width is one global setting applied to all 4 terrain
+  // types (no per-type override yet, unlike hex mode) — merge it onto the fixed
+  // per-type fill styles here rather than duplicating it 4x in the store.
+  const terrainStyles = useMemo(() => {
+    const out = {} as typeof DEFAULT_P2P_TERRAIN_STYLES
+    for (const terrain of P2P_TERRAIN_TYPES) {
+      out[terrain] = {
+        ...DEFAULT_P2P_TERRAIN_STYLES[terrain],
+        outlineEnabled: p2pBlobOutlineEnabled,
+        outlineColor: p2pBlobOutlineColor,
+        outlineWidth: p2pBlobOutlineWidth,
+      }
+    }
+    return out
+  }, [p2pBlobOutlineEnabled, p2pBlobOutlineColor, p2pBlobOutlineWidth])
 
   // Sizes/clears the hover-outline overlay canvas whenever the viewport changes.
   // Kept separate from the main canvas so highlighting the hovered region never
@@ -375,9 +394,11 @@ export function P2pViewCanvas({
 
     const R = P2P_GRID_CELL_KM * layout.pxPerKm
     drawP2pTerrain(ctx, {
-      regions, project: projection.projectKm, styles: DEFAULT_P2P_TERRAIN_STYLES, R,
-      smooth: 2, offset: 0, bump: 0.15, sweepFreq: 2.5, lobeFreq: 1.2, lobeAmp: 0.4, lobeThreshold: 0.6, lobeDirection: 1,
-      topoStyle: 0,
+      regions, project: projection.projectKm, styles: terrainStyles, R,
+      smooth: p2pBlobSmooth, offset: p2pBlobOffset, bump: p2pBlobBump,
+      sweepFreq: p2pBlobSweepFreq, lobeFreq: p2pBlobLobeFreq, lobeAmp: p2pBlobLobeAmp,
+      lobeThreshold: p2pBlobLobeThreshold, lobeDirection: p2pBlobLobeDirection,
+      topoStyle: p2pBlobTopoStyle,
     })
 
     // Rivers — simple stroke for now, no variable width/wobble yet.
@@ -420,7 +441,11 @@ export function P2pViewCanvas({
     ctx.strokeStyle = '#6b5a3a'
     ctx.lineWidth = 1.5
     ctx.strokeRect(layout.px, layout.py, layout.pw, layout.ph)
-  }, [layout, projection, regions, p2pEdges, p2pTowns, p2pRawRivers, size, surroundColor])
+  }, [
+    layout, projection, regions, p2pEdges, p2pTowns, p2pRawRivers, size, surroundColor,
+    terrainStyles, p2pBlobSmooth, p2pBlobOffset, p2pBlobBump, p2pBlobSweepFreq,
+    p2pBlobLobeFreq, p2pBlobLobeAmp, p2pBlobLobeThreshold, p2pBlobLobeDirection, p2pBlobTopoStyle,
+  ])
 
   return (
     <div ref={containerRef} style={{ width: '100%', height: '100%', position: 'relative' }}>
