@@ -1103,6 +1103,12 @@ if (fromVersion < 64) {
     if (s.p2pMaxRegionSizeCm2 === undefined) s.p2pMaxRegionSizeCm2 = 60
     if (s.p2pRiverSplitRegions === undefined) s.p2pRiverSplitRegions = true
   }
+  if (fromVersion < 102) {
+    if (s.p2pRawPlaces === undefined) s.p2pRawPlaces = []
+    if (s.p2pRawRivers === undefined) s.p2pRawRivers = []
+    if (s.p2pWidthKm === undefined) s.p2pWidthKm = 0
+    if (s.p2pHeightKm === undefined) s.p2pHeightKm = 0
+  }
   if (fromVersion < 84) {
     const tiers = s.riverTierStyles as Array<Record<string, unknown>> | undefined
     if (tiers) {

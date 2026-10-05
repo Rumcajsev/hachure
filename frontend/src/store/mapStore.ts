@@ -1082,8 +1082,12 @@ export const useMapStore = create<MapStore>()(persist((set, get) => {
     p2pBrush: s.p2pBrush,
     p2pMaxRegionSizeCm2: s.p2pMaxRegionSizeCm2,
     p2pRiverSplitRegions: s.p2pRiverSplitRegions,
+    p2pRawPlaces: s.p2pRawPlaces,
+    p2pRawRivers: s.p2pRawRivers,
+    p2pWidthKm: s.p2pWidthKm,
+    p2pHeightKm: s.p2pHeightKm,
   }),
-  version: 101,
+  version: 102,
   migrate: migratePersisted,
   merge: (persisted, current) => rehydrateState({ ...current, ...(persisted as Partial<MapStore>) }),
 }))

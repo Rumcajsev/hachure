@@ -53,6 +53,43 @@ export interface P2pNetworkResult {
   edges: P2pEdge[]
 }
 
+/** Board-space projection: (0,0) is the NW corner of the widthKm x heightKm board,
+ *  +x east, +y south (down) — the same "board plane" convention the reference
+ *  prototype and every function in this file use (not a geographic north-up plane).
+ *  Bearing rotation is applied the same way projectToCanvas/unprojectFromCanvas do,
+ *  just substituting a plain km linear scale for the paper mm scale factors — so a
+ *  board point maps to canvas pixels with one more linear step (board km -> canvas
+ *  px via paperW/widthKm), with no further rotation needed. */
+export function makeP2pBoardProjection(
+  centerLon: number, centerLat: number, bearing: number, widthKm: number, heightKm: number,
+): {
+  toLocal: (lon: number, lat: number) => [number, number]
+  toGeo: (xKm: number, yKm: number) => [number, number]
+} {
+  const MPDEG = 111319
+  const cosLat = Math.cos((centerLat * Math.PI) / 180)
+  const β = (bearing * Math.PI) / 180
+  const cosB = Math.cos(β), sinB = Math.sin(β)
+
+  const toLocal = (lon: number, lat: number): [number, number] => {
+    const E_m = (lon - centerLon) * cosLat * MPDEG
+    const N_m = (lat - centerLat) * MPDEG
+    const px_m = E_m * cosB - N_m * sinB
+    const py_m = E_m * sinB + N_m * cosB
+    return [px_m / 1000 + widthKm / 2, heightKm / 2 - py_m / 1000]
+  }
+
+  const toGeo = (xKm: number, yKm: number): [number, number] => {
+    const px_m = (xKm - widthKm / 2) * 1000
+    const py_m = (heightKm / 2 - yKm) * 1000
+    const E_m = px_m * cosB + py_m * sinB
+    const N_m = -px_m * sinB + py_m * cosB
+    return [centerLon + E_m / (cosLat * MPDEG), centerLat + N_m / MPDEG]
+  }
+
+  return { toLocal, toGeo }
+}
+
 // ── Internal node/edge representation (array-index based, matches the reference) ──
 
 interface Node {
