@@ -73,7 +73,7 @@ export function SetupWizard({ onCancel, onDone, isDark = false }: {
       )}
 
       {step === 'paper-area' && (
-        <PaperAreaStep onBack={() => setStep('source')} onGenerate={handleGenerate} t={t} />
+        <PaperAreaStep onBack={() => setStep('source')} onGenerate={handleGenerate} onDone={onDone} t={t} />
       )}
 
       {step === 'generating' && (
@@ -371,14 +371,15 @@ function SourceCard({ num, category, title, desc, footer, selected, onClick, ill
   )
 }
 
-function PaperAreaStep({ onBack, onGenerate, showMap = true, generateLabel, t }: {
-  onBack: () => void; onGenerate: () => void; showMap?: boolean; generateLabel?: string; t: Theme
+function PaperAreaStep({ onBack, onGenerate, onDone, showMap = true, generateLabel, t }: {
+  onBack: () => void; onGenerate: () => void; onDone?: () => void; showMap?: boolean; generateLabel?: string; t: Theme
 }) {
   const {
     mapMode,
     paperSize, orientation, pageGrid,
     hexSizeMm, hexOrientation, marginMm, hexEdgeMode,
     p2pMinNodeDistCm, p2pMaxNodeDistCm, setP2pMinNodeDistCm, setP2pMaxNodeDistCm,
+    generateP2pMap,
     zoom, framePixelWidth, center,
     setPaperSize, setOrientation, setPageGrid,
     setHexSizeMm, setHexOrientation, setMarginMm, setHexEdgeMode,
@@ -387,6 +388,17 @@ function PaperAreaStep({ onBack, onGenerate, showMap = true, generateLabel, t }:
     setMapImageDataUrl, setMapImageOpacity, setMapImageTransform,
     setActiveTool, removeReferenceImage,
   } = useMapStore()
+
+  const [p2pGenerating, setP2pGenerating] = useState(false)
+  async function handleGenerateP2p() {
+    setP2pGenerating(true)
+    try {
+      await generateP2pMap()
+      onDone?.()
+    } finally {
+      setP2pGenerating(false)
+    }
+  }
 
   const imgInputRef = useRef<HTMLInputElement>(null)
 
@@ -424,7 +436,7 @@ function PaperAreaStep({ onBack, onGenerate, showMap = true, generateLabel, t }:
     return () => clearTimeout(timer)
   }, [hexSizeMm, hexOrientation, paperSize, orientation, marginMm, hexEdgeMode]) // eslint-disable-line react-hooks/exhaustive-deps
 
-  const isDisabled = (showMap && framePixelWidth === 0) || mapMode === 'p2p'
+  const isDisabled = (showMap && framePixelWidth === 0) || (mapMode === 'p2p' && (!showMap || p2pGenerating))
 
   async function handleSearch() {
     if (!searchQuery.trim()) return
@@ -728,9 +740,9 @@ function PaperAreaStep({ onBack, onGenerate, showMap = true, generateLabel, t }:
         background: t.surface,
       }}>
         <NavButton onClick={onBack} ghost t={t}>← BACK</NavButton>
-        <NavButton onClick={onGenerate} disabled={isDisabled} t={t}>
+        <NavButton onClick={mapMode === 'p2p' ? handleGenerateP2p : onGenerate} disabled={isDisabled} t={t}>
           {mapMode === 'p2p'
-            ? 'POINT-TO-POINT GENERATION — COMING SOON'
+            ? (!showMap ? 'FROM SCRATCH — COMING SOON' : p2pGenerating ? 'GENERATING…' : 'GENERATE →')
             : (generateLabel ?? (showMap ? 'GENERATE →' : 'START EDITING →'))}
         </NavButton>
       </div>

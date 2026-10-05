@@ -2,6 +2,7 @@ import { useRef, useCallback, useState, useEffect } from 'react'
 import { set as idbSet } from 'idb-keyval'
 import { useMapStore } from './store/mapStore'
 import { TerrainViewCanvas, type TerrainViewCanvasHandle } from './components/TerrainViewCanvas'
+import { P2pViewCanvas } from './components/P2pViewCanvas'
 import { TK, TK_DARK } from './theme'
 import { ThemeContext } from './context/ThemeContext'
 import { EditorTopBar } from './components/v2/EditorTopBar'
@@ -34,7 +35,7 @@ function AppV2Inner({ screen, setScreen, isDark, setIsDark }: {
   isDark: boolean
   setIsDark: (v: boolean) => void
 }) {
-  const { step, undo, redo, generateStatus, generateProgress, uiScale,
+  const { step, undo, redo, generateStatus, generateProgress, uiScale, mapMode,
           elevationStatus, heightmapUrl, fetchElevation, loadBuiltinPreset,
           resetToSetup } = useMapStore()
   const canvasHandleRef = useRef<TerrainViewCanvasHandle>(null)
@@ -147,18 +148,24 @@ function AppV2Inner({ screen, setScreen, isDark, setIsDark }: {
         {/* Canvas + floating UI */}
         <div style={{ flex: 1, position: 'relative', overflow: 'hidden' }}>
           <div style={{ width: '100%', height: '100%', display: 'flex' }}>
-            <TerrainViewCanvas ref={canvasHandleRef} surroundColor={surroundColor} />
+            {mapMode === 'p2p'
+              ? <P2pViewCanvas surroundColor={surroundColor} />
+              : <TerrainViewCanvas ref={canvasHandleRef} surroundColor={surroundColor} />}
           </div>
 
-          {/* Left rail + flyout float over the canvas */}
-          <div style={{ position: 'absolute', top: 16, left: 16, bottom: 16, zIndex: 10, pointerEvents: 'none' }}>
-            <div style={{ pointerEvents: 'auto', height: '100%', zoom: uiScale }}>
-              <LeftRail />
-            </div>
-          </div>
+          {/* Hex-specific sidebars — p2p mode gets its own panels in a later pass */}
+          {mapMode !== 'p2p' && (
+            <>
+              <div style={{ position: 'absolute', top: 16, left: 16, bottom: 16, zIndex: 10, pointerEvents: 'none' }}>
+                <div style={{ pointerEvents: 'auto', height: '100%', zoom: uiScale }}>
+                  <LeftRail />
+                </div>
+              </div>
 
-          <CanvasToolbar />
-          <BottomDock canvasRef={canvasHandleRef} />
+              <CanvasToolbar />
+              <BottomDock canvasRef={canvasHandleRef} />
+            </>
+          )}
         </div>
       </div>
     </ThemeContext.Provider>
