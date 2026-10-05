@@ -1,7 +1,8 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useMapStore } from '../store/mapStore'
 import { makeP2pBoardProjection, P2P_GRID_CELL_KM } from '../lib/p2pNetwork'
-import { computeP2pTerrainRegions } from '../lib/p2pTerrainRegions'
+import { computeP2pTerrainRegions, cellKey } from '../lib/p2pTerrainRegions'
+import type { P2pTerrainType } from '../store/slices/p2pTerrainSlice'
 import { drawP2pTerrain, DEFAULT_P2P_TERRAIN_STYLES } from '../lib/drawP2pTerrain'
 import { drawP2pTowns, DEFAULT_P2P_TOWN_TIER_STYLES } from '../lib/drawP2pTowns'
 import { drawRoadsAndRails, type RoadChainPx } from '../lib/drawRoadsRails'
@@ -18,7 +19,16 @@ export function P2pViewCanvas({ surroundColor = '#B7B0A6' }: { surroundColor?: s
   const {
     p2pTowns, p2pEdges, p2pRawRivers, p2pPaintLayer, p2pWidthKm, p2pHeightKm,
     p2pMaxRegionSizeCm2, p2pRiverSplitRegions, center, bearing, pageGrid, marginMm,
+    p2pBrush, batchPaintP2pTerrain, batchEraseP2pTerrain,
   } = useMapStore()
+
+  // Cells painted during an in-progress brush stroke, merged over the committed
+  // p2pPaintLayer for live preview. Flushed to the store as one batch on mouseup
+  // (never per-move — see CLAUDE.md "never call store actions in a loop").
+  const [paintPreview, setPaintPreview] = useState<Map<string, P2pTerrainType | 'eraser'> | null>(null)
+  const paintBufferRef = useRef<Map<string, P2pTerrainType | 'eraser'>>(new Map())
+  const isPaintingRef = useRef(false)
+  const lastPaintKmRef = useRef<[number, number] | null>(null)
 
   useEffect(() => {
     const el = containerRef.current
@@ -82,6 +92,18 @@ export function P2pViewCanvas({ surroundColor = '#B7B0A6' }: { surroundColor?: s
     return p2pRawRivers.map(r => r.coords.map(([lon, lat]) => projection.toLocal(lon, lat)))
   }, [p2pRawRivers, projection])
 
+  // Merge the in-progress brush stroke over the committed paint layer, so the
+  // region classification (and thus the drawn terrain) previews live while painting.
+  const effectivePaintLayer = useMemo(() => {
+    if (!paintPreview || paintPreview.size === 0) return p2pPaintLayer
+    const merged = { ...p2pPaintLayer }
+    for (const [key, v] of paintPreview) {
+      if (v === 'eraser') delete merged[key]
+      else merged[key] = v
+    }
+    return merged
+  }, [p2pPaintLayer, paintPreview])
+
   const regions = useMemo(() => {
     if (!projection || p2pWidthKm === 0) return []
     const [cwMm] = paperMm
@@ -89,14 +111,91 @@ export function P2pViewCanvas({ surroundColor = '#B7B0A6' }: { surroundColor?: s
     return computeP2pTerrainRegions(
       roadsLocal.map(poly => poly.map(([x, y]) => ({ x, y }))),
       riversLocal.map(poly => poly.map(([x, y]) => ({ x, y }))),
-      p2pPaintLayer,
+      effectivePaintLayer,
       {
         widthKm: p2pWidthKm, heightKm: p2pHeightKm,
         maxRegionAreaKm2: p2pMaxRegionSizeCm2 * kmPerCm * kmPerCm,
         splitRivers: p2pRiverSplitRegions,
       },
     )
-  }, [roadsLocal, riversLocal, p2pPaintLayer, p2pWidthKm, p2pHeightKm, p2pMaxRegionSizeCm2, p2pRiverSplitRegions, projection, paperMm])
+  }, [roadsLocal, riversLocal, effectivePaintLayer, p2pWidthKm, p2pHeightKm, p2pMaxRegionSizeCm2, p2pRiverSplitRegions, projection, paperMm])
+
+  // Terrain brush: paints into p2pPaintLayer by board-km grid cell. Buffers the
+  // whole stroke in a ref and flushes with one batch store action on mouseup.
+  useEffect(() => {
+    const canvas = canvasRef.current
+    if (!canvas || !layout) return
+
+    const toKm = (clientX: number, clientY: number): [number, number] | null => {
+      const rect = canvas.getBoundingClientRect()
+      const xKm = (clientX - rect.left - layout.px) / layout.pxPerKm
+      const yKm = (clientY - rect.top - layout.py) / layout.pxPerKm
+      if (xKm < 0 || xKm > p2pWidthKm || yKm < 0 || yKm > p2pHeightKm) return null
+      return [xKm, yKm]
+    }
+
+    const paintAt = (xKm: number, yKm: number) => {
+      const brush = useMapStore.getState().p2pBrush
+      if (brush === 'off') return
+      const last = lastPaintKmRef.current
+      const steps = last
+        ? Math.max(1, Math.ceil(Math.hypot(xKm - last[0], yKm - last[1]) / (P2P_GRID_CELL_KM * 0.5)))
+        : 1
+      for (let i = last ? 1 : 0; i <= steps; i++) {
+        const t = i / steps
+        const x = last ? last[0] + (xKm - last[0]) * t : xKm
+        const y = last ? last[1] + (yKm - last[1]) * t : yKm
+        paintBufferRef.current.set(cellKey(x, y), brush)
+      }
+      lastPaintKmRef.current = [xKm, yKm]
+      setPaintPreview(new Map(paintBufferRef.current))
+    }
+
+    const onDown = (e: MouseEvent) => {
+      if (e.button !== 0) return
+      if (useMapStore.getState().p2pBrush === 'off') return
+      const km = toKm(e.clientX, e.clientY)
+      if (!km) return
+      isPaintingRef.current = true
+      paintBufferRef.current = new Map()
+      lastPaintKmRef.current = null
+      paintAt(km[0], km[1])
+    }
+
+    const onMove = (e: MouseEvent) => {
+      if (!isPaintingRef.current) return
+      const km = toKm(e.clientX, e.clientY)
+      if (!km) return
+      paintAt(km[0], km[1])
+    }
+
+    const onUp = () => {
+      if (!isPaintingRef.current) return
+      isPaintingRef.current = false
+      lastPaintKmRef.current = null
+      const buffer = paintBufferRef.current
+      paintBufferRef.current = new Map()
+      setPaintPreview(null)
+      if (buffer.size === 0) return
+      const paints: { key: string; terrain: P2pTerrainType }[] = []
+      const erases: string[] = []
+      for (const [key, v] of buffer) {
+        if (v === 'eraser') erases.push(key)
+        else paints.push({ key, terrain: v })
+      }
+      if (paints.length) batchPaintP2pTerrain(paints)
+      if (erases.length) batchEraseP2pTerrain(erases)
+    }
+
+    canvas.addEventListener('mousedown', onDown)
+    window.addEventListener('mousemove', onMove)
+    window.addEventListener('mouseup', onUp)
+    return () => {
+      canvas.removeEventListener('mousedown', onDown)
+      window.removeEventListener('mousemove', onMove)
+      window.removeEventListener('mouseup', onUp)
+    }
+  }, [layout, p2pWidthKm, p2pHeightKm, batchPaintP2pTerrain, batchEraseP2pTerrain])
 
   useEffect(() => {
     const canvas = canvasRef.current
@@ -173,7 +272,7 @@ export function P2pViewCanvas({ surroundColor = '#B7B0A6' }: { surroundColor?: s
 
   return (
     <div ref={containerRef} style={{ width: '100%', height: '100%', position: 'relative' }}>
-      <canvas ref={canvasRef} style={{ display: 'block' }} />
+      <canvas ref={canvasRef} style={{ display: 'block', cursor: p2pBrush !== 'off' ? 'crosshair' : 'default' }} />
     </div>
   )
 }
