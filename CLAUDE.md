@@ -212,6 +212,8 @@ cd frontend && npm run electron:dev
 
 The Electron window loads from Vite's dev server (`localhost:5173`). Frontend changes appear instantly via HMR. Backend changes reload automatically via uvicorn. This is identical to browser-based dev, just in a window.
 
+`./dev.sh` from the repo root automates the above into one command: it pulls the current branch (skipped if the working tree is dirty, so it never clobbers local changes), installs any new backend/frontend dependencies, then starts both terminals' worth of process for you. Ctrl+C stops both.
+
 ### Building a distributable DMG
 
 Run these three steps in order from `backend/`:
