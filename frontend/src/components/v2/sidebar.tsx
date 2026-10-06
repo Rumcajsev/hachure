@@ -1,5 +1,6 @@
 import { useRef, useState, useEffect, createContext, useContext, useCallback, type ReactNode } from 'react'
 import { useTheme } from '../../context/ThemeContext'
+import { BLOB_PRESETS, BLOB_PRESET_ORDER, type BlobPresetId, type BlobPresetValues } from '../../store/blobPresets'
 
 // ── Strip / flyout layout constants ──────────────────────────────────────────
 
@@ -780,6 +781,53 @@ export function useDeferredSlider(storeVal: number, commit: (v: number) => void)
     onChange: (v: number) => { ref.current = v; setLocal(v) },
     onDragEnd: () => commit(ref.current),
   }
+}
+
+// ── BlobPresetChips ───────────────────────────────────────────────────────────
+// Shared between hex mode's "Default Shape" flyout and p2p's terrain blob controls —
+// both feed the same shapeTerrainBlobs() pipeline, so the same presets apply to either.
+
+export function BlobPresetChips({
+  currentValues, onSelect,
+}: {
+  currentValues: BlobPresetValues | null
+  onSelect: (id: BlobPresetId) => void
+}) {
+  const t = useTheme()
+  const activePreset = currentValues == null ? null :
+    BLOB_PRESET_ORDER.find(id => {
+      const p = BLOB_PRESETS[id].values
+      return (
+        p.smooth === currentValues.smooth &&
+        Math.abs(p.offset - currentValues.offset) < 0.001 &&
+        Math.abs(p.bump - currentValues.bump) < 0.001 &&
+        Math.abs(p.sweepFreq - currentValues.sweepFreq) < 0.001 &&
+        Math.abs(p.lobeFreq - currentValues.lobeFreq) < 0.01 &&
+        Math.abs(p.lobeAmp - currentValues.lobeAmp) < 0.001 &&
+        Math.abs(p.lobeThreshold - currentValues.lobeThreshold) < 0.001 &&
+        p.lobeDirection === currentValues.lobeDirection
+      )
+    }) ?? 'custom'
+
+  return (
+    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4, padding: '4px 12px 6px' }}>
+      {BLOB_PRESET_ORDER.map(id => {
+        const active = activePreset === id
+        return (
+          <button key={id} onClick={() => onSelect(id)} style={{
+            padding: '3px 7px',
+            fontFamily: t.mono, fontSize: 9, letterSpacing: 0.4,
+            background: active ? tintBg(t.rust, 0.15) : 'transparent',
+            border: `1px solid ${active ? t.rust : t.line}`,
+            color: active ? t.rust : t.inkMute,
+            cursor: 'pointer', textTransform: 'uppercase',
+          }}>
+            {BLOB_PRESETS[id].label}
+          </button>
+        )
+      })}
+    </div>
+  )
 }
 
 // ── MiniSlider ────────────────────────────────────────────────────────────────

@@ -1109,6 +1109,28 @@ if (fromVersion < 64) {
     if (s.p2pWidthKm === undefined) s.p2pWidthKm = 0
     if (s.p2pHeightKm === undefined) s.p2pHeightKm = 0
   }
+  if (fromVersion < 103) {
+    if (s.p2pBlobSmooth === undefined) s.p2pBlobSmooth = 2
+    if (s.p2pBlobOffset === undefined) s.p2pBlobOffset = 0
+    if (s.p2pBlobBump === undefined) s.p2pBlobBump = 0.15
+    if (s.p2pBlobSweepFreq === undefined) s.p2pBlobSweepFreq = 2.5
+    if (s.p2pBlobLobeFreq === undefined) s.p2pBlobLobeFreq = 1.2
+    if (s.p2pBlobLobeAmp === undefined) s.p2pBlobLobeAmp = 0.4
+    if (s.p2pBlobLobeThreshold === undefined) s.p2pBlobLobeThreshold = 0.6
+    if (s.p2pBlobLobeDirection === undefined) s.p2pBlobLobeDirection = 1
+    if (s.p2pBlobTopoStyle === undefined) s.p2pBlobTopoStyle = 0
+    if (s.p2pBlobOutlineEnabled === undefined) s.p2pBlobOutlineEnabled = false
+    if (s.p2pBlobOutlineColor === undefined) s.p2pBlobOutlineColor = '#000000'
+    if (s.p2pBlobOutlineWidth === undefined) s.p2pBlobOutlineWidth = 1
+  }
+  if (fromVersion < 104) {
+    if (s.p2pRoadBlobCutEnabled === undefined) s.p2pRoadBlobCutEnabled = true
+    if (s.p2pRoadBlobCutWidth === undefined) s.p2pRoadBlobCutWidth = 0.3
+    if (s.p2pRoadBlobCutRoughness === undefined) s.p2pRoadBlobCutRoughness = 0.3
+    if (s.p2pRiverBlobCutEnabled === undefined) s.p2pRiverBlobCutEnabled = true
+    if (s.p2pRiverBlobCutWidth === undefined) s.p2pRiverBlobCutWidth = 0.5
+    if (s.p2pRiverBlobCutRoughness === undefined) s.p2pRiverBlobCutRoughness = 0.3
+  }
   if (fromVersion < 84) {
     const tiers = s.riverTierStyles as Array<Record<string, unknown>> | undefined
     if (tiers) {

@@ -40,6 +40,10 @@ function AppV2Inner({ screen, setScreen, isDark, setIsDark }: {
           elevationStatus, heightmapUrl, fetchElevation, loadBuiltinPreset,
           resetToSetup } = useMapStore()
   const canvasHandleRef = useRef<TerrainViewCanvasHandle>(null)
+  // p2p "max region size" slider's in-progress value while being dragged, lifted here
+  // (not in the store) so live dragging never triggers a localStorage serialize — see
+  // the comment on P2pViewCanvas's regionSizePreviewCm2 prop.
+  const [p2pRegionSizePreviewCm2, setP2pRegionSizePreviewCm2] = useState<number | null>(null)
 
   // If the store resets step to 'setup' while in the editor (e.g. mid-generation SSE flow),
   // treat it as wizard so the editor doesn't render against an empty store.
@@ -150,14 +154,14 @@ function AppV2Inner({ screen, setScreen, isDark, setIsDark }: {
         <div style={{ flex: 1, position: 'relative', overflow: 'hidden' }}>
           <div style={{ width: '100%', height: '100%', display: 'flex' }}>
             {mapMode === 'p2p'
-              ? <P2pViewCanvas surroundColor={surroundColor} />
+              ? <P2pViewCanvas surroundColor={surroundColor} regionSizePreviewCm2={p2pRegionSizePreviewCm2} />
               : <TerrainViewCanvas ref={canvasHandleRef} surroundColor={surroundColor} />}
           </div>
 
           {mapMode === 'p2p' ? (
             <div style={{ position: 'absolute', top: 16, left: 16, bottom: 16, zIndex: 10, pointerEvents: 'none' }}>
               <div style={{ pointerEvents: 'auto', height: '100%', zoom: uiScale }}>
-                <P2pLeftRail />
+                <P2pLeftRail onRegionSizePreviewChange={setP2pRegionSizePreviewCm2} />
               </div>
             </div>
           ) : (

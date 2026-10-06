@@ -273,7 +273,19 @@ function voronoiPieces(poly: Pt[], seeds: Pt[]): Pt[][] {
   return out
 }
 
-function regionType(cellKeys: string[], centroidKey: string, paintLayer: Record<string, P2pTerrainType>): P2pTerrainType | 'empty' {
+/** Grid cell key of a region's polygon centroid — used as the paint-layer key for a
+ *  region too small to raster any cell of its own (its `cellKeys` is empty). */
+export function regionAnchorKey(poly: [number, number][]): string {
+  let cx = 0, cy = 0
+  for (const p of poly) { cx += p[0]; cy += p[1] }
+  return cellKey(cx / poly.length, cy / poly.length)
+}
+
+/** A region's terrain is the majority paint value among its cells (ties favor whatever
+ *  was seen first). Exported so callers can re-classify already-traced regions against
+ *  a new paint layer without re-running the (expensive) face tracing that built them —
+ *  region shape doesn't depend on paint, only this classification does. */
+export function regionType(cellKeys: string[], centroidKey: string, paintLayer: Record<string, P2pTerrainType>): P2pTerrainType | 'empty' {
   if (!cellKeys.length) return paintLayer[centroidKey] ?? 'empty'
   const counts: Record<string, number> = {}
   for (const k of cellKeys) {
@@ -285,17 +297,30 @@ function regionType(cellKeys: string[], centroidKey: string, paintLayer: Record<
   return best as P2pTerrainType | 'empty'
 }
 
-// ── Main entry point ─────────────────────────────────────────────────────────
+// ── Face tracing (expensive, independent of paint and of max region size) ────
 
-/** @param roads   Each entry is one road's full polyline in the local km-plane (>=2 points).
- *  @param rivers  Each entry is one river's full polyline in the local km-plane. Only used to
- *                 split regions when config.splitRivers is true. */
-export function computeP2pTerrainRegions(
+export interface P2pRawFace {
+  poly: [number, number][]
+  area: number
+}
+
+export interface P2pFaceTraceConfig {
+  widthKm: number
+  heightKm: number
+  splitRivers: boolean
+}
+
+/** Planarizes roads + rivers + the paper frame and traces the enclosed faces. This is
+ *  the costly part (spatially-bucketed segment crossing, face walk) and depends only on
+ *  road/river topology and the frame size — never on paint or on the max-region-size
+ *  setting. Callers that need to re-split faces live (e.g. while dragging a "max region
+ *  size" slider) should call this once and feed the result to splitP2pRegionFaces()
+ *  repeatedly, rather than re-tracing on every tick. */
+export function traceP2pRegionFaces(
   roads: Pt[][],
   rivers: Pt[][],
-  paintLayer: Record<string, P2pTerrainType>,
-  config: P2pTerrainRegionsConfig,
-): P2pTerrainRegion[] {
+  config: P2pFaceTraceConfig,
+): P2pRawFace[] {
   const { widthKm: W, heightKm: H } = config
   const segs: Seg[] = []
   for (const poly of roads) for (let i = 1; i < poly.length; i++) {
@@ -378,7 +403,21 @@ export function computeP2pTerrainRegions(
   const inner = pos >= neg ? 1 : -1 // the one face of the minority sign is the unbounded exterior face
   const faces = raw.filter(f => Math.sign(f.a2) === inner && Math.abs(f.a2) > 0.02)
 
-  const maxA = Math.max(1, config.maxRegionAreaKm2)
+  return faces.map(f => ({ poly: f.poly.map(p => [p.x, p.y] as [number, number]), area: Math.abs(f.a2) }))
+}
+
+// ── Splitting + classification (cheap — safe to re-run on every tick of a live slider) ──
+
+/** Cuts oversized faces into roughly-equal pieces (recursively, via k-means-seeded
+ *  Voronoi cuts) and classifies each by majority paint vote. Depends only on
+ *  maxRegionAreaKm2 and paintLayer — never re-traces faces — so it's cheap enough to
+ *  call on every tick while a "max region size" slider is being dragged live. */
+export function splitP2pRegionFaces(
+  faces: P2pRawFace[],
+  maxRegionAreaKm2: number,
+  paintLayer: Record<string, P2pTerrainType>,
+): P2pTerrainRegion[] {
+  const maxA = Math.max(1, maxRegionAreaKm2)
   const splitPoly = (poly: Pt[], area: number, depth: number): Pt[][] => {
     const k = Math.ceil(area / maxA)
     if (k < 2 || depth > 2) return [poly]
@@ -397,18 +436,31 @@ export function computeP2pTerrainRegions(
   }
 
   const polys: Pt[][] = []
-  for (const f of faces) polys.push(...splitPoly(f.poly, Math.abs(f.a2), 0))
+  for (const f of faces) polys.push(...splitPoly(f.poly.map(([x, y]) => ({ x, y })), f.area, 0))
 
   return polys.map((poly): P2pTerrainRegion => {
     const cellKeys = rasterCellKeys(poly)
-    let cx = 0, cy = 0
-    for (const p of poly) { cx += p.x; cy += p.y }
-    cx /= poly.length; cy /= poly.length
+    const polyPts = poly.map(p => [p.x, p.y] as [number, number])
     return {
-      poly: poly.map(p => [p.x, p.y] as [number, number]),
+      poly: polyPts,
       area: Math.abs(polyArea2(poly)),
-      type: regionType(cellKeys, cellKey(cx, cy), paintLayer),
+      type: regionType(cellKeys, regionAnchorKey(polyPts), paintLayer),
       cellKeys,
     }
   })
+}
+
+// ── Main entry point ─────────────────────────────────────────────────────────
+
+/** @param roads   Each entry is one road's full polyline in the local km-plane (>=2 points).
+ *  @param rivers  Each entry is one river's full polyline in the local km-plane. Only used to
+ *                 split regions when config.splitRivers is true. */
+export function computeP2pTerrainRegions(
+  roads: Pt[][],
+  rivers: Pt[][],
+  paintLayer: Record<string, P2pTerrainType>,
+  config: P2pTerrainRegionsConfig,
+): P2pTerrainRegion[] {
+  const faces = traceP2pRegionFaces(roads, rivers, config)
+  return splitP2pRegionFaces(faces, config.maxRegionAreaKm2, paintLayer)
 }
