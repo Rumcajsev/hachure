@@ -11,7 +11,7 @@ import { projectToCanvas, unprojectFromCanvas, computePaper, computeWorldcoverBb
 import { coastalBlobTerrains, bleedPolygon, buildTerrainBlobsV2, buildTerrainBlobTopology, shapeTerrainBlobs, shapeInputPolygon, computeConnectedComponents, cutRawPolysWithCorridors, perturbCorridorsForTerrain, buildExportTerrainBlobs } from '../lib/terrainBlobs'
 import type { BlobTopologyEntry } from '../lib/terrainBlobs'
 import { shapeTerrainBlobsField, type FieldBlobControls, type FieldBlobHexInput } from '../lib/terrainBlobsField'
-import { MiniSlider } from './v2/sidebar'
+import { MiniSlider, useDeferredSlider } from './v2/sidebar'
 
 // DEV TOGGLE — field-blob experiment (see src/lib/terrainBlobsField.ts). Flip to true to
 // render the interactive canvas's terrain blobs via the field+marching-squares pipeline
@@ -201,7 +201,17 @@ export const TerrainViewCanvas = forwardRef<TerrainViewCanvasHandle, { surroundC
   const [isTerrainPainting, setIsTerrainPainting] = useState(false)
   const [wcTooltip, setWcTooltip] = useState<{ x: number; y: number; label: string } | null>(null)
   // DEV TOGGLE panel state — see USE_FIELD_BLOBS at the top of this file.
+  // fieldBlobControls only updates on drag-end (see the useDeferredSlider calls below,
+  // same pattern as every other sidebar slider) — committing on every pointermove would
+  // re-run the full field+marching-squares shaping pass for every terrain on every pixel
+  // of drag, which is the "half a second of lag per tick" this pattern exists to avoid.
   const [fieldBlobControls, setFieldBlobControls] = useState<FieldBlobControls>(DEFAULT_TEST_FIELD_BLOB_CONTROLS)
+  const fieldShapeSlider = useDeferredSlider(fieldBlobControls.shape, v => setFieldBlobControls(c => ({ ...c, shape: v })))
+  const fieldSizeSlider = useDeferredSlider(fieldBlobControls.size, v => setFieldBlobControls(c => ({ ...c, size: v })))
+  const fieldBendSlider = useDeferredSlider(fieldBlobControls.bend, v => setFieldBlobControls(c => ({ ...c, bend: v })))
+  const fieldBendVariationSlider = useDeferredSlider(fieldBlobControls.bendVariation, v => setFieldBlobControls(c => ({ ...c, bendVariation: v })))
+  const fieldDetailSlider = useDeferredSlider(fieldBlobControls.detail, v => setFieldBlobControls(c => ({ ...c, detail: v })))
+  const fieldCovesSlider = useDeferredSlider(fieldBlobControls.coves, v => setFieldBlobControls(c => ({ ...c, coves: v })))
 
   const [mapOverlay, setMapOverlay] = useState(false)
   const mapOverlayRef = useRef(false)
@@ -3091,18 +3101,18 @@ terrainTextureFileRef.current = terrainTextureFile
               ↺ reset
             </button>
           </div>
-          <MiniSlider label="Shape" display={fieldBlobControls.shape.toFixed(2)} value={fieldBlobControls.shape} min={-1} max={1} step={0.05}
-            onChange={v => setFieldBlobControls(c => ({ ...c, shape: v }))} />
-          <MiniSlider label="Size" display={fieldBlobControls.size.toFixed(2)} value={fieldBlobControls.size} min={-1} max={1} step={0.05}
-            onChange={v => setFieldBlobControls(c => ({ ...c, size: v }))} />
-          <MiniSlider label="Bend" display={fieldBlobControls.bend.toFixed(2)} value={fieldBlobControls.bend} min={0} max={1} step={0.05}
-            onChange={v => setFieldBlobControls(c => ({ ...c, bend: v }))} />
-          <MiniSlider label="Bend variation" display={fieldBlobControls.bendVariation} value={fieldBlobControls.bendVariation} min={0} max={999} step={1}
-            onChange={v => setFieldBlobControls(c => ({ ...c, bendVariation: v }))} />
-          <MiniSlider label="Detail" display={fieldBlobControls.detail.toFixed(2)} value={fieldBlobControls.detail} min={0} max={1} step={0.05}
-            onChange={v => setFieldBlobControls(c => ({ ...c, detail: v }))} />
-          <MiniSlider label="Coves" display={fieldBlobControls.coves.toFixed(2)} value={fieldBlobControls.coves} min={0} max={1} step={0.05}
-            onChange={v => setFieldBlobControls(c => ({ ...c, coves: v }))} />
+          <MiniSlider label="Shape" display={fieldShapeSlider.value.toFixed(2)} value={fieldShapeSlider.value} min={-1} max={1} step={0.05}
+            onChange={fieldShapeSlider.onChange} onDragEnd={fieldShapeSlider.onDragEnd} />
+          <MiniSlider label="Size" display={fieldSizeSlider.value.toFixed(2)} value={fieldSizeSlider.value} min={-1} max={1} step={0.05}
+            onChange={fieldSizeSlider.onChange} onDragEnd={fieldSizeSlider.onDragEnd} />
+          <MiniSlider label="Bend" display={fieldBendSlider.value.toFixed(2)} value={fieldBendSlider.value} min={0} max={1} step={0.05}
+            onChange={fieldBendSlider.onChange} onDragEnd={fieldBendSlider.onDragEnd} />
+          <MiniSlider label="Bend variation" display={fieldBendVariationSlider.value} value={fieldBendVariationSlider.value} min={0} max={999} step={1}
+            onChange={fieldBendVariationSlider.onChange} onDragEnd={fieldBendVariationSlider.onDragEnd} />
+          <MiniSlider label="Detail" display={fieldDetailSlider.value.toFixed(2)} value={fieldDetailSlider.value} min={0} max={1} step={0.05}
+            onChange={fieldDetailSlider.onChange} onDragEnd={fieldDetailSlider.onDragEnd} />
+          <MiniSlider label="Coves" display={fieldCovesSlider.value.toFixed(2)} value={fieldCovesSlider.value} min={0} max={1} step={0.05}
+            onChange={fieldCovesSlider.onChange} onDragEnd={fieldCovesSlider.onDragEnd} />
         </div>,
         document.body,
       )}
