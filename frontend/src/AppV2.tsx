@@ -2,7 +2,7 @@ import { useRef, useCallback, useState, useEffect } from 'react'
 import { set as idbSet } from 'idb-keyval'
 import { useMapStore } from './store/mapStore'
 import { TerrainViewCanvas, type TerrainViewCanvasHandle } from './components/TerrainViewCanvas'
-import { P2pViewCanvas } from './components/P2pViewCanvas'
+import { P2pViewCanvas, type P2pViewCanvasHandle } from './components/P2pViewCanvas'
 import { TK, TK_DARK } from './theme'
 import { ThemeContext } from './context/ThemeContext'
 import { EditorTopBar } from './components/v2/EditorTopBar'
@@ -40,6 +40,7 @@ function AppV2Inner({ screen, setScreen, isDark, setIsDark }: {
           elevationStatus, heightmapUrl, fetchElevation, loadBuiltinPreset,
           resetToSetup } = useMapStore()
   const canvasHandleRef = useRef<TerrainViewCanvasHandle>(null)
+  const p2pCanvasHandleRef = useRef<P2pViewCanvasHandle>(null)
   // p2p "max region size" slider's in-progress value while being dragged, lifted here
   // (not in the store) so live dragging never triggers a localStorage serialize — see
   // the comment on P2pViewCanvas's regionSizePreviewCm2 prop.
@@ -51,7 +52,8 @@ function AppV2Inner({ screen, setScreen, isDark, setIsDark }: {
 
   const captureAndStoreThumb = useCallback(() => {
     const timer = setTimeout(() => {
-      const dataUrl = canvasHandleRef.current?.captureThumb()
+      const mode = useMapStore.getState().mapMode
+      const dataUrl = mode === 'p2p' ? p2pCanvasHandleRef.current?.captureThumb() : canvasHandleRef.current?.captureThumb()
       if (dataUrl) idbSet('hachure-thumb', dataUrl).catch(() => {})
     }, 800)
     return () => clearTimeout(timer)
@@ -83,14 +85,15 @@ function AppV2Inner({ screen, setScreen, isDark, setIsDark }: {
       r.readAsDataURL(blob)
     })
 
+    const handle = useMapStore.getState().mapMode === 'p2p' ? p2pCanvasHandleRef.current : canvasHandleRef.current
     let sheetPayloads: { image_b64: string; paper_mm: [number, number] }[]
 
     if (mode === 'combined') {
-      const result = await canvasHandleRef.current?.exportBlob()
+      const result = await handle?.exportBlob()
       if (!result) return
       sheetPayloads = [{ image_b64: await toB64(result.blob), paper_mm: result.paperMm }]
     } else {
-      const sheets = await canvasHandleRef.current?.exportSheets()
+      const sheets = await handle?.exportSheets()
       if (!sheets) return
       sheetPayloads = await Promise.all(sheets.map(async s => ({
         image_b64: await toB64(s.blob),
@@ -154,7 +157,7 @@ function AppV2Inner({ screen, setScreen, isDark, setIsDark }: {
         <div style={{ flex: 1, position: 'relative', overflow: 'hidden' }}>
           <div style={{ width: '100%', height: '100%', display: 'flex' }}>
             {mapMode === 'p2p'
-              ? <P2pViewCanvas surroundColor={surroundColor} regionSizePreviewCm2={p2pRegionSizePreviewCm2} />
+              ? <P2pViewCanvas ref={p2pCanvasHandleRef} surroundColor={surroundColor} regionSizePreviewCm2={p2pRegionSizePreviewCm2} />
               : <TerrainViewCanvas ref={canvasHandleRef} surroundColor={surroundColor} />}
           </div>
 

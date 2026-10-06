@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useImperativeHandle, useMemo, useRef, useState, forwardRef } from 'react'
 import { useMapStore } from '../store/mapStore'
 import { makeP2pBoardProjection, P2P_GRID_CELL_KM } from '../lib/p2pNetwork'
 import {
@@ -27,23 +27,33 @@ function applyZoomPan(base: ViewLayout, zoom: number, pan: { x: number; y: numbe
 const MIN_ZOOM = 0.5
 const MAX_ZOOM = 8
 
+/** Mirrors TerrainViewCanvasHandle's export-relevant surface (see TerrainViewCanvas.tsx)
+ *  so AppV2's handleExportPDF/captureAndStoreThumb can treat either canvas the same way.
+ *  Doesn't need the hex-only members (getPaperRect, peek*, zoomToPhysical) since nothing
+ *  calls those in p2p mode. */
+export interface P2pViewCanvasHandle {
+  exportBlob: () => Promise<{ blob: Blob; paperMm: [number, number] } | null>
+  exportSheets: () => Promise<{ blob: Blob; paperMm: [number, number] }[] | null>
+  captureThumb: () => string | null
+}
+
 /** Point-to-point map canvas. Deliberately simpler than TerrainViewCanvas: no
  *  LayerCache/RAF machinery for the main draw (a p2p scene is tens of towns/roads/
  *  regions, not thousands of hexes — a full redraw on every relevant change is cheap).
  *  Pan/zoom still go through refs + a direct draw() call rather than React state,
  *  though — same reasoning as the "max region size" slider: routing every wheel tick
  *  or pan mousemove through React state would mean a full re-render per tick. */
-export function P2pViewCanvas({
-  surroundColor = '#B7B0A6',
-  regionSizePreviewCm2 = null,
-}: {
+export const P2pViewCanvas = forwardRef<P2pViewCanvasHandle, {
   surroundColor?: string
   /** In-progress "max region size" value while the sidebar slider is being dragged —
    *  deliberately NOT read from the store (see P2pLeftRail.tsx): writing it there would
    *  mean a localStorage serialize on every drag tick, which is exactly the slider-lag
    *  bug this prop exists to avoid. null/omitted = use the committed store value. */
   regionSizePreviewCm2?: number | null
-}) {
+}>(function P2pViewCanvas({
+  surroundColor = '#B7B0A6',
+  regionSizePreviewCm2 = null,
+}, ref) {
   const containerRef = useRef<HTMLDivElement>(null)
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const hoverCanvasRef = useRef<HTMLCanvasElement>(null)
@@ -596,10 +606,193 @@ export function P2pViewCanvas({
     }
   }, [layout, p2pWidthKm, p2pHeightKm, regionsGeometry, cellToRegion, regionSizePreviewCm2, scheduleDraw, batchPaintP2pTerrain, batchEraseP2pTerrain])
 
+  // Renders the whole scene into an arbitrary off-screen canvas at print resolution —
+  // paper-space only (px=py=0, no surround, no live pan/zoom), same convention hex's
+  // export path uses (TerrainViewCanvas.tsx's draw({canvas, pw, ph})). Shape geometry is
+  // recomputed fresh for the target resolution via computeP2pShapedTerrainBlobs (cheap,
+  // one-shot — no need to reuse the on-screen shapedTerrainBlobs memo, which is sized for
+  // the home/screen layout, not print DPI). Literal pixel widths (road tiers, town icons/
+  // labels, river stroke) are tuned to look right at the on-screen "home" width, so they're
+  // scaled by pw/layout.pw for export — same "lineScale" trick MapRenderer.ts uses for hex.
+  const renderExportFrame = useCallback((canvas: HTMLCanvasElement, pw: number, ph: number): boolean => {
+    if (!boardProjection || p2pWidthKm === 0) return false
+    const ctx = canvas.getContext('2d')
+    if (!ctx) return false
+    canvas.width = pw
+    canvas.height = ph
+    ctx.clearRect(0, 0, pw, ph)
+    ctx.fillStyle = '#f3e9c6'
+    ctx.fillRect(0, 0, pw, ph)
+
+    const pxPerKm = pw / p2pWidthKm
+    const projectKm = (xKm: number, yKm: number): [number, number] => [xKm * pxPerKm, yKm * pxPerKm]
+    const project = (lon: number, lat: number): [number, number] => {
+      const [xKm, yKm] = boardProjection.toLocal(lon, lat)
+      return projectKm(xKm, yKm)
+    }
+
+    const roadChainsPx = roadsLocal.map(pts => pts.map(([x, y]) => projectKm(x, y)))
+    const riverChainsPx = riversLocal.map(pts => pts.map(([x, y]) => projectKm(x, y)))
+
+    const regionSideKm = Math.sqrt(p2pMaxRegionSizeCm2 * kmPerCm * kmPerCm)
+    const R = regionSideKm * pxPerKm
+    const shaped = computeP2pShapedTerrainBlobs({
+      regions, project: projectKm, R,
+      smooth: p2pBlobSmooth, offset: p2pBlobOffset, bump: p2pBlobBump,
+      sweepFreq: p2pBlobSweepFreq, lobeFreq: p2pBlobLobeFreq, lobeAmp: p2pBlobLobeAmp,
+      lobeThreshold: p2pBlobLobeThreshold, lobeDirection: p2pBlobLobeDirection,
+      topoStyle: p2pBlobTopoStyle,
+      roadChainsPx, riverChainsPx,
+      roadCutEnabled: p2pRoadBlobCutEnabled, roadCutWidth: p2pRoadBlobCutWidth, roadCutRoughness: p2pRoadBlobCutRoughness,
+      riverCutEnabled: p2pRiverBlobCutEnabled, riverCutWidth: p2pRiverBlobCutWidth, riverCutRoughness: p2pRiverBlobCutRoughness,
+    })
+    drawP2pTerrain(ctx, shaped, terrainStyles, R)
+
+    const lineScale = layout && layout.pw > 0 ? pw / layout.pw : 1
+
+    ctx.strokeStyle = '#7fb2d9'
+    ctx.lineCap = 'round'
+    ctx.lineJoin = 'round'
+    p2pRawRivers.forEach((r, i) => {
+      ctx.lineWidth = Math.max(1, 2 * (r.width_multiplier || 1)) * lineScale
+      ctx.beginPath()
+      riverChainsPx[i].forEach(([x, y], j) => { if (j === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y) })
+      ctx.stroke()
+    })
+
+    const roadChainsForDraw: RoadChainPx[] = p2pEdges.map(e => {
+      const pts = e.points && e.points.length >= 2
+        ? e.points.map(([lon, lat]) => project(lon, lat))
+        : (() => {
+            const a = p2pTowns.find(t => t.id === e.a), b = p2pTowns.find(t => t.id === e.b)
+            if (!a || !b) return []
+            return [project(a.lon, a.lat), project(b.lon, b.lat)]
+          })()
+      return { tier: e.tier, chain: pts }
+    }).filter(c => c.chain.length >= 2)
+
+    const scaledRoadTierStyles = DEFAULT_ROAD_TIER_STYLES.map(s => ({ ...s, outerW: s.outerW * lineScale })) as typeof DEFAULT_ROAD_TIER_STYLES
+    drawRoadsAndRails(ctx, {
+      roadChains: roadChainsForDraw, junctions: [], railChains: [],
+      tierStyles: scaledRoadTierStyles, railStyle: DEFAULT_RAIL_STYLE,
+    })
+
+    const scaledTownTierStyles = Object.fromEntries(
+      Object.entries(DEFAULT_P2P_TOWN_TIER_STYLES).map(([k, s]) => [k, {
+        ...s, radiusPx: s.radiusPx * lineScale, strokeWidth: s.strokeWidth * lineScale, fontPx: s.fontPx * lineScale,
+      }]),
+    ) as typeof DEFAULT_P2P_TOWN_TIER_STYLES
+    drawP2pTowns(ctx, { towns: p2pTowns, tierStyles: scaledTownTierStyles, supplyColor: '#f6c343', project })
+
+    return true
+  }, [
+    boardProjection, p2pWidthKm, roadsLocal, riversLocal, regions, terrainStyles,
+    p2pMaxRegionSizeCm2, kmPerCm,
+    p2pBlobSmooth, p2pBlobOffset, p2pBlobBump, p2pBlobSweepFreq, p2pBlobLobeFreq,
+    p2pBlobLobeAmp, p2pBlobLobeThreshold, p2pBlobLobeDirection, p2pBlobTopoStyle,
+    p2pRoadBlobCutEnabled, p2pRoadBlobCutWidth, p2pRoadBlobCutRoughness,
+    p2pRiverBlobCutEnabled, p2pRiverBlobCutWidth, p2pRiverBlobCutRoughness,
+    layout, p2pRawRivers, p2pEdges, p2pTowns,
+  ])
+
+  useImperativeHandle(ref, () => ({
+    exportBlob: () => new Promise(resolve => {
+      const PX_PER_MM = 300 / 25.4
+      const pw = Math.round(paperMm[0] * PX_PER_MM)
+      const ph = Math.round(paperMm[1] * PX_PER_MM)
+      const offscreen = document.createElement('canvas')
+      if (!renderExportFrame(offscreen, pw, ph)) { resolve(null); return }
+      offscreen.toBlob(blob => {
+        if (!blob) { resolve(null); return }
+        resolve({ blob, paperMm })
+      }, 'image/png')
+    }),
+
+    exportSheets: () => new Promise(resolve => {
+      const PX_PER_MM = 300 / 25.4
+      const { colWidths, rowHeights } = pageGrid
+
+      // Single-sheet: fall back to a plain combined export, same as hex's fallback.
+      if (colWidths.length === 1 && rowHeights.length === 1) {
+        const pw = Math.round(paperMm[0] * PX_PER_MM)
+        const ph = Math.round(paperMm[1] * PX_PER_MM)
+        const offscreen = document.createElement('canvas')
+        if (!renderExportFrame(offscreen, pw, ph)) { resolve(null); return }
+        offscreen.toBlob(blob => {
+          if (!blob) { resolve(null); return }
+          resolve([{ blob, paperMm }])
+        }, 'image/png')
+        return
+      }
+
+      // Multi-sheet: render once at full print resolution, then crop each page out with
+      // margin-sized bleed into its neighbours — identical approach to TerrainViewCanvas's
+      // exportSheets.
+      const fullW = Math.round(paperMm[0] * PX_PER_MM)
+      const fullH = Math.round(paperMm[1] * PX_PER_MM)
+      const full = document.createElement('canvas')
+      if (!renderExportFrame(full, fullW, fullH)) { resolve(null); return }
+
+      const bleedMm = marginMm
+      const results: { blob: Blob; paperMm: [number, number] }[] = []
+      let pending = colWidths.length * rowHeights.length
+
+      let yOffMm = 0
+      for (let row = 0; row < rowHeights.length; row++) {
+        const cellHMm = rowHeights[row]
+        const bleedTop = row > 0 ? bleedMm : 0
+        const bleedBottom = row < rowHeights.length - 1 ? bleedMm : 0
+        let xOffMm = 0
+        for (let col = 0; col < colWidths.length; col++) {
+          const cellWMm = colWidths[col]
+          const cellIdx = row * colWidths.length + col
+          const bleedLeft = col > 0 ? bleedMm : 0
+          const bleedRight = col < colWidths.length - 1 ? bleedMm : 0
+
+          const srcX = Math.round((xOffMm - bleedLeft) * PX_PER_MM)
+          const srcY = Math.round((yOffMm - bleedTop) * PX_PER_MM)
+          const srcW = Math.round((cellWMm + bleedLeft + bleedRight) * PX_PER_MM)
+          const srcH = Math.round((cellHMm + bleedTop + bleedBottom) * PX_PER_MM)
+
+          const sheet = document.createElement('canvas')
+          sheet.width = srcW
+          sheet.height = srcH
+          const sCtx = sheet.getContext('2d')!
+          sCtx.drawImage(full, srcX, srcY, srcW, srcH, 0, 0, srcW, srcH)
+
+          const sheetMm: [number, number] = [cellWMm + bleedLeft + bleedRight, cellHMm + bleedTop + bleedBottom]
+          sheet.toBlob(blob => {
+            if (blob) results[cellIdx] = { blob, paperMm: sheetMm }
+            if (--pending === 0) resolve(results.filter(Boolean).length === colWidths.length * rowHeights.length ? results : null)
+          }, 'image/png')
+
+          xOffMm += cellWMm
+        }
+        yOffMm += cellHMm
+      }
+    }),
+
+    captureThumb: () => {
+      // Render at screen DPI (96), capped — no surround, no pan/zoom, just the paper.
+      // Mirrors TerrainViewCanvas's captureThumb.
+      if (!boardProjection || p2pWidthKm === 0) return null
+      const PX_PER_MM = 96 / 25.4
+      const fullW = Math.round(paperMm[0] * PX_PER_MM)
+      const fullH = Math.round(paperMm[1] * PX_PER_MM)
+      const MAX = 1800
+      const scale = Math.min(1, MAX / fullW)
+      const pw = Math.round(fullW * scale)
+      const ph = Math.round(fullH * scale)
+      const offscreen = document.createElement('canvas')
+      if (!renderExportFrame(offscreen, pw, ph)) return null
+      return offscreen.toDataURL('image/jpeg', 0.88)
+    },
+  }), [renderExportFrame, paperMm, pageGrid, marginMm, boardProjection, p2pWidthKm])
+
   return (
     <div ref={containerRef} style={{ width: '100%', height: '100%', position: 'relative' }}>
       <canvas ref={canvasRef} style={{ display: 'block', cursor: p2pBrush !== 'off' ? 'crosshair' : 'grab' }} />
       <canvas ref={hoverCanvasRef} style={{ display: 'block', position: 'absolute', inset: 0, pointerEvents: 'none' }} />
     </div>
   )
-}
+})
