@@ -19,7 +19,7 @@ import { MiniSlider } from './v2/sidebar'
 // regardless of this flag. While true, a floating panel (top-right, below the title bar)
 // lets you tune the shape live instead of editing code. Same controls apply to every
 // terrain for now — no per-terrain style mapping yet.
-const USE_FIELD_BLOBS = false
+const USE_FIELD_BLOBS = true
 const DEFAULT_TEST_FIELD_BLOB_CONTROLS: FieldBlobControls = { shape: 0.55, size: 0, bend: 0.25, bendVariation: 0, detail: 0.15, coves: 0.35 }
 import { findEdgeChains as findEdgeChainsSync } from '../lib/edgeBlobs'
 import { riverChainCache, buildRiverChainsV2, type RiverChainCache } from '../lib/riverChains'
