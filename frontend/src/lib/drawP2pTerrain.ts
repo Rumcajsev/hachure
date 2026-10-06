@@ -21,13 +21,24 @@ export interface P2pTerrainStyle extends BlobFillStyle {
   outlineWidth: number
 }
 
-export interface DrawP2pTerrainParams {
+export interface ShapedP2pTerrainBlob {
+  terrain: string
+  polys: [number, number][][]
+}
+
+export interface ComputeP2pShapedTerrainBlobsParams {
   regions: P2pTerrainRegion[]
-  /** Projects a local km-plane point to canvas pixels. */
+  /** Projects a local km-plane point to canvas pixels. MUST be a fixed ("home"/paper
+   *  space) projection, independent of live pan/zoom — the caller applies pan/zoom
+   *  afterwards as a canvas transform around the already-shaped output, exactly like
+   *  hex mode scales a pre-rasterized bitmap. Feeding a live-zoom-dependent projection
+   *  here would re-run the organic shaping+corridor-cut math on every zoom/pan tick,
+   *  which is what caused blob shapes (corner rounding, waviness, fringe) to visibly
+   *  glitch/change while zooming. */
   project: (xKm: number, yKm: number) => [number, number]
-  styles: Partial<Record<P2pTerrainType, P2pTerrainStyle>>
   /** Pixel-space scale unit for the organic deformation — same role hex radius
-   *  plays for hex blobs. Pass the grid cell size in pixels for a comparable feel. */
+   *  plays for hex blobs. Pass the grid cell size in pixels for a comparable feel.
+   *  Must also be computed in the fixed home-space scale, not a live-zoom one. */
   R: number
   smooth: number
   offset: number
@@ -121,9 +132,14 @@ function dissolveAdjacentPolys(polys: [number, number][][], R: number): [number,
   return out
 }
 
-export function drawP2pTerrain(ctx: Ctx, params: DrawP2pTerrainParams): void {
+/** Pure geometry pass: dissolve, organic-shape, and corridor-cut the region polygons.
+ *  No ctx, no styles — this is the expensive, cacheable part. Callers should memoize
+ *  this on a FIXED home-space `project`/`R` (see the param doc above) and feed the
+ *  result into drawP2pTerrain() every frame, rather than recomputing it per frame from
+ *  a live-zoom projection. */
+export function computeP2pShapedTerrainBlobs(params: ComputeP2pShapedTerrainBlobsParams): ShapedP2pTerrainBlob[] {
   const {
-    regions, project, styles, R,
+    regions, project, R,
     smooth, offset, bump, sweepFreq, lobeFreq, lobeAmp, lobeThreshold, lobeDirection, topoStyle,
     roadChainsPx = [], riverChainsPx = [],
     roadCutEnabled = false, roadCutWidth = 0.3, roadCutRoughness = 0.3,
@@ -132,7 +148,7 @@ export function drawP2pTerrain(ctx: Ctx, params: DrawP2pTerrainParams): void {
 
   const byType = new Map<string, { polys: [number, number][][]; centers: [number, number][] }>()
   for (const r of regions) {
-    if (r.type === 'empty' || !styles[r.type as P2pTerrainType]) continue
+    if (r.type === 'empty') continue
     const poly = r.poly.map(([x, y]) => project(x, y))
     let cx = 0, cy = 0
     for (const [x, y] of poly) { cx += x; cy += y }
@@ -159,23 +175,29 @@ export function drawP2pTerrain(ctx: Ctx, params: DrawP2pTerrainParams): void {
   // mechanism and ordering as hex mode's roadBlobCut*/riverBlobCut* (shape, then cut).
   const roadRibbons = roadCutEnabled && roadChainsPx.length ? buildCorridorRibbons(roadChainsPx, roadCutWidth * R) : []
   const riverRibbons = riverCutEnabled && riverChainsPx.length ? buildCorridorRibbons(riverChainsPx, riverCutWidth * R) : []
+  if (!roadRibbons.length && !riverRibbons.length) return shaped
 
+  return shaped.map(({ terrain, polys }) => {
+    // Different seed per terrain type (same trick hex mode uses) so the cut edge's
+    // noise doesn't look identical across every terrain crossing the same road.
+    const terrainSeed = Math.abs(terrain.split('').reduce((a, c) => (a * 31 + c.charCodeAt(0)) | 0, 0))
+    const corridors = [
+      ...(roadRibbons.length ? perturbCorridorsForTerrain(roadRibbons, roadCutRoughness, 1 + roadCutRoughness, sweepFreq, R, roadCutWidth * R, terrainSeed) : []),
+      ...(riverRibbons.length ? perturbCorridorsForTerrain(riverRibbons, riverCutRoughness, 1 + riverCutRoughness, sweepFreq, R, riverCutWidth * R, terrainSeed + 1) : []),
+    ]
+    return { terrain, polys: corridors.length ? cutRawPolysWithCorridors(polys, corridors) : polys }
+  })
+}
+
+/** Draw-only: fills/outlines already-shaped blobs (see computeP2pShapedTerrainBlobs).
+ *  `R` must be the same home-space unit the blobs were shaped with — it only feeds
+ *  texture-pattern scaling here, no geometry recomputation happens. */
+export function drawP2pTerrain(ctx: Ctx, shaped: ShapedP2pTerrainBlob[], styles: Partial<Record<P2pTerrainType, P2pTerrainStyle>>, R: number): void {
   for (const { terrain, polys } of shaped) {
     const style = styles[terrain as P2pTerrainType]
     if (!style) continue
-    let finalPolys = polys
-    if (roadRibbons.length || riverRibbons.length) {
-      // Different seed per terrain type (same trick hex mode uses) so the cut edge's
-      // noise doesn't look identical across every terrain crossing the same road.
-      const terrainSeed = Math.abs(terrain.split('').reduce((a, c) => (a * 31 + c.charCodeAt(0)) | 0, 0))
-      const corridors = [
-        ...(roadRibbons.length ? perturbCorridorsForTerrain(roadRibbons, roadCutRoughness, 1 + roadCutRoughness, sweepFreq, R, roadCutWidth * R, terrainSeed) : []),
-        ...(riverRibbons.length ? perturbCorridorsForTerrain(riverRibbons, riverCutRoughness, 1 + riverCutRoughness, sweepFreq, R, riverCutWidth * R, terrainSeed + 1) : []),
-      ]
-      finalPolys = corridors.length ? cutRawPolysWithCorridors(polys, corridors) : polys
-    }
-    drawTerrainBlobFill(ctx, finalPolys, R, style)
-    if (style.outlineEnabled) drawBlobOutline(ctx, finalPolys, style.outlineColor, style.outlineWidth)
+    drawTerrainBlobFill(ctx, polys, R, style)
+    if (style.outlineEnabled) drawBlobOutline(ctx, polys, style.outlineColor, style.outlineWidth)
   }
 }
 

@@ -6,7 +6,7 @@ import {
   type P2pTerrainRegion,
 } from '../lib/p2pTerrainRegions'
 import { P2P_TERRAIN_TYPES, type P2pTerrainType } from '../store/slices/p2pTerrainSlice'
-import { drawP2pTerrain, DEFAULT_P2P_TERRAIN_STYLES } from '../lib/drawP2pTerrain'
+import { drawP2pTerrain, computeP2pShapedTerrainBlobs, DEFAULT_P2P_TERRAIN_STYLES } from '../lib/drawP2pTerrain'
 import { drawP2pTowns, DEFAULT_P2P_TOWN_TIER_STYLES } from '../lib/drawP2pTowns'
 import { drawRoadsAndRails, type RoadChainPx } from '../lib/drawRoadsRails'
 import { DEFAULT_ROAD_TIER_STYLES, DEFAULT_RAIL_STYLE } from '../store/mapStore'
@@ -214,6 +214,56 @@ export function P2pViewCanvas({
     return out
   }, [p2pBlobOutlineEnabled, p2pBlobOutlineColor, p2pBlobOutlineWidth])
 
+  // Fixed "home" (zoom=1, pan=0) projection, for shaping terrain blobs once instead of
+  // on every zoom/pan tick — see computeP2pShapedTerrainBlobs's param doc. Pan/zoom are
+  // applied afterwards as a canvas transform around the already-shaped output, the same
+  // way hex mode scales a pre-rasterized LayerCache bitmap instead of re-drawing it.
+  const homeProjectKm = useMemo(() => {
+    if (!layout) return null
+    return (xKm: number, yKm: number): [number, number] => [layout.px + xKm * layout.pxPerKm, layout.py + yKm * layout.pxPerKm]
+  }, [layout])
+
+  const roadChainsHomePx = useMemo(() => {
+    if (!homeProjectKm) return []
+    return roadsLocal.map(pts => pts.map(([x, y]) => homeProjectKm(x, y)))
+  }, [roadsLocal, homeProjectKm])
+
+  const riverChainsHomePx = useMemo(() => {
+    if (!homeProjectKm) return []
+    return riversLocal.map(pts => pts.map(([x, y]) => homeProjectKm(x, y)))
+  }, [riversLocal, homeProjectKm])
+
+  // Same "one topological unit" role hex radius plays for hex blobs, but fixed to the
+  // home-space scale (layout.pxPerKm, never the live-zoom view.pxPerKm) — this is what
+  // keeps blob shape (corner rounding, waviness, fringe cuts) visually stable while
+  // zooming instead of being recomputed with different parameters every tick.
+  const blobR = useMemo(() => {
+    if (!layout) return 0
+    const regionSideKm = Math.sqrt(p2pMaxRegionSizeCm2 * kmPerCm * kmPerCm)
+    return regionSideKm * layout.pxPerKm
+  }, [layout, p2pMaxRegionSizeCm2, kmPerCm])
+
+  const shapedTerrainBlobs = useMemo(() => {
+    if (!homeProjectKm || !blobR) return []
+    return computeP2pShapedTerrainBlobs({
+      regions, project: homeProjectKm, R: blobR,
+      smooth: p2pBlobSmooth, offset: p2pBlobOffset, bump: p2pBlobBump,
+      sweepFreq: p2pBlobSweepFreq, lobeFreq: p2pBlobLobeFreq, lobeAmp: p2pBlobLobeAmp,
+      lobeThreshold: p2pBlobLobeThreshold, lobeDirection: p2pBlobLobeDirection,
+      topoStyle: p2pBlobTopoStyle,
+      roadChainsPx: roadChainsHomePx, riverChainsPx: riverChainsHomePx,
+      roadCutEnabled: p2pRoadBlobCutEnabled, roadCutWidth: p2pRoadBlobCutWidth, roadCutRoughness: p2pRoadBlobCutRoughness,
+      riverCutEnabled: p2pRiverBlobCutEnabled, riverCutWidth: p2pRiverBlobCutWidth, riverCutRoughness: p2pRiverBlobCutRoughness,
+    })
+  }, [
+    homeProjectKm, blobR, regions,
+    p2pBlobSmooth, p2pBlobOffset, p2pBlobBump, p2pBlobSweepFreq, p2pBlobLobeFreq,
+    p2pBlobLobeAmp, p2pBlobLobeThreshold, p2pBlobLobeDirection, p2pBlobTopoStyle,
+    roadChainsHomePx, riverChainsHomePx,
+    p2pRoadBlobCutEnabled, p2pRoadBlobCutWidth, p2pRoadBlobCutRoughness,
+    p2pRiverBlobCutEnabled, p2pRiverBlobCutWidth, p2pRiverBlobCutRoughness,
+  ])
+
   // Sizes/clears the hover-outline overlay canvas whenever the viewport changes.
   // Kept separate from the main canvas so highlighting the hovered region never
   // touches the (comparatively expensive) terrain/road/river redraw.
@@ -276,24 +326,19 @@ export function P2pViewCanvas({
 
     const riverChainsPx = p2pRawRivers.map(r => r.coords.map(([lon, lat]) => project(lon, lat)))
 
-    // Deformation scale for the organic blob shaping — same role hex radius plays for
-    // hex blobs (the size of "one topological unit"). A p2p region's natural unit is
-    // its target size (p2pMaxRegionSizeCm2), NOT the 0.5km classification grid cell —
-    // regions are typically many cells across, so anchoring R to the grid cell badly
-    // under-scaled the wobble relative to how big the blobs actually render. Scales
-    // with the current zoom too, same as everything else on the board.
-    const regionSideKm = Math.sqrt(p2pMaxRegionSizeCm2 * kmPerCm * kmPerCm)
-    const R = regionSideKm * view.pxPerKm
-    drawP2pTerrain(ctx, {
-      regions, project: projectKm, styles: terrainStyles, R,
-      smooth: p2pBlobSmooth, offset: p2pBlobOffset, bump: p2pBlobBump,
-      sweepFreq: p2pBlobSweepFreq, lobeFreq: p2pBlobLobeFreq, lobeAmp: p2pBlobLobeAmp,
-      lobeThreshold: p2pBlobLobeThreshold, lobeDirection: p2pBlobLobeDirection,
-      topoStyle: p2pBlobTopoStyle,
-      roadChainsPx: roadChains.map(c => c.chain), riverChainsPx,
-      roadCutEnabled: p2pRoadBlobCutEnabled, roadCutWidth: p2pRoadBlobCutWidth, roadCutRoughness: p2pRoadBlobCutRoughness,
-      riverCutEnabled: p2pRiverBlobCutEnabled, riverCutWidth: p2pRiverBlobCutWidth, riverCutRoughness: p2pRiverBlobCutRoughness,
-    })
+    // Terrain blobs were already shaped once in fixed home-space (shapedTerrainBlobs
+    // memo above) — draw them here via a canvas transform that maps home-space pixels
+    // to the current view, instead of re-shaping with live-zoom coordinates. This is
+    // the same trick hex mode gets for free by blitting a scaled bitmap: the geometry
+    // itself never changes as you zoom/pan, only how it's projected onto the screen.
+    if (layout) {
+      const zoom = zoomRef.current
+      ctx.save()
+      ctx.translate(view.px - layout.px * zoom, view.py - layout.py * zoom)
+      ctx.scale(zoom, zoom)
+      drawP2pTerrain(ctx, shapedTerrainBlobs, terrainStyles, blobR)
+      ctx.restore()
+    }
 
     // Rivers — simple stroke for now, no variable width/wobble yet.
     ctx.strokeStyle = '#7fb2d9'
@@ -324,12 +369,8 @@ export function P2pViewCanvas({
     ctx.lineWidth = 1.5
     ctx.strokeRect(view.px, view.py, view.pw, view.ph)
   }, [
-    layout, boardProjection, regions, p2pEdges, p2pTowns, p2pRawRivers, size, surroundColor,
-    terrainStyles, p2pBlobSmooth, p2pBlobOffset, p2pBlobBump, p2pBlobSweepFreq,
-    p2pBlobLobeFreq, p2pBlobLobeAmp, p2pBlobLobeThreshold, p2pBlobLobeDirection, p2pBlobTopoStyle,
-    p2pMaxRegionSizeCm2, kmPerCm,
-    p2pRoadBlobCutEnabled, p2pRoadBlobCutWidth, p2pRoadBlobCutRoughness,
-    p2pRiverBlobCutEnabled, p2pRiverBlobCutWidth, p2pRiverBlobCutRoughness,
+    layout, boardProjection, p2pEdges, p2pTowns, p2pRawRivers, size, surroundColor,
+    terrainStyles, shapedTerrainBlobs, blobR,
   ])
 
   // Reactive redraw whenever the underlying data (not pan/zoom) changes.
