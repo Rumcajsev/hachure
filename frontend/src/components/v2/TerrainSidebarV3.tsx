@@ -60,8 +60,6 @@ function ShapeSettingsFlyout({ onClose, usedAs }: { onClose: () => void; usedAs:
     terrainBlobLobeDirection, setTerrainBlobLobeDirection,
     terrainBlobTopoStyle, setTerrainBlobTopoStyle,
     terrainBlobClusterSize, setTerrainBlobClusterSize,
-    terrainBlobSplatDensity, setTerrainBlobSplatDensity,
-    terrainBlobSplatSize, setTerrainBlobSplatSize,
     terrainBlobOutlineEnabled, setTerrainBlobOutlineEnabled,
     terrainBlobOutlineColor, setTerrainBlobOutlineColor,
     terrainBlobOutlineWidth, setTerrainBlobOutlineWidth,
@@ -78,8 +76,6 @@ function ShapeSettingsFlyout({ onClose, usedAs }: { onClose: () => void; usedAs:
   const [fringeLocal, setFringeLocal] = useState(Math.round(terrainBlobLobeAmp * 100))
   useEffect(() => { setFringeLocal(Math.round(terrainBlobLobeAmp * 100)); fringeRef.current = terrainBlobLobeAmp }, [terrainBlobLobeAmp])
   const clusterSizeSlider  = useDeferredSlider(terrainBlobClusterSize, setTerrainBlobClusterSize)
-  const splatDensitySlider = useDeferredSlider(Math.round(terrainBlobSplatDensity * 10), v => setTerrainBlobSplatDensity(v / 10))
-  const splatSizeSlider    = useDeferredSlider(Math.round(terrainBlobSplatSize * 100),   v => setTerrainBlobSplatSize(v / 100))
   const topoSlider         = useDeferredSlider(Math.round(terrainBlobTopoStyle * 10),  v => setTerrainBlobTopoStyle(v / 10))
 
   const isModified =
@@ -121,14 +117,6 @@ function ShapeSettingsFlyout({ onClose, usedAs }: { onClose: () => void; usedAs:
         onDragEnd={() => { const amp = fringeRef.current; setTerrainBlobLobeAmp(amp); setTerrainBlobLobeFreq(2.0 + amp * 3.0); setTerrainBlobLobeThreshold(0) }}
         accentColor={t.rust}
       />
-      <div style={{ borderTop: `1px solid ${t.line2}`, padding: '6px 12px 2px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-        <span style={{ fontFamily: t.mono, fontSize: 9, letterSpacing: 0.8, color: t.inkFaint, textTransform: 'uppercase', fontWeight: 600 }}>Splats</span>
-        <ToggleSwitch enabled={terrainBlobSplatDensity > 0} onChange={on => setTerrainBlobSplatDensity(on ? 3 : 0)} />
-      </div>
-      {terrainBlobSplatDensity > 0 && <>
-        <MiniSlider label="Satellites" display={`${Math.round(splatDensitySlider.value) / 10}`} value={splatDensitySlider.value} min={1} max={20} step={1} onChange={splatDensitySlider.onChange} onDragEnd={splatDensitySlider.onDragEnd} />
-        <MiniSlider label="Sat. size"  display={`${splatSizeSlider.value}%`}                    value={splatSizeSlider.value}    min={10} max={80} step={5} onChange={splatSizeSlider.onChange}   onDragEnd={splatSizeSlider.onDragEnd} />
-      </>}
       <div style={{ borderTop: `1px solid ${t.line2}`, padding: '6px 12px 2px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
         <span style={{ fontFamily: t.mono, fontSize: 9, letterSpacing: 0.8, color: t.inkFaint, textTransform: 'uppercase', fontWeight: 600 }}>Blob outline</span>
         <ToggleSwitch enabled={terrainBlobOutlineEnabled} onChange={setTerrainBlobOutlineEnabled} />

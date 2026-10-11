@@ -457,8 +457,6 @@ export const createUiSlice = (set: Set, get: () => MapStore): UiSlice => ({
         terrainBlobLobeFreq: s.terrainBlobLobeFreq, terrainBlobLobeAmp: s.terrainBlobLobeAmp,
         terrainBlobLobeThreshold: s.terrainBlobLobeThreshold, terrainBlobLobeDirection: s.terrainBlobLobeDirection,
         terrainBlobTopoStyle: s.terrainBlobTopoStyle,
-        terrainBlobSplatDensity: s.terrainBlobSplatDensity,
-        terrainBlobSplatSize: s.terrainBlobSplatSize,
         terrainBlobOutlineEnabled: s.terrainBlobOutlineEnabled,
         terrainBlobOutlineColor: s.terrainBlobOutlineColor,
         terrainBlobOutlineWidth: s.terrainBlobOutlineWidth,
@@ -1019,10 +1017,6 @@ if (fromVersion < 64) {
     if (s.riverBlobCutEnabled === undefined) s.riverBlobCutEnabled = false
     if (s.riverBlobCutWidth === undefined) s.riverBlobCutWidth = 0.5
   }
-  if (fromVersion < 82) {
-    if (s.terrainBlobSplatDensity === undefined) s.terrainBlobSplatDensity = 0
-    if (s.terrainBlobSplatSize === undefined) s.terrainBlobSplatSize = 0.3
-  }
   if (fromVersion < 86) {
     if (s.roadBlobCutEnabled === undefined) s.roadBlobCutEnabled = false
     if (s.roadBlobCutWidth === undefined) s.roadBlobCutWidth = 0.3
@@ -1133,6 +1127,10 @@ if (fromVersion < 64) {
   }
   if (fromVersion < 105) {
     delete s.blobMaskEdits
+  }
+  if (fromVersion < 106) {
+    delete s.terrainBlobSplatDensity
+    delete s.terrainBlobSplatSize
   }
   if (fromVersion < 84) {
     const tiers = s.riverTierStyles as Array<Record<string, unknown>> | undefined

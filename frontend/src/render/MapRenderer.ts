@@ -70,7 +70,7 @@ export interface MapRefs {
   dataSourceRef: { current: any }
   defaultBackgroundBlobsRef: { current: any }
   defaultElevationBlobsRef: { current: any }
-  defaultTerrainBlobsMaskedRef: { current: any }
+  defaultTerrainBlobsRef: { current: any }
   detectedBridgesRef: { current: any }
   disabledHexKeysRef: { current: any }
   dragLiveDensePosRef: { current: any }
@@ -297,7 +297,7 @@ export function drawMap(refs: MapRefs, exportTarget?: ExportTarget): void {
     bgPaintHoldRef, blobComponentsByTerrainRef, blobComponentsRef, blobDragLiveRef, blobEditModeRef, blobHandleDataRef, blobHandleOverridesRef,
     bridgeOverridesRef, bridgeLengthScaleRef, bridgeStyleRef, bridgeTiersRef, bridgesEnabledRef, cachedRiverChainDataRef, cachedRiverTierChainDataRef, canvasRef,
     clipToHexGridRef, coastlineDebugRawRef, contourCanvasRef, contourDisabledElevClassesSetRef, contourDisabledTerrainsSetRef, customTerrainsRef, dataSourceRef, defaultBackgroundBlobsRef,
-    defaultElevationBlobsRef, defaultTerrainBlobsMaskedRef, detectedBridgesRef, disabledHexKeysRef, dragLiveDensePosRef, dragLiveOverrideRef, draggingCpKeyRef,
+    defaultElevationBlobsRef, defaultTerrainBlobsRef, detectedBridgesRef, disabledHexKeysRef, dragLiveDensePosRef, dragLiveOverrideRef, draggingCpKeyRef,
     draggingCpKindRef, draggingDensePtRef, draggingLabelRef, drawOsmHighlightRef, drawPerfRef, edgeBlobBlendRef, edgeBlobOverridesRef, edgeBlobPaintedRef, edgeBlobWidthRef,
     editingLabelRef, elevationPaintBrushRef, elevationPaintModeRef, elevationTypeBlobStylesRef, excludedHexKeysRef, frameDimsRef, hexBorderColorRef, hexBorderDifferenceRef, elevationHachureEnabledRef, elevationShadowEnabledRef, elevationShadowOxRef, elevationShadowOyRef, elevationShadowBlRef, elevationShadowOpRef, elevationShadowPsRef, elevationShadowColorRef, slopeEdgesRef, slopeStyleRef, slopeSmoothingRef, slopeTickSpacingRef, slopeTickLengthRef, slopeModeRef, slopeHoverTargetRef,
     hexBorderModeRef, hexBorderOpacityRef, hexBuildingGeoCacheRef, hexEdgeModeRef, hexIdxRef, hexNumberColorRef, hexNumberEdgeRef, hexNumberFontScaleRef,
@@ -470,7 +470,7 @@ export function drawMap(refs: MapRefs, exportTarget?: ExportTarget): void {
     terrainTextures: _buildTerrainTextures(),
     px: 0, py: 0, pw, ph,
     backgroundTerrainBlobs: defaultBackgroundBlobsRef.current,
-    defaultTerrainBlobs: defaultTerrainBlobsMaskedRef.current,
+    defaultTerrainBlobs: defaultTerrainBlobsRef.current,
     terrainBlobOverrides: terrainBlobOverridesRef.current,
     blobComponents: blobComponentsRef.current,
     blobComponentsByTerrain: blobComponentsByTerrainRef.current,

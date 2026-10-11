@@ -34,8 +34,6 @@ export type TerrainSlice = {
   terrainBlobLobeDirection: number
   terrainBlobTopoStyle: number
   terrainBlobClusterSize: number
-  terrainBlobSplatDensity: number
-  terrainBlobSplatSize: number
   terrainBlobOutlineEnabled: boolean
   terrainBlobOutlineColor: string
   terrainBlobOutlineWidth: number
@@ -139,8 +137,6 @@ export type TerrainSlice = {
   setTerrainBlobLobeDirection: (v: number) => void
   setTerrainBlobTopoStyle: (v: number) => void
   setTerrainBlobClusterSize: (v: number) => void
-  setTerrainBlobSplatDensity: (v: number) => void
-  setTerrainBlobSplatSize: (v: number) => void
   setTerrainBlobOutlineEnabled: (v: boolean) => void
   setTerrainBlobOutlineColor: (v: string) => void
   setTerrainBlobOutlineWidth: (v: number) => void
@@ -239,8 +235,6 @@ export const createTerrainSlice = (set: Set, get: () => MapStore): TerrainSlice 
   terrainBlobLobeDirection: DEFAULT_TERRAIN_BLOB.lobeDirection,
   terrainBlobTopoStyle: DEFAULT_TERRAIN_BLOB.topoStyle,
   terrainBlobClusterSize: 0,
-  terrainBlobSplatDensity: 0,
-  terrainBlobSplatSize: 0.3,
   terrainBlobOutlineEnabled: false,
   terrainBlobOutlineColor: '#000000',
   terrainBlobOutlineWidth: 1,
@@ -1053,8 +1047,6 @@ export const createTerrainSlice = (set: Set, get: () => MapStore): TerrainSlice 
   setTerrainBlobLobeDirection: (v) => set({ terrainBlobLobeDirection: v }),
   setTerrainBlobTopoStyle: (v) => set({ terrainBlobTopoStyle: v }),
   setTerrainBlobClusterSize: (v) => set({ terrainBlobClusterSize: v }),
-  setTerrainBlobSplatDensity: (v) => set({ terrainBlobSplatDensity: v }),
-  setTerrainBlobSplatSize: (v) => set({ terrainBlobSplatSize: v }),
   setTerrainBlobOutlineEnabled: (v) => set({ terrainBlobOutlineEnabled: v }),
   setTerrainBlobOutlineColor: (v) => set({ terrainBlobOutlineColor: v }),
   setTerrainBlobOutlineWidth: (v) => set({ terrainBlobOutlineWidth: v }),

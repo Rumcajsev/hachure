@@ -988,8 +988,6 @@ export const useMapStore = create<MapStore>()(persist((set, get) => {
     terrainBlobLobeThreshold: s.terrainBlobLobeThreshold,
     terrainBlobLobeDirection: s.terrainBlobLobeDirection,
     terrainBlobTopoStyle: s.terrainBlobTopoStyle,
-    terrainBlobSplatDensity: s.terrainBlobSplatDensity,
-    terrainBlobSplatSize: s.terrainBlobSplatSize,
     terrainBlobOutlineEnabled: s.terrainBlobOutlineEnabled,
     terrainBlobOutlineColor: s.terrainBlobOutlineColor,
     terrainBlobOutlineWidth: s.terrainBlobOutlineWidth,
@@ -1096,7 +1094,7 @@ export const useMapStore = create<MapStore>()(persist((set, get) => {
     p2pRiverBlobCutWidth: s.p2pRiverBlobCutWidth,
     p2pRiverBlobCutRoughness: s.p2pRiverBlobCutRoughness,
   }),
-  version: 105,
+  version: 106,
   migrate: migratePersisted,
   merge: (persisted, current) => rehydrateState({ ...current, ...(persisted as Partial<MapStore>) }),
 }))
