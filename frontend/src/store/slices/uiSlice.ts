@@ -1131,6 +1131,9 @@ if (fromVersion < 64) {
     if (s.p2pRiverBlobCutWidth === undefined) s.p2pRiverBlobCutWidth = 0.5
     if (s.p2pRiverBlobCutRoughness === undefined) s.p2pRiverBlobCutRoughness = 0.3
   }
+  if (fromVersion < 105) {
+    delete s.blobMaskEdits
+  }
   if (fromVersion < 84) {
     const tiers = s.riverTierStyles as Array<Record<string, unknown>> | undefined
     if (tiers) {
@@ -1145,9 +1148,6 @@ if (fromVersion < 64) {
     // rawRoadWays, osmHexPaths, rawRailWays, osmRailHexPaths, osmRiverWays,
     // appliedOsmRiverIndices, riversOsmStatus, heightmapUrl added to persist.
     // Missing fields default to slice initialiser values — no fixup needed.
-  }
-  if (fromVersion < 80) {
-    if (!s.blobMaskEdits) s.blobMaskEdits = []
   }
   if (fromVersion < 79) {
     delete (s as Record<string, unknown>).canalEdges

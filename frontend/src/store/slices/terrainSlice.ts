@@ -1,6 +1,6 @@
 import type {
   MapStore, GeneratedHex, GridMetadata, GenerateProgress, BlobOverride,
-  ActiveTool, CustomTerrain, TerrainRules, ClassRule, StrokeEffect, BlobMaskEdit, SlopeStyle,
+  ActiveTool, CustomTerrain, TerrainRules, ClassRule, StrokeEffect, SlopeStyle,
   ImageSwatch,
 } from '../mapStore'
 import {
@@ -190,11 +190,6 @@ export type TerrainSlice = {
   setActiveBlobEditId: (id: string | null) => void
   setBlobHandleOverride: (canonicalKey: string, hexKey: string, offset: [number, number] | null) => void
   clearBlobHandleOverrides: (canonicalKey: string) => void
-  // Blob mask edits (boolean add/subtract regions in world space)
-  blobMaskEdits: BlobMaskEdit[]
-  addBlobMaskEdit: (edit: BlobMaskEdit) => void
-  removeBlobMaskEdit: (id: string) => void
-  clearBlobMaskEdits: (terrain?: string) => void
   // WorldCover raw overlay
   worldcoverImageUrl: string | null
   showWorldcoverOverlay: boolean
@@ -312,7 +307,6 @@ export const createTerrainSlice = (set: Set, get: () => MapStore): TerrainSlice 
   blobEditMode: false,
   activeBlobEditId: null,
   blobHandleOverrides: {},
-  blobMaskEdits: [],
   worldcoverImageUrl: null,
   showWorldcoverOverlay: false,
   setShowWorldcoverOverlay: (v) => set({ showWorldcoverOverlay: v }),
@@ -436,7 +430,6 @@ export const createTerrainSlice = (set: Set, get: () => MapStore): TerrainSlice 
     blobHandleOverrides: {},
     activeBlobEditId: null,
     blobEditMode: false,
-    blobMaskEdits: [],
     urbanHexes: [],
     excludedHexKeys: [],
     disabledHexKeys: [],
@@ -1220,10 +1213,4 @@ export const createTerrainSlice = (set: Set, get: () => MapStore): TerrainSlice 
     const { [ck]: _, ...rest } = s.blobHandleOverrides
     return { blobHandleOverrides: rest }
   }),
-
-  addBlobMaskEdit: (edit) => set((s) => ({ blobMaskEdits: [...s.blobMaskEdits, edit] })),
-  removeBlobMaskEdit: (id) => set((s) => ({ blobMaskEdits: s.blobMaskEdits.filter(e => e.id !== id) })),
-  clearBlobMaskEdits: (terrain) => set((s) => ({
-    blobMaskEdits: terrain ? s.blobMaskEdits.filter(e => e.terrain !== terrain) : [],
-  })),
 })

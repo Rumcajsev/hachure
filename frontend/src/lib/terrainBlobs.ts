@@ -6,7 +6,7 @@ import { makePermutation, perlinNoise2D, perturbXY, perturbNormal, mulberry32 } 
 import { projectToCanvas } from './projection'
 import polygonClipping from 'polygon-clipping'
 import { hexTerrainLayers } from '../store/mapStore'
-import type { GridMetadata, GeneratedHex, BlobMaskEdit } from '../store/mapStore'
+import type { GridMetadata, GeneratedHex } from '../store/mapStore'
 
 // ── Coastal hex helpers ──────────────────────────────────────────────────────
 
@@ -568,80 +568,6 @@ export type BlobShapeParams = {
   lobeAmp: number
   lobeThreshold: number
   lobeDirection: number
-}
-
-/** Apply stored BlobMaskEdits to pre-shaped blob polygons.
- *  Edits are stored in WGS84 lon/lat; projectFn converts them to canvas space.
- *  Add/subtract edits both go through the terrain blob shaping pipeline when shapeParams is provided. */
-export function applyBlobMaskEdits(
-  blobs: { terrain: string; polys: [number, number][][] }[],
-  edits: BlobMaskEdit[],
-  projectFn: (lonlat: [number, number]) => [number, number],
-  shapeParams?: BlobShapeParams,
-): { terrain: string; polys: [number, number][][] }[] {
-  if (edits.length === 0) return blobs
-  return blobs.map(blob => {
-    const relevant = edits.filter(e => e.terrain === blob.terrain)
-    if (relevant.length === 0) return blob
-
-    let polys = blob.polys
-    for (const edit of relevant) {
-      const editCanvas = edit.polygon.map(projectFn)
-      if (editCanvas.length < 3) continue
-
-      const seed = Math.abs(Math.round(editCanvas[0][0] * 73 + editCanvas[0][1] * 97)) ^ (edit.id.split('').reduce((a, c) => a + c.charCodeAt(0), 0))
-
-      let shaped: [number, number][] = editCanvas as [number, number][]
-      if (shapeParams) {
-        const p = shapeParams
-        const p1Amp = p.bump * p.R
-        const p2Amp = p.bump * p.lobeAmp * p.R * p.lobeDirection
-        let out: [number, number][] = shaped
-        const smoothPasses = Math.floor(p.smooth)
-        const smoothRemainder = p.smooth - smoothPasses
-        for (let i = 0; i < smoothPasses; i++) out = preSmoothVar(out, 0.4)
-        if (smoothRemainder > 0) out = preSmoothVar(out, 0.4 * smoothRemainder)
-        out = subdivideClosedPolygon(out, p.R * 0.25)
-        out = perturbXY(out, makePermutation(seed), makePermutation(seed + 31), p.sweepFreq / p.R, p1Amp)
-        out = resampleSmoothQuad(out, 5)
-        out = perturbNormal(out, makePermutation(seed + 67), makePermutation(seed + 113), p.lobeFreq / p.R, p2Amp, p.lobeThreshold)
-        shaped = out
-      }
-
-      if (edit.type === 'subtract') {
-        const editMPoly: polygonClipping.MultiPolygon = [[shaped as polygonClipping.Ring]]
-        const next: [number, number][][] = []
-        for (const poly of polys) {
-          if (poly.length < 3) continue
-          const subject: polygonClipping.MultiPolygon = [[poly as polygonClipping.Ring]]
-          try {
-            const result = polygonClipping.difference(subject, editMPoly)
-            for (const polygon of result) {
-              if (polygon[0]?.length >= 3) next.push(polygon[0] as [number, number][])
-            }
-          } catch {
-            next.push(poly)
-          }
-        }
-        polys = next
-      } else {
-        // Union into existing polys so overlapping regions don't punch holes under evenodd fill
-        if (polys.length === 0) {
-          polys = [shaped]
-        } else {
-          try {
-            const existingMulti: polygonClipping.MultiPolygon = polys.filter(p => p.length >= 3).map(p => [p as polygonClipping.Ring])
-            const addMulti: polygonClipping.MultiPolygon = [[shaped as polygonClipping.Ring]]
-            const result = polygonClipping.union(existingMulti, addMulti)
-            polys = result.map(polygon => polygon[0] as [number, number][]).filter(p => p?.length >= 3)
-          } catch {
-            polys = [...polys, shaped]
-          }
-        }
-      }
-    }
-    return { ...blob, polys }
-  })
 }
 
 /**
