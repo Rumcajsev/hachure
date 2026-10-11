@@ -20,7 +20,7 @@ export interface BuildingsInput extends DrawBuildingsParams {
 const cache = new LayerCache()
 cache.name = 'buildings'
 
-export const buildingsDeps = (s: MapStore) => [s.urbanHexes, s.urbanStyle]
+export const buildingsDeps = (s: MapStore) => [s.urbanHexes, s.urbanStyle, s.settlements, s.settlementTierStyles]
 
 export const buildingsController: LayerController<BuildingsInput> = {
   markDirty(): void { cache.markDirty() },
@@ -35,7 +35,12 @@ export const buildingsController: LayerController<BuildingsInput> = {
       roadChains, roadTierStyles, hexBuildingGeoCache, project } = input
 
     if (!isExport) {
-      if (urbanHexes.length === 0) {
+      const hasSettlementBuildings = settlements.some(s => {
+        if (!s.included || s.hex_q === null) return false
+        const tier = (s.tier ?? (s.type === 'city' ? 1 : s.type === 'town' ? 3 : 4)) as SettlementTier
+        return settlementTierStyles[tier].displayMode === 'buildings'
+      })
+      if (urbanHexes.length === 0 && !hasSettlementBuildings) {
         cache.dispose()
         return
       }
